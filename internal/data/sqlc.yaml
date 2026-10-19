@@ -1,0 +1,42 @@
+# grape 存储 sqlc 配置:两个 sql 块共享同一份 schema.sql。
+# 块 1:sqlc-gen-go(built-in gen: go),产出模型与固定查询。
+# 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.1.2),仅消费 Catalog 生成动态 List;
+#       queries 字段 sqlc 要求必填但插件忽略。
+#
+# 在 internal/data 目录执行:sqlc generate -f sqlc.yaml
+# sqlc 按 url 下载 wasm 并校验 sha256,首次生成后缓存于用户缓存目录。
+version: "2"
+plugins:
+  - name: "sqlc_gen_dynamic"
+    wasm:
+      url: "https://github.com/JNinng/sqlc_gen_dynamic/releases/download/v0.1.2/sqlc_gen_dynamic-v0.1.2.wasm"
+      sha256: "8a98dac672fbcf64d4a25ac344bc52e9aaab8f0550f4c3a0725dd4f46b690344"
+    env:
+      - "DYNQ_DUMP_REQUEST"
+sql:
+  - engine: "postgresql"
+    schema: "schema.sql"
+    queries: "queries.sql"
+    gen:
+      go:
+        package: "db_sqlc"
+        out: "db_sqlc"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_db_tags: true
+        emit_pointers_for_null_types: true
+        emit_interface: true
+
+  - engine: "postgresql"
+    schema: "schema.sql"
+    queries: "queries.sql"
+    codegen:
+      - plugin: "sqlc_gen_dynamic"
+        out: "db_sqlc"
+        options:
+          package: "db_sqlc"
+          runtime_import: "github.com/jninng/sqlc_gen_dynamic/dynq"
+          schema: "public"
+          default_ops: "none"
+          page_default: 20
+          page_max: 200

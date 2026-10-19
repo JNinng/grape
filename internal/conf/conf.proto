@@ -1,0 +1,50 @@
+syntax = "proto3";
+package kratos.api;
+
+option go_package = "grape/internal/conf;conf";
+
+import "google/protobuf/duration.proto";
+
+// Bootstrap 是服务启动配置的根结构，对应 configs/config.yaml。
+message Bootstrap {
+  // HTTP / gRPC 服务器配置。
+  Server server = 1;
+  // 存储配置。
+  Data data = 2;
+}
+
+// Server 是传输层服务器配置。
+message Server {
+  // HTTP 服务器配置。
+  message HTTP {
+    // 监听网络类型，如 tcp。
+    string network = 1;
+    // 监听地址，如 0.0.0.0:8000。
+    string addr = 2;
+    // 请求超时时间。
+    google.protobuf.Duration timeout = 3;
+  }
+  // gRPC 服务器配置。
+  message GRPC {
+    // 监听网络类型，如 tcp。
+    string network = 1;
+    // 监听地址，如 0.0.0.0:9000。
+    string addr = 2;
+    // 请求超时时间。
+    google.protobuf.Duration timeout = 3;
+  }
+  HTTP http = 1;
+  GRPC grpc = 2;
+}
+
+// Data 是存储层配置。
+message Data {
+  // PostgreSQL 数据库连接配置。
+  message Database {
+    // 连接 DSN，如 postgres://user:pass@127.0.0.1:5432/db。
+    string source = 1;
+    // 记录每条执行的语句与参数。仅开发环境开启。
+    bool debug = 2;
+  }
+  Database database = 1;
+}

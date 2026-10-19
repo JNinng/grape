@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package query.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "grape/api/query/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.query.v1";
+option java_outer_classname = "QueryProto";
+
+// Query 是动态 List 查询协议，镜像存储层的 dynq.Query。
+// where 中多条条件恒为 AND 组合，不支持 OR 与条件分组。
+message Query {
+  // 投影字段列表（小驼峰）。显式空数组、@hidden 字段、被禁用字段与未知字段
+  // 均被拒绝；pk 与表级默认排序键会强制并入查询结果。
+  repeated string fields = 1;
+  // 过滤条件，多条之间恒为 AND。
+  repeated Condition where = 2;
+  // 排序项，按顺序生效；为空时回落到表级默认排序。
+  repeated SortItem sort = 3;
+  // 分页输入。
+  Pagination pagination = 4;
+}
+
+// Condition 是单个过滤条件。
+//
+// value 与 right_value 为 JSON 值，接受形态由字段数据类型与操作符决定：
+// 整型字段的 eq 接受数字；between 在 value 放下界、right_value 放上界；
+// in / not_in 接受数组；is_null / not_null 不需要值。
+message Condition {
+  // 字段键，小驼峰，如 createdAt。
+  string field = 1;
+  // 操作符：eq、neq、in、not_in、gt、gte、lt、lte、between、contains、
+  // prefix、suffix、has、is_null、not_null。每列可用的操作符集合由 schema
+  // 声明并在服务端校验。
+  string op = 2;
+  // 左操作数（between 时为下界）。
+  google.protobuf.Value value = 3;
+  // between 的上界。
+  google.protobuf.Value right_value = 4;
+}
+
+// SortItem 是单个排序项。
+message SortItem {
+  // 字段键，小驼峰。仅 @sortable 列被接受。
+  string field = 1;
+  // 排序方向：asc（默认）或 desc。
+  string order = 2;
+}
+
+// Pagination 是分页输入。page 从 1 开始，为 offset 模式；after 非空即切换到
+// 游标模式，且必须携带同表上一页返回的 next_cursor。游标按表做指纹校验，
+// 跨资源的游标会被拒绝。
+message Pagination {
+  // 页码，从 1 开始。offset 模式。
+  optional int32 page = 1;
+  // 每页条数。未设置时回落到表级默认值；上限受表级最大值约束。
+  optional int32 page_size = 2;
+  // 上一页响应的 next_cursor。游标模式；与 page 互斥。
+  optional string after = 3;
+  // 是否计算 total。缺省为 true。
+  optional bool include_total = 4;
+}

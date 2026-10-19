@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package order.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/order/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.order.v1";
+option java_outer_classname = "OrderProto";
+
+// OrderService 提供订单 CRUD。List 走动态查询协议，
+// 过滤 / 排序 / 投影 / 分页能力由存储层 schema 注释 DSL 声明。
+service OrderService {
+  // CreateOrder 创建订单，返回服务端生成 id 与 created_at 后的持久化记录。
+  rpc CreateOrder (CreateOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      post: "/v1/orders/create"
+      body: "order"
+    };
+  }
+
+  // GetOrder 按 id 查询单个订单。
+  rpc GetOrder (GetOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      get: "/v1/orders/{id}"
+    };
+  }
+
+  // ListOrders 按动态查询协议返回一页订单。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标
+  // 均返回 INVALID_ARGUMENT。
+  rpc ListOrders (ListOrdersRequest) returns (OrderSet) {
+    option (google.api.http) = {
+      post: "/v1/orders/list"
+      body: "query"
+    };
+  }
+
+  // UpdateOrder 覆盖已存在订单的可变字段。id 与 created_at
+  // 由服务端管理，输入中被忽略。
+  rpc UpdateOrder (UpdateOrderRequest) returns (Order) {
+    option (google.api.http) = {
+      put: "/v1/orders/update"
+      body: "order"
+    };
+  }
+
+  // DeleteOrder 物理删除订单。
+  rpc DeleteOrder (DeleteOrderRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/orders/{id}"
+    };
+  }
+}
+
+// OrderStatus 是订单的履约状态。
+enum OrderStatus {
+  // 缺省值，服务端不返回。
+  ORDER_STATUS_UNSPECIFIED = 0;
+  // 待支付。
+  ORDER_STATUS_PENDING = 1;
+  // 已支付。
+  ORDER_STATUS_PAID = 2;
+  // 已发货。
+  ORDER_STATUS_SHIPPED = 3;
+  // 已关闭。
+  ORDER_STATUS_CLOSED = 4;
+}
+
+// Order 是订单的规范表示。
+message Order {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 业务订单号。
+  string order_no = 2;
+  // 归属用户的标识。
+  int64 user_id = 3;
+  // 金额（分）。
+  int64 amount_cents = 4;
+  // 履约状态。创建时缺省 PENDING。
+  OrderStatus status = 5;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// OrderSet 是 ListOrders 返回的分页集合。
+message OrderSet {
+  // 本页订单，顺序遵循查询中的 sort。
+  repeated Order items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateOrderRequest 是 OrderService.CreateOrder 的输入。
+message CreateOrderRequest {
+  // 要创建的订单。id 与 created_at 在输入中被忽略。
+  Order order = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetOrderRequest 是 OrderService.GetOrder 的输入。
+message GetOrderRequest {
+  // 目标订单的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListOrdersRequest 是 OrderService.ListOrders 的输入。
+message ListOrdersRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateOrderRequest 是 OrderService.UpdateOrder 的输入。
+message UpdateOrderRequest {
+  // 携带新字段值的订单。id 标识目标记录，必须设置。
+  Order order = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteOrderRequest 是 OrderService.DeleteOrder 的输入。
+message DeleteOrderRequest {
+  // 目标订单的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

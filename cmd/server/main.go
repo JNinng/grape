@@ -1,0 +1,98 @@
+package main
+
+import (
+	"flag"
+	"log/slog"
+	"os"
+
+	"grape/internal/conf"
+	"grape/internal/encoding/jsoncodec"
+
+	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
+	"github.com/go-kratos/kratos/v3"
+	"github.com/go-kratos/kratos/v3/config"
+	"github.com/go-kratos/kratos/v3/config/env"
+	"github.com/go-kratos/kratos/v3/config/file"
+	"github.com/go-kratos/kratos/v3/log"
+	"github.com/go-kratos/kratos/v3/transport/grpc"
+	"github.com/go-kratos/kratos/v3/transport/http"
+
+	_ "go.uber.org/automaxprocs"
+)
+
+// go build -ldflags "-X main.Version=x.y.z"
+var (
+	// Name 是编译产物的服务名。
+	Name string
+	// Version 是编译产物的版本号。
+	Version string
+	// flagconf 是配置文件路径的命令行参数。
+	flagconf string
+
+	id, _ = os.Hostname()
+)
+
+func init() {
+	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
+}
+
+// newApp 组装 Kratos 应用。
+func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
+	return kratos.New(
+		kratos.ID(id),
+		kratos.Name(Name),
+		kratos.Version(Version),
+		kratos.Metadata(map[string]string{}),
+		kratos.Logger(logger),
+		kratos.Server(
+			gs,
+			hs,
+		),
+	)
+}
+
+func main() {
+	flag.Parse()
+	// HTTP JSON 必须按 protobuf JSON 映射编解码，默认 json codec 会
+	// 产出与 api 契约不一致的字段形态。
+	jsoncodec.Install()
+	logger := log.NewLogger(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			AddSource: true,
+			Level:     slog.LevelInfo,
+		}),
+		log.WithExtractor(tracing.TraceAttrs),
+	).With(
+		slog.String("service.id", id),
+		slog.String("service.name", Name),
+		slog.String("service.version", Version),
+	)
+	log.SetDefault(logger)
+	c := config.New(
+		config.WithSource(
+			file.NewSource(flagconf),
+			env.NewSource("KRATOS"),
+		),
+	)
+	defer c.Close()
+
+	if err := c.Load(); err != nil {
+		panic(err)
+	}
+
+	var bc conf.Bootstrap
+	if err := c.Scan(&bc); err != nil {
+		panic(err)
+	}
+
+	app, cleanup, err := wireApp(bc.Server, bc.Data, logger)
+	if err != nil {
+		panic(err)
+	}
+	defer cleanup()
+
+	// 启动并等待停止信号
+	if err := app.Run(); err != nil {
+		panic(err)
+	}
+}
