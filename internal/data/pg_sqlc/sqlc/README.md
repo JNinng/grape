@@ -24,21 +24,23 @@ FUNCTION`、本文件的索引表。
 | 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；test_u 授权 | 是（只读函数签名） | 21 条策略、4 个函数 |
 | 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries.sql | 命名查询（固定形态读写 + 权限判断 + 权限查询） | 是（queries） | 14 条命名查询 |
+| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm） | 是（queries） | 3 个文件、14 条命名查询 |
 | 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@page 等）的单一事实源；
-  `sqlc.yaml` 的 schema 列表 = schema/ 九个文件按序 + rls/operate/expose。
-  加 rls/operate/expose 是为了让 queries.sql 里的查询能调用这些文件里的
-  函数（GetScope 调三件套、判断类调 fn_can_* / fn_check_visible）；
-  sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
+  `sqlc.yaml` 的 schema 列表 = schema/ 九个文件按序 + rls/operate/expose，
+  queries 列表 = queries/ 三个域文件。加 rls/operate/expose 是为了让
+  queries 里的查询能调用这些文件里的函数（GetScope 调三件套、判断类调
+  fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
+  执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
+  随纵切补入清单。
 - 数据库部署需要执行的文件与顺序约束见下节「数据库部署执行顺序」。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
 ## 数据库部署执行顺序
 
-对数据库部署时按序执行以下 **13 个文件**，顺序不能变（`queries.sql`
+对数据库部署时按序执行以下 **13 个文件**，顺序不能变（`queries/`
 是 sqlc 的 Go 生成输入，不对数据库执行）：
 
 | 步骤 | 文件 | 干什么 | 顺序约束 |
@@ -138,24 +140,28 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数外�
 
 挂载清单 = 判定函数的输入表清单，两处必须同步改。
 
-## 命名查询索引（queries.sql）
+## 命名查询索引（queries/）
 
-| 查询 | 类型 | 参数 → 返回 | 干什么 |
-|---|---|---|---|
-| CanAssignRole | :one | 操作者/角色/目标 → bool | 分配前的权限判断 |
-| CanAssignRoles | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 批量分配前的权限判断（逐个角色） |
-| CanTransferOwner | :one | 操作者 + 旧/新归属（可空）→ bool | 改归属前的权限判断 |
-| GetBasicForUpdate | :one | id → Basic | 锁行并读出当前归属（FOR UPDATE） |
-| AssignUserRole | :exec | 用户/角色/操作者 | 写入一条角色映射，租户自动取会话值，重复分配不报错 |
-| AssignUserRoles | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入角色映射，已拥有的跳过 |
-| UpdateBasicOwner | :exec | 新归属（可空）+ 操作者 + id | 修改归属，updated_at 自动刷新 |
-| HasUserRole | :one | 用户/角色 → bool | 确认分配结果是否落库 |
-| CheckVisible | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 权限查询：单点可见性判断（fn_check_visible） |
-| HasPermission | :one | 操作者/权限码 → bool | 权限查询：功能权限码判断（fn_has_permission） |
-| GetScope | :one | 操作者 → 三个 int8[] 列（可 NULL） | 权限查询：三维度可见集合一次取回（三件套同返；NULL=全租户，服务层翻成 All） |
-| GetUserRoles | :many | 用户 → SysRole 行 | 权限查询：枚举有效角色 |
-| GetPermissionCodes | :many | 用户 → 权限码列表（去重排序） | 权限查询：枚举权限码（菜单渲染/网关缓存） |
-| GetScopeVersion | :one | 用户 → (租户版本, 用户版本) | 权限查询：范围版本，缓存失效信号（行不存在补 0） |
+约定：归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给
+判断函数，表示"没有这个归属"，不做零值转换。每条查询上方的注释会被
+sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
+
+| 查询 | 文件 | 类型 | 参数 → 返回 | 干什么 |
+|---|---|---|---|---|
+| CanAssignRole | operate.sql | :one | 操作者/角色/目标 → bool | 分配前的权限判断 |
+| CanAssignRoles | operate.sql | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 批量分配前的权限判断（逐个角色） |
+| CanTransferOwner | operate.sql | :one | 操作者 + 旧/新归属（可空）→ bool | 改归属前的权限判断 |
+| AssignUserRole | operate.sql | :exec | 用户/角色/操作者 | 写入一条角色映射，租户自动取会话值，重复分配不报错 |
+| AssignUserRoles | operate.sql | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入角色映射，已拥有的跳过 |
+| HasUserRole | operate.sql | :one | 用户/角色 → bool | 确认分配结果是否落库 |
+| GetBasicForUpdate | basic.sql | :one | id → Basic | 锁行并读出当前归属（FOR UPDATE） |
+| UpdateBasicOwner | basic.sql | :exec | 新归属（可空）+ 操作者 + id | 修改归属，updated_at 自动刷新 |
+| CheckVisible | perm.sql | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 权限查询：单点可见性判断（fn_check_visible） |
+| HasPermission | perm.sql | :one | 操作者/权限码 → bool | 权限查询：功能权限码判断（fn_has_permission） |
+| GetScope | perm.sql | :one | 操作者 → 三个 int8[] 列（可 NULL） | 权限查询：三维度可见集合一次取回（三件套同返；NULL=全租户，服务层翻成 All） |
+| GetUserRoles | perm.sql | :many | 用户 → SysRole 行 | 权限查询：枚举有效角色 |
+| GetPermissionCodes | perm.sql | :many | 用户 → 权限码列表（去重排序） | 权限查询：枚举权限码（菜单渲染/网关缓存） |
+| GetScopeVersion | perm.sql | :one | 用户 → (租户版本, 用户版本) | 权限查询：范围版本，缓存失效信号（行不存在补 0） |
 
 批量过滤 fn_filter_visible_rows 没有对应命名查询：sqlc 解析不了
 表函数的返回列，权限查询服务层直接以参数化 SQL 调用该函数。

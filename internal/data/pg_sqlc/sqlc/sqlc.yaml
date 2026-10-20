@@ -1,4 +1,4 @@
-# grape 关系存储（pg_sqlc 能力）sqlc 配置：两个 sql 块共享同一组 schema 文件。
+# grape 关系存储（pg_sqlc 能力）sqlc 配置：两个 sql 块共享同一组 schema 与 queries 文件。
 # 块 1:sqlc-gen-go(built-in gen: go),产出模型与固定查询。
 # 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.1.2),仅消费 Catalog 生成动态 List;
 #       queries 字段 sqlc 要求必填但插件忽略。
@@ -6,8 +6,9 @@
 # 在 internal/data/pg_sqlc/sqlc 目录执行:sqlc generate -f sqlc.yaml
 # sqlc 按 url 下载 wasm 并校验 sha256,首次生成后缓存于用户缓存目录。
 #
-# schema 按业务域拆分（对象单一事实源），按序号全量加载；文件/函数/
-# 命名查询索引与部署执行顺序见同目录 README.md。
+# schema 与 queries 均按域拆分（单一事实源），按序号/清单全量加载；
+# 文件/函数/命名查询索引与部署执行顺序见同目录 README.md。
+# 业务表固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
 version: "2"
 plugins:
   - name: "sqlc_gen_dynamic"
@@ -31,7 +32,10 @@ sql:
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
-    queries: "queries.sql"
+    queries:
+      - "queries/operate.sql"
+      - "queries/basic.sql"
+      - "queries/perm.sql"
     gen:
       go:
         package: "gen"
@@ -56,7 +60,10 @@ sql:
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
-    queries: "queries.sql"
+    queries:
+      - "queries/operate.sql"
+      - "queries/basic.sql"
+      - "queries/perm.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

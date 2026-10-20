@@ -15,11 +15,10 @@ type Querier interface {
 	// 批量写入用户-角色映射（CanAssignRoles 全部通过后调用），
 	// 返回实际新增的行数（已拥有的角色跳过、不报错）
 	AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error)
-	// 命名查询：读、写、权限判断都走 sqlc 类型层。
-	// 归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给
-	// 判断函数，表示"没有这个归属"，不做零值转换。
-	// 每条查询上方的注释会被 sqlc 带进生成的 Go 代码（godoc），
-	// 修改时记得同步。
+	// 写侧链路命名查询：写前判断（fn_can_*）→ 判定通过后写入（角色分配
+	// 落库）。判断与写入放同一事务、先检后写，false 即报错回滚。
+	// 归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给判断
+	// 函数，表示"没有这个归属"，不做零值转换。
 	// 判断当前用户能否把某个角色分配给某个用户（规则见 fn_can_assign_role）
 	CanAssignRole(ctx context.Context, arg CanAssignRoleParams) (bool, error)
 	// 批量版：一次判断多个角色，每个角色一行（role_id, ok），
@@ -29,15 +28,16 @@ type Querier interface {
 	// 判断能否把某条数据的归属改成新归属：两头都要过——这条数据本身
 	// 有权操作，新归属的人/部门/组也在可见范围内（见 fn_can_transfer_owner）
 	CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error)
-	// ============================================================
-	// 权限查询接口（expose.sql 的函数 + 现有三件套），供权限查询服务层
-	// 调用：单点判断、批量过滤、功能权限码、可视范围、角色/权限码
-	// 枚举、范围版本。全部只读；拒绝以 false/空集表达，不是错误。
-	// ============================================================
+	// 权限查询接口命名查询：只读判定与枚举，供权限查询服务层（宿主侧）
+	// 调用；拒绝以 false/空集表达，不是错误。单点判断、功能权限码、
+	// 可视范围、角色/权限码枚举、范围版本。
 	// 按指定维度判断一条归属是否可见/可操作（读写同权）。
-	// dims 用 perm.Dims 位组合：1 归属人、2 归属部门、4 归属用户组。
+	// dims 为维度掩码：1 归属人、2 归属部门、4 归属用户组，可按位组合。
 	// 归属参数传 NULL 表示"没有这个归属"（规则见 fn_check_visible）
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
+	// basic 业务表固定操作：归属转移链路的锁行读取与落库。
+	// 业务表的固定 CRUD 一资源一文件（如 queries/sys_user.sql），随资源
+	// 纵切补入；动态 List 由 sqlc_gen_dynamic 逐表生成，无需手写。
 	// 按 id 锁定并读取一行 basic（FOR UPDATE）：改归属前先拿到它
 	// 现在的归属值，防止并发修改后按旧值判断
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
@@ -46,7 +46,7 @@ type Querier interface {
 	GetPermissionCodes(ctx context.Context, userID int64) ([]string, error)
 	// 一次取回三个维度的可见集合（三件套一条 SQL 同返，省往返）。
 	// 三态契约：列 NULL = 全租户不过滤（perm 层翻成 All=true），
-	// 空数组 = 什么都看不见，数组 = 可见集合并集
+	// 空数组 = 什么都看不见，数组 = 可见集合并集（NULL 由调用方翻成全租户）
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
 	// 取范围版本（缓存失效信号，ADR-0008）：租户级 + 用户级一次取回，
 	// 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
