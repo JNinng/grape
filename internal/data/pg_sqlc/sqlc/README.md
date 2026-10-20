@@ -21,7 +21,7 @@ FUNCTION`、本文件的索引表。
 | 7 | schema/70_audit.sql | 登录/操作日志（append-only） | 是 | 2 张表 |
 | 8 | schema/80_session.sql | 会话/令牌（仅存哈希） | 是 | 1 张表 |
 | 9 | schema/90_config.sql | 全局配置、租户配置、功能开关、翻译 | 是 | 4 张表 |
-| 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；test_u 授权 | 是（只读函数签名） | 21 条策略、4 个函数 |
+| 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 21 条策略、4 个函数 |
 | 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm） | 是（queries） | 3 个文件、14 条命名查询 |
@@ -46,7 +46,7 @@ FUNCTION`、本文件的索引表。
 | 步骤 | 文件 | 干什么 | 顺序约束 |
 |---|---|---|---|
 | 1–9 | `schema/` 九个域文件（按序号 10→90） | 建表、索引、@dynamic/@scope 注释 DSL、闭包触发器 | 表间无外键，按序号执行即可 |
-| 10 | `rls.sql` | RLS 策略、权限过滤函数（fn_accessible_* 三件套）、updated_at 触发器、test_u 授权 | 依赖 schema 的表已存在 |
+| 10 | `rls.sql` | RLS 策略、权限过滤函数（fn_accessible_* 三件套）、updated_at 触发器、grape_u 运行角色与 test_u 演示授权 | 依赖 schema 的表已存在 |
 | 11 | `operate.sql` | 写前判断函数（fn_can_* 四件） | 依赖步骤 10 的 fn_accessible_* |
 | 12 | `expose.sql` | 权限查询判定函数、范围版本表与触发器 | 必须先于步骤 13：种子的角色映射写入要 bump 版本表 |
 | 13 | `seed.sql` | 种子数据（含演示数据） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS）；数据含多个租户 |
@@ -64,7 +64,9 @@ done
 
 除 seed.sql（语句均带 `ON CONFLICT DO NOTHING`）外，各文件不保证可
 重复执行（CREATE TABLE/POLICY/TRIGGER 均非幂等）；全量重建请先
-DROP DATABASE 再从步骤 1 开始。
+DROP DATABASE 再从步骤 1 开始。部署完成后还需以超级用户执行一次
+`GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;`（角色由
+rls.sql 创建，CONNECT 授权依赖库名）——应用 DSN 与验收连接各需一次。
 
 ## 三层权限模型（速查）
 

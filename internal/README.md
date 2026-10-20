@@ -115,8 +115,8 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测，`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试与仓储实现的存储边界验证随资源落地补充：
+测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测与存储边界集成测试（会话门面 + RLS/@scope 纪律，`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 环境变量门控、未设置时跳过），`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试随资源落地补充：
 
 - `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
 - `biz`：mock 仓储接口，只验证用例逻辑与领域规则；
-- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；仓储实现与 SQL 行为待在存储边界用真实 schema 验证。
+- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤与 fail-closed；仓储实现随资源落地在此边界补充。

@@ -550,15 +550,19 @@ ALTER TABLE public.sys_translation
 
 
 -- ============================================================
--- 4. test_u 演示用户及授权
---    普通数据库角色：真实承受 RLS 与 FORCE（超级用户会绕过 RLS，
---    演示/运行都必须走这类非超级用户连接）。重复执行安全。
---    GRANT CONNECT ON DATABASE <库名> TO test_u 依赖库名，
---    由部署方动态执行。
+-- 4. 应用运行角色与演示用户授权
+--    grape_u 供 grape 应用运行连接使用，test_u 供演示/验收使用；
+--    均为普通数据库角色：真实承受 RLS 与 FORCE（超级用户会绕过
+--    RLS，运行必须走这类连接）。重复执行安全。
+--    GRANT CONNECT ON DATABASE <库名> 依赖库名，由部署方执行——
+--    应用 DSN 与验收连接各需一次。
 -- ============================================================
 
 DO $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grape_u') THEN
+        CREATE USER grape_u WITH PASSWORD 'grape_u_pwd';
+    END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'test_u') THEN
         CREATE USER test_u WITH PASSWORD 'test_u_pwd';
     END IF;
@@ -566,18 +570,18 @@ END
 $$;
 
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO test_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO test_u;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO test_u;
+GRANT USAGE ON SCHEMA public TO grape_u, test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO grape_u, test_u;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO grape_u, test_u;
 
 -- 功能入口表对运行用户只读：写入走管理端
-REVOKE INSERT, UPDATE, DELETE ON public.sys_menu, public.sys_config FROM test_u;
+REVOKE INSERT, UPDATE, DELETE ON public.sys_menu, public.sys_config FROM grape_u, test_u;
 
 -- 其他角色所建表不自动放行，需要时另行显式 GRANT
 ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO test_u;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO grape_u, test_u;
 ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO test_u;
+    GRANT USAGE, SELECT ON SEQUENCES TO grape_u, test_u;
 
 -- RLS 会话变量写入权（PG15+）：运行连接每事务 set_config('app.tenant_id',...) 的前提
-GRANT SET ON PARAMETER app.tenant_id TO test_u;
+GRANT SET ON PARAMETER app.tenant_id TO grape_u, test_u;
