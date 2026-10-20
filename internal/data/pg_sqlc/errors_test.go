@@ -4,8 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"grape/internal/biz"
-
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -15,7 +13,9 @@ import (
 // TestMapStorageErrorClassifiesDriverErrors 验证驱动错误按语义分类，
 // 而不是被 dynq 的兜底错误吞成 invalidArg。
 func TestMapStorageErrorClassifiesDriverErrors(t *testing.T) {
-	notFound, invalidArg, alreadyExists := biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists
+	notFound := kratoserrors.NotFound("not_found", "not found")
+	invalidArg := kratoserrors.BadRequest("invalid_argument", "invalid argument")
+	alreadyExists := kratoserrors.Conflict("already_exists", "already exists")
 
 	t.Run("no rows", func(t *testing.T) {
 		if got := mapStorageError(pgx.ErrNoRows, notFound, invalidArg, alreadyExists); got != notFound {

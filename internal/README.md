@@ -69,10 +69,10 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 
 | 对象 | 定义位置            | 形态                                        | 对象举例（以 user 为例）     |
 | ---- | ------------------- | ------------------------------------------- | ---------------------------- |
-| DTO  | `api/` 生成         | proto 请求 / 响应                           | [`userv1.CreateUserRequest`](../api/user/v1/user.pb.go) |
+| DTO  | `api/` 生成         | proto 请求 / 响应                           | 随首个资源落地（当前仅有查询协议 [`queryv1.Query`](../api/query/v1/query.pb.go)） |
 | Query | `api/query/v1` 声明 | 动态 List 查询协议（proto 镜像 dynq.Query） | [`queryv1.Query`](../api/query/v1/query.pb.go) |
-| DO   | `biz` 声明          | 纯领域模型，无 proto、无存储标签            | [`biz.User`](biz/user.go) |
-| PO   | `data` 生成         | 存储形态，仅 data 层可见                    | [`gen.User`](data/pg_sqlc/gen/models.go) |
+| DO   | `biz` 声明          | 纯领域模型，无 proto、无存储标签            | 随首个资源落地               |
+| PO   | `data` 生成         | 存储形态，仅 data 层可见                    | [`gen.Basic`](data/pg_sqlc/gen/models.go) |
 
 规则：
 
@@ -109,13 +109,13 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 1. 在 `api/<domain>/<version>/` 定义 CRUD 的 proto 并 `make api`；动态 List 直接复用 `query.v1.Query`；
 2. 在 `biz` 声明 DO + `Repo` 接口（List 收 `*dynq.Query`），并基于接口实现用例；
-3. 在 `data/pg_sqlc/sqlc/schema.sql` 声明表结构并用列注释 DSL 声明动态查询能力，在 `data/pg_sqlc/sqlc/queries.sql` 写固定 CRUD 查询，在 `internal/data/pg_sqlc/sqlc` 下执行 `sqlc generate -f sqlc.yaml` 重新生成；
+3. 在 `data/pg_sqlc/sqlc/schema/` 相应域文件声明表结构并用列注释 DSL 声明动态查询能力（业务表照 `10_basic.sql` 的 basic 范式：tenant_id + 审计列 + 归属三元组 + @scope 守卫），在 `data/pg_sqlc/sqlc/queries.sql` 写固定 CRUD 查询，在 `internal/data/pg_sqlc/sqlc` 下执行 `sqlc generate -f sqlc.yaml` 重新生成；租户表还需在 `rls.sql` 补一条 RLS 策略并 ENABLE/FORCE；
 4. 在 `pg_sqlc` 实现仓储（构造函数返回 `biz.<Resource>Repo`），分别注册到 `pg_sqlc` / `biz` / `service` 的 `ProviderSet`（能力 ProviderSet 由 `data` 聚合），并在 `server` 中注册 HTTP / gRPC 服务；
 5. `make all`（或 `wire`）重新生成 Wire 与 go.mod。
 
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `service` / `biz` 已有用例级测试，`data` 的 `pg_sqlc` 已有错误映射单测，仓储实现的存储边界验证待补：
+测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测，`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试与仓储实现的存储边界验证随资源落地补充：
 
 - `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
 - `biz`：mock 仓储接口，只验证用例逻辑与领域规则；

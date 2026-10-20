@@ -7,307 +7,405 @@ package gen
 
 import (
 	"context"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const createOrder = `-- name: CreateOrder :one
-INSERT INTO orders (order_no, user_id, amount_cents, status)
-VALUES ($1, $2, $3, $4)
-RETURNING id, order_no, user_id, amount_cents, status, created_at
+const assignUserRole = `-- name: AssignUserRole :exec
+INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
+VALUES ($1, $2, current_setting('app.tenant_id'), $3)
+ON CONFLICT (user_id, role_id) DO NOTHING
 `
 
-type CreateOrderParams struct {
-	OrderNo     string      `db:"order_no" json:"order_no"`
-	UserID      int64       `db:"user_id" json:"user_id"`
-	AmountCents int64       `db:"amount_cents" json:"amount_cents"`
-	Status      OrderStatus `db:"status" json:"status"`
+type AssignUserRoleParams struct {
+	UserID    int64 `db:"user_id" json:"user_id"`
+	RoleID    int64 `db:"role_id" json:"role_id"`
+	CreatedBy int64 `db:"created_by" json:"created_by"`
 }
 
-func (q *Queries) CreateOrder(ctx context.Context, arg CreateOrderParams) (Order, error) {
-	row := q.db.QueryRow(ctx, createOrder,
-		arg.OrderNo,
-		arg.UserID,
-		arg.AmountCents,
-		arg.Status,
-	)
-	var i Order
-	err := row.Scan(
-		&i.ID,
-		&i.OrderNo,
-		&i.UserID,
-		&i.AmountCents,
-		&i.Status,
-		&i.CreatedAt,
-	)
-	return i, err
+// 写入用户-角色映射（判断通过后调用）。租户自动取当前会话的
+// app.tenant_id；重复分配不报错、不重写
+func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error {
+	_, err := q.db.Exec(ctx, assignUserRole, arg.UserID, arg.RoleID, arg.CreatedBy)
+	return err
 }
 
-const createUser = `-- name: CreateUser :one
-INSERT INTO users (name, email, password, status, role, age, score, balance,
-                   birth_date, org_id, tags, meta)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, name, email, password, status, role, age, score, balance, birth_date, org_id, tags, meta, created_at, updated_at, deleted_at
+const assignUserRoles = `-- name: AssignUserRoles :execrows
+INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
+SELECT $1, r, current_setting('app.tenant_id'), $2
+FROM unnest($3::int8[]) AS r
+ON CONFLICT (user_id, role_id) DO NOTHING
 `
 
-type CreateUserParams struct {
-	Name      string         `db:"name" json:"name"`
-	Email     string         `db:"email" json:"email"`
-	Password  string         `db:"password" json:"password"`
-	Status    UserStatus     `db:"status" json:"status"`
-	Role      *string        `db:"role" json:"role"`
-	Age       *int32         `db:"age" json:"age"`
-	Score     *float64       `db:"score" json:"score"`
-	Balance   pgtype.Numeric `db:"balance" json:"balance"`
-	BirthDate pgtype.Date    `db:"birth_date" json:"birth_date"`
-	OrgID     pgtype.UUID    `db:"org_id" json:"org_id"`
-	Tags      []int32        `db:"tags" json:"tags"`
-	Meta      []byte         `db:"meta" json:"meta"`
+type AssignUserRolesParams struct {
+	UserID    int64   `db:"user_id" json:"user_id"`
+	CreatedBy int64   `db:"created_by" json:"created_by"`
+	RoleIds   []int64 `db:"role_ids" json:"role_ids"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser,
-		arg.Name,
-		arg.Email,
-		arg.Password,
-		arg.Status,
-		arg.Role,
-		arg.Age,
-		arg.Score,
-		arg.Balance,
-		arg.BirthDate,
-		arg.OrgID,
-		arg.Tags,
-		arg.Meta,
-	)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Email,
-		&i.Password,
-		&i.Status,
-		&i.Role,
-		&i.Age,
-		&i.Score,
-		&i.Balance,
-		&i.BirthDate,
-		&i.OrgID,
-		&i.Tags,
-		&i.Meta,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const deleteOrder = `-- name: DeleteOrder :execrows
-DELETE FROM orders WHERE id = $1
-`
-
-func (q *Queries) DeleteOrder(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteOrder, id)
+// 批量写入用户-角色映射（CanAssignRoles 全部通过后调用），
+// 返回实际新增的行数（已拥有的角色跳过、不报错）
+func (q *Queries) AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, assignUserRoles, arg.UserID, arg.CreatedBy, arg.RoleIds)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
-const deleteUser = `-- name: DeleteUser :execrows
-DELETE FROM users WHERE id = $1
+const canAssignRole = `-- name: CanAssignRole :one
+
+SELECT public.fn_can_assign_role($1, $2, $3) AS ok
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id int64) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteUser, id)
+type CanAssignRoleParams struct {
+	Operator int64 `db:"operator" json:"operator"`
+	Role     int64 `db:"role" json:"role"`
+	Target   int64 `db:"target" json:"target"`
+}
+
+// 命名查询：读、写、权限判断都走 sqlc 类型层。
+// 归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给
+// 判断函数，表示"没有这个归属"，不做零值转换。
+// 每条查询上方的注释会被 sqlc 带进生成的 Go 代码（godoc），
+// 修改时记得同步。
+// 判断当前用户能否把某个角色分配给某个用户（规则见 fn_can_assign_role）
+func (q *Queries) CanAssignRole(ctx context.Context, arg CanAssignRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canAssignRole, arg.Operator, arg.Role, arg.Target)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const canAssignRoles = `-- name: CanAssignRoles :many
+SELECT r::int8 AS role_id,
+       public.fn_can_assign_role($1, r, $2) AS ok
+FROM unnest($3::int8[]) AS r
+`
+
+type CanAssignRolesParams struct {
+	Operator int64   `db:"operator" json:"operator"`
+	Target   int64   `db:"target" json:"target"`
+	RoleIds  []int64 `db:"role_ids" json:"role_ids"`
+}
+
+type CanAssignRolesRow struct {
+	RoleID int64 `db:"role_id" json:"role_id"`
+	Ok     bool  `db:"ok" json:"ok"`
+}
+
+// 批量版：一次判断多个角色，每个角色一行（role_id, ok），
+// 全部通过才允许批量写入（规则同 fn_can_assign_role；
+// 与 fn_can_assign_roles 函数体一致，直接 SQL 调用时用那个函数）
+func (q *Queries) CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) ([]CanAssignRolesRow, error) {
+	rows, err := q.db.Query(ctx, canAssignRoles, arg.Operator, arg.Target, arg.RoleIds)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
-}
-
-const getOrder = `-- name: GetOrder :one
-SELECT id, order_no, user_id, amount_cents, status, created_at FROM orders WHERE id = $1
-`
-
-func (q *Queries) GetOrder(ctx context.Context, id int64) (Order, error) {
-	row := q.db.QueryRow(ctx, getOrder, id)
-	var i Order
-	err := row.Scan(
-		&i.ID,
-		&i.OrderNo,
-		&i.UserID,
-		&i.AmountCents,
-		&i.Status,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getUser = `-- name: GetUser :one
-
-SELECT id, name, email, password, status, role, age, score, balance, birth_date, org_id, tags, meta, created_at, updated_at, deleted_at FROM users WHERE id = $1
-`
-
-// 固定形态查询(sqlc-gen-go 承担);动态 List 由 sqlc_gen_dynamic 插件承担。
-func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
-	row := q.db.QueryRow(ctx, getUser, id)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Email,
-		&i.Password,
-		&i.Status,
-		&i.Role,
-		&i.Age,
-		&i.Score,
-		&i.Balance,
-		&i.BirthDate,
-		&i.OrgID,
-		&i.Tags,
-		&i.Meta,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password, status, role, age, score, balance, birth_date, org_id, tags, meta, created_at, updated_at, deleted_at FROM users WHERE email = $1
-`
-
-func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByEmail, email)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Email,
-		&i.Password,
-		&i.Status,
-		&i.Role,
-		&i.Age,
-		&i.Score,
-		&i.Balance,
-		&i.BirthDate,
-		&i.OrgID,
-		&i.Tags,
-		&i.Meta,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.DeletedAt,
-	)
-	return i, err
-}
-
-const setUserPassword = `-- name: SetUserPassword :execrows
-UPDATE users SET password = $2 WHERE id = $1
-`
-
-type SetUserPasswordParams struct {
-	ID       int64  `db:"id" json:"id"`
-	Password string `db:"password" json:"password"`
-}
-
-func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setUserPassword, arg.ID, arg.Password)
-	if err != nil {
-		return 0, err
+	defer rows.Close()
+	var items []CanAssignRolesRow
+	for rows.Next() {
+		var i CanAssignRolesRow
+		if err := rows.Scan(&i.RoleID, &i.Ok); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
-	return result.RowsAffected(), nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const updateOrder = `-- name: UpdateOrder :one
-UPDATE orders
-SET order_no = $2, user_id = $3, amount_cents = $4, status = $5
+const canTransferOwner = `-- name: CanTransferOwner :one
+SELECT public.fn_can_transfer_owner($1,
+                                    $2, $3, $4,
+                                    $5, $6, $7) AS ok
+`
+
+type CanTransferOwnerParams struct {
+	Operator int64  `db:"operator" json:"operator"`
+	OldUser  *int64 `db:"old_user" json:"old_user"`
+	OldDept  *int64 `db:"old_dept" json:"old_dept"`
+	OldGroup *int64 `db:"old_group" json:"old_group"`
+	NewUser  *int64 `db:"new_user" json:"new_user"`
+	NewDept  *int64 `db:"new_dept" json:"new_dept"`
+	NewGroup *int64 `db:"new_group" json:"new_group"`
+}
+
+// 判断能否把某条数据的归属改成新归属：两头都要过——这条数据本身
+// 有权操作，新归属的人/部门/组也在可见范围内（见 fn_can_transfer_owner）
+func (q *Queries) CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canTransferOwner,
+		arg.Operator,
+		arg.OldUser,
+		arg.OldDept,
+		arg.OldGroup,
+		arg.NewUser,
+		arg.NewDept,
+		arg.NewGroup,
+	)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const checkVisible = `-- name: CheckVisible :one
+
+SELECT public.fn_check_visible($1, $2,
+                               $3, $4, $5) AS ok
+`
+
+type CheckVisibleParams struct {
+	Operator   int64  `db:"operator" json:"operator"`
+	Dims       int16  `db:"dims" json:"dims"`
+	OwnerUser  *int64 `db:"owner_user" json:"owner_user"`
+	OwnerDept  *int64 `db:"owner_dept" json:"owner_dept"`
+	OwnerGroup *int64 `db:"owner_group" json:"owner_group"`
+}
+
+// ============================================================
+// 权限查询接口（expose.sql 的函数 + 现有三件套），供权限查询服务层
+// 调用：单点判断、批量过滤、功能权限码、可视范围、角色/权限码
+// 枚举、范围版本。全部只读；拒绝以 false/空集表达，不是错误。
+// ============================================================
+// 按指定维度判断一条归属是否可见/可操作（读写同权）。
+// dims 用 perm.Dims 位组合：1 归属人、2 归属部门、4 归属用户组。
+// 归属参数传 NULL 表示"没有这个归属"（规则见 fn_check_visible）
+func (q *Queries) CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, checkVisible,
+		arg.Operator,
+		arg.Dims,
+		arg.OwnerUser,
+		arg.OwnerDept,
+		arg.OwnerGroup,
+	)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const getBasicForUpdate = `-- name: GetBasicForUpdate :one
+SELECT id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.basic
 WHERE id = $1
-RETURNING id, order_no, user_id, amount_cents, status, created_at
+FOR UPDATE
 `
 
-type UpdateOrderParams struct {
-	ID          int64       `db:"id" json:"id"`
-	OrderNo     string      `db:"order_no" json:"order_no"`
-	UserID      int64       `db:"user_id" json:"user_id"`
-	AmountCents int64       `db:"amount_cents" json:"amount_cents"`
-	Status      OrderStatus `db:"status" json:"status"`
-}
-
-func (q *Queries) UpdateOrder(ctx context.Context, arg UpdateOrderParams) (Order, error) {
-	row := q.db.QueryRow(ctx, updateOrder,
-		arg.ID,
-		arg.OrderNo,
-		arg.UserID,
-		arg.AmountCents,
-		arg.Status,
-	)
-	var i Order
+// 按 id 锁定并读取一行 basic（FOR UPDATE）：改归属前先拿到它
+// 现在的归属值，防止并发修改后按旧值判断
+func (q *Queries) GetBasicForUpdate(ctx context.Context, id int64) (Basic, error) {
+	row := q.db.QueryRow(ctx, getBasicForUpdate, id)
+	var i Basic
 	err := row.Scan(
 		&i.ID,
-		&i.OrderNo,
-		&i.UserID,
-		&i.AmountCents,
 		&i.Status,
+		&i.CreatedBy,
 		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const updateUser = `-- name: UpdateUser :one
-UPDATE users
-SET name = $2, email = $3, role = $4, age = $5, score = $6, balance = $7,
-    birth_date = $8, org_id = $9, tags = $10, meta = $11, updated_at = now()
-WHERE id = $1
-RETURNING id, name, email, password, status, role, age, score, balance, birth_date, org_id, tags, meta, created_at, updated_at, deleted_at
-`
-
-type UpdateUserParams struct {
-	ID        int64          `db:"id" json:"id"`
-	Name      string         `db:"name" json:"name"`
-	Email     string         `db:"email" json:"email"`
-	Role      *string        `db:"role" json:"role"`
-	Age       *int32         `db:"age" json:"age"`
-	Score     *float64       `db:"score" json:"score"`
-	Balance   pgtype.Numeric `db:"balance" json:"balance"`
-	BirthDate pgtype.Date    `db:"birth_date" json:"birth_date"`
-	OrgID     pgtype.UUID    `db:"org_id" json:"org_id"`
-	Tags      []int32        `db:"tags" json:"tags"`
-	Meta      []byte         `db:"meta" json:"meta"`
-}
-
-func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateUser,
-		arg.ID,
-		arg.Name,
-		arg.Email,
-		arg.Role,
-		arg.Age,
-		arg.Score,
-		arg.Balance,
-		arg.BirthDate,
-		arg.OrgID,
-		arg.Tags,
-		arg.Meta,
-	)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Email,
-		&i.Password,
-		&i.Status,
-		&i.Role,
-		&i.Age,
-		&i.Score,
-		&i.Balance,
-		&i.BirthDate,
-		&i.OrgID,
-		&i.Tags,
-		&i.Meta,
-		&i.CreatedAt,
+		&i.UpdatedBy,
 		&i.UpdatedAt,
 		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
 	)
 	return i, err
+}
+
+const getPermissionCodes = `-- name: GetPermissionCodes :many
+SELECT DISTINCT mu.permission_code
+FROM public.sys_user u
+         JOIN public.sys_user_role_mapping m ON m.user_id = u.id
+         JOIN public.sys_role r ON r.id = m.role_id
+    AND r.status = 1 AND r.deleted_at IS NULL
+         JOIN public.sys_role_menu rm ON rm.role_id = r.id
+         JOIN public.sys_menu mu ON mu.id = rm.menu_id
+    AND mu.status = 1 AND mu.deleted_at IS NULL
+WHERE u.id = $1
+  AND u.status = 1
+  AND u.deleted_at IS NULL
+ORDER BY mu.permission_code
+`
+
+// 枚举有效用户的全部权限码（去重；前端菜单渲染、网关/远程系统缓存）。
+// 用户无效（不存在/禁用/删除）时返回空集
+func (q *Queries) GetPermissionCodes(ctx context.Context, userID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, getPermissionCodes, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var permission_code string
+		if err := rows.Scan(&permission_code); err != nil {
+			return nil, err
+		}
+		items = append(items, permission_code)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getScope = `-- name: GetScope :one
+SELECT public.fn_accessible_user_ids($1)::int8[] AS user_ids,
+       public.fn_accessible_dept_ids($1)::int8[] AS dept_ids,
+       public.fn_accessible_group_ids($1)::int8[] AS group_ids
+`
+
+type GetScopeRow struct {
+	UserIds  []int64 `db:"user_ids" json:"user_ids"`
+	DeptIds  []int64 `db:"dept_ids" json:"dept_ids"`
+	GroupIds []int64 `db:"group_ids" json:"group_ids"`
+}
+
+// 一次取回三个维度的可见集合（三件套一条 SQL 同返，省往返）。
+// 三态契约：列 NULL = 全租户不过滤（perm 层翻成 All=true），
+// 空数组 = 什么都看不见，数组 = 可见集合并集
+func (q *Queries) GetScope(ctx context.Context, operator int64) (GetScopeRow, error) {
+	row := q.db.QueryRow(ctx, getScope, operator)
+	var i GetScopeRow
+	err := row.Scan(&i.UserIds, &i.DeptIds, &i.GroupIds)
+	return i, err
+}
+
+const getScopeVersion = `-- name: GetScopeVersion :one
+SELECT COALESCE((SELECT v.version
+                 FROM public.sys_perm_version v
+                 WHERE v.user_id = 0), 0)::int8 AS tenant_version,
+       COALESCE((SELECT v.version
+                 FROM public.sys_perm_version v
+                 WHERE v.user_id = $1), 0)::int8 AS user_version
+`
+
+type GetScopeVersionRow struct {
+	TenantVersion int64 `db:"tenant_version" json:"tenant_version"`
+	UserVersion   int64 `db:"user_version" json:"user_version"`
+}
+
+// 取范围版本（缓存失效信号，ADR-0008）：租户级 + 用户级一次取回，
+// 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
+func (q *Queries) GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error) {
+	row := q.db.QueryRow(ctx, getScopeVersion, userID)
+	var i GetScopeVersionRow
+	err := row.Scan(&i.TenantVersion, &i.UserVersion)
+	return i, err
+}
+
+const getUserRoles = `-- name: GetUserRoles :many
+SELECT r.id, r.status, r.name, r.code, r.role_type, r.data_scope, r.scope_dept_id, r.remark, r.created_by, r.created_at, r.updated_by, r.updated_at, r.deleted_at, r.tenant_id
+FROM public.sys_role r
+         JOIN public.sys_user_role_mapping m ON m.role_id = r.id
+         JOIN public.sys_user u ON u.id = m.user_id
+WHERE m.user_id = $1
+  AND u.status = 1
+  AND u.deleted_at IS NULL
+  AND r.status = 1
+  AND r.deleted_at IS NULL
+ORDER BY r.id
+`
+
+// 枚举有效用户的全部有效角色（展示/审计/外部缓存角色变更）。
+// 用户无效（不存在/禁用/删除）时返回空集
+func (q *Queries) GetUserRoles(ctx context.Context, userID int64) ([]SysRole, error) {
+	rows, err := q.db.Query(ctx, getUserRoles, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SysRole
+	for rows.Next() {
+		var i SysRole
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.Name,
+			&i.Code,
+			&i.RoleType,
+			&i.DataScope,
+			&i.ScopeDeptID,
+			&i.Remark,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TenantID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const hasPermission = `-- name: HasPermission :one
+SELECT public.fn_has_permission($1, $2) AS ok
+`
+
+type HasPermissionParams struct {
+	Operator int64  `db:"operator" json:"operator"`
+	Code     string `db:"code" json:"code"`
+}
+
+// 判断用户是否持有某功能权限码（角色→菜单→权限码，与数据范围正交）
+func (q *Queries) HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasPermission, arg.Operator, arg.Code)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const hasUserRole = `-- name: HasUserRole :one
+SELECT EXISTS (SELECT 1
+               FROM public.sys_user_role_mapping
+               WHERE user_id = $1
+                 AND role_id = $2) AS has
+`
+
+type HasUserRoleParams struct {
+	UserID int64 `db:"user_id" json:"user_id"`
+	RoleID int64 `db:"role_id" json:"role_id"`
+}
+
+// 查某个用户是否已拥有某个角色（分配后的结果确认）
+func (q *Queries) HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasUserRole, arg.UserID, arg.RoleID)
+	var has bool
+	err := row.Scan(&has)
+	return has, err
+}
+
+const updateBasicOwner = `-- name: UpdateBasicOwner :exec
+UPDATE public.basic
+SET owner_user_id       = $1,
+    owner_dept_id       = $2,
+    owner_user_group_id = $3,
+    updated_by          = $4
+WHERE id = $5
+`
+
+type UpdateBasicOwnerParams struct {
+	OwnerUser  *int64 `db:"owner_user" json:"owner_user"`
+	OwnerDept  *int64 `db:"owner_dept" json:"owner_dept"`
+	OwnerGroup *int64 `db:"owner_group" json:"owner_group"`
+	UpdatedBy  int64  `db:"updated_by" json:"updated_by"`
+	ID         int64  `db:"id" json:"id"`
+}
+
+// 修改一行 basic 的归属（判断通过后调用）。归属参数传 NULL 表示
+// 清掉该归属；updated_at 由触发器自动刷新，不用手动设置
+func (q *Queries) UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error {
+	_, err := q.db.Exec(ctx, updateBasicOwner,
+		arg.OwnerUser,
+		arg.OwnerDept,
+		arg.OwnerGroup,
+		arg.UpdatedBy,
+		arg.ID,
+	)
+	return err
 }
