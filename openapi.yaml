@@ -265,14 +265,15 @@ components:
                     type: string
                     description: 金额（分）。
                 status:
-                    type: string
-                    description: 履约状态。创建时缺省 PENDING。
                     enum:
                         - ORDER_STATUS_UNSPECIFIED
                         - ORDER_STATUS_PENDING
                         - ORDER_STATUS_PAID
                         - ORDER_STATUS_SHIPPED
                         - ORDER_STATUS_CLOSED
+                    type: string
+                    description: 履约状态。创建时缺省 PENDING。
+                    format: enum
                 createdAt:
                     type: string
                     description: 创建时间。服务端生成，只读。
@@ -410,13 +411,14 @@ components:
                     type: string
                     description: 唯一邮箱地址。
                 status:
-                    type: string
-                    description: 生命周期状态。创建时默认 ACTIVE；更新时不可写。
                     enum:
                         - USER_STATUS_UNSPECIFIED
                         - USER_STATUS_ACTIVE
                         - USER_STATUS_INACTIVE
                         - USER_STATUS_BANNED
+                    type: string
+                    description: 生命周期状态。创建时默认 ACTIVE；更新时不可写。
+                    format: enum
                 role:
                     type: string
                     description: 角色，可空。
