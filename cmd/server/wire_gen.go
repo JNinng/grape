@@ -10,7 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v3"
 	"grape/internal/biz"
 	"grape/internal/conf"
-	"grape/internal/data"
+	"grape/internal/data/pg_sqlc"
 	"grape/internal/server"
 	"grape/internal/service"
 	"log/slog"
@@ -23,15 +23,15 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, logger *slog.Logger) (*kratos.App, func(), error) {
-	dataData, cleanup, err := data.NewData(confData)
+func wireApp(confServer *conf.Server, data *conf.Data, logger *slog.Logger) (*kratos.App, func(), error) {
+	pg_sqlcData, cleanup, err := pg_sqlc.NewData(data)
 	if err != nil {
 		return nil, nil, err
 	}
-	userRepo := data.NewUserRepo(dataData)
+	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
 	userUsecase := biz.NewUserUsecase(userRepo)
 	userService := service.NewUserService(userUsecase)
-	orderRepo := data.NewOrderRepo(dataData)
+	orderRepo := pg_sqlc.NewOrderRepo(pg_sqlcData)
 	orderUsecase := biz.NewOrderUsecase(orderRepo)
 	orderService := service.NewOrderService(orderUsecase)
 	grpcServer := server.NewGRPCServer(confServer, userService, orderService)

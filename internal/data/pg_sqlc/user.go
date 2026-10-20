@@ -1,20 +1,21 @@
-package data
+package pg_sqlc
 
 import (
 	"context"
 	"encoding/json"
-	"grape/internal/data/db_sqlc"
 	"time"
+
+	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/gen"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
-	"grape/internal/biz"
 )
 
 // toBizUser 将持久化的用户转换为领域模型。Password 随行携带以供创建路径
 // 写入；读取方必须丢弃，不得上送传输层。
-func toBizUser(po *db_sqlc.User) (*biz.User, error) {
+func toBizUser(po *gen.User) (*biz.User, error) {
 	if po == nil {
 		return nil, nil
 	}
@@ -55,7 +56,7 @@ func NewUserRepo(data *Data) biz.UserRepo {
 
 // GetByID 按主键读取用户；未命中映射为 ErrUserNotFound。
 func (r *userRepo) GetByID(ctx context.Context, id int64) (*biz.User, error) {
-	po, err := db_sqlc.New(r.data.db).GetUser(ctx, id)
+	po, err := gen.New(r.data.db).GetUser(ctx, id)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}
@@ -64,7 +65,7 @@ func (r *userRepo) GetByID(ctx context.Context, id int64) (*biz.User, error) {
 
 // GetByEmail 按唯一邮箱读取用户；未命中映射为 ErrUserNotFound。
 func (r *userRepo) GetByEmail(ctx context.Context, email string) (*biz.User, error) {
-	po, err := db_sqlc.New(r.data.db).GetUserByEmail(ctx, email)
+	po, err := gen.New(r.data.db).GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}
@@ -74,11 +75,11 @@ func (r *userRepo) GetByEmail(ctx context.Context, email string) (*biz.User, err
 // List 解析动态查询协议并返回分页信封；字段、操作符、投影与游标合法性
 // 由生成代码校验，协议错误映射为 ErrUserInvalidArgument。
 func (r *userRepo) List(ctx context.Context, q *dynq.Query) (*biz.UserList, error) {
-	params, err := db_sqlc.ParseUsersQuery(q)
+	params, err := gen.ParseUsersQuery(q)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}
-	res, err := db_sqlc.ListUsers(ctx, r.data.db, params)
+	res, err := gen.ListUsers(ctx, r.data.db, params)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}
@@ -99,7 +100,7 @@ func (r *userRepo) List(ctx context.Context, q *dynq.Query) (*biz.UserList, erro
 	if dynq.IncludeTotalOf(q.Pagination) {
 		countParams := params
 		countParams.After = nil
-		total, err := db_sqlc.CountUsers(ctx, r.data.db, countParams)
+		total, err := gen.CountUsers(ctx, r.data.db, countParams)
 		if err != nil {
 			return nil, mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 		}
@@ -137,11 +138,11 @@ func (r *userRepo) Create(ctx context.Context, u *biz.User) (*biz.User, error) {
 	if err != nil {
 		return nil, biz.ErrUserInvalidArgument
 	}
-	po, err := db_sqlc.New(r.data.db).CreateUser(ctx, db_sqlc.CreateUserParams{
+	po, err := gen.New(r.data.db).CreateUser(ctx, gen.CreateUserParams{
 		Name:      u.Name,
 		Email:     u.Email,
 		Password:  u.Password,
-		Status:    db_sqlc.UserStatus(u.Status),
+		Status:    gen.UserStatus(u.Status),
 		Role:      u.Role,
 		Age:       u.Age,
 		Score:     u.Score,
@@ -164,7 +165,7 @@ func (r *userRepo) Update(ctx context.Context, u *biz.User) (*biz.User, error) {
 	if err != nil {
 		return nil, biz.ErrUserInvalidArgument
 	}
-	po, err := db_sqlc.New(r.data.db).UpdateUser(ctx, db_sqlc.UpdateUserParams{
+	po, err := gen.New(r.data.db).UpdateUser(ctx, gen.UpdateUserParams{
 		ID:        u.ID,
 		Name:      u.Name,
 		Email:     u.Email,
@@ -185,7 +186,7 @@ func (r *userRepo) Update(ctx context.Context, u *biz.User) (*biz.User, error) {
 
 // SetPassword 替换已哈希密码；目标不存在时返回 ErrUserNotFound。
 func (r *userRepo) SetPassword(ctx context.Context, id int64, password string) error {
-	rows, err := db_sqlc.New(r.data.db).SetUserPassword(ctx, db_sqlc.SetUserPasswordParams{ID: id, Password: password})
+	rows, err := gen.New(r.data.db).SetUserPassword(ctx, gen.SetUserPasswordParams{ID: id, Password: password})
 	if err != nil {
 		return mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}
@@ -197,7 +198,7 @@ func (r *userRepo) SetPassword(ctx context.Context, id int64, password string) e
 
 // Delete 物理删除用户；未命中时返回 ErrUserNotFound。
 func (r *userRepo) Delete(ctx context.Context, id int64) error {
-	rows, err := db_sqlc.New(r.data.db).DeleteUser(ctx, id)
+	rows, err := gen.New(r.data.db).DeleteUser(ctx, id)
 	if err != nil {
 		return mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 	}

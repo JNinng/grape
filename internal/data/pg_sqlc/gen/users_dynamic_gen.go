@@ -23,7 +23,7 @@
 //	column users.deleted_at: [@dynamic: is_null, not_null]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
-package db_sqlc
+package gen
 
 import (
 	"context"

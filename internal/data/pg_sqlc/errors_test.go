@@ -1,4 +1,4 @@
-package data
+package pg_sqlc
 
 import (
 	"errors"

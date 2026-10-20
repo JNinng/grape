@@ -1,15 +1,16 @@
-package data
+package pg_sqlc
 
 import (
 	"context"
-	"grape/internal/data/db_sqlc"
+
+	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/gen"
 
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
-	"grape/internal/biz"
 )
 
 // toBizOrder 将持久化的订单转换为领域模型。
-func toBizOrder(po *db_sqlc.Order) *biz.Order {
+func toBizOrder(po *gen.Order) *biz.Order {
 	if po == nil {
 		return nil
 	}
@@ -36,7 +37,7 @@ func NewOrderRepo(data *Data) biz.OrderRepo {
 
 // GetByID 按主键读取订单；未命中映射为 ErrOrderNotFound。
 func (r *orderRepo) GetByID(ctx context.Context, id int64) (*biz.Order, error) {
-	po, err := db_sqlc.New(r.data.db).GetOrder(ctx, id)
+	po, err := gen.New(r.data.db).GetOrder(ctx, id)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
 	}
@@ -46,11 +47,11 @@ func (r *orderRepo) GetByID(ctx context.Context, id int64) (*biz.Order, error) {
 // List 解析动态查询协议并返回分页信封；字段、操作符与游标合法性
 // 由生成代码校验，协议错误映射为 ErrOrderInvalidArgument。
 func (r *orderRepo) List(ctx context.Context, q *dynq.Query) (*biz.OrderList, error) {
-	params, err := db_sqlc.ParseOrdersQuery(q)
+	params, err := gen.ParseOrdersQuery(q)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
 	}
-	res, err := db_sqlc.ListOrders(ctx, r.data.db, params)
+	res, err := gen.ListOrders(ctx, r.data.db, params)
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
 	}
@@ -67,7 +68,7 @@ func (r *orderRepo) List(ctx context.Context, q *dynq.Query) (*biz.OrderList, er
 	if dynq.IncludeTotalOf(q.Pagination) {
 		countParams := params
 		countParams.After = nil
-		total, err := db_sqlc.CountOrders(ctx, r.data.db, countParams)
+		total, err := gen.CountOrders(ctx, r.data.db, countParams)
 		if err != nil {
 			return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
 		}
@@ -78,11 +79,11 @@ func (r *orderRepo) List(ctx context.Context, q *dynq.Query) (*biz.OrderList, er
 
 // Create 插入订单；id 与 created_at 由数据库生成，返回值以持久化行为准。
 func (r *orderRepo) Create(ctx context.Context, o *biz.Order) (*biz.Order, error) {
-	po, err := db_sqlc.New(r.data.db).CreateOrder(ctx, db_sqlc.CreateOrderParams{
+	po, err := gen.New(r.data.db).CreateOrder(ctx, gen.CreateOrderParams{
 		OrderNo:     o.OrderNo,
 		UserID:      o.UserID,
 		AmountCents: o.AmountCents,
-		Status:      db_sqlc.OrderStatus(o.Status),
+		Status:      gen.OrderStatus(o.Status),
 	})
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
@@ -92,12 +93,12 @@ func (r *orderRepo) Create(ctx context.Context, o *biz.Order) (*biz.Order, error
 
 // Update 全量覆盖订单可变字段；未命中由 RETURNING 无行触发 not found。
 func (r *orderRepo) Update(ctx context.Context, o *biz.Order) (*biz.Order, error) {
-	po, err := db_sqlc.New(r.data.db).UpdateOrder(ctx, db_sqlc.UpdateOrderParams{
+	po, err := gen.New(r.data.db).UpdateOrder(ctx, gen.UpdateOrderParams{
 		ID:          o.ID,
 		OrderNo:     o.OrderNo,
 		UserID:      o.UserID,
 		AmountCents: o.AmountCents,
-		Status:      db_sqlc.OrderStatus(o.Status),
+		Status:      gen.OrderStatus(o.Status),
 	})
 	if err != nil {
 		return nil, mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
@@ -107,7 +108,7 @@ func (r *orderRepo) Update(ctx context.Context, o *biz.Order) (*biz.Order, error
 
 // Delete 物理删除订单；未命中时返回 ErrOrderNotFound。
 func (r *orderRepo) Delete(ctx context.Context, id int64) error {
-	rows, err := db_sqlc.New(r.data.db).DeleteOrder(ctx, id)
+	rows, err := gen.New(r.data.db).DeleteOrder(ctx, id)
 	if err != nil {
 		return mapStorageError(err, biz.ErrOrderNotFound, biz.ErrOrderInvalidArgument, biz.ErrOrderInvalidArgument)
 	}

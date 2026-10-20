@@ -12,7 +12,7 @@
 //	column orders.created_at: [@dynamic: gt, gte, lt, lte, between @sortable @selectable]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
-package db_sqlc
+package gen
 
 import (
 	"context"
