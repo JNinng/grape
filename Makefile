@@ -7,6 +7,7 @@ VERSION=$(shell git describe --tags --always)
 init:
 	go install github.com/google/wire/cmd/wire@latest
 	go install github.com/bufbuild/buf/cmd/buf@latest
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 
 .PHONY: config
 # generate internal proto
@@ -17,6 +18,11 @@ config:
 # generate api proto
 api:
 	buf generate --template buf.gen.yaml
+
+.PHONY: sqlc
+# generate storage code by sqlc
+sqlc:
+	cd internal/data/pg_sqlc/sqlc && sqlc generate -f sqlc.yaml
 
 .PHONY: build
 # build
@@ -34,6 +40,7 @@ generate:
 all:
 	make api
 	make config
+	make sqlc
 	make generate
 
 # show help
