@@ -827,10 +827,10 @@ const file_user_v1_user_proto_rawDesc = "" +
 	"\x13owner_user_group_id\x18\x04 \x01(\x03H\x02R\x10ownerUserGroupId\x88\x01\x01B\x10\n" +
 	"\x0e_owner_user_idB\x10\n" +
 	"\x0e_owner_dept_idB\x16\n" +
-	"\x14_owner_user_group_id2\xfe\x05\n" +
-	"\vUserService\x12W\n" +
+	"\x14_owner_user_group_id2\xfb\x05\n" +
+	"\vUserService\x12T\n" +
 	"\n" +
-	"CreateUser\x12\x1a.user.v1.CreateUserRequest\x1a\r.user.v1.User\"\x1e\x82\xd3\xe4\x93\x02\x18:\x04user\"\x10/v1/users/create\x12I\n" +
+	"CreateUser\x12\x1a.user.v1.CreateUserRequest\x1a\r.user.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/users/create\x12I\n" +
 	"\aGetUser\x12\x17.user.v1.GetUserRequest\x1a\r.user.v1.User\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/users/{id}\x12W\n" +
 	"\tListUsers\x12\x19.user.v1.ListUsersRequest\x1a\x10.user.v1.UserSet\"\x1d\x82\xd3\xe4\x93\x02\x17:\x05query\"\x0e/v1/users/list\x12W\n" +
 	"\n" +

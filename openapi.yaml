@@ -41,17 +41,11 @@ paths:
                 CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
                  租户内 name/email/phone 唯一，冲突返回 ALREADY_EXISTS。
             operationId: UserService_CreateUser
-            parameters:
-                - name: password
-                  in: query
-                  description: 初始密码。仅存储，不出现在任何读接口的响应中。
-                  schema:
-                    type: string
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/user.v1.User'
+                            $ref: '#/components/schemas/user.v1.CreateUserRequest'
                 required: true
             responses:
                 "200":
@@ -288,6 +282,20 @@ components:
                         type: string
                     description: 要分配的角色列表；重复项去重。
             description: AssignRolesRequest 是 UserService.AssignRoles 的输入。
+        user.v1.CreateUserRequest:
+            required:
+                - user
+                - password
+            type: object
+            properties:
+                user:
+                    allOf:
+                        - $ref: '#/components/schemas/user.v1.User'
+                    description: 要创建的用户。id、created_by/updated_by 与时间戳在输入中被忽略。
+                password:
+                    type: string
+                    description: 初始密码。仅存储，不出现在任何读接口的响应中。
+            description: CreateUserRequest 是 UserService.CreateUser 的输入。
         user.v1.SetUserPasswordRequest:
             required:
                 - id
