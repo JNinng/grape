@@ -6,14 +6,15 @@
 //	table basic: [@default_sort: created_at DESC]
 //	table basic: [@pk: id]
 //	table basic: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
-//	column basic.id: [@dynamic: eq, neq, in, not_in @sortable @selectable]
-//	column basic.status: [@dynamic: eq, neq, in, not_in @sortable @selectable]
+//	table basic: [@filter: deleted_at is_null]
+//	column basic.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column basic.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column basic.created_by: [@dynamic: eq, neq, in, not_in]
-//	column basic.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @selectable]
+//	column basic.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column basic.updated_by: [@dynamic: eq, neq, in, not_in]
 //	column basic.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
-//	column basic.deleted_at: [@hidden]
-//	column basic.tenant_id: [@dynamic: eq, neq @selectable]
+//	column basic.deleted_at: [@internal]
+//	column basic.tenant_id: [@dynamic: eq, neq @hideable]
 //	column basic.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //	column basic.owner_dept_id: [@dynamic: eq, neq, in, not_in]
 //	column basic.owner_user_group_id: [@dynamic: eq, neq, in, not_in]
@@ -182,7 +183,7 @@ var basicFieldIndex = map[dynq.FieldName]int{
 }
 
 // BasicField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
-// 字段名拼写错误将在编译期被捕获;@hidden 列不提供常量。
+// 字段名拼写错误将在编译期被捕获;@internal 列不提供常量。
 var BasicField = struct {
 	ID               dynq.FieldName
 	Status           dynq.FieldName
@@ -272,7 +273,7 @@ type ListBasicParams struct {
 	Scope *BasicScope
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
-	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @hidden 列)。
+	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
 	SelectFields []dynq.FieldName
 	// Limit 为 offset 模式的每页条数,为 0 时使用表级默认 pageSize。
 	Limit uint32
@@ -301,7 +302,7 @@ func ParseBasicQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListBasicParams, 
 	slots := dynq.NewSlots()
 	budget := dynq.NewBudget()
 
-	// 解析投影字段:显式空数组、@hidden 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
+	// 解析投影字段:显式空数组、@internal 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
 	selectFields, err := dynq.ParseSelectFields(q.Fields, cfg, basicRegistry)
 	if err != nil {
 		return out, err
@@ -916,6 +917,8 @@ func validateBasicParams(params ListBasicParams, cfg *dynq.QueryConfig) error {
 
 // buildBasicWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
 // 所有值均经占位符参数化,列名与操作符为白名单字面量;
+// 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
+// List 与 Count 共用,过滤视图天然一致;
 // 声明 @scope 的表头部注入数据权限谓词(守卫函数名同为生成期白名单字面量),
 // 与业务条件 AND 组合,total 与 items 的权限视图天然一致
 //
@@ -926,6 +929,10 @@ func validateBasicParams(params ListBasicParams, cfg *dynq.QueryConfig) error {
 //   - []sq.Sqlizer: 按 AND 语义组合的过滤条件列表。
 func buildBasicWhere(params ListBasicParams) []sq.Sqlizer {
 	var conds []sq.Sqlizer
+	// 服务端固定不变量(@filter):生成期声明、协议不可见的恒定过滤条件,
+	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
+	// 不拼进 SQL 文本,零注入面。
+	conds = append(conds, sq.Expr("deleted_at IS NULL"))
 	// 数据权限谓词(@scope):多守卫 OR 组合,与业务条件 AND;列名/操作符/
 	// 守卫函数名/字面量参数为生成期白名单字面量,标识符参数经占位符参数化;
 	// IN-子查询与不相关标量函数在单条语句内只求值一次;params.Scope 非 nil

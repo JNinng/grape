@@ -8,7 +8,7 @@ require (
 	github.com/go-kratos/kratos/v3 v3.0.0
 	github.com/google/wire v0.7.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/jninng/sqlc_gen_dynamic v0.1.2
+	github.com/jninng/sqlc_gen_dynamic v0.2.0
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/crypto v0.54.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20261012220534-4341edf3f941

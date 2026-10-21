@@ -5,16 +5,17 @@
 //	table sys_dept: [@page: 20/400]
 //	table sys_dept: [@default_sort: created_at DESC]
 //	table sys_dept: [@pk: id]
-//	column sys_dept.id: [@dynamic: eq, neq, in, not_in @sortable @selectable]
-//	column sys_dept.status: [@dynamic: eq, neq, in, not_in @sortable @selectable]
-//	column sys_dept.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @selectable]
+//	table sys_dept: [@filter: deleted_at is_null]
+//	column sys_dept.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_dept.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_dept.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
 //	column sys_dept.parent_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_dept.created_by: [@dynamic: eq, neq, in, not_in]
-//	column sys_dept.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @selectable]
+//	column sys_dept.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_dept.updated_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_dept.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
-//	column sys_dept.deleted_at: [@hidden]
-//	column sys_dept.tenant_id: [@dynamic: eq, neq @selectable]
+//	column sys_dept.deleted_at: [@internal]
+//	column sys_dept.tenant_id: [@dynamic: eq, neq @hideable]
 //	column sys_dept.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_dept.owner_user_group_id: [@dynamic: eq, neq, in, not_in]
 //
@@ -194,7 +195,7 @@ var sys_deptFieldIndex = map[dynq.FieldName]int{
 }
 
 // SysDeptField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
-// 字段名拼写错误将在编译期被捕获;@hidden 列不提供常量。
+// 字段名拼写错误将在编译期被捕获;@internal 列不提供常量。
 var SysDeptField = struct {
 	ID               dynq.FieldName
 	Status           dynq.FieldName
@@ -279,7 +280,7 @@ type ListSysDeptParams struct {
 	OwnerUserGroupIDNotIn []int64
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
-	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @hidden 列)。
+	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
 	SelectFields []dynq.FieldName
 	// Limit 为 offset 模式的每页条数,为 0 时使用表级默认 pageSize。
 	Limit uint32
@@ -308,7 +309,7 @@ func ParseSysDeptQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysDeptPara
 	slots := dynq.NewSlots()
 	budget := dynq.NewBudget()
 
-	// 解析投影字段:显式空数组、@hidden 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
+	// 解析投影字段:显式空数组、@internal 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
 	selectFields, err := dynq.ParseSelectFields(q.Fields, cfg, sys_deptRegistry)
 	if err != nil {
 		return out, err
@@ -967,7 +968,9 @@ func validateSysDeptParams(params ListSysDeptParams, cfg *dynq.QueryConfig) erro
 }
 
 // buildSysDeptWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
-// 所有值均经占位符参数化,列名与操作符为白名单字面量。
+// 所有值均经占位符参数化,列名与操作符为白名单字面量;
+// 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
+// List 与 Count 共用,过滤视图天然一致。
 //
 // 参数:
 //   - params: 已通过 validate 形态复核的查询参数。
@@ -976,6 +979,10 @@ func validateSysDeptParams(params ListSysDeptParams, cfg *dynq.QueryConfig) erro
 //   - []sq.Sqlizer: 按 AND 语义组合的过滤条件列表。
 func buildSysDeptWhere(params ListSysDeptParams) []sq.Sqlizer {
 	var conds []sq.Sqlizer
+	// 服务端固定不变量(@filter):生成期声明、协议不可见的恒定过滤条件,
+	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
+	// 不拼进 SQL 文本,零注入面。
+	conds = append(conds, sq.Expr("deleted_at IS NULL"))
 	if params.ID != nil {
 		conds = append(conds, sq.Eq{"id": *params.ID})
 	}

@@ -237,7 +237,7 @@ components:
                     items:
                         type: string
                     description: |-
-                        投影字段列表（小驼峰）。显式空数组、@hidden 字段、被禁用字段与未知字段
+                        投影字段列表（小驼峰）。显式空数组、@internal 字段、被禁用字段与未知字段
                          均被拒绝；pk 与表级默认排序键会强制并入查询结果。
                 where:
                     type: array
@@ -375,7 +375,7 @@ components:
                     description: 软删除标记时间，通常为空。只读。
                     format: date-time
             description: |-
-                User 是用户的规范表示。password 列为 @hidden，不跨越 API 边界；
+                User 是用户的规范表示。password 列为 @internal，不跨越 API 边界；
                  审计列与时间戳只读。
         user.v1.UserSet:
             type: object

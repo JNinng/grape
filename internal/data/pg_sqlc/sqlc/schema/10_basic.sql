@@ -23,18 +23,18 @@ CREATE TABLE public.basic
 CREATE INDEX idx_basic_owner_user ON public.basic USING btree (owner_user_id);
 CREATE INDEX idx_basic_owner_dept ON public.basic USING btree (owner_dept_id);
 CREATE INDEX idx_basic_owner_user_group ON public.basic USING btree (owner_user_group_id);
-COMMENT ON TABLE public.basic IS '基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400]';
+COMMENT ON TABLE public.basic IS '基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
 
 -- Column comments
 
-COMMENT ON COLUMN public.basic.id IS '主键 ID [@dynamic: exact, in @sortable @selectable]';
-COMMENT ON COLUMN public.basic.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @selectable]';
+COMMENT ON COLUMN public.basic.id IS '主键 ID [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.basic.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.basic.created_by IS '创建人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.basic.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @selectable]';
+COMMENT ON COLUMN public.basic.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.basic.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.basic.deleted_at IS '删除时间 [@hidden]';
-COMMENT ON COLUMN public.basic.tenant_id IS '租户 ID [@dynamic: exact @selectable]';
+COMMENT ON COLUMN public.basic.deleted_at IS '删除时间 [@internal]';
+COMMENT ON COLUMN public.basic.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
 COMMENT ON COLUMN public.basic.owner_user_id IS '归属用户 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.owner_dept_id IS '归属部门 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';

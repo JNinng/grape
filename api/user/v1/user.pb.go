@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// User 是用户的规范表示。password 列为 @hidden，不跨越 API 边界；
+// User 是用户的规范表示。password 列为 @internal，不跨越 API 边界；
 // 审计列与时间戳只读。
 type User struct {
 	state protoimpl.MessageState `protogen:"open.v1"`

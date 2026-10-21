@@ -5,17 +5,17 @@
 //	table sys_login_log: [@page: 20/200]
 //	table sys_login_log: [@default_sort: login_at DESC]
 //	table sys_login_log: [@pk: id]
-//	column sys_login_log.id: [@dynamic: eq, neq, in, not_in @sortable @selectable]
-//	column sys_login_log.user_id: [@dynamic: eq, neq, in, not_in @selectable]
-//	column sys_login_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @selectable]
-//	column sys_login_log.tenant_id: [@dynamic: eq, neq @selectable]
-//	column sys_login_log.ip_address: [@dynamic: eq, neq, prefix @selectable]
-//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @selectable]
-//	column sys_login_log.is_success: [@dynamic: eq, neq, in, not_in @selectable]
-//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @selectable]
-//	column sys_login_log.login_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @selectable]
+//	column sys_login_log.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_login_log.user_id: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_login_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
+//	column sys_login_log.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_login_log.ip_address: [@dynamic: eq, neq, prefix @hideable]
+//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_login_log.is_success: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @hideable]
+//	column sys_login_log.login_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_login_log.created_by: [@dynamic: eq, neq, in, not_in]
-//	column sys_login_log.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @selectable]
+//	column sys_login_log.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -193,7 +193,7 @@ var sys_login_logFieldIndex = map[dynq.FieldName]int{
 }
 
 // SysLoginLogField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
-// 字段名拼写错误将在编译期被捕获;@hidden 列不提供常量。
+// 字段名拼写错误将在编译期被捕获;@internal 列不提供常量。
 var SysLoginLogField = struct {
 	ID            dynq.FieldName
 	UserID        dynq.FieldName
@@ -282,7 +282,7 @@ type ListSysLoginLogParams struct {
 	CreatedAtLte          *time.Time
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
-	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @hidden 列)。
+	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
 	SelectFields []dynq.FieldName
 	// Limit 为 offset 模式的每页条数,为 0 时使用表级默认 pageSize。
 	Limit uint32
@@ -311,7 +311,7 @@ func ParseSysLoginLogQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysLogi
 	slots := dynq.NewSlots()
 	budget := dynq.NewBudget()
 
-	// 解析投影字段:显式空数组、@hidden 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
+	// 解析投影字段:显式空数组、@internal 字段、被禁用字段与未知字段均被拒绝;重复字段去重并保持顺序。
 	selectFields, err := dynq.ParseSelectFields(q.Fields, cfg, sys_login_logRegistry)
 	if err != nil {
 		return out, err

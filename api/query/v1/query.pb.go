@@ -26,7 +26,7 @@ const (
 // where 中多条条件恒为 AND 组合，不支持 OR 与条件分组。
 type Query struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 投影字段列表（小驼峰）。显式空数组、@hidden 字段、被禁用字段与未知字段
+	// 投影字段列表（小驼峰）。显式空数组、@internal 字段、被禁用字段与未知字段
 	// 均被拒绝；pk 与表级默认排序键会强制并入查询结果。
 	Fields []string `protobuf:"bytes,1,rep,name=fields,proto3" json:"fields,omitempty"`
 	// 过滤条件，多条之间恒为 AND。

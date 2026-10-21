@@ -1,6 +1,6 @@
 # grape 关系存储（pg_sqlc 能力）sqlc 配置：两个 sql 块共享同一组 schema 与 queries 文件。
 # 块 1:sqlc-gen-go(built-in gen: go),产出模型与固定查询。
-# 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.1.2),仅消费 Catalog 生成动态 List;
+# 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.2.0),仅消费 Catalog 生成动态 List;
 #       queries 字段 sqlc 要求必填但插件忽略。
 #
 # 在 internal/data/pg_sqlc/sqlc 目录执行:sqlc generate -f sqlc.yaml
@@ -13,8 +13,8 @@ version: "2"
 plugins:
   - name: "sqlc_gen_dynamic"
     wasm:
-      url: "https://github.com/JNinng/sqlc_gen_dynamic/releases/download/v0.1.2/sqlc_gen_dynamic-v0.1.2.wasm"
-      sha256: "8a98dac672fbcf64d4a25ac344bc52e9aaab8f0550f4c3a0725dd4f46b690344"
+      url: "https://github.com/JNinng/sqlc_gen_dynamic/releases/download/v0.2.0/sqlc_gen_dynamic-v0.2.0.wasm"
+      sha256: "0b71fc8bc02c93085119e82b1824398aa250c03715dd85e4ff8f78c92f35dac7"
     env:
       - "DYNQ_DUMP_REQUEST"
 sql:

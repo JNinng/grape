@@ -12,7 +12,7 @@ option java_outer_classname = "QueryProto";
 // Query 是动态 List 查询协议，镜像存储层的 dynq.Query。
 // where 中多条条件恒为 AND 组合，不支持 OR 与条件分组。
 message Query {
-  // 投影字段列表（小驼峰）。显式空数组、@hidden 字段、被禁用字段与未知字段
+  // 投影字段列表（小驼峰）。显式空数组、@internal 字段、被禁用字段与未知字段
   // 均被拒绝；pk 与表级默认排序键会强制并入查询结果。
   repeated string fields = 1;
   // 过滤条件，多条之间恒为 AND。

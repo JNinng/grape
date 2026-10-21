@@ -27,7 +27,11 @@ FUNCTION`、本文件的索引表。
 | 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm） | 是（queries） | 3 个文件、14 条命名查询 |
 | 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典 + basic 归属矩阵 |
 
-- schema 目录是表结构与注释 DSL（@dynamic/@scope/@page 等）的单一事实源；
+- schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
+  列级/表级指令的语法、类型映射与校验规则以上游参考为准：
+  [dsl.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/dsl.md)（指令总表）、
+  [scope.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/scope.md)（行级数据权限）、
+  [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/schema.md)（前端 Schema 契约）。
   `sqlc.yaml` 的 schema 列表 = schema/ 九个文件按序 + rls/operate/expose，
   queries 列表 = queries/ 三个域文件。加 rls/operate/expose 是为了让
   queries 里的查询能调用这些文件里的函数（GetScope 调三件套、判断类调

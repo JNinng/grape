@@ -35,19 +35,19 @@ CREATE UNIQUE INDEX sys_session_refresh_token_hash_un ON public.sys_session USIN
 CREATE INDEX idx_session_tenant_user ON public.sys_session USING btree (tenant_id, user_id);
 COMMENT ON TABLE public.sys_session IS '用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: created_at DESC @pk: id @page: 20/200]';
 
-COMMENT ON COLUMN public.sys_session.id IS '会话 ID [@dynamic: exact, in @sortable @selectable]';
-COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @selectable]';
-COMMENT ON COLUMN public.sys_session.user_id IS '用户 ID [@dynamic: exact, in @selectable]';
-COMMENT ON COLUMN public.sys_session.tenant_id IS '租户 ID [@dynamic: exact @selectable]';
-COMMENT ON COLUMN public.sys_session.token_hash IS '访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@hidden]';
-COMMENT ON COLUMN public.sys_session.refresh_token_hash IS '刷新令牌哈希，用于令牌刷新轮换 [@hidden]';
+COMMENT ON COLUMN public.sys_session.id IS '会话 ID [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.sys_session.user_id IS '用户 ID [@dynamic: exact, in @hideable]';
+COMMENT ON COLUMN public.sys_session.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_session.token_hash IS '访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@internal]';
+COMMENT ON COLUMN public.sys_session.refresh_token_hash IS '刷新令牌哈希，用于令牌刷新轮换 [@internal]';
 COMMENT ON COLUMN public.sys_session.expires_at IS '访问令牌过期时间 [@dynamic: exact, range @sortable]';
 COMMENT ON COLUMN public.sys_session.refresh_expires_at IS '刷新令牌过期时间 [@dynamic: range, is_null, not_null]';
 COMMENT ON COLUMN public.sys_session.last_activity_at IS '最后活跃时间，用于检测僵尸会话 [@dynamic: range, is_null, not_null @sortable]';
 COMMENT ON COLUMN public.sys_session.device_info IS '设备信息：操作系统、浏览器、设备型号等';
-COMMENT ON COLUMN public.sys_session.ip_address IS '登录时 IP 地址 [@dynamic: exact, prefix @selectable]';
-COMMENT ON COLUMN public.sys_session.is_revoked IS '是否已主动撤销：true 后即使令牌未过期也不可用 [@dynamic: exact, in @selectable]';
+COMMENT ON COLUMN public.sys_session.ip_address IS '登录时 IP 地址 [@dynamic: exact, prefix @hideable]';
+COMMENT ON COLUMN public.sys_session.is_revoked IS '是否已主动撤销：true 后即使令牌未过期也不可用 [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_session.created_by IS '创建人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_session.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @selectable]';
+COMMENT ON COLUMN public.sys_session.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_session.updated_at IS '更新时间 [@dynamic: range @sortable]';
