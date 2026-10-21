@@ -13,7 +13,9 @@ data:
     # Log every executed statement. Development only.
     debug: true
 auth:
-  # 过渡期身份：认证纵切落地前，租户与操作者从这里构造 AuthContext；
-  # 落地后仅替换身份来源。指向种子数据里的全租户管理员。
+  # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
+  # 登录形态确定后由服务端解析替代），也是用户服务过渡身份的租户。
+  # default_user_id：用户服务过渡期操作者，认证中间件落地后移除。
+  # 指向种子数据里的全租户管理员。
   default_tenant_id: t-super-01
   default_user_id: 1

@@ -22,7 +22,7 @@ sqlc generate -f sqlc.yaml
 
 | 产物                                                                                 | 来源块              | 说明                                                                                  |
 | ------------------------------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------- |
-| `gen/models.go` `gen/db.go` `gen/querier.go` `gen/<查询文件>.sql.go`（如 `operate`/`basic`/`perm`/`sys_user`） | sqlc-gen-go（块 1） | PO 模型与固定形态查询（权限判断、角色映射写入、锁行读取、权限查询接口、资源 CRUD 等命名查询），按查询文件逐一产出 |
+| `gen/models.go` `gen/db.go` `gen/querier.go` `gen/<查询文件>.sql.go`（如 `operate`/`basic`/`perm`/`sys_user`/`sys_session`） | sqlc-gen-go（块 1） | PO 模型与固定形态查询（权限判断、角色映射写入、锁行读取、权限查询接口、资源 CRUD 等命名查询），按查询文件逐一产出 |
 | `gen/<表名>_dynamic_gen.go`（逐表一个，如 `basic` `sys_user`）                       | sqlc_gen_dynamic 插件（块 2） | 动态 List/Count：Parse / List / Count，能力由 schema 列注释 DSL 声明，@scope 守卫 fail-closed |
 
 修改 `internal/data/pg_sqlc/sqlc/` 下任一 SQL 文件后必须重新执行
