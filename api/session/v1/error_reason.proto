@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package session.v1;
+
+option go_package = "grape/api/session/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.session.v1";
+option objc_class_prefix = "APISessionV1";
+
+// ErrorReason 是会话资源的错误原因枚举，用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  SESSION_UNSPECIFIED = 0;
+  // 令牌无效：会话不存在、已撤销、已过期或已禁用，不区分具体原因。
+  SESSION_INVALID = 1;
+  // 会话请求参数非法。
+  SESSION_INVALID_ARGUMENT = 2;
+}

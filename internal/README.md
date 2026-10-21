@@ -119,4 +119,4 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 - `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
 - `biz`：mock 仓储接口，只验证用例逻辑与领域规则；
-- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤与 fail-closed；仓储实现随资源落地在此边界补充。
+- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤、fail-closed，以及用户/会话仓储的读写与令牌维度 RLS 边界。

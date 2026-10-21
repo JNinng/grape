@@ -129,7 +129,7 @@ var sys_sessionRegistry = dynq.TableMeta{
 		{
 			Key:        "lastActivityAt",
 			Column:     "last_activity_at",
-			Label:      "最后活跃时间，用于检测僵尸会话",
+			Label:      "最近一次签发/刷新时间；校验为只读点查不刷新此列，僵尸会话检测需另行采样",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween, dynq.OpIsNull, dynq.OpNotNull},

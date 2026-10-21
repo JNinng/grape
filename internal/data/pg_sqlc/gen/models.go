@@ -425,7 +425,7 @@ type SysSession struct {
 	ExpiresAt pgtype.Timestamp `db:"expires_at" json:"expires_at"`
 	// 刷新令牌过期时间 [@dynamic: range, is_null, not_null]
 	RefreshExpiresAt pgtype.Timestamp `db:"refresh_expires_at" json:"refresh_expires_at"`
-	// 最后活跃时间，用于检测僵尸会话 [@dynamic: range, is_null, not_null @sortable]
+	// 最近一次签发/刷新时间；校验为只读点查不刷新此列，僵尸会话检测需另行采样 [@dynamic: range, is_null, not_null @sortable]
 	LastActivityAt pgtype.Timestamp `db:"last_activity_at" json:"last_activity_at"`
 	// 设备信息：操作系统、浏览器、设备型号等
 	DeviceInfo *string `db:"device_info" json:"device_info"`

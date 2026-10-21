@@ -43,7 +43,7 @@ COMMENT ON COLUMN public.sys_session.token_hash IS '访问令牌哈希（SHA-256
 COMMENT ON COLUMN public.sys_session.refresh_token_hash IS '刷新令牌哈希，用于令牌刷新轮换 [@internal]';
 COMMENT ON COLUMN public.sys_session.expires_at IS '访问令牌过期时间 [@dynamic: exact, range @sortable]';
 COMMENT ON COLUMN public.sys_session.refresh_expires_at IS '刷新令牌过期时间 [@dynamic: range, is_null, not_null]';
-COMMENT ON COLUMN public.sys_session.last_activity_at IS '最后活跃时间，用于检测僵尸会话 [@dynamic: range, is_null, not_null @sortable]';
+COMMENT ON COLUMN public.sys_session.last_activity_at IS '最近一次签发/刷新时间；校验为只读点查不刷新此列，僵尸会话检测需另行采样 [@dynamic: range, is_null, not_null @sortable]';
 COMMENT ON COLUMN public.sys_session.device_info IS '设备信息：操作系统、浏览器、设备型号等';
 COMMENT ON COLUMN public.sys_session.ip_address IS '登录时 IP 地址 [@dynamic: exact, prefix @hideable]';
 COMMENT ON COLUMN public.sys_session.is_revoked IS '是否已主动撤销：true 后即使令牌未过期也不可用 [@dynamic: exact, in @hideable]';

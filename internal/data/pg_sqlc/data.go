@@ -3,6 +3,8 @@ package pg_sqlc
 import (
 	"context"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"grape/internal/conf"
 
@@ -46,8 +48,26 @@ type queryTracer struct {
 }
 
 func (t *queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	t.logger.DebugContext(ctx, "sql query", "sql", data.SQL, "args", data.Args)
+	t.logger.DebugContext(ctx, "sql query", "sql", data.SQL, "args", redactArgs(data.SQL, data.Args))
 	return ctx
 }
 
 func (t *queryTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// redactArgs 对 set_config 注入的令牌哈希做脱敏：app.session_* 的值是
+// 凭据（令牌哈希），debug 日志也不落盘。GUC 名与值成对出现在
+// set_config($1, $2, true) 的前两个参数；租户注入
+// set_config('app.tenant_id', $1, true) 的名字在 SQL 文本里，租户 ID
+// 非凭据，保留可见。
+func redactArgs(sql string, args []any) []any {
+	if len(args) < 2 || !strings.Contains(sql, "set_config") {
+		return args
+	}
+	name, ok := args[0].(string)
+	if !ok || !strings.HasPrefix(name, "app.session_") {
+		return args
+	}
+	redacted := slices.Clone(args)
+	redacted[1] = "[redacted]"
+	return redacted
+}

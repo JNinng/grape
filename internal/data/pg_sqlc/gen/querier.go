@@ -39,6 +39,10 @@ type Querier interface {
 	// dims 为维度掩码：1 归属人、2 归属部门、4 归属用户组，可按位组合。
 	// 归属参数传 NULL 表示"没有这个归属"（规则见 fn_check_visible）
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
+	// 按访问令牌哈希校验会话：有效性条件（启用、未撤销、未过期）放在
+	// SQL WHERE，租户身份尚未成立时 RLS 只放行哈希命中的行。不存在、
+	// 已撤销、已过期一视同仁——无行即无效，不泄露会话状态
+	GetActiveSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (SysSession, error)
 	// basic 业务表固定操作：归属转移链路的锁行读取与落库。
 	// 业务表的固定 CRUD 一资源一文件（如 queries/sys_user.sql），随资源
 	// 纵切补入；动态 List 由 sqlc_gen_dynamic 逐表生成，无需手写。
@@ -71,11 +75,27 @@ type Querier interface {
 	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
 	// 查某个用户是否已拥有某个角色（分配后的结果确认）
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
+	// sys_session 会话表固定操作：令牌只以 SHA-256 哈希出入（明文只在
+	// biz 用例内存中短暂存在）。签发与撤销经租户会话门面执行；校验与
+	// 刷新发生在租户身份成立之前，以令牌哈希作为 RLS 可见性凭据（见
+	// rls.sql 的 sys_session_token_* 策略）。
+	// 签发会话：租户取自会话 app.tenant_id；status/created_at/updated_at
+	// 由列默认值生成，last_activity_at 从签发时刻起算。有效期按 TTL 在
+	// 数据库时钟上起算，与应用时钟/时区解耦
+	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 创建用户。主键 id 由应用层发号（体系表主键无数据库默认值）；可空列
 	// 用 sqlc.narg（NULL 原样落库）；租户取自会话 app.tenant_id；
 	// created_at/updated_at 由列默认值生成。租户内 name/email/phone 唯一
 	// 冲突由调用方映射为 ALREADY_EXISTS
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 撤销租户内的一条会话（登出）：已撤销或不可见的行更新 0 行，调用方
+	// 按幂等处理；updated_by 记操作者
+	RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error)
+	// 刷新令牌轮换：以当前刷新令牌哈希点更新，命中行必须启用、未撤销且
+	// 刷新令牌未过期（条件放 SQL WHERE，并发轮换时后到者更新 0 行）。
+	// 新旧令牌哈希均由 biz 计算；有效期按新 TTL 在数据库时钟上重新起算；
+	// 操作者是会话所属用户，updated_at 由触发器兜底刷新
+	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)
 	// 替换密码哈希；updated_by 记操作者
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
 	// 软删除：deleted_at 置位后租户内唯一键（name/email/phone）随之可复用

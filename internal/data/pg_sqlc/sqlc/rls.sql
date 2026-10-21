@@ -9,7 +9,9 @@
 --   2. 三个权限过滤函数：算出"当前用户能看到哪些用户/部门/用户组"，
 --      动态查询（List/Count）会把结果自动拼进 WHERE
 --   3. 21 张基线租户表的 RLS 策略（范围版本表策略在 expose.sql）：
---      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）
+--      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）；
+--      sys_session 另加令牌维度策略：校验/刷新先于租户身份成立，
+--      以令牌哈希为唯一可见性凭据
 --   4. test_u 演示用户与授权（GRANT CONNECT 依赖库名，由部署方执行）
 --
 -- 这三个函数与模板仓库 basic_db_table（https://github.com/JNinng/basic_db_table）
@@ -445,6 +447,29 @@ CREATE POLICY sys_session_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
+-- sys_session 令牌维度：会话校验/刷新发生在租户身份成立之前。访问
+-- 令牌哈希、刷新令牌哈希是全局唯一的秘密凭据：持有即授权读取（或
+-- 轮换）命中的那一行。该策略在租户维度之外单独放行，但范围严格
+-- 收窄到哈希命中的单行。哈希以事务级 GUC 声明，未设时
+-- current_setting(...,true) 为 NULL，比较恒为假 → 不额外放行任何行。
+-- 三条条件分别覆盖：按访问令牌校验、按刷新令牌轮换（旧值）与轮换
+-- 后的 RETURNING（新值）。
+CREATE POLICY sys_session_token_read
+    ON public.sys_session
+    FOR SELECT
+    USING (token_hash = current_setting('app.session_token_hash', true)
+        OR refresh_token_hash = current_setting('app.session_refresh_token_hash', true)
+        OR refresh_token_hash = current_setting('app.session_new_refresh_token_hash', true));
+
+-- 刷新令牌轮换：只放行当前刷新令牌哈希命中的行；WITH CHECK 要求写回
+-- 的新刷新令牌哈希与事务声明一致（新值不可能再匹配旧哈希，故单独
+-- 声明）。新旧哈希均由 biz 计算，RLS 只做一致性兜底。
+CREATE POLICY sys_session_token_rotate
+    ON public.sys_session
+    FOR UPDATE
+    USING (refresh_token_hash = current_setting('app.session_refresh_token_hash', true))
+    WITH CHECK (refresh_token_hash = current_setting('app.session_new_refresh_token_hash', true));
+
 -- sys_tenant_config
 CREATE POLICY sys_tenant_config_tenant_isolation
     ON public.sys_tenant_config
@@ -583,5 +608,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO grape_u, test_u;
 
--- RLS 会话变量写入权（PG15+）：运行连接每事务 set_config('app.tenant_id',...) 的前提
+-- RLS 会话变量写入权（PG15+）：运行连接每事务 set_config(...) 的前提。
+-- app.tenant_id 用于租户边界；app.session_* 仅供会话校验/刷新事务
+-- 声明令牌哈希（见 sys_session_token_* 策略）
 GRANT SET ON PARAMETER app.tenant_id TO grape_u, test_u;
+GRANT SET ON PARAMETER app.session_token_hash TO grape_u, test_u;
+GRANT SET ON PARAMETER app.session_refresh_token_hash TO grape_u, test_u;
+GRANT SET ON PARAMETER app.session_new_refresh_token_hash TO grape_u, test_u;

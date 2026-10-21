@@ -21,10 +21,10 @@ FUNCTION`、本文件的索引表。
 | 7 | schema/70_audit.sql | 登录/操作日志（append-only） | 是 | 2 张表 |
 | 8 | schema/80_session.sql | 会话/令牌（仅存哈希） | 是 | 1 张表 |
 | 9 | schema/90_config.sql | 全局配置、租户配置、功能开关、翻译 | 是 | 4 张表 |
-| 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 21 条策略、4 个函数 |
+| 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；sys_session 令牌维度策略；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
 | 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm） | 是（queries） | 3 个文件、14 条命名查询 |
+| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、26 条命名查询 |
 | 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -33,7 +33,8 @@ FUNCTION`、本文件的索引表。
   [scope.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/scope.md)（行级数据权限）、
   [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/schema.md)（前端 Schema 契约）。
   `sqlc.yaml` 的 schema 列表 = schema/ 九个文件按序 + rls/operate/expose，
-  queries 列表 = queries/ 三个域文件。加 rls/operate/expose 是为了让
+  queries 列表 = queries/ 五个文件（operate/basic/perm 与业务表固定 CRUD
+  sys_user/sys_session）。加 rls/operate/expose 是为了让
   queries 里的查询能调用这些文件里的函数（GetScope 调三件套、判断类调
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
@@ -76,7 +77,7 @@ rls.sql 创建，CONNECT 授权依赖库名）——应用 DSN 与验收连接�
 
 | 层 | 维度 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE | 漏设变量 → 默认全拒 |
+| PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 2 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定 + 同事务先检后写 | 判定 false → 报错回滚 |
 
@@ -157,11 +158,23 @@ sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
 | CanAssignRole | operate.sql | :one | 操作者/角色/目标 → bool | 分配前的权限判断 |
 | CanAssignRoles | operate.sql | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 批量分配前的权限判断（逐个角色） |
 | CanTransferOwner | operate.sql | :one | 操作者 + 旧/新归属（可空）→ bool | 改归属前的权限判断 |
+| CanOperateRow | operate.sql | :one | 操作者 + 归属三元组（可空）→ bool | 行操作前的权限判断（读写同权，等价于 fn_check_visible 掩码 7） |
 | AssignUserRole | operate.sql | :exec | 用户/角色/操作者 | 写入一条角色映射，租户自动取会话值，重复分配不报错 |
 | AssignUserRoles | operate.sql | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入角色映射，已拥有的跳过 |
 | HasUserRole | operate.sql | :one | 用户/角色 → bool | 确认分配结果是否落库 |
 | GetBasicForUpdate | basic.sql | :one | id → Basic | 锁行并读出当前归属（FOR UPDATE） |
 | UpdateBasicOwner | basic.sql | :exec | 新归属（可空）+ 操作者 + id | 修改归属，updated_at 自动刷新 |
+| GetSysUserByID | sys_user.sql | :one | id → SysUser | 按 id 读取用户（软删除行不可见；可见性由 CheckVisible 判定） |
+| GetSysUserForUpdate | sys_user.sql | :one | id → SysUser | 锁定并读取用户（FOR UPDATE），写前取当前归属 |
+| InsertSysUser | sys_user.sql | :one | 用户字段 + 操作者 → SysUser | 创建用户，租户取会话 app.tenant_id |
+| UpdateSysUser | sys_user.sql | :one | 可变字段 + 操作者 + id → SysUser | 覆盖可变字段（不含密码与归属三元组） |
+| SetSysUserPassword | sys_user.sql | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换密码哈希 |
+| SoftDeleteSysUser | sys_user.sql | :execrows | 操作者 + id → 行数 | 软删除用户 |
+| UpdateSysUserOwner | sys_user.sql | :exec | 新归属三元组 + 操作者 + id | 归属转移落库（fn_can_transfer_owner 通过后） |
+| InsertSysSession | sys_session.sql | :one | 身份 + 令牌哈希/有效期 → SysSession | 签发会话（令牌只存哈希） |
+| GetActiveSysSessionByTokenHash | sys_session.sql | :one | 访问令牌哈希 → SysSession | 校验访问令牌（启用、未撤销、未过期；SQL WHERE 内判定） |
+| RevokeSysSession | sys_session.sql | :execrows | 操作者 + id → 行数 | 撤销会话（登出幂等，租户内） |
+| RotateSysSession | sys_session.sql | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 刷新令牌轮换（旧刷新令牌立即失效） |
 | CheckVisible | perm.sql | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 权限查询：单点可见性判断（fn_check_visible） |
 | HasPermission | perm.sql | :one | 操作者/权限码 → bool | 权限查询：功能权限码判断（fn_has_permission） |
 | GetScope | perm.sql | :one | 操作者 → 三个 int8[] 列（可 NULL） | 权限查询：三维度可见集合一次取回（三件套同返；NULL=全租户，服务层翻成 All） |
@@ -183,3 +196,12 @@ sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
 什么都读不到、写不进。sys_tenant 额外允许命中自身 id（子租户挂在
 父租户名下时还能读写自己的行）。sys_config 是全局配置、没有租户列，
 不设 RLS；范围版本表 sys_perm_version 的策略在 expose.sql。
+
+sys_session 另有两条令牌维度策略（`sys_session_token_read` /
+`sys_session_token_rotate`），服务会话校验与刷新：这两个动作发生在
+租户身份成立之前，令牌哈希（访问令牌或刷新令牌）是全局唯一的秘密
+凭据，持有即授权命中那一行。哈希以事务级 GUC `app.session_token_hash` /
+`app.session_refresh_token_hash` / `app.session_new_refresh_token_hash`
+声明；未设时 `current_setting(..., true)` 为 NULL，比较恒为假，不会
+额外放行任何行。校验/刷新事务不设 app.tenant_id，除命中行外所有
+租户数据仍默认全拒。

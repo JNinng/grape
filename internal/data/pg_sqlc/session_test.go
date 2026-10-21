@@ -2,9 +2,15 @@ package pg_sqlc
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
+	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"grape/internal/biz"
 	"grape/internal/data/pg_sqlc/gen"
@@ -14,8 +20,34 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
+// TestTokenLookupValidate 校验令牌维度事务的凭据组合约束（纯单测，
+// 不触数据库）：查找凭据只能二选一，刷新轮换必须成对声明新旧哈希。
+func TestTokenLookupValidate(t *testing.T) {
+	cases := []struct {
+		name   string
+		lookup TokenLookup
+		ok     bool
+	}{
+		{"access only", TokenLookup{AccessTokenHash: "a"}, true},
+		{"refresh pair", TokenLookup{RefreshTokenHash: "r", NewRefreshTokenHash: "n"}, true},
+		{"empty", TokenLookup{}, false},
+		{"both lookups", TokenLookup{AccessTokenHash: "a", RefreshTokenHash: "r", NewRefreshTokenHash: "n"}, false},
+		{"refresh without new", TokenLookup{RefreshTokenHash: "r"}, false},
+		{"new without refresh", TokenLookup{NewRefreshTokenHash: "n"}, false},
+		{"access with new refresh", TokenLookup{AccessTokenHash: "a", NewRefreshTokenHash: "n"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.lookup.validate()
+			if tc.ok != (err == nil) {
+				t.Fatalf("validate(%+v) = %v, want ok=%v", tc.lookup, err, tc.ok)
+			}
+		})
+	}
+}
+
 // 存储边界集成测试：以真实 PostgreSQL 验证会话门面、RLS/@scope 运行
-// 纪律与用户仓储（断言基于 sqlc/seed.sql 的种子事实）。设置以下环境
+// 纪律与用户/会话仓储（断言基于 sqlc/seed.sql 的种子事实）。设置以下环境
 // 变量后运行，未设置时跳过：
 //
 //	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
@@ -363,3 +395,332 @@ func TestUserRepo(t *testing.T) {
 }
 
 func ptrInt64(v int64) *int64 { return &v }
+
+// TestSessionRepo 以真实 PostgreSQL 验证会话仓储：令牌只以哈希出入、
+// 校验只看有效行、撤销幂等且受租户边界约束、刷新轮换后旧令牌立即
+// 失效，以及令牌维度事务只放行哈希命中的那一行。
+func TestSessionRepo(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	repo := NewSessionRepo(d)
+	owner := biz.AuthContext{TenantID: "t-super-01", UserID: 1}
+	otherTenant := biz.AuthContext{TenantID: "t-demo-01", UserID: 5}
+
+	issue := func(t *testing.T, owner biz.AuthContext, access, refresh string, accessTTL, refreshTTL time.Duration) *biz.Session {
+		t.Helper()
+		s, err := repo.Issue(ctx, owner, &biz.IssueSessionInput{
+			AccessTokenHash:  testTokenHash(access),
+			RefreshTokenHash: testTokenHash(refresh),
+			AccessTTL:        accessTTL,
+			RefreshTTL:       refreshTTL,
+			DeviceInfo:       ptrString("integration-test"),
+			IPAddress:        ptrString("127.0.0.1"),
+		})
+		if err != nil {
+			t.Fatalf("issue session: %v", err)
+		}
+		return s
+	}
+
+	t.Run("issue and validate", func(t *testing.T) {
+		s := issue(t, owner, "access-issue", "refresh-issue", time.Hour, 24*time.Hour)
+		if s.ID <= 0 || s.TenantID != owner.TenantID || s.UserID != owner.UserID {
+			t.Fatalf("issued session = %+v, want owner %+v", s, owner)
+		}
+		if s.Status != biz.SessionStatusEnabled || s.IsRevoked {
+			t.Fatalf("issued status = %d revoked=%v, want enabled", s.Status, s.IsRevoked)
+		}
+		if s.CreatedBy != owner.UserID || s.UpdatedBy != owner.UserID {
+			t.Fatalf("audit cols = %d/%d, want operator %d", s.CreatedBy, s.UpdatedBy, owner.UserID)
+		}
+		if s.LastActivityAt == nil {
+			t.Fatal("last_activity_at must be set on issue")
+		}
+
+		got, err := repo.Validate(ctx, testTokenHash("access-issue"))
+		if err != nil {
+			t.Fatalf("validate: %v", err)
+		}
+		if got.ID != s.ID || got.AuthContext() != owner {
+			t.Fatalf("validated = %+v (id %d), want %+v (id %d)", got.AuthContext(), got.ID, owner, s.ID)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-wrong")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("unknown token: want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("expired session is invalid", func(t *testing.T) {
+		issue(t, owner, "access-expired", "refresh-expired", -time.Minute, time.Hour)
+		if _, err := repo.Validate(ctx, testTokenHash("access-expired")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("disabled session is invalid", func(t *testing.T) {
+		s := issue(t, owner, "access-disabled", "refresh-disabled", time.Hour, 24*time.Hour)
+		err := d.Session(ctx, AuthContext{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *Session) error {
+			_, err := sess.Tx().Exec(ctx, "UPDATE public.sys_session SET status = 0 WHERE id = $1", s.ID)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("disable session: %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-disabled")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("revoke is idempotent and tenant scoped", func(t *testing.T) {
+		s := issue(t, owner, "access-revoke", "refresh-revoke", time.Hour, 24*time.Hour)
+		if err := repo.Revoke(ctx, owner, s.ID); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-revoke")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("revoked session: want ErrSessionInvalid, got %v", err)
+		}
+		if err := repo.Revoke(ctx, owner, s.ID); err != nil {
+			t.Fatalf("repeat revoke must be idempotent: %v", err)
+		}
+
+		// 跨租户按 id 撤销：RLS 不可见 → 0 行，不报错也不生效
+		cross := issue(t, owner, "access-cross", "refresh-cross", time.Hour, 24*time.Hour)
+		if err := repo.Revoke(ctx, otherTenant, cross.ID); err != nil {
+			t.Fatalf("cross-tenant revoke: %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-cross")); err != nil {
+			t.Fatalf("cross-tenant revoke must not take effect: %v", err)
+		}
+	})
+
+	t.Run("refresh rotates both tokens", func(t *testing.T) {
+		s := issue(t, owner, "access-old", "refresh-old", time.Hour, 24*time.Hour)
+		rotated, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-old"),
+			NewAccessTokenHash:      testTokenHash("access-new"),
+			NewRefreshTokenHash:     testTokenHash("refresh-new"),
+			AccessTTL:               2 * time.Hour,
+			RefreshTTL:              48 * time.Hour,
+		})
+		if err != nil {
+			t.Fatalf("refresh: %v", err)
+		}
+		if rotated.ID != s.ID || rotated.UserID != owner.UserID {
+			t.Fatalf("rotated session = %+v, want id %d user %d", rotated, s.ID, owner.UserID)
+		}
+		// 轮换的审计列记会话用户，活跃时间刷新到轮换时刻
+		if rotated.UpdatedBy != owner.UserID {
+			t.Fatalf("rotated updated_by = %d, want %d", rotated.UpdatedBy, owner.UserID)
+		}
+		if rotated.LastActivityAt == nil || rotated.LastActivityAt.Before(*s.LastActivityAt) {
+			t.Fatalf("rotated last_activity_at = %v, want >= issue time %v", rotated.LastActivityAt, s.LastActivityAt)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-old")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("old access token: want ErrSessionInvalid, got %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-new")); err != nil {
+			t.Fatalf("new access token: %v", err)
+		}
+
+		// 旧刷新令牌已轮换掉，不能再次使用
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-old"),
+			NewAccessTokenHash:      testTokenHash("access-again"),
+			NewRefreshTokenHash:     testTokenHash("refresh-again"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("reused refresh token: want ErrSessionInvalid, got %v", err)
+		}
+
+		// 新刷新令牌继续可用
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-new"),
+			NewAccessTokenHash:      testTokenHash("access-next"),
+			NewRefreshTokenHash:     testTokenHash("refresh-next"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); err != nil {
+			t.Fatalf("rotate with new refresh token: %v", err)
+		}
+	})
+
+	t.Run("revoked session cannot refresh", func(t *testing.T) {
+		s := issue(t, owner, "access-revoked-r", "refresh-revoked-r", time.Hour, 24*time.Hour)
+		if err := repo.Revoke(ctx, owner, s.ID); err != nil {
+			t.Fatalf("revoke: %v", err)
+		}
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-revoked-r"),
+			NewAccessTokenHash:      testTokenHash("access-revoked-r2"),
+			NewRefreshTokenHash:     testTokenHash("refresh-revoked-r2"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("expired refresh token cannot rotate but access stays valid", func(t *testing.T) {
+		issue(t, owner, "access-expired-rf", "refresh-expired-rf", time.Hour, -time.Minute)
+		if _, err := repo.Validate(ctx, testTokenHash("access-expired-rf")); err != nil {
+			t.Fatalf("access token should stay valid: %v", err)
+		}
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-expired-rf"),
+			NewAccessTokenHash:      testTokenHash("access-expired-rf2"),
+			NewRefreshTokenHash:     testTokenHash("refresh-expired-rf2"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("disabled session cannot refresh", func(t *testing.T) {
+		s := issue(t, owner, "access-dis-rf", "refresh-dis-rf", time.Hour, 24*time.Hour)
+		err := d.Session(ctx, AuthContext{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *Session) error {
+			_, err := sess.Tx().Exec(ctx, "UPDATE public.sys_session SET status = 0 WHERE id = $1", s.ID)
+			return err
+		})
+		if err != nil {
+			t.Fatalf("disable session: %v", err)
+		}
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-dis-rf"),
+			NewAccessTokenHash:      testTokenHash("access-dis-rf2"),
+			NewRefreshTokenHash:     testTokenHash("refresh-dis-rf2"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	t.Run("concurrent refresh: exactly one wins", func(t *testing.T) {
+		issue(t, owner, "access-race", "refresh-race", time.Hour, 24*time.Hour)
+		const workers = 4
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		results := make([]error, workers)
+		for i := range workers {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				_, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+					CurrentRefreshTokenHash: testTokenHash("refresh-race"),
+					NewAccessTokenHash:      testTokenHash("access-race-" + strconv.Itoa(i)),
+					NewRefreshTokenHash:     testTokenHash("refresh-race-" + strconv.Itoa(i)),
+					AccessTTL:               time.Hour,
+					RefreshTTL:              24 * time.Hour,
+				})
+				results[i] = err
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		wins := 0
+		for i, err := range results {
+			switch {
+			case err == nil:
+				wins++
+			case !errors.Is(err, biz.ErrSessionInvalid):
+				t.Fatalf("worker %d: unexpected error %v", i, err)
+			}
+		}
+		if wins != 1 {
+			t.Fatalf("wins = %d, want exactly 1", wins)
+		}
+	})
+
+	t.Run("usecase clamps long metadata end to end", func(t *testing.T) {
+		uc := biz.NewSessionUsecase(repo)
+		device := strings.Repeat("設", 600)
+		ip := strings.Repeat("2001:db8::", 10)
+		issued, err := uc.Issue(ctx, owner, biz.SessionOptions{}, &device, &ip)
+		if err != nil {
+			t.Fatalf("issue with oversized metadata: %v", err)
+		}
+		got, err := uc.Validate(ctx, issued.AccessToken)
+		if err != nil {
+			t.Fatalf("validate: %v", err)
+		}
+		if got.DeviceInfo == nil || len([]rune(*got.DeviceInfo)) != biz.MaxSessionDeviceInfoChars {
+			t.Fatalf("stored device len = %d, want %d", len([]rune(*got.DeviceInfo)), biz.MaxSessionDeviceInfoChars)
+		}
+		if got.IPAddress == nil || len([]rune(*got.IPAddress)) != biz.MaxSessionIPAddressChars {
+			t.Fatalf("stored ip len = %d, want %d", len([]rune(*got.IPAddress)), biz.MaxSessionIPAddressChars)
+		}
+		if *got.DeviceInfo != string([]rune(device)[:biz.MaxSessionDeviceInfoChars]) {
+			t.Fatal("stored device must be the rune prefix")
+		}
+	})
+
+	t.Run("token transaction sees only the matched row", func(t *testing.T) {
+		issue(t, owner, "access-rls-a", "refresh-rls-a", time.Hour, 24*time.Hour)
+		issue(t, owner, "access-rls-b", "refresh-rls-b", time.Hour, 24*time.Hour)
+		issue(t, otherTenant, "access-rls-c", "refresh-rls-c", time.Hour, 24*time.Hour)
+
+		var seen int
+		err := d.TokenSession(ctx, TokenLookup{AccessTokenHash: testTokenHash("access-rls-a")}, func(s *TokenSession) error {
+			return s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_session").Scan(&seen)
+		})
+		if err != nil {
+			t.Fatalf("token transaction: %v", err)
+		}
+		if seen != 1 {
+			t.Fatalf("token transaction saw %d session rows, want 1", seen)
+		}
+
+		// 裸连接没有令牌凭据：RLS 默认全拒
+		if err := d.db.QueryRow(ctx, "SELECT count(*) FROM public.sys_session").Scan(&seen); err != nil {
+			t.Fatalf("bare query: %v", err)
+		}
+		if seen != 0 {
+			t.Fatalf("bare connection saw %d session rows, want 0", seen)
+		}
+
+		// 令牌是全局凭据：跨租户也能按哈希校验，身份事实取自行内
+		got, err := repo.Validate(ctx, testTokenHash("access-rls-c"))
+		if err != nil {
+			t.Fatalf("cross-tenant validate: %v", err)
+		}
+		if got.TenantID != otherTenant.TenantID || got.UserID != otherTenant.UserID {
+			t.Fatalf("cross-tenant identity = %+v, want %+v", got.AuthContext(), otherTenant)
+		}
+	})
+
+	t.Run("usecase tokens work end to end", func(t *testing.T) {
+		uc := biz.NewSessionUsecase(repo)
+		issued, err := uc.Issue(ctx, owner, biz.SessionOptions{}, ptrString("e2e"), ptrString("127.0.0.1"))
+		if err != nil {
+			t.Fatalf("issue via usecase: %v", err)
+		}
+		got, err := uc.Validate(ctx, issued.AccessToken)
+		if err != nil {
+			t.Fatalf("validate issued token: %v", err)
+		}
+		if got.ID != issued.Session.ID || got.AuthContext() != owner {
+			t.Fatalf("validated = %+v (id %d), want owner %+v (id %d)", got.AuthContext(), got.ID, owner, issued.Session.ID)
+		}
+
+		rotated, err := uc.Refresh(ctx, issued.RefreshToken, biz.SessionOptions{})
+		if err != nil {
+			t.Fatalf("refresh via usecase: %v", err)
+		}
+		if _, err := uc.Validate(ctx, issued.AccessToken); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("old access token after refresh: want ErrSessionInvalid, got %v", err)
+		}
+		if _, err := uc.Validate(ctx, rotated.AccessToken); err != nil {
+			t.Fatalf("new access token: %v", err)
+		}
+	})
+}
+
+// testTokenHash 模拟 biz 用例的令牌哈希（sha256 → 十六进制）。
+func testTokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+func ptrString(v string) *string { return &v }

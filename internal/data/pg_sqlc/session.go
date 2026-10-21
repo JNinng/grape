@@ -32,7 +32,8 @@ func (a AuthContext) validate() error {
 // Session 是绑定身份的事务级会话：app.tenant_id 以 local=true 注入，
 // 事务结束自动失效，连接归还池后不残留上一请求的租户上下文。所有经
 // 普通数据库角色（grape_u）建立的连接都必须经 Session 访问数据库，
-// 禁止绕过租户注入直连。
+// 禁止绕过租户注入直连。唯一例外是租户身份尚未成立的会话校验/刷新：
+// 它们走 TokenSession，凭令牌哈希由 RLS 只放行命中的那一行。
 type Session struct {
 	tx   pgx.Tx
 	auth AuthContext
@@ -79,6 +80,86 @@ func (d *Data) Session(ctx context.Context, auth AuthContext, fn func(*Session) 
 		return fmt.Errorf("pg_sqlc: set app.tenant_id: %w", err)
 	}
 	if err := fn(&Session{tx: tx, auth: auth}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// TokenLookup 是令牌维度事务的查找凭据：访问令牌哈希用于校验，当前/
+// 新刷新令牌哈希用于轮换。哈希由 biz 计算，仓储只把它们声明给 RLS。
+// 一次事务只允许一种查找凭据，避免同时命中两行。
+type TokenLookup struct {
+	// AccessTokenHash 是访问令牌哈希，用于校验；与 RefreshTokenHash 互斥。
+	AccessTokenHash string
+	// RefreshTokenHash 是当前刷新令牌哈希，用于定位待轮换的会话行。
+	RefreshTokenHash string
+	// NewRefreshTokenHash 是轮换后写回的刷新令牌哈希，作为 UPDATE 的 WITH CHECK 凭据。
+	NewRefreshTokenHash string
+}
+
+func (l TokenLookup) validate() error {
+	switch {
+	case l.AccessTokenHash == "" && l.RefreshTokenHash == "":
+		return fmt.Errorf("pg_sqlc: token lookup requires an access or refresh token hash")
+	case l.AccessTokenHash != "" && l.RefreshTokenHash != "":
+		return fmt.Errorf("pg_sqlc: access and refresh lookups must be separate")
+	case l.RefreshTokenHash != "" && l.NewRefreshTokenHash == "":
+		return fmt.Errorf("pg_sqlc: refresh rotation requires the new refresh token hash")
+	case l.RefreshTokenHash == "" && l.NewRefreshTokenHash != "":
+		return fmt.Errorf("pg_sqlc: new refresh token hash requires the current refresh token hash")
+	}
+	return nil
+}
+
+// TokenSession 是令牌维度的事务句柄：不绑定租户身份，RLS 只对
+// app.session_* 变量命中的会话行放行（见 rls.sql 的
+// sys_session_token_* 策略）。只用于会话校验/刷新——其他任何数据
+// 访问都必须走 Session。
+type TokenSession struct {
+	tx pgx.Tx
+	q  *gen.Queries
+}
+
+// Q 返回绑定本事务的命名查询集。
+func (s *TokenSession) Q() *gen.Queries {
+	if s.q == nil {
+		s.q = gen.New(s.tx)
+	}
+	return s.q
+}
+
+// Tx 暴露底层事务（动态查询需要显式传入）。
+func (s *TokenSession) Tx() pgx.Tx { return s.tx }
+
+// TokenSession 开启令牌维度事务并按凭据注入 RLS 变量，fn 返回 nil 则
+// 提交。事务不设置 app.tenant_id：除令牌哈希命中的会话行外，其余
+// 租户数据一律不可见（RLS 默认全拒）。
+func (d *Data) TokenSession(ctx context.Context, lookup TokenLookup, fn func(*TokenSession) error) error {
+	if err := lookup.validate(); err != nil {
+		return err
+	}
+	tx, err := d.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("pg_sqlc: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	gucs := [...]struct {
+		name  string
+		value string
+	}{
+		{"app.session_token_hash", lookup.AccessTokenHash},
+		{"app.session_refresh_token_hash", lookup.RefreshTokenHash},
+		{"app.session_new_refresh_token_hash", lookup.NewRefreshTokenHash},
+	}
+	for _, guc := range gucs {
+		if guc.value == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", guc.name, guc.value); err != nil {
+			return fmt.Errorf("pg_sqlc: set %s: %w", guc.name, err)
+		}
+	}
+	if err := fn(&TokenSession{tx: tx}); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
