@@ -20,6 +20,14 @@ FROM unnest(sqlc.arg('role_ids')::int8[]) AS r;
 SELECT public.fn_can_transfer_owner(sqlc.arg('operator'),
                                     sqlc.narg('old_user'), sqlc.narg('old_dept'), sqlc.narg('old_group'),
                                     sqlc.narg('new_user'), sqlc.narg('new_dept'), sqlc.narg('new_group')) AS ok;
+
+-- 判断当前用户能否修改/删除一条数据（读写同权：能看见就能操作，
+-- 规则见 fn_can_operate_row）。归属参数传 NULL 表示"没有这个归属"；
+-- 调用方先锁行取当前归属再传入，避免并发修改后按旧值判断
+-- name: CanOperateRow :one
+SELECT public.fn_can_operate_row(sqlc.arg('operator'),
+                                 sqlc.narg('owner_user'), sqlc.narg('owner_dept'), sqlc.narg('owner_group')) AS ok;
+
 -- 写入用户-角色映射（判断通过后调用）。租户自动取当前会话的
 -- app.tenant_id；重复分配不报错、不重写
 -- name: AssignUserRole :exec

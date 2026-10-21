@@ -1,15 +1,16 @@
 package server
 
 import (
+	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
+	"grape/internal/service"
 
 	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	"github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// NewHTTPServer 构造 HTTP 服务器；资源服务的注册随资源落地在
-// 「新增资源速查」第 4 步补入。
-func NewHTTPServer(c *conf.Server) *http.Server {
+// NewHTTPServer 构造 HTTP 服务器并注册各资源的 HTTP 路由。
+func NewHTTPServer(c *conf.Server, user *service.UserService) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
 			recovery.Recovery(),
@@ -24,5 +25,7 @@ func NewHTTPServer(c *conf.Server) *http.Server {
 	if c.Http.Timeout != nil {
 		opts = append(opts, http.Timeout(c.Http.Timeout.AsDuration()))
 	}
-	return http.NewServer(opts...)
+	srv := http.NewServer(opts...)
+	userv1.RegisterUserServiceHTTPServer(srv, user)
+	return srv
 }

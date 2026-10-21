@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "grape/api/user/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.user.v1";
+option objc_class_prefix = "APIUserV1";
+
+// ErrorReason 是用户资源的错误原因枚举，用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  USER_UNSPECIFIED = 0;
+  // 目标用户不存在（含数据范围不可见）。
+  USER_NOT_FOUND = 1;
+  // 请求参数非法。
+  USER_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户内 name/email/phone 已被占用）。
+  USER_ALREADY_EXISTS = 3;
+  // 写侧权限判定不通过（分配角色/归属转移/行操作）。
+  USER_ACCESS_DENIED = 4;
+}

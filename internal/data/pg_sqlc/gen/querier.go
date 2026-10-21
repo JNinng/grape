@@ -25,6 +25,10 @@ type Querier interface {
 	// 全部通过才允许批量写入（规则同 fn_can_assign_role；
 	// 与 fn_can_assign_roles 函数体一致，直接 SQL 调用时用那个函数）
 	CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) ([]CanAssignRolesRow, error)
+	// 判断当前用户能否修改/删除一条数据（读写同权：能看见就能操作，
+	// 规则见 fn_can_operate_row）。归属参数传 NULL 表示"没有这个归属"；
+	// 调用方先锁行取当前归属再传入，避免并发修改后按旧值判断
+	CanOperateRow(ctx context.Context, arg CanOperateRowParams) (bool, error)
 	// 判断能否把某条数据的归属改成新归属：两头都要过——这条数据本身
 	// 有权操作，新归属的人/部门/组也在可见范围内（见 fn_can_transfer_owner）
 	CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error)
@@ -51,6 +55,15 @@ type Querier interface {
 	// 取范围版本（缓存失效信号，ADR-0008）：租户级 + 用户级一次取回，
 	// 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
+	// sys_user 用户表固定 CRUD：全部经会话门面在租户事务内执行（RLS 限
+	// 租户）。写路径纪律：先锁行取当前归属 → fn_can_operate_row /
+	// fn_can_transfer_owner 判定 → 再写入，判断与写入同一事务。
+	// 按 id 读取用户（租户内，软删除行不可见）。可见性由调用方经
+	// CheckVisible 判定：不可见等同不存在。
+	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
+	// 按 id 锁定并读取一行用户（FOR UPDATE）：写操作前取当前归属，
+	// 防止并发修改后按旧值判断；软删除行不可操作
+	GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error)
 	// 枚举有效用户的全部有效角色（展示/审计/外部缓存角色变更）。
 	// 用户无效（不存在/禁用/删除）时返回空集
 	GetUserRoles(ctx context.Context, userID int64) ([]SysRole, error)
@@ -58,9 +71,24 @@ type Querier interface {
 	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
 	// 查某个用户是否已拥有某个角色（分配后的结果确认）
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
+	// 创建用户。主键 id 由应用层发号（体系表主键无数据库默认值）；可空列
+	// 用 sqlc.narg（NULL 原样落库）；租户取自会话 app.tenant_id；
+	// created_at/updated_at 由列默认值生成。租户内 name/email/phone 唯一
+	// 冲突由调用方映射为 ALREADY_EXISTS
+	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 替换密码哈希；updated_by 记操作者
+	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
+	// 软删除：deleted_at 置位后租户内唯一键（name/email/phone）随之可复用
+	SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error)
 	// 修改一行 basic 的归属（判断通过后调用）。归属参数传 NULL 表示
 	// 清掉该归属；updated_at 由触发器自动刷新，不用手动设置
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
+	// 覆盖可变字段（不含 password 与归属三元组）。updated_by 记操作者，
+	// updated_at 由触发器兜底刷新
+	UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error)
+	// 归属转移落库（fn_can_transfer_owner 判定通过后调用）；
+	// 归属参数传 NULL 表示清掉该归属
+	UpdateSysUserOwner(ctx context.Context, arg UpdateSysUserOwnerParams) error
 }
 
 var _ Querier = (*Queries)(nil)

@@ -22,7 +22,7 @@
 //	column sys_user.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @selectable]
 //	column sys_user.updated_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
-//	column sys_user.deleted_at: [@hidden]
+//	column sys_user.deleted_at: [@dynamic: is_null, not_null]
 //	column sys_user.tenant_id: [@dynamic: eq, neq @selectable]
 //	column sys_user.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.owner_dept_id: [@dynamic: eq, neq, in, not_in]
@@ -228,9 +228,10 @@ var sys_userRegistry = dynq.TableMeta{
 			Label:      "删除时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpIsNull, dynq.OpNotNull},
 			Sortable:   false,
 			Selectable: false,
-			Hidden:     true,
+			Hidden:     false,
 		},
 		{
 			Key:        "tenantId",
@@ -328,6 +329,7 @@ var SysUserField = struct {
 	CreatedAt        dynq.FieldName
 	UpdatedBy        dynq.FieldName
 	UpdatedAt        dynq.FieldName
+	DeletedAt        dynq.FieldName
 	TenantID         dynq.FieldName
 	OwnerUserID      dynq.FieldName
 	OwnerDeptID      dynq.FieldName
@@ -348,6 +350,7 @@ var SysUserField = struct {
 	CreatedAt:        "createdAt",
 	UpdatedBy:        "updatedBy",
 	UpdatedAt:        "updatedAt",
+	DeletedAt:        "deletedAt",
 	TenantID:         "tenantId",
 	OwnerUserID:      "ownerUserId",
 	OwnerDeptID:      "ownerDeptId",
@@ -439,6 +442,8 @@ type ListSysUserParams struct {
 	UpdatedAtGte          *time.Time
 	UpdatedAtLt           *time.Time
 	UpdatedAtLte          *time.Time
+	DeletedAtIsNull       bool
+	DeletedAtNotNull      bool
 	TenantID              *string
 	TenantIDNeq           *string
 	OwnerUserID           *int64
@@ -1299,6 +1304,19 @@ func ParseSysUserQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUserPara
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
+		case "deletedAt":
+			switch op {
+			case dynq.OpIsNull:
+				if err := slots.Take("deletedAt.is_null", i, "deletedAt"); err != nil {
+					return out, err
+				}
+				out.DeletedAtIsNull = true
+			case dynq.OpNotNull:
+				if err := slots.Take("deletedAt.not_null", i, "deletedAt"); err != nil {
+					return out, err
+				}
+				out.DeletedAtNotNull = true
+			}
 		case "tenantId":
 			switch op {
 			case dynq.OpEq:
@@ -1463,6 +1481,9 @@ func ParseSysUserQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUserPara
 	if out.LockedUntilIsNull && out.LockedUntilNotNull {
 		return out, dynq.NewErr(dynq.KindWhere, "lockedUntil", "is_null and not_null are mutually exclusive", -1)
 	}
+	if out.DeletedAtIsNull && out.DeletedAtNotNull {
+		return out, dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
+	}
 
 	// 解析排序:字段须在注册表内且可排序;方向归一化为 asc/desc,并转为逻辑键。
 	for i, s := range q.Sort {
@@ -1557,6 +1578,9 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
+	if cfg.WhereDisabled("deletedAt") && (params.DeletedAtIsNull || params.DeletedAtNotNull) {
+		return dynq.NewErr(dynq.KindWhere, "deletedAt", "field disabled in this context", -1)
+	}
 	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
 		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
@@ -1574,6 +1598,9 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 	}
 	if params.LockedUntilIsNull && params.LockedUntilNotNull {
 		return dynq.NewErr(dynq.KindWhere, "lockedUntil", "is_null and not_null are mutually exclusive", -1)
+	}
+	if params.DeletedAtIsNull && params.DeletedAtNotNull {
+		return dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_userRegistry)
 }
@@ -1805,6 +1832,12 @@ func buildSysUserWhere(params ListSysUserParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
+	}
+	if params.DeletedAtIsNull {
+		conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	}
+	if params.DeletedAtNotNull {
+		conds = append(conds, sq.Expr("deleted_at IS NOT NULL"))
 	}
 	if params.TenantID != nil {
 		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})

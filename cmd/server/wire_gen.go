@@ -8,8 +8,11 @@ package main
 
 import (
 	"github.com/go-kratos/kratos/v3"
+	"grape/internal/biz"
 	"grape/internal/conf"
+	"grape/internal/data/pg_sqlc"
 	"grape/internal/server"
+	"grape/internal/service"
 	"log/slog"
 )
 
@@ -19,13 +22,19 @@ import (
 
 // Injectors from wire.go:
 
-// wireApp 装配 Kratos 应用。data / biz / service 的 ProviderSet 暂为
-// 空集或无消费者（仓储随首个资源落地），届时加入 wire.Build
-// （见 internal/README.md「新增资源速查」）。
-func wireApp(confServer *conf.Server, data *conf.Data, logger *slog.Logger) (*kratos.App, func(), error) {
-	grpcServer := server.NewGRPCServer(confServer)
-	httpServer := server.NewHTTPServer(confServer)
+// wireApp 装配 Kratos 应用。
+func wireApp(confServer *conf.Server, data *conf.Data, auth *conf.Auth, logger *slog.Logger) (*kratos.App, func(), error) {
+	pg_sqlcData, cleanup, err := pg_sqlc.NewData(data)
+	if err != nil {
+		return nil, nil, err
+	}
+	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
+	userUsecase := biz.NewUserUsecase(userRepo)
+	userService := service.NewUserService(userUsecase, auth)
+	grpcServer := server.NewGRPCServer(confServer, userService)
+	httpServer := server.NewHTTPServer(confServer, userService)
 	app := newApp(logger, grpcServer, httpServer)
 	return app, func() {
+		cleanup()
 	}, nil
 }

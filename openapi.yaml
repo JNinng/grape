@@ -1,0 +1,403 @@
+# Generated with protoc-gen-openapi
+# https://github.com/google/gnostic/tree/master/cmd/protoc-gen-openapi
+
+openapi: 3.0.3
+info:
+    title: UserService API
+    description: |-
+        UserService 提供用户管理。List 走动态查询协议，过滤/排序/投影/分页
+         能力由存储层 schema 注释 DSL 声明。读写都在服务端注入的租户与数据
+         范围内执行（@scope 守卫）：范围不可见的数据等同不存在（NOT_FOUND），
+         写侧判定不通过返回 FORBIDDEN。
+    version: 0.0.1
+paths:
+    /v1/users/assign-roles:
+        post:
+            tags:
+                - UserService
+            description: |-
+                AssignRoles 把多个角色分配给目标用户：先库内批量判定
+                 （fn_can_assign_role），全部通过才写入映射；任一不通过整批拒绝
+                 （FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
+            operationId: UserService_AssignRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.AssignRolesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.AssignRolesReply'
+    /v1/users/create:
+        post:
+            tags:
+                - UserService
+            description: |-
+                CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
+                 租户内 name/email/phone 唯一，冲突返回 ALREADY_EXISTS。
+            operationId: UserService_CreateUser
+            parameters:
+                - name: password
+                  in: query
+                  description: 初始密码。仅存储，不出现在任何读接口的响应中。
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+    /v1/users/list:
+        post:
+            tags:
+                - UserService
+            description: |-
+                ListUsers 按动态查询协议返回一页用户。过滤表达式非法、字段未知、
+                 操作符不允许、条件冲突、跨表游标均返回 INVALID_ARGUMENT。
+            operationId: UserService_ListUsers
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.UserSet'
+    /v1/users/password:
+        post:
+            tags:
+                - UserService
+            description: |-
+                SetUserPassword 设置新密码（服务端哈希后落库）。
+                 密码不出现在任何读接口的响应中。
+            operationId: UserService_SetUserPassword
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.SetUserPasswordRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/users/transfer-owner:
+        post:
+            tags:
+                - UserService
+            description: |-
+                TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
+                 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
+                 归属字段传 null 表示清掉该归属。
+            operationId: UserService_TransferUserOwner
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.TransferUserOwnerRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+    /v1/users/update:
+        put:
+            tags:
+                - UserService
+            description: |-
+                UpdateUser 覆盖可变字段（name、nickname、email、phone、remark、
+                 locale、status）。password、归属三元组与时间戳不由本接口写入。
+            operationId: UserService_UpdateUser
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.User'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+    /v1/users/{id}:
+        get:
+            tags:
+                - UserService
+            description: GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
+            operationId: UserService_GetUser
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标用户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+        delete:
+            tags:
+                - UserService
+            description: DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
+            operationId: UserService_DeleteUser
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标用户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+components:
+    schemas:
+        google.protobuf.Value:
+            description: Represents a dynamically typed value which can be either null, a number, a string, a boolean, a recursive struct value, or a list of values.
+        query.v1.Condition:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: 字段键，小驼峰，如 createdAt。
+                op:
+                    type: string
+                    description: |-
+                        操作符：eq、neq、in、not_in、gt、gte、lt、lte、between、contains、
+                         prefix、suffix、has、is_null、not_null。每列可用的操作符集合由 schema
+                         声明并在服务端校验。
+                value:
+                    allOf:
+                        - $ref: '#/components/schemas/google.protobuf.Value'
+                    description: 左操作数（between 时为下界）。
+                rightValue:
+                    allOf:
+                        - $ref: '#/components/schemas/google.protobuf.Value'
+                    description: between 的上界。
+            description: |-
+                Condition 是单个过滤条件。
+
+                 value 与 right_value 为 JSON 值，接受形态由字段数据类型与操作符决定：
+                 整型字段的 eq 接受数字；between 在 value 放下界、right_value 放上界；
+                 in / not_in 接受数组；is_null / not_null 不需要值。
+        query.v1.Pagination:
+            type: object
+            properties:
+                page:
+                    type: integer
+                    description: 页码，从 1 开始。offset 模式。
+                    format: int32
+                pageSize:
+                    type: integer
+                    description: 每页条数。未设置时回落到表级默认值；上限受表级最大值约束。
+                    format: int32
+                after:
+                    type: string
+                    description: 上一页响应的 next_cursor。游标模式；与 page 互斥。
+                includeTotal:
+                    type: boolean
+                    description: 是否计算 total。缺省为 true。
+            description: |-
+                Pagination 是分页输入。page 从 1 开始，为 offset 模式；after 非空即切换到
+                 游标模式，且必须携带同表上一页返回的 next_cursor。游标按表做指纹校验，
+                 跨资源的游标会被拒绝。
+        query.v1.Query:
+            type: object
+            properties:
+                fields:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        投影字段列表（小驼峰）。显式空数组、@hidden 字段、被禁用字段与未知字段
+                         均被拒绝；pk 与表级默认排序键会强制并入查询结果。
+                where:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.Condition'
+                    description: 过滤条件，多条之间恒为 AND。
+                sort:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.SortItem'
+                    description: 排序项，按顺序生效；为空时回落到表级默认排序。
+                pagination:
+                    allOf:
+                        - $ref: '#/components/schemas/query.v1.Pagination'
+                    description: 分页输入。
+            description: |-
+                Query 是动态 List 查询协议，镜像存储层的 dynq.Query。
+                 where 中多条条件恒为 AND 组合，不支持 OR 与条件分组。
+        query.v1.SortItem:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: 字段键，小驼峰。仅 @sortable 列被接受。
+                order:
+                    type: string
+                    description: 排序方向：asc（默认）或 desc。
+            description: SortItem 是单个排序项。
+        user.v1.AssignRolesReply:
+            type: object
+            properties:
+                added:
+                    type: string
+                    description: 实际新增的映射条数（目标用户已拥有的角色跳过）。
+            description: AssignRolesReply 是 UserService.AssignRoles 的输出。
+        user.v1.AssignRolesRequest:
+            required:
+                - userId
+                - roleIds
+            type: object
+            properties:
+                userId:
+                    type: string
+                    description: 被分配的目标用户。
+                roleIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 要分配的角色列表；重复项去重。
+            description: AssignRolesRequest 是 UserService.AssignRoles 的输入。
+        user.v1.SetUserPasswordRequest:
+            required:
+                - id
+                - password
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 目标用户的服务端标识。
+                password:
+                    type: string
+                    description: 新密码。
+            description: SetUserPasswordRequest 是 UserService.SetUserPassword 的输入。
+        user.v1.TransferUserOwnerRequest:
+            required:
+                - id
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 目标用户的服务端标识。
+                ownerUserId:
+                    type: string
+                    description: 新归属用户；null 表示清掉该归属。
+                ownerDeptId:
+                    type: string
+                    description: 新归属部门；null 表示清掉该归属。
+                ownerUserGroupId:
+                    type: string
+                    description: 新归属用户组；null 表示清掉该归属。
+            description: TransferUserOwnerRequest 是 UserService.TransferUserOwner 的输入。
+        user.v1.User:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 用户名，租户内唯一。
+                nickname:
+                    type: string
+                    description: 昵称。
+                email:
+                    type: string
+                    description: 邮箱，租户内唯一，可空。
+                phone:
+                    type: string
+                    description: 手机号，租户内唯一，可空。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                locale:
+                    type: string
+                    description: 语言偏好（BCP-47），如 zh-CN。缺省 zh-CN。
+                ownerUserId:
+                    type: string
+                    description: 归属用户。读接口可见，仅 TransferUserOwner 可写。
+                ownerDeptId:
+                    type: string
+                    description: 归属部门。读接口可见，仅 TransferUserOwner 可写。
+                ownerUserGroupId:
+                    type: string
+                    description: 归属用户组。读接口可见，仅 TransferUserOwner 可写。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+            description: |-
+                User 是用户的规范表示。password 列为 @hidden，不跨越 API 边界；
+                 审计列与时间戳只读。
+        user.v1.UserSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/user.v1.User'
+                    description: 本页用户，顺序遵循查询中的 sort。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0。
+                    format: int32
+            description: UserSet 是 ListUsers 返回的分页集合。
+tags:
+    - name: UserService

@@ -575,7 +575,7 @@ type SysUser struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@hidden]
+	// 删除时间 [@dynamic: is_null, not_null]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @selectable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`

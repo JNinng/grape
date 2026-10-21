@@ -12,3 +12,8 @@ data:
     source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
     # Log every executed statement. Development only.
     debug: true
+auth:
+  # 过渡期身份：认证纵切落地前，租户与操作者从这里构造 AuthContext；
+  # 落地后仅替换身份来源。指向种子数据里的全租户管理员。
+  default_tenant_id: t-super-01
+  default_user_id: 1

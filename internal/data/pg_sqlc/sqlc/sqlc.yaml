@@ -36,6 +36,7 @@ sql:
       - "queries/operate.sql"
       - "queries/basic.sql"
       - "queries/perm.sql"
+      - "queries/sys_user.sql"
     gen:
       go:
         package: "gen"
@@ -64,6 +65,7 @@ sql:
       - "queries/operate.sql"
       - "queries/basic.sql"
       - "queries/perm.sql"
+      - "queries/sys_user.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

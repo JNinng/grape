@@ -1,0 +1,208 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/user/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.user.v1";
+option java_outer_classname = "UserProto";
+
+// UserService 提供用户管理。List 走动态查询协议，过滤/排序/投影/分页
+// 能力由存储层 schema 注释 DSL 声明。读写都在服务端注入的租户与数据
+// 范围内执行（@scope 守卫）：范围不可见的数据等同不存在（NOT_FOUND），
+// 写侧判定不通过返回 FORBIDDEN。
+service UserService {
+  // CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
+  // 租户内 name/email/phone 唯一，冲突返回 ALREADY_EXISTS。
+  rpc CreateUser (CreateUserRequest) returns (User) {
+    option (google.api.http) = {
+      post: "/v1/users/create"
+      body: "user"
+    };
+  }
+
+  // GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
+  rpc GetUser (GetUserRequest) returns (User) {
+    option (google.api.http) = {
+      get: "/v1/users/{id}"
+    };
+  }
+
+  // ListUsers 按动态查询协议返回一页用户。过滤表达式非法、字段未知、
+  // 操作符不允许、条件冲突、跨表游标均返回 INVALID_ARGUMENT。
+  rpc ListUsers (ListUsersRequest) returns (UserSet) {
+    option (google.api.http) = {
+      post: "/v1/users/list"
+      body: "query"
+    };
+  }
+
+  // UpdateUser 覆盖可变字段（name、nickname、email、phone、remark、
+  // locale、status）。password、归属三元组与时间戳不由本接口写入。
+  rpc UpdateUser (UpdateUserRequest) returns (User) {
+    option (google.api.http) = {
+      put: "/v1/users/update"
+      body: "user"
+    };
+  }
+
+  // SetUserPassword 设置新密码（服务端哈希后落库）。
+  // 密码不出现在任何读接口的响应中。
+  rpc SetUserPassword (SetUserPasswordRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/users/password"
+      body: "*"
+    };
+  }
+
+  // DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
+  rpc DeleteUser (DeleteUserRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/users/{id}"
+    };
+  }
+
+  // AssignRoles 把多个角色分配给目标用户：先库内批量判定
+  // （fn_can_assign_role），全部通过才写入映射；任一不通过整批拒绝
+  // （FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
+  rpc AssignRoles (AssignRolesRequest) returns (AssignRolesReply) {
+    option (google.api.http) = {
+      post: "/v1/users/assign-roles"
+      body: "*"
+    };
+  }
+
+  // TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
+  // 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
+  // 归属字段传 null 表示清掉该归属。
+  rpc TransferUserOwner (TransferUserOwnerRequest) returns (User) {
+    option (google.api.http) = {
+      post: "/v1/users/transfer-owner"
+      body: "*"
+    };
+  }
+}
+
+// User 是用户的规范表示。password 列为 @hidden，不跨越 API 边界；
+// 审计列与时间戳只读。
+message User {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 用户名，租户内唯一。
+  string name = 3;
+  // 昵称。
+  string nickname = 4;
+  // 邮箱，租户内唯一，可空。
+  optional string email = 5;
+  // 手机号，租户内唯一，可空。
+  optional string phone = 6;
+  // 备注，可空。
+  optional string remark = 7;
+  // 语言偏好（BCP-47），如 zh-CN。缺省 zh-CN。
+  string locale = 8;
+  // 归属用户。读接口可见，仅 TransferUserOwner 可写。
+  optional int64 owner_user_id = 9;
+  // 归属部门。读接口可见，仅 TransferUserOwner 可写。
+  optional int64 owner_dept_id = 10;
+  // 归属用户组。读接口可见，仅 TransferUserOwner 可写。
+  optional int64 owner_user_group_id = 11;
+  // 创建人。只读。
+  int64 created_by = 12;
+  // 更新人。只读。
+  int64 updated_by = 13;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 14;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 15;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 16;
+}
+
+// UserSet 是 ListUsers 返回的分页集合。
+message UserSet {
+  // 本页用户，顺序遵循查询中的 sort。
+  repeated User items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateUserRequest 是 UserService.CreateUser 的输入。
+message CreateUserRequest {
+  // 要创建的用户。id、created_by/updated_by 与时间戳在输入中被忽略。
+  User user = 1 [(google.api.field_behavior) = REQUIRED];
+  // 初始密码。仅存储，不出现在任何读接口的响应中。
+  string password = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetUserRequest 是 UserService.GetUser 的输入。
+message GetUserRequest {
+  // 目标用户的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListUsersRequest 是 UserService.ListUsers 的输入。
+message ListUsersRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateUserRequest 是 UserService.UpdateUser 的输入。
+message UpdateUserRequest {
+  // 携带新字段值的用户。id 标识目标记录，必须设置；归属三元组在
+  // 输入中被忽略（走 TransferUserOwner）。
+  User user = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SetUserPasswordRequest 是 UserService.SetUserPassword 的输入。
+message SetUserPasswordRequest {
+  // 目标用户的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新密码。
+  string password = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteUserRequest 是 UserService.DeleteUser 的输入。
+message DeleteUserRequest {
+  // 目标用户的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// AssignRolesRequest 是 UserService.AssignRoles 的输入。
+message AssignRolesRequest {
+  // 被分配的目标用户。
+  int64 user_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 要分配的角色列表；重复项去重。
+  repeated int64 role_ids = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// AssignRolesReply 是 UserService.AssignRoles 的输出。
+message AssignRolesReply {
+  // 实际新增的映射条数（目标用户已拥有的角色跳过）。
+  int64 added = 1;
+}
+
+// TransferUserOwnerRequest 是 UserService.TransferUserOwner 的输入。
+message TransferUserOwnerRequest {
+  // 目标用户的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新归属用户；null 表示清掉该归属。
+  optional int64 owner_user_id = 2;
+  // 新归属部门；null 表示清掉该归属。
+  optional int64 owner_dept_id = 3;
+  // 新归属用户组；null 表示清掉该归属。
+  optional int64 owner_user_group_id = 4;
+}

@@ -113,6 +113,33 @@ func (q *Queries) CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) 
 	return items, nil
 }
 
+const canOperateRow = `-- name: CanOperateRow :one
+SELECT public.fn_can_operate_row($1,
+                                 $2, $3, $4) AS ok
+`
+
+type CanOperateRowParams struct {
+	Operator   int64  `db:"operator" json:"operator"`
+	OwnerUser  *int64 `db:"owner_user" json:"owner_user"`
+	OwnerDept  *int64 `db:"owner_dept" json:"owner_dept"`
+	OwnerGroup *int64 `db:"owner_group" json:"owner_group"`
+}
+
+// 判断当前用户能否修改/删除一条数据（读写同权：能看见就能操作，
+// 规则见 fn_can_operate_row）。归属参数传 NULL 表示"没有这个归属"；
+// 调用方先锁行取当前归属再传入，避免并发修改后按旧值判断
+func (q *Queries) CanOperateRow(ctx context.Context, arg CanOperateRowParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canOperateRow,
+		arg.Operator,
+		arg.OwnerUser,
+		arg.OwnerDept,
+		arg.OwnerGroup,
+	)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
 const canTransferOwner = `-- name: CanTransferOwner :one
 SELECT public.fn_can_transfer_owner($1,
                                     $2, $3, $4,
