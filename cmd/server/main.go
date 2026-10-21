@@ -51,6 +51,12 @@ func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
 	)
 }
 
+// defaultTenantID 提供过渡期登录默认租户（auth.default_tenant_id）。
+// 配置到领域的映射收在装配点：biz 与 service 均不导入 conf。
+func defaultTenantID(c *conf.Auth) string {
+	return c.GetDefaultTenantId()
+}
+
 func main() {
 	flag.Parse()
 	// HTTP JSON 必须按 protobuf JSON 映射编解码，默认 json codec 会

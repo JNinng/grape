@@ -88,6 +88,41 @@ func (q *Queries) GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, e
 	return i, err
 }
 
+const getUserCredentialByName = `-- name: GetUserCredentialByName :one
+SELECT id,
+       status,
+       "name",
+       nickname,
+       "password" AS password_hash
+FROM public.sys_user
+WHERE "name" = $1
+  AND deleted_at IS NULL
+`
+
+type GetUserCredentialByNameRow struct {
+	ID           int64  `db:"id" json:"id"`
+	Status       int16  `db:"status" json:"status"`
+	Name         string `db:"name" json:"name"`
+	Nickname     string `db:"nickname" json:"nickname"`
+	PasswordHash string `db:"password_hash" json:"password_hash"`
+}
+
+// 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
+// 身份成立之前，经 TenantSession（只注入 app.tenant_id）执行；软删除
+// 行等同不存在。哈希仅供 biz 口令校验单点使用
+func (q *Queries) GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error) {
+	row := q.db.QueryRow(ctx, getUserCredentialByName, name)
+	var i GetUserCredentialByNameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
 const insertSysUser = `-- name: InsertSysUser :one
 INSERT INTO public.sys_user (id, tenant_id, status, "name", nickname, "password", email, phone,
                              remark, locale, owner_user_id, owner_dept_id,

@@ -31,6 +31,10 @@ const (
 	ErrorReason_SESSION_INVALID ErrorReason = 1
 	// 会话请求参数非法。
 	ErrorReason_SESSION_INVALID_ARGUMENT ErrorReason = 2
+	// 登录失败：用户名或口令不匹配。两者同因，防枚举。
+	ErrorReason_SESSION_INVALID_CREDENTIALS ErrorReason = 3
+	// 登录被拒：口令校验通过但账号处于禁用状态。
+	ErrorReason_SESSION_USER_DISABLED ErrorReason = 4
 )
 
 // Enum value maps for ErrorReason.
@@ -39,11 +43,15 @@ var (
 		0: "SESSION_UNSPECIFIED",
 		1: "SESSION_INVALID",
 		2: "SESSION_INVALID_ARGUMENT",
+		3: "SESSION_INVALID_CREDENTIALS",
+		4: "SESSION_USER_DISABLED",
 	}
 	ErrorReason_value = map[string]int32{
-		"SESSION_UNSPECIFIED":      0,
-		"SESSION_INVALID":          1,
-		"SESSION_INVALID_ARGUMENT": 2,
+		"SESSION_UNSPECIFIED":         0,
+		"SESSION_INVALID":             1,
+		"SESSION_INVALID_ARGUMENT":    2,
+		"SESSION_INVALID_CREDENTIALS": 3,
+		"SESSION_USER_DISABLED":       4,
 	}
 )
 
@@ -79,11 +87,13 @@ var File_session_v1_error_reason_proto protoreflect.FileDescriptor
 const file_session_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
 	"\x1dsession/v1/error_reason.proto\x12\n" +
-	"session.v1*Y\n" +
+	"session.v1*\x95\x01\n" +
 	"\vErrorReason\x12\x17\n" +
 	"\x13SESSION_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fSESSION_INVALID\x10\x01\x12\x1c\n" +
-	"\x18SESSION_INVALID_ARGUMENT\x10\x02BG\n" +
+	"\x18SESSION_INVALID_ARGUMENT\x10\x02\x12\x1f\n" +
+	"\x1bSESSION_INVALID_CREDENTIALS\x10\x03\x12\x19\n" +
+	"\x15SESSION_USER_DISABLED\x10\x04BG\n" +
 	"\x1bio.grpc.examples.session.v1P\x01Z\x17grape/api/session/v1;v1\xa2\x02\fAPISessionV1b\x06proto3"
 
 var (

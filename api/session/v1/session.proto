@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package session.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "grape/api/session/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.session.v1";
+option objc_class_prefix = "APISessionV1";
+
+// SessionService 提供登录与会话令牌生命周期。令牌是随机不透明值，
+// 不含租户/用户信息，身份事实以服务端会话记录为准；访问令牌走
+// `Authorization: Bearer` 头传输，不走 cookie。
+service SessionService {
+  // Login 校验用户名与口令并签发会话：口令按库内算法标识校验，通过
+  // 且非当前首选算法时透明重哈希（算法平滑升级）。失败统一返回
+  // INVALID_CREDENTIALS（防枚举）；账号禁用返回 USER_DISABLED。
+  rpc Login (LoginRequest) returns (LoginReply) {
+    option (google.api.http) = {
+      post: "/v1/auth/login"
+      body: "*"
+    };
+  }
+
+  // Refresh 以刷新令牌轮换一对新令牌：访问令牌与刷新令牌都是独立
+  // 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
+  // SESSION_INVALID。
+  rpc Refresh (RefreshRequest) returns (LoginReply) {
+    option (google.api.http) = {
+      post: "/v1/auth/refresh"
+      body: "*"
+    };
+  }
+}
+
+// LoginRequest 是 SessionService.Login 的输入。
+message LoginRequest {
+  // 租户 ID。为空时回落服务端默认租户（过渡策略，多租户登录形态
+  // 确定后由服务端解析替代）。
+  string tenant_id = 1;
+  // 用户名，租户内唯一。
+  string user_name = 2 [(google.api.field_behavior) = REQUIRED];
+  // 明文口令，仅用于本次校验，不落日志。
+  string password = 3 [(google.api.field_behavior) = REQUIRED];
+  // 登录设备信息（OS/浏览器/型号等）。过渡期由客户端声明，审计采集
+  // 切面落地后改为服务端收集。
+  optional string device_info = 4;
+  // 登录来源 IP。过渡期由客户端声明，审计采集切面落地后改为服务端收集。
+  optional string ip_address = 5;
+}
+
+// SessionUser 是登录响应中的用户摘要。
+message SessionUser {
+  // 用户 ID。
+  int64 id = 1;
+  // 会话归属租户。
+  string tenant_id = 2;
+  // 用户名。
+  string name = 3;
+  // 昵称。
+  string nickname = 4;
+}
+
+// LoginReply 是登录/刷新的输出。
+message LoginReply {
+  // 令牌类型，固定 "Bearer"，经 Authorization: Bearer 头携带。
+  string token_type = 1;
+  // 明文访问令牌，仅本次响应返回。
+  string access_token = 2;
+  // 明文刷新令牌，仅本次响应返回；下一次轮换后失效。
+  string refresh_token = 3;
+  // 访问令牌过期时间（存储介质时钟）。
+  google.protobuf.Timestamp expires_at = 4;
+  // 会话所属用户摘要。
+  SessionUser user = 5;
+}
+
+// RefreshRequest 是 SessionService.Refresh 的输入。
+message RefreshRequest {
+  // 明文刷新令牌，仅用于本次轮换。
+  string refresh_token = 1 [(google.api.field_behavior) = REQUIRED];
+}

@@ -212,7 +212,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
         1, 1, 'admin', '系统管理员',
-        '{scrypt}$e0801$A7n6UaC5UUO/K09rwLa00JQXL5WipLnXHmT/k8xfCDU7Ei3szBiwEPj0O5G/MKznY5Wb3tTkRZLH+IORCt43MQ==$cJKUQc+TRb9KKZSJp+OFn/Yx5p0alwV1G3dFyT2Jf2s=',
+        '{scrypt}$e0801$A7n6UaC5UUO/K09rwLa00JQXL5WipLnXHmT/k8xfCDU7Ei3szBiwEPj0O5G/MKznY5Wb3tTkRZLH+IORCt43MQ==$zk5WhEHfnzqbkGAu67xgRtvspcnsr08uuBeGFaVHOv8=',
         'admin@example.com', '13800000001', '2026-06-30 08:00:00.000', '超级管理员账号', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 2. zhangsan — 技术部员工（普通用户 + 用户组演示 → 多角色并集演示）
@@ -220,7 +220,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
         1, 2, 'zhangsan', '张三',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'zhangsan@example.com', '13800000002', NULL, '技术部-后端组', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 3. lisi — 产品部员工
@@ -228,7 +228,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
         1, 3, 'lisi', '李四',
-        '{scrypt}$e0801$Ztjk9jl3scCFvshR0OgATvTBSUqu5kYn0k803sKHm4GAoF43WujIOnG2x6PFELsSYLaTvHtTrmyCNPrjTX6kqg==$k0B6HCx4+DA4HPqMoxnZ+JDsW8aJBO6ch4G4tIXMGbQ=',
+        '{scrypt}$e0801$Ztjk9jl3scCFvshR0OgATvTBSUqu5kYn0k803sKHm4GAoF43WujIOnG2x6PFELsSYLaTvHtTrmyCNPrjTX6kqg==$RzY/GgWF0uSmLNnYC7g+gYO5DD8Tas8UYsuZEi2lGbI=',
         'lisi@example.com', '13800000003', NULL, '产品部-产品经理', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 4. wangwu — 设计部员工
@@ -236,7 +236,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (4, 1, 1, '2026-06-01 10:15:00.000', 1, '2026-06-01 10:15:00.000', NULL, 't-super-01',
         1, 4, 'wangwu', '王五',
-        '{scrypt}$e0801$sMnGKuCundaB6372FYv4Gha7tpPEFQnD2cswbudIfhjRY392rrufnUnUV/NgET+EZ2nmMtpD39cUwNfPNrD8pQ==$F1q7Q6HCv+4vKeX8yKtmDP7sIzGW2D8hTntBnlyZ3fc=',
+        '{scrypt}$e0801$sMnGKuCundaB6372FYv4Gha7tpPEFQnD2cswbudIfhjRY392rrufnUnUV/NgET+EZ2nmMtpD39cUwNfPNrD8pQ==$+q8C/PcFbJPpWd6yMUH9wIDqLHVmMPG+JK567/Q+XCw=',
         'wangwu@example.com', '13800000004', NULL, '设计部-UI 设计师', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 5. zhaoliu — 演示租户用户（跨租户对照组）
@@ -244,7 +244,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (5, 1, 1, '2026-06-01 10:20:00.000', 1, '2026-06-01 10:20:00.000', NULL, 't-demo-01',
         5, 1, 'zhaoliu', '赵六',
-        '{scrypt}$e0801$3KDaCR21e9FCbuLRzxiNApLS4M8w5xzu82jgpM+7s9AfPUX8VlhnQauYkQLS9yyTVF0kaZ3K8sVyA/QnKSklLw==$Ptpyytpz0dPZJUWeWkCtGVEjigU9n5HxECEK6CbuJVk=',
+        '{scrypt}$e0801$3KDaCR21e9FCbuLRzxiNApLS4M8w5xzu82jgpM+7s9AfPUX8VlhnQauYkQLS9yyTVF0kaZ3K8sVyA/QnKSklLw==$3DiwLAxdmfrOhuCfvMKCIRiiB57BKQ/PLrkECnXKEaE=',
         'zhaoliu@example.com', '13800000005', NULL, '演示租户的普通用户', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 6. sunqi — 前端组员工（本部门演示，data_scope=2）
@@ -252,7 +252,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (6, 1, 1, '2026-06-01 11:00:00.000', 1, '2026-06-01 11:00:00.000', NULL, 't-super-01',
         1, 7, 'sunqi', '孙七',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'sunqi@example.com', '13800000006', NULL, '技术部-前端组', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 7. zhouba — 技术部员工（部门管理员，data_scope=3 子树演示）
@@ -260,7 +260,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (7, 1, 1, '2026-06-01 11:05:00.000', 1, '2026-06-01 11:05:00.000', NULL, 't-super-01',
         1, 2, 'zhouba', '周八',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'zhouba@example.com', '13800000007', NULL, '技术部-部门管理员', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 8. wujiu — 设计部员工（指定人演示，data_scope=4）
@@ -268,7 +268,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (8, 1, 1, '2026-06-01 11:10:00.000', 1, '2026-06-01 11:10:00.000', NULL, 't-super-01',
         1, 4, 'wujiu', '吴九',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'wujiu@example.com', '13800000008', NULL, '设计部-指定人演示', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 9. zhengshi — 财务部员工（指定部门演示，data_scope=5）
@@ -276,7 +276,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (9, 1, 1, '2026-06-01 11:15:00.000', 1, '2026-06-01 11:15:00.000', NULL, 't-super-01',
         1, 6, 'zhengshi', '郑十',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'zhengshi@example.com', '13800000009', NULL, '财务部-指定部门演示', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 10. demo-market — 市场部员工，无任何角色；角色 102 分发映射（部门集
@@ -287,7 +287,7 @@ INSERT INTO public.sys_user (id, status, created_by, created_at, updated_by, upd
                              owner_user_id, owner_dept_id, "name", nickname, "password", email, phone, last_login_at, remark, locale)
 VALUES (10, 1, 1, '2026-06-01 11:20:00.000', 1, '2026-06-01 11:20:00.000', NULL, 't-super-01',
         1, 5, 'demo-market', '市场演示',
-        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$fhAHFCCrA42OzBuKj4KYhXSfT4HMCbP2tiGgkmCpIBk=',
+        '{scrypt}$e0801$yVcA71vEiZj0CtnDIGwcXLkxU4e5p32yOlBIjss1SpeWyrPITLNc+AVe/L/SgMwt4R0vcbVpEhGJIAqTTlw1Xw==$AVWyQX1A7rz1fqYFHi0dwd2JdoIWT8l4VHcJ4n7yaMw=',
         'demo-market@example.com', '13800000010', NULL, '市场部-分配演示目标', 'zh-CN') ON CONFLICT DO NOTHING;
 
 

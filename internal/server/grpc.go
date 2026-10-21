@@ -1,6 +1,7 @@
 package server
 
 import (
+	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
 	"grape/internal/service"
@@ -10,7 +11,7 @@ import (
 )
 
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。
-func NewGRPCServer(c *conf.Server, user *service.UserService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, user *service.UserService, session *service.SessionService) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			recovery.Recovery(),
@@ -27,5 +28,6 @@ func NewGRPCServer(c *conf.Server, user *service.UserService) *grpc.Server {
 	}
 	srv := grpc.NewServer(opts...)
 	userv1.RegisterUserServiceServer(srv, user)
+	sessionv1.RegisterSessionServiceServer(srv, session)
 	return srv
 }

@@ -15,4 +15,8 @@ enum ErrorReason {
   SESSION_INVALID = 1;
   // 会话请求参数非法。
   SESSION_INVALID_ARGUMENT = 2;
+  // 登录失败：用户名或口令不匹配。两者同因，防枚举。
+  SESSION_INVALID_CREDENTIALS = 3;
+  // 登录被拒：口令校验通过但账号处于禁用状态。
+  SESSION_USER_DISABLED = 4;
 }

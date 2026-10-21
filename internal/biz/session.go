@@ -20,6 +20,10 @@ var (
 	ErrSessionInvalid = errors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID.String(), "session invalid or expired")
 	// ErrSessionInvalidArgument 表示会话签发/撤销的入参非法。
 	ErrSessionInvalidArgument = errors.BadRequest(sessionv1.ErrorReason_SESSION_INVALID_ARGUMENT.String(), "invalid session argument")
+	// ErrInvalidCredentials 表示用户名或口令不匹配。两者同因，防枚举。
+	ErrInvalidCredentials = errors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID_CREDENTIALS.String(), "invalid credentials")
+	// ErrAuthUserDisabled 表示口令校验通过但账号处于禁用状态。
+	ErrAuthUserDisabled = errors.Forbidden(sessionv1.ErrorReason_SESSION_USER_DISABLED.String(), "user disabled")
 )
 
 // SessionStatusEnabled / SessionStatusDisabled 与存储层 sys_session.status

@@ -724,3 +724,101 @@ func testTokenHash(token string) string {
 }
 
 func ptrString(v string) *string { return &v }
+
+// TestAuthLogin 以种子事实验证登录全链路：种子口令（123456，scrypt
+// 格式）校验通过后透明重哈希为 argon2id，二次登录走 argon2id 路径，
+// 签发的令牌可校验、可轮换；凭据错误与禁用账号按域错误拒绝。
+func TestAuthLogin(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	users := NewUserRepo(d)
+	sessionUC := biz.NewSessionUsecase(NewSessionRepo(d))
+	authUC := biz.NewAuthUsecase(users, sessionUC, "")
+	device, ip := ptrString("it-device"), ptrString("127.0.0.1")
+
+	// 种子事实：t-super-01/admin，口令 123456（scrypt），持全租户角色
+	login, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "admin", Password: "123456", DeviceInfo: device, IPAddress: ip})
+	if err != nil {
+		t.Fatalf("seed admin login: %v", err)
+	}
+	if login.User.ID != 1 || login.User.Name != "admin" || login.User.Nickname != "系统管理员" {
+		t.Fatalf("login summary = %+v, want admin/系统管理员", login.User)
+	}
+	if got, err := sessionUC.Validate(ctx, login.Issued.AccessToken); err != nil {
+		t.Fatalf("validate issued token: %v", err)
+	} else if got.AuthContext() != (biz.AuthContext{TenantID: "t-super-01", UserID: 1}) {
+		t.Fatalf("validated identity = %+v, want admin", got.AuthContext())
+	}
+
+	// 透明重哈希：登录后库内哈希应已是 argon2id，且原口令仍可登录
+	cred, err := users.GetCredentialByName(ctx, "t-super-01", "admin")
+	if err != nil {
+		t.Fatalf("credential after login: %v", err)
+	}
+	if !strings.HasPrefix(cred.PasswordHash, "$argon2id$") {
+		t.Fatalf("hash after login = %.20q..., want argon2id", cred.PasswordHash)
+	}
+	if again, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "admin", Password: "123456"}); err != nil {
+		t.Fatalf("second login (argon2id path): %v", err)
+	} else if again.Issued.Session.ID == login.Issued.Session.ID {
+		t.Fatal("second login must issue a distinct session")
+	}
+
+	// 刷新令牌轮换
+	rotated, err := sessionUC.Refresh(ctx, login.Issued.RefreshToken, biz.SessionOptions{})
+	if err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	if _, err := sessionUC.Validate(ctx, login.Issued.AccessToken); !errors.Is(err, biz.ErrSessionInvalid) {
+		t.Fatalf("old access token after refresh: want ErrSessionInvalid, got %v", err)
+	}
+	if _, err := sessionUC.Validate(ctx, rotated.AccessToken); err != nil {
+		t.Fatalf("rotated access token: %v", err)
+	}
+
+	// 凭据错误：口令不匹配与用户不存在同因，防枚举
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "admin", Password: "wrong"}); !errors.Is(err, biz.ErrInvalidCredentials) {
+		t.Fatalf("wrong password: want ErrInvalidCredentials, got %v", err)
+	}
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "nobody", Password: "123456"}); !errors.Is(err, biz.ErrInvalidCredentials) {
+		t.Fatalf("unknown user: want ErrInvalidCredentials, got %v", err)
+	}
+	// 跨租户的用户名等同不存在
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-demo-01", UserName: "admin", Password: "123456"}); !errors.Is(err, biz.ErrInvalidCredentials) {
+		t.Fatalf("cross-tenant name: want ErrInvalidCredentials, got %v", err)
+	}
+	// 软删除用户等同不存在
+	deleted, err := users.Create(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, &biz.User{
+		Name: "grape_it_login_del", Nickname: "del", Password: "x", Locale: "zh-CN", Status: biz.UserStatusEnabled,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := users.SoftDelete(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, deleted.ID); err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "grape_it_login_del", Password: "x"}); !errors.Is(err, biz.ErrInvalidCredentials) {
+		t.Fatalf("deleted user: want ErrInvalidCredentials, got %v", err)
+	}
+
+	// 禁用账号：口令通过后拒绝（仓储直写需预哈希，用例路径才负责哈希）
+	disHash, err := biz.HashPassword("pw-dis")
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	created, err := users.Create(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, &biz.User{
+		Name: "grape_it_login_dis", Nickname: "dis", Password: disHash, Locale: "zh-CN", Status: biz.UserStatusEnabled,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := d.Session(ctx, AuthContext{TenantID: "t-super-01", UserID: 1}, func(s *Session) error {
+		_, err := s.Tx().Exec(ctx, "UPDATE public.sys_user SET status = 0 WHERE id = $1", created.ID)
+		return err
+	}); err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "grape_it_login_dis", Password: "pw-dis"}); !errors.Is(err, biz.ErrAuthUserDisabled) {
+		t.Fatalf("disabled user: want ErrAuthUserDisabled, got %v", err)
+	}
+}

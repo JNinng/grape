@@ -3,14 +3,53 @@
 
 openapi: 3.0.3
 info:
-    title: UserService API
-    description: |-
-        UserService 提供用户管理。List 走动态查询协议，过滤/排序/投影/分页
-         能力由存储层 schema 注释 DSL 声明。读写都在服务端注入的租户与数据
-         范围内执行（@scope 守卫）：范围不可见的数据等同不存在（NOT_FOUND），
-         写侧判定不通过返回 FORBIDDEN。
+    title: ""
     version: 0.0.1
 paths:
+    /v1/auth/login:
+        post:
+            tags:
+                - SessionService
+            description: |-
+                Login 校验用户名与口令并签发会话：口令按库内算法标识校验，通过
+                 且非当前首选算法时透明重哈希（算法平滑升级）。失败统一返回
+                 INVALID_CREDENTIALS（防枚举）；账号禁用返回 USER_DISABLED。
+            operationId: SessionService_Login
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/session.v1.LoginRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/session.v1.LoginReply'
+    /v1/auth/refresh:
+        post:
+            tags:
+                - SessionService
+            description: |-
+                Refresh 以刷新令牌轮换一对新令牌：访问令牌与刷新令牌都是独立
+                 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
+                 SESSION_INVALID。
+            operationId: SessionService_Refresh
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/session.v1.RefreshRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/session.v1.LoginReply'
     /v1/users/assign-roles:
         post:
             tags:
@@ -260,6 +299,78 @@ components:
                     type: string
                     description: 排序方向：asc（默认）或 desc。
             description: SortItem 是单个排序项。
+        session.v1.LoginReply:
+            type: object
+            properties:
+                tokenType:
+                    type: string
+                    description: '令牌类型，固定 "Bearer"，经 Authorization: Bearer 头携带。'
+                accessToken:
+                    type: string
+                    description: 明文访问令牌，仅本次响应返回。
+                refreshToken:
+                    type: string
+                    description: 明文刷新令牌，仅本次响应返回；下一次轮换后失效。
+                expiresAt:
+                    type: string
+                    description: 访问令牌过期时间（存储介质时钟）。
+                    format: date-time
+                user:
+                    allOf:
+                        - $ref: '#/components/schemas/session.v1.SessionUser'
+                    description: 会话所属用户摘要。
+            description: LoginReply 是登录/刷新的输出。
+        session.v1.LoginRequest:
+            required:
+                - userName
+                - password
+            type: object
+            properties:
+                tenantId:
+                    type: string
+                    description: |-
+                        租户 ID。为空时回落服务端默认租户（过渡策略，多租户登录形态
+                         确定后由服务端解析替代）。
+                userName:
+                    type: string
+                    description: 用户名，租户内唯一。
+                password:
+                    type: string
+                    description: 明文口令，仅用于本次校验，不落日志。
+                deviceInfo:
+                    type: string
+                    description: |-
+                        登录设备信息（OS/浏览器/型号等）。过渡期由客户端声明，审计采集
+                         切面落地后改为服务端收集。
+                ipAddress:
+                    type: string
+                    description: 登录来源 IP。过渡期由客户端声明，审计采集切面落地后改为服务端收集。
+            description: LoginRequest 是 SessionService.Login 的输入。
+        session.v1.RefreshRequest:
+            required:
+                - refreshToken
+            type: object
+            properties:
+                refreshToken:
+                    type: string
+                    description: 明文刷新令牌，仅用于本次轮换。
+            description: RefreshRequest 是 SessionService.Refresh 的输入。
+        session.v1.SessionUser:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 用户 ID。
+                tenantId:
+                    type: string
+                    description: 会话归属租户。
+                name:
+                    type: string
+                    description: 用户名。
+                nickname:
+                    type: string
+                    description: 昵称。
+            description: SessionUser 是登录响应中的用户摘要。
         user.v1.AssignRolesReply:
             type: object
             properties:
@@ -408,4 +519,14 @@ components:
                     format: int32
             description: UserSet 是 ListUsers 返回的分页集合。
 tags:
+    - name: SessionService
+      description: |-
+        SessionService 提供登录与会话令牌生命周期。令牌是随机不透明值，
+         不含租户/用户信息，身份事实以服务端会话记录为准；访问令牌走
+         `Authorization: Bearer` 头传输，不走 cookie。
     - name: UserService
+      description: |-
+        UserService 提供用户管理。List 走动态查询协议，过滤/排序/投影/分页
+         能力由存储层 schema 注释 DSL 声明。读写都在服务端注入的租户与数据
+         范围内执行（@scope 守卫）：范围不可见的数据等同不存在（NOT_FOUND），
+         写侧判定不通过返回 FORBIDDEN。

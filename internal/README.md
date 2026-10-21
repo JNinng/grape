@@ -69,9 +69,9 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 
 | 对象 | 定义位置            | 形态                                        | 对象举例（以 user 为例）     |
 | ---- | ------------------- | ------------------------------------------- | ---------------------------- |
-| DTO  | `api/` 生成         | proto 请求 / 响应                           | 随首个资源落地（当前仅有查询协议 [`queryv1.Query`](../api/query/v1/query.pb.go)） |
+| DTO  | `api/` 生成         | proto 请求 / 响应                           | [`userv1.User`](../api/user/v1/user.pb.go) |
 | Query | `api/query/v1` 声明 | 动态 List 查询协议（proto 镜像 dynq.Query） | [`queryv1.Query`](../api/query/v1/query.pb.go) |
-| DO   | `biz` 声明          | 纯领域模型，无 proto、无存储标签            | 随首个资源落地               |
+| DO   | `biz` 声明          | 纯领域模型，无 proto、无存储标签            | [`biz.User`](biz/user.go) |
 | PO   | `data` 生成         | 存储形态，仅 data 层可见                    | [`gen.Basic`](data/pg_sqlc/gen/models.go) |
 
 规则：
@@ -119,4 +119,4 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 - `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
 - `biz`：mock 仓储接口，只验证用例逻辑与领域规则；
-- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤、fail-closed，以及用户/会话仓储的读写与令牌维度 RLS 边界。
+- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤、fail-closed，以及用户/会话仓储的读写、令牌维度 RLS 边界与登录全链路（种子 scrypt 校验 → 透明重哈希 → argon2id 再登录）。

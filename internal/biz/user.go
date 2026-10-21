@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-kratos/kratos/v3/errors"
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -96,6 +95,11 @@ type UserRepo interface {
 	// TransferOwner 修改归属三元组：两头校验（该用户有权操作 + 新归属
 	// 可达），新归属不可达返回 ErrUserAccessDenied。返回转移后的用户。
 	TransferOwner(ctx context.Context, auth AuthContext, id int64, to OwnerTriple) (*User, error)
+	// GetCredentialByName 登录路径专用：按租户内用户名读取口令哈希与
+	// 状态。调用发生在操作者身份成立之前，故入参是租户 ID 而非
+	// AuthContext；软删除行等同不存在返回 ErrUserNotFound。返回的哈希
+	// 仅供口令校验单点使用，不跨越 biz。
+	GetCredentialByName(ctx context.Context, tenantID, name string) (*UserCredential, error)
 }
 
 // UserUsecase 是用户用例。
@@ -126,7 +130,7 @@ func (uc *UserUsecase) CreateUser(ctx context.Context, auth AuthContext, u *User
 	if err := validateUserMutable(u); err != nil {
 		return nil, err
 	}
-	hashed, err := hashUserPassword(u.Password)
+	hashed, err := HashPassword(u.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +160,7 @@ func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth AuthContext, id
 	if id <= 0 || password == "" {
 		return ErrUserInvalidArgument
 	}
-	hashed, err := hashUserPassword(password)
+	hashed, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
@@ -195,16 +199,6 @@ const (
 	UserStatusDisabled int32 = 0
 	UserStatusEnabled  int32 = 1
 )
-
-// hashUserPassword 以 bcrypt 生成带盐哈希。密码超出 bcrypt 长度上限时
-// 视为请求参数非法。
-func hashUserPassword(password string) (string, error) {
-	hashed, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", ErrUserInvalidArgument
-	}
-	return string(hashed), nil
-}
 
 // validateUserMutable 校验可变字段：name/nickname 必填、status 合法。
 func validateUserMutable(u *User) error {

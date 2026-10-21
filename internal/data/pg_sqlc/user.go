@@ -366,3 +366,28 @@ func tsToTimePtr(t pgtype.Timestamp) *time.Time {
 func (r *userRepo) mapErr(err error) error {
 	return mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 }
+
+// GetCredentialByName 登录路径专用：按租户内用户名读取口令哈希与状态。
+// 经 TenantSession 执行（操作者身份尚未成立，只注入租户）；软删除行
+// 等同不存在。哈希仅供 biz 口令校验单点使用。
+func (r *userRepo) GetCredentialByName(ctx context.Context, tenantID, name string) (*biz.UserCredential, error) {
+	var out *biz.UserCredential
+	err := r.data.TenantSession(ctx, tenantID, func(s *TenantSession) error {
+		row, err := s.Q().GetUserCredentialByName(ctx, name)
+		if err != nil {
+			return err
+		}
+		out = &biz.UserCredential{
+			UserID:       row.ID,
+			Status:       int32(row.Status),
+			Name:         row.Name,
+			Nickname:     row.Nickname,
+			PasswordHash: row.PasswordHash,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, r.mapErr(err)
+	}
+	return out, nil
+}

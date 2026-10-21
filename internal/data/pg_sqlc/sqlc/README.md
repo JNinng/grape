@@ -24,7 +24,7 @@ FUNCTION`、本文件的索引表。
 | 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；sys_session 令牌维度策略；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
 | 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、26 条命名查询 |
+| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、27 条命名查询 |
 | 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -72,6 +72,11 @@ done
 DROP DATABASE 再从步骤 1 开始。部署完成后还需以超级用户执行一次
 `GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;`（角色由
 rls.sql 创建，CONNECT 授权依赖库名）——应用 DSN 与验收连接各需一次。
+seed.sql 的语句带 `ON CONFLICT DO NOTHING`，不会覆盖已存在的行：对本
+文件历史版本部署过的库做升级时，涉及种子行修正的变更需手工执行
+UPDATE 或重建库。种子口令统一为 123456，scrypt 格式
+`{scrypt}$e0801$…`（N=2^14, r=8, p=1），登录校验通过后由应用透明重
+哈希为 argon2id。
 
 ## 三层权限模型（速查）
 
@@ -171,6 +176,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
 | SetSysUserPassword | sys_user.sql | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换密码哈希 |
 | SoftDeleteSysUser | sys_user.sql | :execrows | 操作者 + id → 行数 | 软删除用户 |
 | UpdateSysUserOwner | sys_user.sql | :exec | 新归属三元组 + 操作者 + id | 归属转移落库（fn_can_transfer_owner 通过后） |
+| GetUserCredentialByName | sys_user.sql | :one | 用户名 → 凭据行（含口令哈希） | 登录路径专用：按名读口令哈希与状态（软删除行不可见） |
 | InsertSysSession | sys_session.sql | :one | 身份 + 令牌哈希/有效期 → SysSession | 签发会话（令牌只存哈希） |
 | GetActiveSysSessionByTokenHash | sys_session.sql | :one | 访问令牌哈希 → SysSession | 校验访问令牌（启用、未撤销、未过期；SQL WHERE 内判定） |
 | RevokeSysSession | sys_session.sql | :execrows | 操作者 + id → 行数 | 撤销会话（登出幂等，租户内） |
