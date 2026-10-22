@@ -44,52 +44,52 @@ func TestResolveLocalIP(t *testing.T) {
 		wantErrSub string // 期望错误信息包含的片段；空表示期望成功
 	}{
 		{
-			name:   "INSTANCE_IP合法时直接采用",
+			name:   "use INSTANCE_IP when valid",
 			env:    map[string]string{"INSTANCE_IP": "192.168.1.10"},
 			addrs:  []net.Addr{fakeIPNet(siteIP)}, // 枚举被注入但不应被触达
 			wantIP: net.ParseIP("192.168.1.10"),
 		},
 		{
-			name:   "INSTANCE_IP非法时回落POD_IP",
+			name:   "fall back to POD_IP when INSTANCE_IP invalid",
 			env:    map[string]string{"INSTANCE_IP": "not-an-ip", "POD_IP": "10.0.0.5"},
 			addrs:  []net.Addr{fakeIPNet(siteIP)},
 			wantIP: siteIP,
 		},
 		{
-			name:   "两个env均非法时回落网卡枚举",
+			name:   "fall back to interfaces when both envs invalid",
 			env:    map[string]string{"INSTANCE_IP": "", "POD_IP": "300.1.2.3"},
 			addrs:  []net.Addr{fakeIPNet(net.ParseIP("fe80::1")), fakeIPNet(loopbackV4), fakeIPNet(siteIP)},
 			wantIP: siteIP,
 		},
 		{
-			name:   "回环env视为非法并回落网卡",
+			name:   "loopback env treated as invalid, fall back to interfaces",
 			env:    map[string]string{"INSTANCE_IP": "127.0.0.1"},
 			addrs:  []net.Addr{fakeIPNet(siteIP)},
 			wantIP: siteIP,
 		},
 		{
-			name:   "IPv6env视为非法并回落网卡",
+			name:   "IPv6 env treated as invalid, fall back to interfaces",
 			env:    map[string]string{"POD_IP": "::1"},
 			addrs:  []net.Addr{fakeIPNet(siteIP)},
 			wantIP: siteIP,
 		},
 		{
-			name:       "无env且网卡为空时报错",
+			name:       "error when no env and no usable interface address",
 			env:        map[string]string{},
 			addrs:      []net.Addr{fakeIPNet(loopbackV4), fakeIPNet(net.ParseIP("::1"))},
-			wantErrSub: "网卡中无非回环 IPv4",
+			wantErrSub: "no non-loopback IPv4",
 		},
 		{
-			name:       "网卡枚举失败时报错",
+			name:       "error when interface enumeration fails",
 			env:        map[string]string{},
 			ifaceErr:   errors.New("boom"),
-			wantErrSub: "枚举网卡失败",
+			wantErrSub: "enumerate network interfaces",
 		},
 		{
-			name:       "错误信息附带各env被拒原因",
+			name:       "error message includes rejection reasons of each env",
 			env:        map[string]string{"INSTANCE_IP": "bad", "POD_IP": "127.0.0.1"},
 			addrs:      nil,
-			wantErrSub: "回环",
+			wantErrSub: "loopback",
 		},
 	}
 
@@ -101,21 +101,21 @@ func TestResolveLocalIP(t *testing.T) {
 			got, err := ResolveLocalIP()
 			if tt.wantErrSub == "" {
 				if err != nil {
-					t.Fatalf("ResolveLocalIP() 意外出错: %v", err)
+					t.Fatalf("ResolveLocalIP() unexpected error: %v", err)
 				}
 				if got.To4() == nil || !got.Equal(tt.wantIP) {
-					t.Fatalf("ResolveLocalIP() = %v, 期望 %v", got, tt.wantIP)
+					t.Fatalf("ResolveLocalIP() = %v, want %v", got, tt.wantIP)
 				}
 				return
 			}
 			if err == nil {
-				t.Fatalf("ResolveLocalIP() 意外成功, 期望错误包含 %q", tt.wantErrSub)
+				t.Fatalf("ResolveLocalIP() unexpected success, want error containing %q", tt.wantErrSub)
 			}
 			if !strings.Contains(err.Error(), tt.wantErrSub) {
-				t.Fatalf("错误信息 %q 未包含 %q", err.Error(), tt.wantErrSub)
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErrSub)
 			}
 			if got != nil {
-				t.Fatalf("失败时返回值应为 nil, 实际为 %v", got)
+				t.Fatalf("IP should be nil on failure, got %v", got)
 			}
 		})
 	}

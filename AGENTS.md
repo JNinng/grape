@@ -1,6 +1,6 @@
 # Grape
 
-Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限体系。文档、注释与提交信息用中文。
+Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限体系。文档、注释与提交信息用中文；代码内硬编码字符串（错误信息、日志文本、测试名与断言文案等）用英文。
 
 ## 常用命令
 

@@ -33,17 +33,17 @@ func ResolveLocalIP() (net.IP, error) {
 	for _, name := range envIPNames {
 		value, ok := lookupEnv(name)
 		if !ok {
-			reasons = append(reasons, name+" 未设置")
+			reasons = append(reasons, name+" not set")
 			continue
 		}
 		ip := net.ParseIP(value)
 		switch {
 		case ip == nil:
-			reasons = append(reasons, fmt.Sprintf("%s=%q 不是合法 IP 地址", name, value))
+			reasons = append(reasons, fmt.Sprintf("%s=%q is not a valid IP address", name, value))
 		case ip.To4() == nil:
-			reasons = append(reasons, fmt.Sprintf("%s=%q 不是 IPv4 地址", name, value))
+			reasons = append(reasons, fmt.Sprintf("%s=%q is not an IPv4 address", name, value))
 		case ip.IsLoopback():
-			reasons = append(reasons, fmt.Sprintf("%s=%q 是回环地址", name, value))
+			reasons = append(reasons, fmt.Sprintf("%s=%q is a loopback address", name, value))
 		default:
 			return ip.To4(), nil
 		}
@@ -51,8 +51,8 @@ func ResolveLocalIP() (net.IP, error) {
 
 	addrs, err := interfaceAddrs()
 	if err != nil {
-		reasons = append(reasons, fmt.Sprintf("枚举网卡失败: %v", err))
-		return nil, errors.New("解析本机 IPv4 失败: " + strings.Join(reasons, "; "))
+		reasons = append(reasons, fmt.Sprintf("enumerate network interfaces: %v", err))
+		return nil, errors.New("resolve local IPv4 failed: " + strings.Join(reasons, "; "))
 	}
 	for _, addr := range addrs {
 		ipnet, ok := addr.(*net.IPNet)
@@ -61,6 +61,6 @@ func ResolveLocalIP() (net.IP, error) {
 		}
 		return ipnet.IP.To4(), nil
 	}
-	reasons = append(reasons, "网卡中无非回环 IPv4 地址")
-	return nil, errors.New("解析本机 IPv4 失败: " + strings.Join(reasons, "; "))
+	reasons = append(reasons, "no non-loopback IPv4 address on network interfaces")
+	return nil, errors.New("resolve local IPv4 failed: " + strings.Join(reasons, "; "))
 }
