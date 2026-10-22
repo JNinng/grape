@@ -32,7 +32,7 @@ CREATE TABLE public.sys_user
 CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_user_tenant_email_un ON public.sys_user USING btree (tenant_id, email) WHERE deleted_at IS NULL AND email IS NOT NULL;
 CREATE UNIQUE INDEX sys_user_tenant_phone_un ON public.sys_user USING btree (tenant_id, phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
-COMMENT ON TABLE public.sys_user IS '用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400]';
+COMMENT ON TABLE public.sys_user IS '用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
 
 -- Column comments
 
@@ -52,7 +52,7 @@ COMMENT ON COLUMN public.sys_user.created_by IS '创建人 [@dynamic: exact, in]
 COMMENT ON COLUMN public.sys_user.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_user.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_user.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_user.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_user.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_user.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
 COMMENT ON COLUMN public.sys_user.owner_user_id IS '归属用户 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID [@dynamic: exact, in]';

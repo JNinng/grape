@@ -328,6 +328,31 @@ func TestUserRepo(t *testing.T) {
 		}
 	})
 
+	// 软删过滤由表级 @filter 在解析期注入（服务端固定不变量），先软删
+	// 再 List：行与 total 都不可见。
+	t.Run("soft deleted row invisible in list", func(t *testing.T) {
+		u := newUser(t, "grape_it_list_del")
+		if err := repo.SoftDelete(ctx, super, u.ID); err != nil {
+			t.Fatalf("soft delete: %v", err)
+		}
+		q := &dynq.Query{Where: []dynq.Condition{{Field: "name", Op: "eq", Value: "grape_it_list_del"}}}
+		list, err := repo.List(ctx, super, q)
+		if err != nil {
+			t.Fatalf("list after soft delete: %v", err)
+		}
+		if len(list.Items) != 0 || list.Total == nil || *list.Total != 0 {
+			t.Fatalf("soft deleted row visible in list: items = %d, total = %v, want 0/0", len(list.Items), list.Total)
+		}
+	})
+
+	// 动态协议不暴露软删查询：deletedAt 条件在解析期按未知字段拒绝。
+	t.Run("deletedAt where condition rejected by protocol", func(t *testing.T) {
+		q := &dynq.Query{Where: []dynq.Condition{{Field: "deletedAt", Op: "is_null"}}}
+		if _, err := repo.List(ctx, super, q); !errors.Is(err, biz.ErrUserInvalidArgument) {
+			t.Fatalf("deletedAt condition: want ErrUserInvalidArgument, got %v", err)
+		}
+	})
+
 	t.Run("update and soft delete", func(t *testing.T) {
 		u := newUser(t, "grape_it_upd")
 		u.Status = biz.UserStatusDisabled

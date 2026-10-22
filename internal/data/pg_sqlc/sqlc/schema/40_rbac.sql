@@ -143,7 +143,7 @@ CREATE TABLE public.sys_menu
     CONSTRAINT sys_menu_type_chk CHECK (menu_type BETWEEN 1 AND 3)
 );
 CREATE UNIQUE INDEX sys_menu_tenant_code_un ON public.sys_menu USING btree (tenant_id, permission_code) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_menu IS '菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联 [@default_sort: sort_order ASC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_menu IS '菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联 [@default_sort: sort_order ASC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_menu.id IS '菜单 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_menu.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
@@ -161,7 +161,7 @@ COMMENT ON COLUMN public.sys_menu.created_by IS '创建人 [@dynamic: exact, in]
 COMMENT ON COLUMN public.sys_menu.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_menu.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_menu.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_menu.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_menu.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_menu.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
 
 -- 1b. sys_role_menu — 角色-菜单映射

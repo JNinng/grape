@@ -29,7 +29,7 @@ CREATE TABLE public.sys_config
     CONSTRAINT sys_config_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_config_key_un ON public.sys_config USING btree (config_key) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_config IS '系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: created_at DESC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_config IS '系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_config.id IS '配置 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_config.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
@@ -42,7 +42,7 @@ COMMENT ON COLUMN public.sys_config.created_by IS '创建人 [@dynamic: exact, i
 COMMENT ON COLUMN public.sys_config.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_config.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_config.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_config.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_config.deleted_at IS '删除时间 [@internal]';
 
 
 -- ============================================================================
@@ -71,7 +71,7 @@ CREATE TABLE public.sys_tenant_config
     CONSTRAINT sys_tenant_config_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_tenant_config_key_un ON public.sys_tenant_config USING btree (tenant_id, config_key) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_tenant_config IS '租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: created_at DESC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_tenant_config IS '租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_tenant_config.id IS '配置 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant_config.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
@@ -84,7 +84,7 @@ COMMENT ON COLUMN public.sys_tenant_config.created_by IS '创建人 [@dynamic: e
 COMMENT ON COLUMN public.sys_tenant_config.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant_config.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_tenant_config.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_tenant_config.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_tenant_config.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_tenant_config.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
 
 
@@ -114,7 +114,7 @@ CREATE TABLE public.sys_feature_flag
     CONSTRAINT sys_feature_flag_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_feature_flag_tenant_key_un ON public.sys_feature_flag USING btree (tenant_id, flag_key) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_feature_flag IS '功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: created_at DESC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_feature_flag IS '功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_feature_flag.id IS '特性 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_feature_flag.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
@@ -127,7 +127,7 @@ COMMENT ON COLUMN public.sys_feature_flag.created_by IS '创建人 [@dynamic: ex
 COMMENT ON COLUMN public.sys_feature_flag.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_feature_flag.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_feature_flag.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_feature_flag.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_feature_flag.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_feature_flag.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
 
 
@@ -161,7 +161,7 @@ CREATE TABLE public.sys_translation
 );
 CREATE UNIQUE INDEX sys_translation_tenant_un ON public.sys_translation USING btree (table_name, row_id, column_name, locale, tenant_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_translation_lookup ON public.sys_translation USING btree (table_name, row_id, column_name, locale) WHERE deleted_at IS NULL AND status = 1;
-COMMENT ON TABLE public.sys_translation IS '通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_translation IS '通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_translation.id IS '翻译 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_translation.status IS '数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值） [@dynamic: exact, in @sortable @hideable]';
@@ -175,5 +175,5 @@ COMMENT ON COLUMN public.sys_translation.created_by IS '创建人 [@dynamic: exa
 COMMENT ON COLUMN public.sys_translation.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_translation.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_translation.updated_at IS '更新时间 [@dynamic: range @sortable]';
-COMMENT ON COLUMN public.sys_translation.deleted_at IS '删除时间 [@dynamic: is_null, not_null]';
+COMMENT ON COLUMN public.sys_translation.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_translation.tenant_id IS '租户 ID [@dynamic: exact @hideable]';

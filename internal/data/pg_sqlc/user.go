@@ -2,7 +2,6 @@ package pg_sqlc
 
 import (
 	"context"
-	"slices"
 	"time"
 
 	"grape/internal/biz"
@@ -86,17 +85,14 @@ func (r *userRepo) GetByID(ctx context.Context, auth biz.Identity, id int64) (*b
 	return out, nil
 }
 
-// List 解析动态查询协议并返回分页信封；@scope 守卫由会话注入，字段、
-// 操作符、投影与游标合法性由生成代码校验，协议错误映射为
-// ErrUserInvalidArgument。
+// List 解析动态查询协议并返回分页信封；@scope 守卫由会话注入，
+// 软删过滤由表级 @filter 声明在解析期作为服务端固定不变量注入
+// （协议不可见、调用方不可控），字段、操作符、投影与游标合法性由
+// 生成代码校验，协议错误映射为 ErrUserInvalidArgument。
 func (r *userRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.UserList, error) {
 	var out *biz.UserList
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		// 软删除行对列表不可见：基础条件由仓储追加在解析之前，
-		// 客户端请求无法摘除。
-		withLive := *q
-		withLive.Where = append(slices.Clone(q.Where), dynq.Condition{Field: "deletedAt", Op: "is_null"})
-		params, err := gen.ParseSysUserQuery(&withLive)
+		params, err := gen.ParseSysUserQuery(q)
 		if err != nil {
 			return err
 		}

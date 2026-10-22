@@ -34,7 +34,7 @@ type Basic struct {
 	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
-// 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: created_at DESC @pk: id @page: 20/200]
+// 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -58,7 +58,7 @@ type SysConfig struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 }
 
@@ -160,7 +160,7 @@ type SysDictType struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: created_at DESC @pk: id @page: 20/200]
+// 功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysFeatureFlag struct {
 	// 特性 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -184,7 +184,7 @@ type SysFeatureFlag struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @hideable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
@@ -218,7 +218,7 @@ type SysLoginLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联 [@default_sort: sort_order ASC @pk: id @page: 20/200]
+// 菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联 [@default_sort: sort_order ASC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysMenu struct {
 	// 菜单 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -252,7 +252,7 @@ type SysMenu struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @hideable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
@@ -479,7 +479,7 @@ type SysTenant struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: created_at DESC @pk: id @page: 20/200]
+// 租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysTenantConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -503,13 +503,13 @@ type SysTenantConfig struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @hideable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200]
+// 通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysTranslation struct {
 	// 翻译 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -535,13 +535,13 @@ type SysTranslation struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @hideable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400]
+// 用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysUser struct {
 	// 用户 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -575,7 +575,7 @@ type SysUser struct {
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
 	// 更新时间 [@dynamic: range @sortable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
-	// 删除时间 [@dynamic: is_null, not_null]
+	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@dynamic: exact @hideable]
 	TenantID string `db:"tenant_id" json:"tenant_id"`

@@ -6,6 +6,7 @@
 //	table sys_user: [@default_sort: created_at DESC]
 //	table sys_user: [@pk: id]
 //	table sys_user: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
+//	table sys_user: [@filter: deleted_at is_null]
 //	column sys_user.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_user.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_user.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
@@ -22,7 +23,7 @@
 //	column sys_user.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_user.updated_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
-//	column sys_user.deleted_at: [@dynamic: is_null, not_null]
+//	column sys_user.deleted_at: [@internal]
 //	column sys_user.tenant_id: [@dynamic: eq, neq @hideable]
 //	column sys_user.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.owner_dept_id: [@dynamic: eq, neq, in, not_in]
@@ -228,10 +229,9 @@ var sys_userRegistry = dynq.TableMeta{
 			Label:      "删除时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
-			Ops:        []dynq.Op{dynq.OpIsNull, dynq.OpNotNull},
 			Sortable:   false,
 			Selectable: false,
-			Hidden:     false,
+			Hidden:     true,
 		},
 		{
 			Key:        "tenantId",
@@ -329,7 +329,6 @@ var SysUserField = struct {
 	CreatedAt        dynq.FieldName
 	UpdatedBy        dynq.FieldName
 	UpdatedAt        dynq.FieldName
-	DeletedAt        dynq.FieldName
 	TenantID         dynq.FieldName
 	OwnerUserID      dynq.FieldName
 	OwnerDeptID      dynq.FieldName
@@ -350,7 +349,6 @@ var SysUserField = struct {
 	CreatedAt:        "createdAt",
 	UpdatedBy:        "updatedBy",
 	UpdatedAt:        "updatedAt",
-	DeletedAt:        "deletedAt",
 	TenantID:         "tenantId",
 	OwnerUserID:      "ownerUserId",
 	OwnerDeptID:      "ownerDeptId",
@@ -442,8 +440,6 @@ type ListSysUserParams struct {
 	UpdatedAtGte          *time.Time
 	UpdatedAtLt           *time.Time
 	UpdatedAtLte          *time.Time
-	DeletedAtIsNull       bool
-	DeletedAtNotNull      bool
 	TenantID              *string
 	TenantIDNeq           *string
 	OwnerUserID           *int64
@@ -1304,19 +1300,6 @@ func ParseSysUserQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUserPara
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "deletedAt":
-			switch op {
-			case dynq.OpIsNull:
-				if err := slots.Take("deletedAt.is_null", i, "deletedAt"); err != nil {
-					return out, err
-				}
-				out.DeletedAtIsNull = true
-			case dynq.OpNotNull:
-				if err := slots.Take("deletedAt.not_null", i, "deletedAt"); err != nil {
-					return out, err
-				}
-				out.DeletedAtNotNull = true
-			}
 		case "tenantId":
 			switch op {
 			case dynq.OpEq:
@@ -1481,9 +1464,6 @@ func ParseSysUserQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUserPara
 	if out.LockedUntilIsNull && out.LockedUntilNotNull {
 		return out, dynq.NewErr(dynq.KindWhere, "lockedUntil", "is_null and not_null are mutually exclusive", -1)
 	}
-	if out.DeletedAtIsNull && out.DeletedAtNotNull {
-		return out, dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
-	}
 
 	// 解析排序:字段须在注册表内且可排序;方向归一化为 asc/desc,并转为逻辑键。
 	for i, s := range q.Sort {
@@ -1578,9 +1558,6 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("deletedAt") && (params.DeletedAtIsNull || params.DeletedAtNotNull) {
-		return dynq.NewErr(dynq.KindWhere, "deletedAt", "field disabled in this context", -1)
-	}
 	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
 		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
@@ -1599,14 +1576,13 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 	if params.LockedUntilIsNull && params.LockedUntilNotNull {
 		return dynq.NewErr(dynq.KindWhere, "lockedUntil", "is_null and not_null are mutually exclusive", -1)
 	}
-	if params.DeletedAtIsNull && params.DeletedAtNotNull {
-		return dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
-	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_userRegistry)
 }
 
 // buildSysUserWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
 // 所有值均经占位符参数化,列名与操作符为白名单字面量;
+// 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
+// List 与 Count 共用,过滤视图天然一致;
 // 声明 @scope 的表头部注入数据权限谓词(守卫函数名同为生成期白名单字面量),
 // 与业务条件 AND 组合,total 与 items 的权限视图天然一致
 //
@@ -1617,6 +1593,10 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 //   - []sq.Sqlizer: 按 AND 语义组合的过滤条件列表。
 func buildSysUserWhere(params ListSysUserParams) []sq.Sqlizer {
 	var conds []sq.Sqlizer
+	// 服务端固定不变量(@filter):生成期声明、协议不可见的恒定过滤条件,
+	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
+	// 不拼进 SQL 文本,零注入面。
+	conds = append(conds, sq.Expr("deleted_at IS NULL"))
 	// 数据权限谓词(@scope):多守卫 OR 组合,与业务条件 AND;列名/操作符/
 	// 守卫函数名/字面量参数为生成期白名单字面量,标识符参数经占位符参数化;
 	// IN-子查询与不相关标量函数在单条语句内只求值一次;params.Scope 非 nil
@@ -1832,12 +1812,6 @@ func buildSysUserWhere(params ListSysUserParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
-	}
-	if params.DeletedAtIsNull {
-		conds = append(conds, sq.Expr("deleted_at IS NULL"))
-	}
-	if params.DeletedAtNotNull {
-		conds = append(conds, sq.Expr("deleted_at IS NOT NULL"))
 	}
 	if params.TenantID != nil {
 		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})

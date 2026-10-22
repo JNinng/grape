@@ -5,6 +5,7 @@
 //	table sys_translation: [@page: 20/200]
 //	table sys_translation: [@default_sort: created_at DESC]
 //	table sys_translation: [@pk: id]
+//	table sys_translation: [@filter: deleted_at is_null]
 //	column sys_translation.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_translation.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_translation.table_name: [@dynamic: eq, neq, in, not_in @hideable]
@@ -17,7 +18,7 @@
 //	column sys_translation.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_translation.updated_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_translation.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
-//	column sys_translation.deleted_at: [@dynamic: is_null, not_null]
+//	column sys_translation.deleted_at: [@internal]
 //	column sys_translation.tenant_id: [@dynamic: eq, neq @hideable]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
@@ -177,10 +178,9 @@ var sys_translationRegistry = dynq.TableMeta{
 			Label:      "删除时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
-			Ops:        []dynq.Op{dynq.OpIsNull, dynq.OpNotNull},
 			Sortable:   false,
 			Selectable: false,
-			Hidden:     false,
+			Hidden:     true,
 		},
 		{
 			Key:        "tenantId",
@@ -235,7 +235,6 @@ var SysTranslationField = struct {
 	CreatedAt  dynq.FieldName
 	UpdatedBy  dynq.FieldName
 	UpdatedAt  dynq.FieldName
-	DeletedAt  dynq.FieldName
 	TenantID   dynq.FieldName
 }{
 	ID:         "id",
@@ -250,7 +249,6 @@ var SysTranslationField = struct {
 	CreatedAt:  "createdAt",
 	UpdatedBy:  "updatedBy",
 	UpdatedAt:  "updatedAt",
-	DeletedAt:  "deletedAt",
 	TenantID:   "tenantId",
 }
 
@@ -263,60 +261,58 @@ var SysTranslationField = struct {
 //   - 模糊匹配字段为零值 "" 时,该条件不参与过滤;
 //   - IsNull/NotNull 为 false 时不参与,二者同时为 true 非法。
 type ListSysTranslationParams struct {
-	ID               *int64
-	IDNeq            *int64
-	IDIn             []int64
-	IDNotIn          []int64
-	Status           *int64
-	StatusNeq        *int64
-	StatusIn         []int64
-	StatusNotIn      []int64
-	TableName        *string
-	TableNameNeq     *string
-	TableNameIn      []string
-	TableNameNotIn   []string
-	RowID            *int64
-	RowIDNeq         *int64
-	RowIDIn          []int64
-	RowIDNotIn       []int64
-	ColumnName       *string
-	ColumnNameNeq    *string
-	ColumnNameIn     []string
-	ColumnNameNotIn  []string
-	Locale           *string
-	LocaleNeq        *string
-	Value            *string
-	ValueNeq         *string
-	ValueContains    string
-	ValuePrefix      string
-	ValueSuffix      string
-	RemarkContains   string
-	RemarkPrefix     string
-	RemarkSuffix     string
-	CreatedBy        *int64
-	CreatedByNeq     *int64
-	CreatedByIn      []int64
-	CreatedByNotIn   []int64
-	CreatedAt        *time.Time
-	CreatedAtNeq     *time.Time
-	CreatedAtIn      []time.Time
-	CreatedAtNotIn   []time.Time
-	CreatedAtGt      *time.Time
-	CreatedAtGte     *time.Time
-	CreatedAtLt      *time.Time
-	CreatedAtLte     *time.Time
-	UpdatedBy        *int64
-	UpdatedByNeq     *int64
-	UpdatedByIn      []int64
-	UpdatedByNotIn   []int64
-	UpdatedAtGt      *time.Time
-	UpdatedAtGte     *time.Time
-	UpdatedAtLt      *time.Time
-	UpdatedAtLte     *time.Time
-	DeletedAtIsNull  bool
-	DeletedAtNotNull bool
-	TenantID         *string
-	TenantIDNeq      *string
+	ID              *int64
+	IDNeq           *int64
+	IDIn            []int64
+	IDNotIn         []int64
+	Status          *int64
+	StatusNeq       *int64
+	StatusIn        []int64
+	StatusNotIn     []int64
+	TableName       *string
+	TableNameNeq    *string
+	TableNameIn     []string
+	TableNameNotIn  []string
+	RowID           *int64
+	RowIDNeq        *int64
+	RowIDIn         []int64
+	RowIDNotIn      []int64
+	ColumnName      *string
+	ColumnNameNeq   *string
+	ColumnNameIn    []string
+	ColumnNameNotIn []string
+	Locale          *string
+	LocaleNeq       *string
+	Value           *string
+	ValueNeq        *string
+	ValueContains   string
+	ValuePrefix     string
+	ValueSuffix     string
+	RemarkContains  string
+	RemarkPrefix    string
+	RemarkSuffix    string
+	CreatedBy       *int64
+	CreatedByNeq    *int64
+	CreatedByIn     []int64
+	CreatedByNotIn  []int64
+	CreatedAt       *time.Time
+	CreatedAtNeq    *time.Time
+	CreatedAtIn     []time.Time
+	CreatedAtNotIn  []time.Time
+	CreatedAtGt     *time.Time
+	CreatedAtGte    *time.Time
+	CreatedAtLt     *time.Time
+	CreatedAtLte    *time.Time
+	UpdatedBy       *int64
+	UpdatedByNeq    *int64
+	UpdatedByIn     []int64
+	UpdatedByNotIn  []int64
+	UpdatedAtGt     *time.Time
+	UpdatedAtGte    *time.Time
+	UpdatedAtLt     *time.Time
+	UpdatedAtLte    *time.Time
+	TenantID        *string
+	TenantIDNeq     *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -955,19 +951,6 @@ func ParseSysTranslationQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysT
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "deletedAt":
-			switch op {
-			case dynq.OpIsNull:
-				if err := slots.Take("deletedAt.is_null", i, "deletedAt"); err != nil {
-					return out, err
-				}
-				out.DeletedAtIsNull = true
-			case dynq.OpNotNull:
-				if err := slots.Take("deletedAt.not_null", i, "deletedAt"); err != nil {
-					return out, err
-				}
-				out.DeletedAtNotNull = true
-			}
 		case "tenantId":
 			switch op {
 			case dynq.OpEq:
@@ -990,9 +973,6 @@ func ParseSysTranslationQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysT
 				out.TenantIDNeq = &v
 			}
 		}
-	}
-	if out.DeletedAtIsNull && out.DeletedAtNotNull {
-		return out, dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
 	}
 
 	// 解析排序:字段须在注册表内且可排序;方向归一化为 asc/desc,并转为逻辑键。
@@ -1073,20 +1053,16 @@ func validateSysTranslationParams(params ListSysTranslationParams, cfg *dynq.Que
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("deletedAt") && (params.DeletedAtIsNull || params.DeletedAtNotNull) {
-		return dynq.NewErr(dynq.KindWhere, "deletedAt", "field disabled in this context", -1)
-	}
 	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
 		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
-	}
-	if params.DeletedAtIsNull && params.DeletedAtNotNull {
-		return dynq.NewErr(dynq.KindWhere, "deletedAt", "is_null and not_null are mutually exclusive", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_translationRegistry)
 }
 
 // buildSysTranslationWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
-// 所有值均经占位符参数化,列名与操作符为白名单字面量。
+// 所有值均经占位符参数化,列名与操作符为白名单字面量;
+// 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
+// List 与 Count 共用,过滤视图天然一致。
 //
 // 参数:
 //   - params: 已通过 validate 形态复核的查询参数。
@@ -1095,6 +1071,10 @@ func validateSysTranslationParams(params ListSysTranslationParams, cfg *dynq.Que
 //   - []sq.Sqlizer: 按 AND 语义组合的过滤条件列表。
 func buildSysTranslationWhere(params ListSysTranslationParams) []sq.Sqlizer {
 	var conds []sq.Sqlizer
+	// 服务端固定不变量(@filter):生成期声明、协议不可见的恒定过滤条件,
+	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
+	// 不拼进 SQL 文本,零注入面。
+	conds = append(conds, sq.Expr("deleted_at IS NULL"))
 	if params.ID != nil {
 		conds = append(conds, sq.Eq{"id": *params.ID})
 	}
@@ -1244,12 +1224,6 @@ func buildSysTranslationWhere(params ListSysTranslationParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
-	}
-	if params.DeletedAtIsNull {
-		conds = append(conds, sq.Expr("deleted_at IS NULL"))
-	}
-	if params.DeletedAtNotNull {
-		conds = append(conds, sq.Expr("deleted_at IS NOT NULL"))
 	}
 	if params.TenantID != nil {
 		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
