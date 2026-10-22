@@ -14,8 +14,5 @@ data:
     debug: true
 auth:
   # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
-  # 登录形态确定后由服务端解析替代），也是用户服务过渡身份的租户。
-  # default_user_id：用户服务过渡期操作者，认证中间件落地后移除。
-  # 指向种子数据里的全租户管理员。
+  # 登录形态确定后由服务端解析替代）。指向种子数据里的全租户管理员。
   default_tenant_id: t-super-01
-  default_user_id: 1

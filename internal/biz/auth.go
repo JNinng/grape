@@ -113,14 +113,14 @@ func (uc *AuthUsecase) Login(ctx context.Context, in *LoginInput) (*LoginResult,
 		if hashed, herr := HashPassword(in.Password); herr != nil {
 			slog.WarnContext(ctx, "login rehash skipped: hash password failed",
 				"tenant_id", tenantID, "user_id", cred.UserID, "err", herr)
-		} else if err := uc.users.SetPassword(ctx, AuthContext{TenantID: tenantID, UserID: cred.UserID}, cred.UserID, hashed); err != nil {
+		} else if err := uc.users.SetPassword(ctx, Identity{TenantID: tenantID, UserID: cred.UserID}, cred.UserID, hashed); err != nil {
 			// 重哈希以本人身份写入；失败（如数据范围不可操作）不阻断
 			// 登录，记日志后下次成功登录重试。
 			slog.WarnContext(ctx, "login rehash skipped: set password denied",
 				"tenant_id", tenantID, "user_id", cred.UserID, "err", err)
 		}
 	}
-	issued, err := uc.sessions.Issue(ctx, AuthContext{TenantID: tenantID, UserID: cred.UserID}, in.Opts, in.DeviceInfo, in.IPAddress)
+	issued, err := uc.sessions.Issue(ctx, Identity{TenantID: tenantID, UserID: cred.UserID}, in.Opts, in.DeviceInfo, in.IPAddress)
 	if err != nil {
 		return nil, err
 	}

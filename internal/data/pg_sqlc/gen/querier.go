@@ -69,7 +69,7 @@ type Querier interface {
 	// 防止并发修改后按旧值判断；软删除行不可操作
 	GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error)
 	// 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
-	// 身份成立之前，经 TenantSession（只注入 app.tenant_id）执行；软删除
+	// 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
 	// 行等同不存在。哈希仅供 biz 口令校验单点使用
 	GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error)
 	// 枚举有效用户的全部有效角色（展示/审计/外部缓存角色变更）。

@@ -70,7 +70,7 @@ SET owner_user_id       = sqlc.narg('owner_user_id'),
 WHERE id = sqlc.arg('id');
 
 -- 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
--- 身份成立之前，经 TenantSession（只注入 app.tenant_id）执行；软删除
+-- 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
 -- 行等同不存在。哈希仅供 biz 口令校验单点使用
 -- name: GetUserCredentialByName :one
 SELECT id,

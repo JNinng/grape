@@ -11,10 +11,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/撤销经租户
-// 会话门面执行（RLS 限租户）；校验/刷新在租户身份成立之前执行，经
-// 令牌维度事务凭哈希由 RLS 放行命中的那一行。令牌哈希由 biz 计算，
-// 仓储只存取哈希。
+// sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/撤销经身份
+// 事务门面 IdentityTx 执行（RLS 限租户）；校验/刷新在租户身份成立之前
+// 执行，经 TokenTx 凭哈希由 RLS 放行命中的那一行。令牌哈希由 biz 计
+// 算，仓储只存取哈希。
 type sessionRepo struct {
 	data *Data
 }
@@ -50,10 +50,10 @@ func toBizSession(po *gen.SysSession) *biz.Session {
 
 // Issue 写入会话：租户取自门面的 app.tenant_id，审计列记所有者；主键
 // 由应用层发号（发号能力目录落地前的过渡方案，同用户仓储）。
-func (r *sessionRepo) Issue(ctx context.Context, owner biz.AuthContext, in *biz.IssueSessionInput) (*biz.Session, error) {
+func (r *sessionRepo) Issue(ctx context.Context, owner biz.Identity, in *biz.IssueSessionInput) (*biz.Session, error) {
 	refreshHash := in.RefreshTokenHash
 	var out *biz.Session
-	err := r.data.Session(ctx, pgAuth(owner), func(s *Session) error {
+	err := r.data.IdentityTx(ctx, pgAuth(owner), func(s *IdentityTx) error {
 		row, err := s.Q().InsertSysSession(ctx, gen.InsertSysSessionParams{
 			ID:                newID(),
 			UserID:            owner.UserID,
@@ -84,7 +84,7 @@ func (r *sessionRepo) Issue(ctx context.Context, owner biz.AuthContext, in *biz.
 // 时间由签发与刷新维护。
 func (r *sessionRepo) Validate(ctx context.Context, accessTokenHash string) (*biz.Session, error) {
 	var out *biz.Session
-	err := r.data.TokenSession(ctx, TokenLookup{AccessTokenHash: accessTokenHash}, func(s *TokenSession) error {
+	err := r.data.TokenTx(ctx, TokenLookup{AccessTokenHash: accessTokenHash}, func(s *TokenTx) error {
 		row, err := s.Q().GetActiveSysSessionByTokenHash(ctx, accessTokenHash)
 		if err != nil {
 			return err
@@ -100,8 +100,8 @@ func (r *sessionRepo) Validate(ctx context.Context, accessTokenHash string) (*bi
 
 // Revoke 撤销租户内的会话。已撤销或不可见的行更新 0 行，按幂等返回
 // nil：登出重试不报错，也不泄露会话是否存在。
-func (r *sessionRepo) Revoke(ctx context.Context, auth biz.AuthContext, id int64) error {
-	return r.data.Session(ctx, pgAuth(auth), func(s *Session) error {
+func (r *sessionRepo) Revoke(ctx context.Context, auth biz.Identity, id int64) error {
+	return r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		_, err := s.Q().RevokeSysSession(ctx, gen.RevokeSysSessionParams{
 			UpdatedBy: auth.UserID,
 			ID:        id,
@@ -120,7 +120,7 @@ func (r *sessionRepo) Refresh(ctx context.Context, in *biz.RefreshSessionInput) 
 		RefreshTokenHash:    in.CurrentRefreshTokenHash,
 		NewRefreshTokenHash: in.NewRefreshTokenHash,
 	}
-	err := r.data.TokenSession(ctx, lookup, func(s *TokenSession) error {
+	err := r.data.TokenTx(ctx, lookup, func(s *TokenTx) error {
 		row, err := s.Q().RotateSysSession(ctx, gen.RotateSysSessionParams{
 			NewAccessTokenHash:      in.NewAccessTokenHash,
 			NewRefreshTokenHash:     &newRefreshHash,

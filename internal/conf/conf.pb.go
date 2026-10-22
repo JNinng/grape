@@ -29,7 +29,7 @@ type Bootstrap struct {
 	Server *Server `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
 	// 存储配置。
 	Data *Data `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
-	// 过渡期身份来源（认证纵切落地前的固定身份）。
+	// 登录配置（请求未指明租户时的回落租户）。
 	Auth          *Auth `protobuf:"bytes,3,opt,name=auth,proto3" json:"auth,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -86,16 +86,14 @@ func (x *Bootstrap) GetAuth() *Auth {
 	return nil
 }
 
-// Auth 是过渡期的服务端身份来源：认证纵切落地前，租户与操作者从
-// 固定配置构造 AuthContext；落地后仅替换身份来源，门面与仓储不改。
+// Auth 是登录的过渡期配置：请求未指明租户时的回落租户（多租户登录
+// 形态确定后由服务端解析替代）。
 type Auth struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 过渡身份的租户 ID。
+	// 登录未指明租户时的回落租户。
 	DefaultTenantId string `protobuf:"bytes,1,opt,name=default_tenant_id,json=defaultTenantId,proto3" json:"default_tenant_id,omitempty"`
-	// 过渡身份的操作者用户 ID。
-	DefaultUserId int64 `protobuf:"varint,2,opt,name=default_user_id,json=defaultUserId,proto3" json:"default_user_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Auth) Reset() {
@@ -133,13 +131,6 @@ func (x *Auth) GetDefaultTenantId() string {
 		return x.DefaultTenantId
 	}
 	return ""
-}
-
-func (x *Auth) GetDefaultUserId() int64 {
-	if x != nil {
-		return x.DefaultUserId
-	}
-	return 0
 }
 
 // Server 是传输层服务器配置。
@@ -432,10 +423,9 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\tBootstrap\x12*\n" +
 	"\x06server\x18\x01 \x01(\v2\x12.kratos.api.ServerR\x06server\x12$\n" +
 	"\x04data\x18\x02 \x01(\v2\x10.kratos.api.DataR\x04data\x12$\n" +
-	"\x04auth\x18\x03 \x01(\v2\x10.kratos.api.AuthR\x04auth\"Z\n" +
+	"\x04auth\x18\x03 \x01(\v2\x10.kratos.api.AuthR\x04auth\"2\n" +
 	"\x04Auth\x12*\n" +
-	"\x11default_tenant_id\x18\x01 \x01(\tR\x0fdefaultTenantId\x12&\n" +
-	"\x0fdefault_user_id\x18\x02 \x01(\x03R\rdefaultUserId\"\xb8\x02\n" +
+	"\x11default_tenant_id\x18\x01 \x01(\tR\x0fdefaultTenantId\"\xb8\x02\n" +
 	"\x06Server\x12+\n" +
 	"\x04http\x18\x01 \x01(\v2\x17.kratos.api.Server.HTTPR\x04http\x12+\n" +
 	"\x04grpc\x18\x02 \x01(\v2\x17.kratos.api.Server.GRPCR\x04grpc\x1ai\n" +

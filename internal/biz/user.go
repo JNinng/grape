@@ -24,15 +24,6 @@ var (
 	ErrUserAccessDenied = errors.Forbidden(v1.ErrorReason_USER_ACCESS_DENIED.String(), "user access denied")
 )
 
-// AuthContext 是服务端认证上下文中的身份事实：TenantID 注入存储层会话
-// 变量 app.tenant_id（RLS 租户边界），UserID 是权限推导与审计列的
-// 操作者。只由服务端构造，永不受前端请求影响；过渡期来自固定配置，
-// 认证落地后仅替换来源。
-type AuthContext struct {
-	TenantID string
-	UserID   int64
-}
-
 // User 是用户领域模型。Password 仅在创建与改密路径携带：创建时为明文
 // 入参、经用例哈希后传仓储；读取路径不携带，绝不跨越传输层。
 // 归属三元组仅经归属转移用例可写。
@@ -78,26 +69,26 @@ type OwnerTriple struct {
 // 执行（RLS），@scope 守卫由仓储注入。List 消费 dynq 动态查询协议。
 type UserRepo interface {
 	// GetByID 按 id 查询单个用户；数据范围不可见返回 ErrUserNotFound。
-	GetByID(ctx context.Context, auth AuthContext, id int64) (*User, error)
+	GetByID(ctx context.Context, auth Identity, id int64) (*User, error)
 	// List 按动态查询协议返回分页集合，结果已按数据范围过滤。
-	List(ctx context.Context, auth AuthContext, q *dynq.Query) (*UserList, error)
+	List(ctx context.Context, auth Identity, q *dynq.Query) (*UserList, error)
 	// Create 创建用户（Password 为哈希后值）；唯一冲突映射 ErrUserAlreadyExists。
-	Create(ctx context.Context, auth AuthContext, u *User) (*User, error)
+	Create(ctx context.Context, auth Identity, u *User) (*User, error)
 	// Update 覆盖可变字段（不含 password 与归属三元组）。
-	Update(ctx context.Context, auth AuthContext, u *User) (*User, error)
+	Update(ctx context.Context, auth Identity, u *User) (*User, error)
 	// SetPassword 替换密码哈希。
-	SetPassword(ctx context.Context, auth AuthContext, id int64, hashedPassword string) error
+	SetPassword(ctx context.Context, auth Identity, id int64, hashedPassword string) error
 	// SoftDelete 软删除用户（deleted_at 置位）。
-	SoftDelete(ctx context.Context, auth AuthContext, id int64) error
+	SoftDelete(ctx context.Context, auth Identity, id int64) error
 	// AssignRoles 批量分配角色：先库内判定，全部通过才写入；任一不通过
 	// 整体拒绝返回 ErrUserAccessDenied。返回实际新增条数（已拥有的跳过）。
-	AssignRoles(ctx context.Context, auth AuthContext, userID int64, roleIDs []int64) (int64, error)
+	AssignRoles(ctx context.Context, auth Identity, userID int64, roleIDs []int64) (int64, error)
 	// TransferOwner 修改归属三元组：两头校验（该用户有权操作 + 新归属
 	// 可达），新归属不可达返回 ErrUserAccessDenied。返回转移后的用户。
-	TransferOwner(ctx context.Context, auth AuthContext, id int64, to OwnerTriple) (*User, error)
+	TransferOwner(ctx context.Context, auth Identity, id int64, to OwnerTriple) (*User, error)
 	// GetCredentialByName 登录路径专用：按租户内用户名读取口令哈希与
 	// 状态。调用发生在操作者身份成立之前，故入参是租户 ID 而非
-	// AuthContext；软删除行等同不存在返回 ErrUserNotFound。返回的哈希
+	// Identity；软删除行等同不存在返回 ErrUserNotFound。返回的哈希
 	// 仅供口令校验单点使用，不跨越 biz。
 	GetCredentialByName(ctx context.Context, tenantID, name string) (*UserCredential, error)
 }
@@ -113,7 +104,7 @@ func NewUserUsecase(repo UserRepo) *UserUsecase {
 }
 
 // GetUser 按 id 查询用户。
-func (uc *UserUsecase) GetUser(ctx context.Context, auth AuthContext, id int64) (*User, error) {
+func (uc *UserUsecase) GetUser(ctx context.Context, auth Identity, id int64) (*User, error) {
 	if id <= 0 {
 		return nil, ErrUserInvalidArgument
 	}
@@ -121,12 +112,12 @@ func (uc *UserUsecase) GetUser(ctx context.Context, auth AuthContext, id int64) 
 }
 
 // ListUsers 经动态查询协议列出用户。
-func (uc *UserUsecase) ListUsers(ctx context.Context, auth AuthContext, q *dynq.Query) (*UserList, error) {
+func (uc *UserUsecase) ListUsers(ctx context.Context, auth Identity, q *dynq.Query) (*UserList, error) {
 	return uc.repo.List(ctx, auth, q)
 }
 
 // CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库。
-func (uc *UserUsecase) CreateUser(ctx context.Context, auth AuthContext, u *User) (*User, error) {
+func (uc *UserUsecase) CreateUser(ctx context.Context, auth Identity, u *User) (*User, error) {
 	if err := validateUserMutable(u); err != nil {
 		return nil, err
 	}
@@ -145,7 +136,7 @@ func (uc *UserUsecase) CreateUser(ctx context.Context, auth AuthContext, u *User
 }
 
 // UpdateUser 覆盖可变字段。password、归属三元组与时间戳由服务端管理。
-func (uc *UserUsecase) UpdateUser(ctx context.Context, auth AuthContext, u *User) (*User, error) {
+func (uc *UserUsecase) UpdateUser(ctx context.Context, auth Identity, u *User) (*User, error) {
 	if u == nil || u.ID <= 0 {
 		return nil, ErrUserInvalidArgument
 	}
@@ -156,7 +147,7 @@ func (uc *UserUsecase) UpdateUser(ctx context.Context, auth AuthContext, u *User
 }
 
 // SetUserPassword 设置新密码；密码哈希后落库。
-func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth AuthContext, id int64, password string) error {
+func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth Identity, id int64, password string) error {
 	if id <= 0 || password == "" {
 		return ErrUserInvalidArgument
 	}
@@ -168,7 +159,7 @@ func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth AuthContext, id
 }
 
 // DeleteUser 软删除用户。
-func (uc *UserUsecase) DeleteUser(ctx context.Context, auth AuthContext, id int64) error {
+func (uc *UserUsecase) DeleteUser(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrUserInvalidArgument
 	}
@@ -176,7 +167,7 @@ func (uc *UserUsecase) DeleteUser(ctx context.Context, auth AuthContext, id int6
 }
 
 // AssignRoles 批量分配角色：入参去重排序，保证判定与落库稳定。
-func (uc *UserUsecase) AssignRoles(ctx context.Context, auth AuthContext, userID int64, roleIDs []int64) (int64, error) {
+func (uc *UserUsecase) AssignRoles(ctx context.Context, auth Identity, userID int64, roleIDs []int64) (int64, error) {
 	if userID <= 0 || len(roleIDs) == 0 {
 		return 0, ErrUserInvalidArgument
 	}
@@ -187,7 +178,7 @@ func (uc *UserUsecase) AssignRoles(ctx context.Context, auth AuthContext, userID
 }
 
 // TransferUserOwner 修改归属三元组。
-func (uc *UserUsecase) TransferUserOwner(ctx context.Context, auth AuthContext, id int64, to OwnerTriple) (*User, error) {
+func (uc *UserUsecase) TransferUserOwner(ctx context.Context, auth Identity, id int64, to OwnerTriple) (*User, error) {
 	if id <= 0 {
 		return nil, ErrUserInvalidArgument
 	}

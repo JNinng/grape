@@ -28,16 +28,17 @@ func wireApp(confServer *conf.Server, data *conf.Data, auth *conf.Auth, logger *
 	if err != nil {
 		return nil, nil, err
 	}
-	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
-	userUsecase := biz.NewUserUsecase(userRepo)
-	userService := service.NewUserService(userUsecase, auth)
 	sessionRepo := pg_sqlc.NewSessionRepo(pg_sqlcData)
 	sessionUsecase := biz.NewSessionUsecase(sessionRepo)
+	middleware := server.NewAuthMiddleware(sessionUsecase)
+	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
+	userUsecase := biz.NewUserUsecase(userRepo)
+	userService := service.NewUserService(userUsecase)
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, userService, sessionService)
-	httpServer := server.NewHTTPServer(confServer, userService, sessionService)
+	grpcServer := server.NewGRPCServer(confServer, middleware, userService, sessionService)
+	httpServer := server.NewHTTPServer(confServer, middleware, userService, sessionService)
 	app := newApp(logger, grpcServer, httpServer)
 	return app, func() {
 		cleanup()

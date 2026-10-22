@@ -11,17 +11,15 @@ message Bootstrap {
   Server server = 1;
   // 存储配置。
   Data data = 2;
-  // 过渡期身份来源（认证纵切落地前的固定身份）。
+  // 登录配置（请求未指明租户时的回落租户）。
   Auth auth = 3;
 }
 
-// Auth 是过渡期的服务端身份来源：认证纵切落地前，租户与操作者从
-// 固定配置构造 AuthContext；落地后仅替换身份来源，门面与仓储不改。
+// Auth 是登录的过渡期配置：请求未指明租户时的回落租户（多租户登录
+// 形态确定后由服务端解析替代）。
 message Auth {
-  // 过渡身份的租户 ID。
+  // 登录未指明租户时的回落租户。
   string default_tenant_id = 1;
-  // 过渡身份的操作者用户 ID。
-  int64 default_user_id = 2;
 }
 
 // Server 是传输层服务器配置。

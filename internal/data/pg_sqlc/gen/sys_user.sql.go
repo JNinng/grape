@@ -108,7 +108,7 @@ type GetUserCredentialByNameRow struct {
 }
 
 // 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
-// 身份成立之前，经 TenantSession（只注入 app.tenant_id）执行；软删除
+// 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
 // 行等同不存在。哈希仅供 biz 口令校验单点使用
 func (q *Queries) GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error) {
 	row := q.db.QueryRow(ctx, getUserCredentialByName, name)

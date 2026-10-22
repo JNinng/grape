@@ -115,7 +115,7 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测与存储边界集成测试（会话门面 + RLS/@scope 纪律，`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 环境变量门控、未设置时跳过），`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试随资源落地补充：
+测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测与存储边界集成测试（事务门面 IdentityTx 族 + RLS/@scope 纪律，`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 环境变量门控、未设置时跳过），`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试随资源落地补充：
 
 - `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
 - `biz`：mock 仓储接口，只验证用例逻辑与领域规则；

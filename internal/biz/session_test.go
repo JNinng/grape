@@ -16,18 +16,18 @@ type fakeSessionRepo struct {
 	err     error
 
 	issueCalls    int
-	issueOwner    AuthContext
+	issueOwner    Identity
 	issueInput    *IssueSessionInput
 	validateCalls int
 	accessHash    string
 	refreshCalls  int
 	refreshInput  *RefreshSessionInput
 	revokeCalls   int
-	revokeAuth    AuthContext
+	revokeAuth    Identity
 	revokeID      int64
 }
 
-func (f *fakeSessionRepo) Issue(_ context.Context, owner AuthContext, in *IssueSessionInput) (*Session, error) {
+func (f *fakeSessionRepo) Issue(_ context.Context, owner Identity, in *IssueSessionInput) (*Session, error) {
 	f.issueCalls++
 	f.issueOwner = owner
 	f.issueInput = in
@@ -40,7 +40,7 @@ func (f *fakeSessionRepo) Validate(_ context.Context, accessTokenHash string) (*
 	return f.session, f.err
 }
 
-func (f *fakeSessionRepo) Revoke(_ context.Context, auth AuthContext, id int64) error {
+func (f *fakeSessionRepo) Revoke(_ context.Context, auth Identity, id int64) error {
 	f.revokeCalls++
 	f.revokeAuth = auth
 	f.revokeID = id
@@ -56,7 +56,7 @@ func (f *fakeSessionRepo) Refresh(_ context.Context, in *RefreshSessionInput) (*
 func TestSessionUsecaseIssueHashesTokens(t *testing.T) {
 	repo := &fakeSessionRepo{session: &Session{ID: 42, TenantID: "t-1", UserID: 7}}
 	uc := NewSessionUsecase(repo)
-	owner := AuthContext{TenantID: "t-1", UserID: 7}
+	owner := Identity{TenantID: "t-1", UserID: 7}
 	device, ip := "test-device", "127.0.0.1"
 
 	out, err := uc.Issue(context.Background(), owner, SessionOptions{}, &device, &ip)
@@ -104,7 +104,7 @@ func TestSessionUsecaseIssueCustomTTL(t *testing.T) {
 	repo := &fakeSessionRepo{session: &Session{ID: 1}}
 	uc := NewSessionUsecase(repo)
 
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "t-1", UserID: 1},
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "t-1", UserID: 1},
 		SessionOptions{AccessTTL: 5 * time.Minute, RefreshTTL: time.Hour}, nil, nil); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestSessionUsecaseClampsMetadata(t *testing.T) {
 
 	device := strings.Repeat("設", 600)
 	ip := strings.Repeat("1", 100)
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "t-1", UserID: 1},
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "t-1", UserID: 1},
 		SessionOptions{}, &device, &ip); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestSessionUsecaseClampsMetadata(t *testing.T) {
 	// 未超长时原样透传（同指针）
 	shortDevice := "ua/short"
 	shortIP := "127.0.0.1"
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "t-1", UserID: 1},
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "t-1", UserID: 1},
 		SessionOptions{}, &shortDevice, &shortIP); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestSessionUsecaseClampsMetadata(t *testing.T) {
 		t.Fatal("within-limit metadata must pass through unchanged")
 	}
 	// nil 透传为 nil
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "t-1", UserID: 1},
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "t-1", UserID: 1},
 		SessionOptions{}, nil, nil); err != nil {
 		t.Fatalf("issue: %v", err)
 	}
@@ -158,10 +158,10 @@ func TestSessionUsecaseIssueRejectsInvalidOwner(t *testing.T) {
 	repo := &fakeSessionRepo{}
 	uc := NewSessionUsecase(repo)
 
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "", UserID: 1}, SessionOptions{}, nil, nil); !errors.Is(err, ErrSessionInvalidArgument) {
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "", UserID: 1}, SessionOptions{}, nil, nil); !errors.Is(err, ErrSessionInvalidArgument) {
 		t.Fatalf("empty tenant: want ErrSessionInvalidArgument, got %v", err)
 	}
-	if _, err := uc.Issue(context.Background(), AuthContext{TenantID: "t-1", UserID: 0}, SessionOptions{}, nil, nil); !errors.Is(err, ErrSessionInvalidArgument) {
+	if _, err := uc.Issue(context.Background(), Identity{TenantID: "t-1", UserID: 0}, SessionOptions{}, nil, nil); !errors.Is(err, ErrSessionInvalidArgument) {
 		t.Fatalf("zero user: want ErrSessionInvalidArgument, got %v", err)
 	}
 	if repo.issueCalls != 0 {
@@ -232,7 +232,7 @@ func TestSessionUsecaseRefreshRotatesTokens(t *testing.T) {
 func TestSessionUsecaseRevoke(t *testing.T) {
 	repo := &fakeSessionRepo{}
 	uc := NewSessionUsecase(repo)
-	auth := AuthContext{TenantID: "t-1", UserID: 7}
+	auth := Identity{TenantID: "t-1", UserID: 7}
 
 	if err := uc.Revoke(context.Background(), auth, 42); err != nil {
 		t.Fatalf("revoke: %v", err)
@@ -267,5 +267,19 @@ func TestSessionTokenShape(t *testing.T) {
 	}
 	if hash := hashSessionToken(first); len(hash) != 64 {
 		t.Fatalf("hash length = %d, want 64 hex chars", len(hash))
+	}
+}
+
+func TestIdentityRoundTrip(t *testing.T) {
+	auth := Identity{TenantID: "t-1", UserID: 7}
+	ctx := WithIdentity(context.Background(), auth)
+
+	got, ok := IdentityFromContext(ctx)
+	if !ok || got != auth {
+		t.Fatalf("auth from ctx = (%+v, %v), want %+v", got, ok, auth)
+	}
+
+	if _, ok := IdentityFromContext(context.Background()); ok {
+		t.Fatal("identity must be absent without injection")
 	}
 }

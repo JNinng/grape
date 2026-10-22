@@ -26,7 +26,7 @@ func (f *fakeAuthUsers) GetCredentialByName(_ context.Context, tenantID, name st
 	return f.cred, f.credErr
 }
 
-func (f *fakeAuthUsers) SetPassword(_ context.Context, auth AuthContext, id int64, hashed string) error {
+func (f *fakeAuthUsers) SetPassword(_ context.Context, auth Identity, id int64, hashed string) error {
 	f.setPasswordCalls++
 	f.setPasswordHash = hashed
 	return f.setPasswordErr

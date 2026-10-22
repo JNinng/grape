@@ -7,7 +7,6 @@ import (
 
 	userv1 "grape/api/user/v1"
 	"grape/internal/biz"
-	"grape/internal/conf"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -17,28 +16,32 @@ import (
 // 转换，委托给 biz 用例，不实现业务规则。
 type UserService struct {
 	userv1.UnimplementedUserServiceServer
-	uc   *biz.UserUsecase
-	auth *conf.Auth
+	uc *biz.UserUsecase
 }
 
 // NewUserService 构造用户服务。
-func NewUserService(uc *biz.UserUsecase, auth *conf.Auth) *UserService {
-	return &UserService{uc: uc, auth: auth}
+func NewUserService(uc *biz.UserUsecase) *UserService {
+	return &UserService{uc: uc}
 }
 
-// authOf 构造过渡期身份（固定配置）；认证落地后仅替换本方法的来源，
-// 用例、仓储与门面不改。
-func (s *UserService) authOf() biz.AuthContext {
-	return biz.AuthContext{
-		TenantID: s.auth.GetDefaultTenantId(),
-		UserID:   s.auth.GetDefaultUserId(),
+// authOf 读取认证中间件注入的身份事实。受保护端点已由中间件完成令牌
+// 校验，缺失即装配错误或绕过中间件的调用，按未认证 fail-closed。
+func authOf(ctx context.Context) (biz.Identity, error) {
+	auth, ok := biz.IdentityFromContext(ctx)
+	if !ok {
+		return biz.Identity{}, biz.ErrSessionInvalid
 	}
+	return auth, nil
 }
 
 // CreateUser 创建用户并设置初始密码。
 func (s *UserService) CreateUser(ctx context.Context, req *userv1.CreateUserRequest) (*userv1.User, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
 	in := req.GetUser()
-	out, err := s.uc.CreateUser(ctx, s.authOf(), &biz.User{
+	out, err := s.uc.CreateUser(ctx, auth, &biz.User{
 		Status:           normalizeUserStatus(in.Status),
 		Name:             in.GetName(),
 		Nickname:         in.GetNickname(),
@@ -59,7 +62,11 @@ func (s *UserService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 
 // GetUser 按 id 查询用户。
 func (s *UserService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (*userv1.User, error) {
-	out, err := s.uc.GetUser(ctx, s.authOf(), req.GetId())
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.GetUser(ctx, auth, req.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +75,15 @@ func (s *UserService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (
 
 // ListUsers 按动态查询协议返回一页用户；协议非法映射为 INVALID_ARGUMENT。
 func (s *UserService) ListUsers(ctx context.Context, req *userv1.ListUsersRequest) (*userv1.UserSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
 	q, err := convertQuery(req.GetQuery(), nil)
 	if err != nil {
 		return nil, invalidQueryError(biz.ErrUserInvalidArgument, err)
 	}
-	out, err := s.uc.ListUsers(ctx, s.authOf(), q)
+	out, err := s.uc.ListUsers(ctx, auth, q)
 	if err != nil {
 		return nil, err
 	}
@@ -92,11 +103,15 @@ func (s *UserService) ListUsers(ctx context.Context, req *userv1.ListUsersReques
 // UpdateUser 覆盖可变字段；status 必填（optional 传达禁用语义），
 // 归属三元组在输入中被忽略。
 func (s *UserService) UpdateUser(ctx context.Context, req *userv1.UpdateUserRequest) (*userv1.User, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
 	in := req.GetUser()
 	if in.Status == nil {
 		return nil, biz.ErrUserInvalidArgument
 	}
-	out, err := s.uc.UpdateUser(ctx, s.authOf(), &biz.User{
+	out, err := s.uc.UpdateUser(ctx, auth, &biz.User{
 		ID:       in.GetId(),
 		Status:   *in.Status,
 		Name:     in.GetName(),
@@ -114,7 +129,11 @@ func (s *UserService) UpdateUser(ctx context.Context, req *userv1.UpdateUserRequ
 
 // SetUserPassword 设置新密码。
 func (s *UserService) SetUserPassword(ctx context.Context, req *userv1.SetUserPasswordRequest) (*emptypb.Empty, error) {
-	if err := s.uc.SetUserPassword(ctx, s.authOf(), req.GetId(), req.GetPassword()); err != nil {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.SetUserPassword(ctx, auth, req.GetId(), req.GetPassword()); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -122,7 +141,11 @@ func (s *UserService) SetUserPassword(ctx context.Context, req *userv1.SetUserPa
 
 // DeleteUser 软删除用户。
 func (s *UserService) DeleteUser(ctx context.Context, req *userv1.DeleteUserRequest) (*emptypb.Empty, error) {
-	if err := s.uc.DeleteUser(ctx, s.authOf(), req.GetId()); err != nil {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.DeleteUser(ctx, auth, req.GetId()); err != nil {
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
@@ -130,7 +153,11 @@ func (s *UserService) DeleteUser(ctx context.Context, req *userv1.DeleteUserRequ
 
 // AssignRoles 批量分配角色。
 func (s *UserService) AssignRoles(ctx context.Context, req *userv1.AssignRolesRequest) (*userv1.AssignRolesReply, error) {
-	added, err := s.uc.AssignRoles(ctx, s.authOf(), req.GetUserId(), req.GetRoleIds())
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	added, err := s.uc.AssignRoles(ctx, auth, req.GetUserId(), req.GetRoleIds())
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +166,11 @@ func (s *UserService) AssignRoles(ctx context.Context, req *userv1.AssignRolesRe
 
 // TransferUserOwner 修改归属三元组。
 func (s *UserService) TransferUserOwner(ctx context.Context, req *userv1.TransferUserOwnerRequest) (*userv1.User, error) {
-	out, err := s.uc.TransferUserOwner(ctx, s.authOf(), req.GetId(), biz.OwnerTriple{
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.TransferUserOwner(ctx, auth, req.GetId(), biz.OwnerTriple{
 		UserID:  req.OwnerUserId,
 		DeptID:  req.OwnerDeptId,
 		GroupID: req.OwnerUserGroupId,

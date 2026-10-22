@@ -140,11 +140,11 @@ func setupTestDB(t *testing.T) *Data {
 	return &Data{db: pool}
 }
 
-// countBasicInSession 统计当前会话可见的 basic 行数。
-func countBasicInSession(ctx context.Context, t *testing.T, d *Data, auth biz.AuthContext) int64 {
+// countBasicInIdentityTx 统计当前会话可见的 basic 行数。
+func countBasicInIdentityTx(ctx context.Context, t *testing.T, d *Data, auth biz.Identity) int64 {
 	t.Helper()
 	var total int64
-	err := d.Session(ctx, AuthContext{TenantID: auth.TenantID, UserID: auth.UserID}, func(s *Session) error {
+	err := d.IdentityTx(ctx, Identity{TenantID: auth.TenantID, UserID: auth.UserID}, func(s *IdentityTx) error {
 		p, err := gen.ParseBasicQuery(&dynq.Query{})
 		if err != nil {
 			return err
@@ -162,7 +162,7 @@ func countBasicInSession(ctx context.Context, t *testing.T, d *Data, auth biz.Au
 func TestSessionDiscipline(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
-	super := biz.AuthContext{TenantID: "t-super-01", UserID: 1}
+	super := biz.Identity{TenantID: "t-super-01", UserID: 1}
 
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	// 这是连接纪律的数据库层兜底，门面只是让它不可能被绕过。
@@ -177,7 +177,7 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("session sees tenant data", func(t *testing.T) {
-		err := d.Session(ctx, AuthContext{TenantID: super.TenantID, UserID: super.UserID}, func(s *Session) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: super.TenantID, UserID: super.UserID}, func(s *IdentityTx) error {
 			var n int
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
@@ -193,7 +193,7 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("unknown tenant sees nothing", func(t *testing.T) {
-		err := d.Session(ctx, AuthContext{TenantID: "t-nope", UserID: 1}, func(s *Session) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: "t-nope", UserID: 1}, func(s *IdentityTx) error {
 			var n int
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
@@ -211,26 +211,26 @@ func TestSessionDiscipline(t *testing.T) {
 	// 种子事实：t-super-01 内 basic 共 10 行；用户 1 持全租户角色
 	// （data_scope=7），用户 3 持仅本人角色（data_scope=1）。
 	t.Run("scope 7 sees all basic rows of tenant", func(t *testing.T) {
-		if got := countBasicInSession(ctx, t, d, super); got != 10 {
+		if got := countBasicInIdentityTx(ctx, t, d, super); got != 10 {
 			t.Fatalf("data_scope=7 total = %d, want 10", got)
 		}
 	})
 
 	t.Run("scope 1 sees only own basic rows", func(t *testing.T) {
-		if got := countBasicInSession(ctx, t, d, biz.AuthContext{TenantID: super.TenantID, UserID: 3}); got == 0 || got >= 10 {
+		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: super.TenantID, UserID: 3}); got == 0 || got >= 10 {
 			t.Fatalf("data_scope=1 total = %d, want (0, 10)", got)
 		}
 	})
 
 	t.Run("identity mismatch with tenant sees nothing", func(t *testing.T) {
 		// 用户 3 不存在于 t-demo-01：RLS 查不到其行，守卫函数返回空集
-		if got := countBasicInSession(ctx, t, d, biz.AuthContext{TenantID: "t-demo-01", UserID: 3}); got != 0 {
+		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: "t-demo-01", UserID: 3}); got != 0 {
 			t.Fatalf("mismatched identity total = %d, want 0", got)
 		}
 	})
 
 	t.Run("list fails closed without scope", func(t *testing.T) {
-		err := d.Session(ctx, AuthContext{TenantID: super.TenantID, UserID: super.UserID}, func(s *Session) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: super.TenantID, UserID: super.UserID}, func(s *IdentityTx) error {
 			p, err := gen.ParseBasicQuery(&dynq.Query{})
 			if err != nil {
 				return err
@@ -248,10 +248,10 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("invalid auth rejected before touching database", func(t *testing.T) {
-		if err := d.Session(ctx, AuthContext{TenantID: "", UserID: 1}, func(*Session) error { return nil }); err == nil {
+		if err := d.IdentityTx(ctx, Identity{TenantID: "", UserID: 1}, func(*IdentityTx) error { return nil }); err == nil {
 			t.Fatal("empty tenant accepted")
 		}
-		if err := d.Session(ctx, AuthContext{TenantID: "t-super-01", UserID: 0}, func(*Session) error { return nil }); err == nil {
+		if err := d.IdentityTx(ctx, Identity{TenantID: "t-super-01", UserID: 0}, func(*IdentityTx) error { return nil }); err == nil {
 			t.Fatal("zero user id accepted")
 		}
 	})
@@ -264,9 +264,9 @@ func TestUserRepo(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewUserRepo(d)
-	super := biz.AuthContext{TenantID: "t-super-01", UserID: 1}
-	selfOnly := biz.AuthContext{TenantID: "t-super-01", UserID: 3}
-	deptAdmin := biz.AuthContext{TenantID: "t-super-01", UserID: 7}
+	super := biz.Identity{TenantID: "t-super-01", UserID: 1}
+	selfOnly := biz.Identity{TenantID: "t-super-01", UserID: 3}
+	deptAdmin := biz.Identity{TenantID: "t-super-01", UserID: 7}
 
 	newUser := func(t *testing.T, name string) *biz.User {
 		t.Helper()
@@ -403,10 +403,10 @@ func TestSessionRepo(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewSessionRepo(d)
-	owner := biz.AuthContext{TenantID: "t-super-01", UserID: 1}
-	otherTenant := biz.AuthContext{TenantID: "t-demo-01", UserID: 5}
+	owner := biz.Identity{TenantID: "t-super-01", UserID: 1}
+	otherTenant := biz.Identity{TenantID: "t-demo-01", UserID: 5}
 
-	issue := func(t *testing.T, owner biz.AuthContext, access, refresh string, accessTTL, refreshTTL time.Duration) *biz.Session {
+	issue := func(t *testing.T, owner biz.Identity, access, refresh string, accessTTL, refreshTTL time.Duration) *biz.Session {
 		t.Helper()
 		s, err := repo.Issue(ctx, owner, &biz.IssueSessionInput{
 			AccessTokenHash:  testTokenHash(access),
@@ -441,8 +441,8 @@ func TestSessionRepo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validate: %v", err)
 		}
-		if got.ID != s.ID || got.AuthContext() != owner {
-			t.Fatalf("validated = %+v (id %d), want %+v (id %d)", got.AuthContext(), got.ID, owner, s.ID)
+		if got.ID != s.ID || got.Identity() != owner {
+			t.Fatalf("validated = %+v (id %d), want %+v (id %d)", got.Identity(), got.ID, owner, s.ID)
 		}
 		if _, err := repo.Validate(ctx, testTokenHash("access-wrong")); !errors.Is(err, biz.ErrSessionInvalid) {
 			t.Fatalf("unknown token: want ErrSessionInvalid, got %v", err)
@@ -458,7 +458,7 @@ func TestSessionRepo(t *testing.T) {
 
 	t.Run("disabled session is invalid", func(t *testing.T) {
 		s := issue(t, owner, "access-disabled", "refresh-disabled", time.Hour, 24*time.Hour)
-		err := d.Session(ctx, AuthContext{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *Session) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *IdentityTx) error {
 			_, err := sess.Tx().Exec(ctx, "UPDATE public.sys_session SET status = 0 WHERE id = $1", s.ID)
 			return err
 		})
@@ -578,7 +578,7 @@ func TestSessionRepo(t *testing.T) {
 
 	t.Run("disabled session cannot refresh", func(t *testing.T) {
 		s := issue(t, owner, "access-dis-rf", "refresh-dis-rf", time.Hour, 24*time.Hour)
-		err := d.Session(ctx, AuthContext{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *Session) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: owner.TenantID, UserID: owner.UserID}, func(sess *IdentityTx) error {
 			_, err := sess.Tx().Exec(ctx, "UPDATE public.sys_session SET status = 0 WHERE id = $1", s.ID)
 			return err
 		})
@@ -662,7 +662,7 @@ func TestSessionRepo(t *testing.T) {
 		issue(t, otherTenant, "access-rls-c", "refresh-rls-c", time.Hour, 24*time.Hour)
 
 		var seen int
-		err := d.TokenSession(ctx, TokenLookup{AccessTokenHash: testTokenHash("access-rls-a")}, func(s *TokenSession) error {
+		err := d.TokenTx(ctx, TokenLookup{AccessTokenHash: testTokenHash("access-rls-a")}, func(s *TokenTx) error {
 			return s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_session").Scan(&seen)
 		})
 		if err != nil {
@@ -686,7 +686,7 @@ func TestSessionRepo(t *testing.T) {
 			t.Fatalf("cross-tenant validate: %v", err)
 		}
 		if got.TenantID != otherTenant.TenantID || got.UserID != otherTenant.UserID {
-			t.Fatalf("cross-tenant identity = %+v, want %+v", got.AuthContext(), otherTenant)
+			t.Fatalf("cross-tenant identity = %+v, want %+v", got.Identity(), otherTenant)
 		}
 	})
 
@@ -700,8 +700,8 @@ func TestSessionRepo(t *testing.T) {
 		if err != nil {
 			t.Fatalf("validate issued token: %v", err)
 		}
-		if got.ID != issued.Session.ID || got.AuthContext() != owner {
-			t.Fatalf("validated = %+v (id %d), want owner %+v (id %d)", got.AuthContext(), got.ID, owner, issued.Session.ID)
+		if got.ID != issued.Session.ID || got.Identity() != owner {
+			t.Fatalf("validated = %+v (id %d), want owner %+v (id %d)", got.Identity(), got.ID, owner, issued.Session.ID)
 		}
 
 		rotated, err := uc.Refresh(ctx, issued.RefreshToken, biz.SessionOptions{})
@@ -746,8 +746,8 @@ func TestAuthLogin(t *testing.T) {
 	}
 	if got, err := sessionUC.Validate(ctx, login.Issued.AccessToken); err != nil {
 		t.Fatalf("validate issued token: %v", err)
-	} else if got.AuthContext() != (biz.AuthContext{TenantID: "t-super-01", UserID: 1}) {
-		t.Fatalf("validated identity = %+v, want admin", got.AuthContext())
+	} else if got.Identity() != (biz.Identity{TenantID: "t-super-01", UserID: 1}) {
+		t.Fatalf("validated identity = %+v, want admin", got.Identity())
 	}
 
 	// 透明重哈希：登录后库内哈希应已是 argon2id，且原口令仍可登录
@@ -788,13 +788,13 @@ func TestAuthLogin(t *testing.T) {
 		t.Fatalf("cross-tenant name: want ErrInvalidCredentials, got %v", err)
 	}
 	// 软删除用户等同不存在
-	deleted, err := users.Create(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, &biz.User{
+	deleted, err := users.Create(ctx, biz.Identity{TenantID: "t-super-01", UserID: 1}, &biz.User{
 		Name: "grape_it_login_del", Nickname: "del", Password: "x", Locale: "zh-CN", Status: biz.UserStatusEnabled,
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := users.SoftDelete(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, deleted.ID); err != nil {
+	if err := users.SoftDelete(ctx, biz.Identity{TenantID: "t-super-01", UserID: 1}, deleted.ID); err != nil {
 		t.Fatalf("soft delete: %v", err)
 	}
 	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "grape_it_login_del", Password: "x"}); !errors.Is(err, biz.ErrInvalidCredentials) {
@@ -806,13 +806,13 @@ func TestAuthLogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("hash: %v", err)
 	}
-	created, err := users.Create(ctx, biz.AuthContext{TenantID: "t-super-01", UserID: 1}, &biz.User{
+	created, err := users.Create(ctx, biz.Identity{TenantID: "t-super-01", UserID: 1}, &biz.User{
 		Name: "grape_it_login_dis", Nickname: "dis", Password: disHash, Locale: "zh-CN", Status: biz.UserStatusEnabled,
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if err := d.Session(ctx, AuthContext{TenantID: "t-super-01", UserID: 1}, func(s *Session) error {
+	if err := d.IdentityTx(ctx, Identity{TenantID: "t-super-01", UserID: 1}, func(s *IdentityTx) error {
 		_, err := s.Tx().Exec(ctx, "UPDATE public.sys_user SET status = 0 WHERE id = $1", created.ID)
 		return err
 	}); err != nil {

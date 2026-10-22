@@ -56,7 +56,7 @@ type Session struct {
 	Status int32
 	// UserID 是会话所属用户。
 	UserID int64
-	// TenantID 是会话所属租户；校验命中后与 UserID 一起构造 AuthContext。
+	// TenantID 是会话所属租户；校验命中后与 UserID 一起构造 Identity。
 	TenantID string
 
 	// ExpiresAt 是访问令牌过期时间。
@@ -82,9 +82,9 @@ type Session struct {
 	UpdatedAt *time.Time
 }
 
-// AuthContext 返回会话的身份事实，供认证中间件注入上下文。
-func (s *Session) AuthContext() AuthContext {
-	return AuthContext{TenantID: s.TenantID, UserID: s.UserID}
+// Identity 返回会话的身份事实，供认证中间件注入上下文。
+func (s *Session) Identity() Identity {
+	return Identity{TenantID: s.TenantID, UserID: s.UserID}
 }
 
 // IssueSessionInput 是签发会话的仓储入参：令牌哈希已由 biz 用例计算，
@@ -127,12 +127,12 @@ type RefreshSessionInput struct {
 type SessionRepo interface {
 	// Issue 写入一条会话并返回落库后的会话事实。owner 是会话所属身份，
 	// 同时作为仓储的租户边界与审计操作者。
-	Issue(ctx context.Context, owner AuthContext, in *IssueSessionInput) (*Session, error)
+	Issue(ctx context.Context, owner Identity, in *IssueSessionInput) (*Session, error)
 	// Validate 按访问令牌哈希返回有效会话（启用、未撤销、未过期）；
 	// 任一条件不满足都返回 ErrSessionInvalid，不区分原因。
 	Validate(ctx context.Context, accessTokenHash string) (*Session, error)
 	// Revoke 撤销租户内的指定会话；已撤销或不可见时幂等返回 nil。
-	Revoke(ctx context.Context, auth AuthContext, id int64) error
+	Revoke(ctx context.Context, auth Identity, id int64) error
 	// Refresh 按当前刷新令牌哈希轮换令牌：命中的行必须启用、未撤销、
 	// 刷新令牌未过期；旧刷新令牌随即失效。返回轮换后的会话。
 	Refresh(ctx context.Context, in *RefreshSessionInput) (*Session, error)
@@ -180,7 +180,7 @@ func NewSessionUsecase(repo SessionRepo) *SessionUsecase {
 
 // Issue 签发会话：生成独立的访问令牌与刷新令牌，只把哈希交给仓储，
 // 明文令牌随结果返回给调用方。
-func (uc *SessionUsecase) Issue(ctx context.Context, owner AuthContext, opts SessionOptions, deviceInfo, ipAddress *string) (*IssuedSession, error) {
+func (uc *SessionUsecase) Issue(ctx context.Context, owner Identity, opts SessionOptions, deviceInfo, ipAddress *string) (*IssuedSession, error) {
 	if owner.TenantID == "" || owner.UserID <= 0 {
 		return nil, ErrSessionInvalidArgument
 	}
@@ -216,7 +216,7 @@ func (uc *SessionUsecase) Validate(ctx context.Context, accessToken string) (*Se
 }
 
 // Revoke 撤销会话（登出）。重复撤销幂等。
-func (uc *SessionUsecase) Revoke(ctx context.Context, auth AuthContext, sessionID int64) error {
+func (uc *SessionUsecase) Revoke(ctx context.Context, auth Identity, sessionID int64) error {
 	if auth.TenantID == "" || auth.UserID <= 0 || sessionID <= 0 {
 		return ErrSessionInvalidArgument
 	}
