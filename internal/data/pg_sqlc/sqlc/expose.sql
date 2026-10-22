@@ -3,7 +3,7 @@
 --
 -- 在 schema/ 全部文件、rls.sql、operate.sql 之后，seed.sql 之前执行。
 -- 本文件同时列在 sqlc.yaml 的 schema 里（同 operate.sql 的原因：
--- queries.sql 的命名查询要调用这些函数，sqlc 需要读到函数签名；
+-- queries/ 下的命名查询要调用这些函数，sqlc 需要读到函数签名；
 -- rls.sql 也因此纳入——GetScope 直接调 fn_accessible_* 三件套）。
 --
 -- 解决什么问题：
@@ -12,14 +12,14 @@
 --   拉取可视范围、批量过滤（远程往返优化）、判断功能权限码。
 --   这些查询由权限查询服务层暴露（宿主侧，传输无关，HTTP/gRPC 由宿主
 --   自行包装），底层与内部 @scope 守卫共用同一套推导函数，
---   内外判定不分歧（ADR-0007）。
+--   内外判定不分歧。
 --
 -- 三个查询判断函数（读写同权：能看见就能操作）：
 --   fn_check_visible        单点判断：按指定维度判断一条归属是否可见
 --   fn_filter_visible_rows  批量版：一次过滤一组归属，返回可见子集
 --   fn_has_permission       功能权限轴：用户是否持有某权限码
 --
--- 范围版本（ADR-0008）：
+-- 范围版本：
 --   sys_perm_version 表 + bump 触发器。外部进程缓存判定结果后，
 --   靠版本比对决定续用还是重拉；物理删除的角色映射变更也能捕获。
 --
@@ -151,7 +151,7 @@ COMMENT ON FUNCTION public.fn_has_permission(int8, varchar) IS '查询判断（�
 
 
 -- ============================================================
--- 范围版本：sys_perm_version 表 + bump 触发器（ADR-0008）
+-- 范围版本：sys_perm_version 表 + bump 触发器
 --
 -- 外部进程缓存可视范围/权限码结果是既定用法，必须有失效信号。
 -- 影响判定结果的表里 sys_user_role_mapping、sys_role_id_scope、
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS public.sys_perm_version
     CONSTRAINT sys_perm_version_pkey PRIMARY KEY (tenant_id, user_id)
 );
 
-COMMENT ON TABLE public.sys_perm_version IS '范围版本表：外部进程缓存判定结果的失效信号（ADR-0008）。user_id=0 是租户级行（角色/菜单/组织侧、用户组/组成员、用户行新增/删除及状态/归属变更 bump，全体缓存失效）；user_id>0 是用户级行（角色映射变更 bump，只失效该用户）。版本只用于相等比较，由触发器维护，业务代码不直接写入。';
+COMMENT ON TABLE public.sys_perm_version IS '范围版本表：外部进程缓存判定结果的失效信号。user_id=0 是租户级行（角色/菜单/组织侧、用户组/组成员、用户行新增/删除及状态/归属变更 bump，全体缓存失效）；user_id>0 是用户级行（角色映射变更 bump，只失效该用户）。版本只用于相等比较，由触发器维护，业务代码不直接写入。';
 
 COMMENT ON COLUMN public.sys_perm_version.version IS '单调递增计数，从 1 开始；只比较是否变化，不比较大小语义';
 

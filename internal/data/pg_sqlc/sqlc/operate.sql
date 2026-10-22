@@ -2,7 +2,7 @@
 -- operate.sql — 写数据前的权限判断函数
 --
 -- 在 schema/ 全部文件、rls.sql 之后，seed.sql 之前执行。
--- 本文件同时列在 sqlc.yaml 的 schema 里：queries.sql 的命名查询要
+-- 本文件同时列在 sqlc.yaml 的 schema 里：queries/ 下的命名查询要
 -- 调用这些函数，sqlc 需要读到函数签名（sqlc 只看签名，不管函数体）。
 --
 -- 解决什么问题：

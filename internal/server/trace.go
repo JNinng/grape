@@ -53,7 +53,7 @@ type TraceMiddleware middleware.Middleware
 //     不进 errors.Metadata。将来配 CORS 时需补
 //     Access-Control-Expose-Headers: x-trace-id, x-request-id。
 //
-// 先自研生成，将来接 otel SDK 只需把 NewTraceID/NewSpanID 换成真实
+// 本实现自研生成；接入 otel SDK 时只需把 NewTraceID/NewSpanID 换成真实
 // tracer 的生成实现，中间件形态不变。对端取不到传输上下文时原样放行
 // （无头可回、无链路可标，与 auth 的 fail-closed 不同）。
 func NewTraceMiddleware(c *conf.Server) (TraceMiddleware, error) {

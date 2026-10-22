@@ -9,9 +9,9 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 | [conf](conf/)       | 配置结构定义。只改 `conf.proto`，生成文件禁止手改，改后由 `make config` 重新生成。                                                       |
 | [server](server/)   | HTTP / gRPC 服务器构建。只做配置读取、中间件装配与服务注册；禁止出现 DTO 翻译或业务逻辑。                                               |
 | [service](service/) | 传输层适配器，每个资源一个文件。在边界完成 DTO ↔ DO 转换；把 query.v1 动态查询协议转为 dynq.Query；委托给 biz 用例；禁止实现业务规则（入参校验在 biz 落地）。 |
-| task                | 后台异步任务入口（定时、事件、手动触发），与 service 平级构成第二类入口。分层与 service 同构（task → biz → data），无 DTO，直接以 DO 调用 biz 用例；禁止实现业务规则（入参校验在 biz 落地）。 |
+| task                | 后台异步任务入口（定时、事件、手动触发），与 service 平级构成第二类入口。分层与 service 同构（task → biz → data），无 DTO，直接以 DO 或设施契约调用 biz 声明的能力；禁止实现业务规则（入参校验在 biz 落地）。 |
 | [biz](biz/)         | 领域层，只认 DO。定义 DO、用例、仓储接口（依赖反转的接缝）、类型化错误与查询选项；领域规则（如必填校验）只在这里落地。                   |
-| [data](data/)       | 存储基础设施集合：一能力一子目录，目录内自包含（定位与接入细则见「能力目录接入规范」）。能力目录实现 `biz` 声明的仓储接口，DO ↔ PO 转换、驱动错误映射在仓储内完成；现有能力与生成资产见 [data/README.md](data/README.md)。  |
+| [data](data/)       | 存储基础设施集合：一能力一子目录，目录内自包含（定位与接入细则见「能力目录接入规范」）。能力目录实现 `biz` 声明的仓储接口与设施契约，DO ↔ PO 转换、驱动错误映射在仓储内完成；现有能力与生成资产见 [data/README.md](data/README.md)。  |
 
 ## 分层与数据流向
 
@@ -77,23 +77,23 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界）；`data` 只为实现仓储接口导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界）；`data` 只为仓储接口与设施契约导入 `biz`；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 依赖注入
 
 各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
-- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面（`NewFacilityDiagnostics`，新设施在此追加）；
-- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）；
+- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
+- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；
 - `biz`：用例构造函数（依赖仓储接口）；
 - `service`：服务构造函数（依赖用例）；
 - `task`：任务构造函数（依赖用例）；
-- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewMetricsHandler`（设施压力指标的 Prometheus 出口）。
+- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewMetricsHandler`（设施压力指标的 Prometheus 出口）/ `NewAuthMiddleware` / `NewTraceMiddleware`。
 
-诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，server 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口（免认证、不在业务中间件链内），后续 task 只认契约消费维护面、不读原始指标。
+诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，server 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
 
-修改依赖关系后需重新运行 `make all`（或 `wire`）刷新 `wire_gen.go`。
+修改依赖关系后需重新运行 `make generate`（wire + tidy）刷新 `wire_gen.go`。
 
 ## 能力目录接入规范
 
@@ -113,12 +113,18 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 2. 在 `biz` 声明 DO + `Repo` 接口（List 收 `*dynq.Query`），并基于接口实现用例；
 3. 在 `data/pg_sqlc/sqlc/schema/` 相应域文件声明表结构并用列注释 DSL 声明动态查询能力（业务表照 `10_basic.sql` 的 basic 范式：tenant_id + 审计列 + 归属三元组 + @scope 守卫），在 `data/pg_sqlc/sqlc/queries/<资源>.sql` 写固定 CRUD 查询并补入 sqlc.yaml 的 queries 清单，在 `internal/data/pg_sqlc/sqlc` 下执行 `sqlc generate -f sqlc.yaml` 重新生成；租户表还需在 `rls.sql` 补一条 RLS 策略并 ENABLE/FORCE；
 4. 在 `pg_sqlc` 实现仓储（构造函数返回 `biz.<Resource>Repo`），分别注册到 `pg_sqlc` / `biz` / `service` 的 `ProviderSet`（能力 ProviderSet 由 `data` 聚合），并在 `server` 中注册 HTTP / gRPC 服务；
-5. `make all`（或 `wire`）重新生成 Wire 与 go.mod。
+5. `make generate`（wire + tidy）刷新装配与模块依赖；需要同时重生成契约/存储代码时用 `make all`。
 
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。目前 `data` 的 `pg_sqlc` 已有错误映射单测与存储边界集成测试（事务门面 IdentityTx 族 + RLS/@scope 纪律，`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 环境变量门控、未设置时跳过），`encoding/jsoncodec` 已有编解码契约单测；`service` / `biz` 用例级测试随资源落地补充：
+测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖：
 
-- `service`：以内存版假仓储替换 `biz` 仓储接口，隔离测试 DTO 转换与请求语义；
-- `biz`：mock 仓储接口，只验证用例逻辑与领域规则；
-- `data`：`pg_sqlc/errors_test.go` 单测驱动错误到领域错误的映射；`pg_sqlc/session_test.go` 集成测试自建临时库并按部署顺序装载 schema，以 grape_u 运行角色验证租户注入、默认全拒、@scope 过滤、fail-closed，以及用户/会话仓储的读写、令牌维度 RLS 边界与登录全链路（种子 scrypt 校验 → 透明重哈希 → argon2id 再登录）。
+- `data/pg_sqlc`：驱动错误映射、debug 参数脱敏、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控，未设置时自动跳过；
+- `encoding/jsoncodec`：protobuf JSON 编解码契约；
+- `biz`：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举；
+- `service`：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；
+- `server`：认证中间件、链路标识生成/继承/回传与指标出口；
+- `task`：维护循环的启停、失败隔离与动作日志；
+- `pkg`：工具函数契约（IP 解析、ID 生成、日志截断/掩码、版本摘要）。
+
+新增测试沿用分层职责：`service` 用假仓储隔离传输适配，`biz` mock 仓储接口只验证用例逻辑，`data` 以真实 PostgreSQL 集成测试验证存储边界（自建临时库、按 `deploy_db.md` 顺序装载 SQL、以 `grape_u` 运行角色断言语义）。

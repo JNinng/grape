@@ -61,7 +61,7 @@ type Querier interface {
 	// 三态契约：列 NULL = 全租户不过滤（perm 层翻成 All=true），
 	// 空数组 = 什么都看不见，数组 = 可见集合并集（NULL 由调用方翻成全租户）
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
-	// 取范围版本（缓存失效信号，ADR-0008）：租户级 + 用户级一次取回，
+	// 取范围版本（缓存失效信号）：租户级 + 用户级一次取回，
 	// 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
 	// sys_user 用户表固定 CRUD：全部经会话门面在租户事务内执行（RLS 限

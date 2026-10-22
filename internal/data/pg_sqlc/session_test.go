@@ -59,7 +59,7 @@ func TestTokenLookupValidate(t *testing.T) {
 
 const testDatabase = "grape_pgsqlc_test"
 
-// deployFiles 是部署执行顺序（sqlc/README「数据库部署执行顺序」）。
+// deployFiles 是部署执行顺序（见仓库根 deploy_db.md）。
 var deployFiles = []string{
 	"sqlc/schema/10_basic.sql",
 	"sqlc/schema/20_tenant.sql",

@@ -3,7 +3,8 @@
 PostgreSQL 设施的只读压力指标采集，实现 [biz/maintenance.go](../../biz/maintenance.go) 声明的
 `FacilityDiagnostics` 契约（[diagnostics.go](diagnostics.go)）。诊断面只输出**原始值**：
 不做比率、不做聚合指数、不做判定——阈值与告警归监控配置层；程序内维护决策不读这些指标，
-走同文件的 `FacilityMaintenance` 契约（会话清理见 [session_repo.go](session_repo.go)）。
+走 [biz/maintenance.go](../../biz/maintenance.go) 的 `FacilityMaintenance` 契约（会话清理见
+[session_repo.go](session_repo.go)）。
 
 ## 链路
 

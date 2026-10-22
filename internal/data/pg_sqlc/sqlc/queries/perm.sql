@@ -49,7 +49,7 @@ WHERE u.id = sqlc.arg('user_id')
   AND u.deleted_at IS NULL
 ORDER BY mu.permission_code;
 
--- 取范围版本（缓存失效信号，ADR-0008）：租户级 + 用户级一次取回，
+-- 取范围版本（缓存失效信号）：租户级 + 用户级一次取回，
 -- 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
 -- name: GetScopeVersion :one
 SELECT COALESCE((SELECT v.version

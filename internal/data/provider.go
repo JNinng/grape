@@ -16,7 +16,7 @@ var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, NewFacilityDiagnostics, NewFac
 
 // NewFacilityDiagnostics 聚合各能力目录的诊断面实现（biz.FacilityDiagnostics）。
 // data 是设施聚合点：新设施（如缓存）落地诊断面时在此追加参数与切片元素，
-// 消费方（server 出口、后续 task）只依赖设施无关的契约切片。
+// 消费方（server 出口、task）只依赖设施无关的契约切片。
 func NewFacilityDiagnostics(postgres biz.FacilityDiagnostics) []biz.FacilityDiagnostics {
 	return []biz.FacilityDiagnostics{postgres}
 }

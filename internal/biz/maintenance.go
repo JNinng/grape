@@ -29,7 +29,7 @@ type MetricSample struct {
 }
 
 // FacilityDiagnostics 是单个设施的只读诊断面：暴露该设施的原始压力
-// 指标。设施无关的统一词汇表——server 出口与后续 task 均只认本接口，
+// 指标。设施无关的统一词汇表——server 出口与 task 均只认本接口，
 // 不感知具体介质；新设施（缓存等）落地时按同一契约接入。
 type FacilityDiagnostics interface {
 	// Facility 返回设施名（如 "postgres"），用于指标归属与错误归因。
@@ -58,8 +58,7 @@ type MaintenanceReport struct {
 }
 
 // FacilityMaintenance 是单个设施的维护面：判定逻辑（阈值、对象选择）
-// 完全下沉到介质实现，维护任务只认本契约、不读原始指标。本任务只定
-// 契约，具体维护由后续任务落地。
+// 完全下沉到介质实现，维护任务只认本契约、不读原始指标。
 type FacilityMaintenance interface {
 	// Facility 返回设施名（如 "postgres"）。
 	Facility() string

@@ -2,7 +2,7 @@
 -- rls.sql — 租户隔离策略 + 读侧权限过滤函数 + 演示用户授权
 --
 -- 在 schema/ 全部文件之后执行；同时列入 sqlc.yaml 的 schema 列表，
--- 让 queries.sql 的命名查询能解析权限过滤函数的签名（sqlc 只看签名）。
+-- 让 queries/ 下的命名查询能解析权限过滤函数的签名（sqlc 只看签名）。
 --
 -- 内容：
 --   1. fn_touch_updated_at 触发器：UPDATE 时兜底刷新 updated_at
@@ -64,8 +64,8 @@ $$;
 -- ============================================================
 -- 2. 权限过滤函数（读侧）：算出当前用户能看到哪些用户/部门/用户组
 --
--- 动态查询会在 WHERE 里自动拼上类似这样的条件（由 schema.sql 表注释
--- 里的 @scope 声明驱动）：
+-- 动态查询会在 WHERE 里自动拼上类似这样的条件（由 schema/ 各域文件的
+-- 表注释里的 @scope 声明驱动）：
 --   owner_user_id = ANY(fn_accessible_user_ids(当前用户))
 --
 -- 三个函数都只接收当前用户 ID。这个用户有哪些角色、能看到什么范围，
@@ -332,7 +332,7 @@ COMMENT ON FUNCTION public.fn_accessible_group_ids(int8) IS '权限过滤：返�
 
 
 -- ============================================================
--- 3. RLS 租户隔离策略（ADR-0001：租户维度由数据库兜底，
+-- 3. RLS 租户隔离策略（租户维度由数据库兜底，
 --    与 @scope 的数据范围维度正交）
 --    未设置 app.tenant_id 时 current_setting(...,true) 返回 NULL，
 --    比较结果恒为假 → 默认全拒。sys_config 为全局配置无 tenant_id，不启用 RLS。
