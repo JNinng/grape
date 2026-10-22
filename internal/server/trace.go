@@ -36,6 +36,8 @@ type TraceMiddleware middleware.Middleware
 
 // NewTraceMiddleware 构造链路标识中间件，是所有入站请求的链路唯一生成点，
 // 单件同时服务 HTTP 与 gRPC（同一实现，两协议同链、同 trace-id）。
+// trusted_networks 含非法 CIDR 时返回错误，装配失败即拒绝启动，与数据侧
+// 构造函数的错误口径一致。
 //
 // 生命周期：
 //   - 继承：上游 traceparent 格式合法（W3C）且对端 IP 落在
@@ -54,13 +56,13 @@ type TraceMiddleware middleware.Middleware
 // 先自研生成，将来接 otel SDK 只需把 NewTraceID/NewSpanID 换成真实
 // tracer 的生成实现，中间件形态不变。对端取不到传输上下文时原样放行
 // （无头可回、无链路可标，与 auth 的 fail-closed 不同）。
-func NewTraceMiddleware(c *conf.Server) TraceMiddleware {
-	// 网段在启动期解析一次：配置项非法属配置错误，fail-fast 不带病启动。
+func NewTraceMiddleware(c *conf.Server) (TraceMiddleware, error) {
+	// 网段在启动期解析一次：配置项非法属配置错误，返回错误不带病启动。
 	var trusted []netip.Prefix
 	for _, cidr := range c.GetTrace().GetTrustedNetworks() {
 		prefix, err := netip.ParsePrefix(cidr)
 		if err != nil {
-			panic(fmt.Errorf("invalid trace trusted network %q: %w", cidr, err))
+			return nil, fmt.Errorf("invalid trace trusted network %q: %w", cidr, err)
 		}
 		trusted = append(trusted, prefix)
 	}
@@ -96,7 +98,7 @@ func NewTraceMiddleware(c *conf.Server) TraceMiddleware {
 
 			return handler(trace.ContextWithSpanContext(ctx, sc), req)
 		}
-	}
+	}, nil
 }
 
 // parseTraceparent 按 W3C 格式解析 traceparent：

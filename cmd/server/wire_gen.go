@@ -26,7 +26,10 @@ import (
 
 // wireApp 装配 Kratos 应用。
 func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logger *slog.Logger) (*kratos.App, func(), error) {
-	traceMiddleware := server.NewTraceMiddleware(confServer)
+	traceMiddleware, err := server.NewTraceMiddleware(confServer)
+	if err != nil {
+		return nil, nil, err
+	}
 	pg_sqlcData, cleanup, err := pg_sqlc.NewData(confData)
 	if err != nil {
 		return nil, nil, err

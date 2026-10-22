@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net"
 	nethttp "net/http"
+	"strings"
 	"testing"
 
 	"grape/internal/conf"
@@ -73,6 +75,16 @@ func trustedTraceConfig() *conf.Server {
 	}}
 }
 
+// mustTraceMiddleware 构造链路中间件：配置非法属用例失败而非错误返回。
+func mustTraceMiddleware(t *testing.T, c *conf.Server) TraceMiddleware {
+	t.Helper()
+	m, err := NewTraceMiddleware(c)
+	if err != nil {
+		t.Fatalf("new trace middleware: %v", err)
+	}
+	return m
+}
+
 // runTrace 跑通中间件并捕获 handler 收到的 span context。
 func runTrace(t *testing.T, m TraceMiddleware, ctx context.Context, tr transport.Transporter) trace.SpanContext {
 	t.Helper()
@@ -92,7 +104,7 @@ func runTrace(t *testing.T, m TraceMiddleware, ctx context.Context, tr transport
 func TestTraceMiddlewareInheritsTraceparentFromTrustedHTTPPeer(t *testing.T) {
 	tr := newHTTPTraceTransporter("127.0.0.1:54321",
 		fakeHeader{traceparentKey: upstreamTraceparent, requestIDHeader: "req-42"})
-	sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), context.Background(), tr)
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
 
 	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
 	if err != nil {
@@ -126,7 +138,7 @@ func TestTraceMiddlewareInheritsTraceparentFromTrustedHTTPPeer(t *testing.T) {
 // traceparent 不被继承：新建根、请求头被剥空、x-request-id 以 trace-id 兜底。
 func TestTraceMiddlewareNewRootForUntrustedHTTPPeer(t *testing.T) {
 	tr := newHTTPTraceTransporter("10.0.0.9:50000", fakeHeader{traceparentKey: upstreamTraceparent})
-	sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), context.Background(), tr)
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
 
 	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
 	if err != nil {
@@ -163,7 +175,7 @@ func TestTraceMiddlewareNewRootForMalformedTraceparent(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			tr := newHTTPTraceTransporter("127.0.0.1:54321", fakeHeader{traceparentKey: header})
-			sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), context.Background(), tr)
+			sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
 
 			if !sc.HasTraceID() {
 				t.Fatalf("%s: handler context must carry a fresh root span context", name)
@@ -190,7 +202,7 @@ func TestTraceMiddlewareNewRootForMalformedTraceparent(t *testing.T) {
 func TestTraceMiddlewareNewRootWithoutTraceparent(t *testing.T) {
 	tr := newGRPCTraceTransporter(fakeHeader{})
 	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000}})
-	sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), ctx, tr)
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), ctx, tr)
 
 	if !sc.HasTraceID() {
 		t.Fatal("handler context must carry a fresh root span context")
@@ -212,7 +224,7 @@ func TestTraceMiddlewareNewRootWithoutTraceparent(t *testing.T) {
 func TestTraceMiddlewareNewRootForUntrustedGRPCPeer(t *testing.T) {
 	tr := newGRPCTraceTransporter(fakeHeader{traceparentKey: upstreamTraceparent})
 	ctx := peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.IPv4(10, 0, 0, 9), Port: 50000}})
-	sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), ctx, tr)
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), ctx, tr)
 
 	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
 	if err != nil {
@@ -230,7 +242,7 @@ func TestTraceMiddlewareNewRootForUntrustedGRPCPeer(t *testing.T) {
 // 网段为空时一律不可信（fail-closed）：合法 traceparent 也不继承。
 func TestTraceMiddlewareIgnoresTraceparentWhenNoTrustedNetworks(t *testing.T) {
 	tr := newHTTPTraceTransporter("127.0.0.1:54321", fakeHeader{traceparentKey: upstreamTraceparent})
-	sc := runTrace(t, NewTraceMiddleware(&conf.Server{}), context.Background(), tr)
+	sc := runTrace(t, mustTraceMiddleware(t, &conf.Server{}), context.Background(), tr)
 
 	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
 	if err != nil {
@@ -247,7 +259,7 @@ func TestTraceMiddlewareIgnoresTraceparentWhenNoTrustedNetworks(t *testing.T) {
 // TestTraceMiddlewarePassesThroughWithoutTransport 验证取不到传输上下文
 // 时原样放行：handler 照常执行且 ctx 不携带链路、不写任何头。
 func TestTraceMiddlewarePassesThroughWithoutTransport(t *testing.T) {
-	m := NewTraceMiddleware(trustedTraceConfig())
+	m := mustTraceMiddleware(t, trustedTraceConfig())
 
 	var sc trace.SpanContext
 	called := false
@@ -270,7 +282,7 @@ func TestTraceMiddlewarePassesThroughWithoutTransport(t *testing.T) {
 // 形式的对端地址经 Unmap 后命中 IPv4 可信网段。
 func TestTraceMiddlewareTrustsIPv4MappedIPv6HTTPPeer(t *testing.T) {
 	tr := newHTTPTraceTransporter("[::ffff:127.0.0.1]:54321", fakeHeader{traceparentKey: upstreamTraceparent})
-	sc := runTrace(t, NewTraceMiddleware(trustedTraceConfig()), context.Background(), tr)
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
 
 	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
 	if err != nil {
@@ -278,5 +290,88 @@ func TestTraceMiddlewareTrustsIPv4MappedIPv6HTTPPeer(t *testing.T) {
 	}
 	if sc.TraceID() != wantTraceID {
 		t.Fatalf("trace id = %s, want inherited %s", sc.TraceID(), wantTraceID)
+	}
+}
+
+// TestTraceMiddlewareInheritsUppercaseHexTraceparent 验证大写十六进制的
+// traceparent 按小写归一解析后照常继承，回传头统一为小写形态。
+func TestTraceMiddlewareInheritsUppercaseHexTraceparent(t *testing.T) {
+	upper := strings.ToUpper(upstreamTraceparent)
+	tr := newHTTPTraceTransporter("127.0.0.1:54321", fakeHeader{traceparentKey: upper})
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
+
+	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
+	if err != nil {
+		t.Fatalf("parse upstream trace id: %v", err)
+	}
+	if sc.TraceID() != wantTraceID {
+		t.Fatalf("trace id = %s, want inherited %s", sc.TraceID(), wantTraceID)
+	}
+	if got := tr.ReplyHeader().Get(traceIDHeader); got != upstreamTraceID {
+		t.Fatalf("reply x-trace-id = %q, want normalized lowercase %q", got, upstreamTraceID)
+	}
+}
+
+// TestTraceMiddlewareInheritsUnsampledFlags 验证上游 flags=00（未采样）
+// 被原样继承，不强制置 sampled。
+func TestTraceMiddlewareInheritsUnsampledFlags(t *testing.T) {
+	unsampled := "00-" + upstreamTraceID + "-" + upstreamSpanID + "-00"
+	tr := newHTTPTraceTransporter("127.0.0.1:54321", fakeHeader{traceparentKey: unsampled})
+	sc := runTrace(t, mustTraceMiddleware(t, trustedTraceConfig()), context.Background(), tr)
+
+	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
+	if err != nil {
+		t.Fatalf("parse upstream trace id: %v", err)
+	}
+	if sc.TraceID() != wantTraceID {
+		t.Fatalf("trace id = %s, want inherited %s", sc.TraceID(), wantTraceID)
+	}
+	if sc.TraceFlags() != 0 {
+		t.Fatalf("trace flags = %d, want unsampled 0 preserved", sc.TraceFlags())
+	}
+}
+
+// TestTraceMiddlewareInheritsWithinBroaderTrustedPrefix 验证可信网段按
+// 前缀包含判定而非精确 /32 命中：/8 网段内的对端继承。
+func TestTraceMiddlewareInheritsWithinBroaderTrustedPrefix(t *testing.T) {
+	cfg := &conf.Server{Trace: &conf.Server_Trace{TrustedNetworks: []string{"127.0.0.0/8"}}}
+	tr := newHTTPTraceTransporter("127.0.0.9:50000", fakeHeader{traceparentKey: upstreamTraceparent})
+	sc := runTrace(t, mustTraceMiddleware(t, cfg), context.Background(), tr)
+
+	wantTraceID, err := trace.TraceIDFromHex(upstreamTraceID)
+	if err != nil {
+		t.Fatalf("parse upstream trace id: %v", err)
+	}
+	if sc.TraceID() != wantTraceID {
+		t.Fatalf("trace id = %s, want inherited within /8 prefix", sc.TraceID())
+	}
+}
+
+// TestTraceMiddlewareRepliesHeadersWhenHandlerErrors 验证 handler 出错时
+// 两枚头已先行写入 ReplyHeader：错误路径同样回传（HTTP 走响应头、gRPC
+// 经初始 metadata，服务端在错误返回前统一发送）。
+func TestTraceMiddlewareRepliesHeadersWhenHandlerErrors(t *testing.T) {
+	tr := newHTTPTraceTransporter("127.0.0.1:54321", fakeHeader{traceparentKey: upstreamTraceparent})
+	m := mustTraceMiddleware(t, trustedTraceConfig())
+
+	if _, err := m(func(context.Context, any) (any, error) {
+		return nil, errors.New("handler failed")
+	})(transport.NewServerContext(context.Background(), tr), struct{}{}); err == nil {
+		t.Fatal("handler error must propagate through middleware")
+	}
+	if got := tr.ReplyHeader().Get(traceIDHeader); got != upstreamTraceID {
+		t.Fatalf("reply x-trace-id on error = %q, want %q", got, upstreamTraceID)
+	}
+	if got := tr.ReplyHeader().Get(requestIDHeader); got != upstreamTraceID {
+		t.Fatalf("reply x-request-id on error = %q, want trace id fallback %q", got, upstreamTraceID)
+	}
+}
+
+// TestTraceMiddlewareRejectsInvalidTrustedNetwork 验证配置含非法 CIDR 时
+// 构造返回错误而非 panic，与装配期错误口径一致。
+func TestTraceMiddlewareRejectsInvalidTrustedNetwork(t *testing.T) {
+	cfg := &conf.Server{Trace: &conf.Server_Trace{TrustedNetworks: []string{"not-a-cidr"}}}
+	if _, err := NewTraceMiddleware(cfg); err == nil {
+		t.Fatal("invalid CIDR must return an error from the constructor")
 	}
 }
