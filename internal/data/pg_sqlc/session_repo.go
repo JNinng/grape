@@ -3,12 +3,14 @@ package pg_sqlc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"grape/internal/biz"
 	"grape/internal/data/pg_sqlc/gen"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/撤销经身份
@@ -153,4 +155,118 @@ func (r *sessionRepo) mapErr(err error) error {
 // 统一由数据库时钟起算，避免应用与存储的时钟/时区差异。
 func ttlSeconds(d time.Duration) int32 {
 	return int32(d / time.Second)
+}
+
+// sessionRepo 实现 biz.FacilityMaintenance：过期会话清理与索引膨胀
+// 维护不进会话存取接口（SessionRepo 注释已预告该设计），由介质侧维护
+// 面承担，判定（宽限期/膨胀阈值）全部下沉在这里。
+var _ biz.FacilityMaintenance = (*sessionRepo)(nil)
+
+// 会话介质维护判定常量：介质内部知识，维护任务与 biz 会话接口不感知。
+const (
+	// sessionCleanupGrace 是过期会话的删除宽限期。访问令牌 TTL 只有
+	// 30 分钟量级，留足在途请求与审计缓冲：宽限期内的已过期令牌仍可能
+	// 出现在最后一次合法请求的日志里，删早了审计无从对账。
+	sessionCleanupGrace = 24 * time.Hour
+
+	// REINDEX 判定阈值：token_hash 唯一索引是登录/校验路径的每请求
+	// 点查主索引，清理产生的死元组让它持续膨胀。绝对下限 10000 防小表
+	// 抖动；死元组占比 20% 是"膨胀已影响扫描效率"的常见经验线。两条件
+	// 同时满足才 REINDEX；判定放在清理之后——本轮删除也计入死元组，
+	// 绝对下限同时防误判刚清完的表立刻重建索引。
+	reindexMinDeadTuples = 10000
+	reindexDeadRatio     = 0.2
+
+	// sessionTokenHashIndex 是 token_hash 的唯一索引名（见
+	// schema/80_session.sql），REINDEX 的唯一目标。
+	sessionTokenHashIndex = "sys_session_token_hash_un"
+)
+
+// NewSessionMaintenance 构造会话介质的维护面。与仓储共享连接池、
+// 独立实例：维护是与会话存取互不感知的另一条路径。
+func NewSessionMaintenance(d *Data) biz.FacilityMaintenance {
+	return &sessionRepo{data: d}
+}
+
+// Facility 返回设施名。
+func (*sessionRepo) Facility() string { return "postgres" }
+
+// Maintain 执行一轮会话介质维护，动作顺序先删后判：
+//
+//  1. 清理过期/已撤销会话：池直连调用 SECURITY DEFINER 清理函数
+//     （sys_session 启用 ENABLE+FORCE 租户 RLS，维护无租户身份，跨
+//     租户资格由函数属主承担），绝不走 IdentityTx/TokenTx/TenantTx；
+//  2. 按 pg_stat_user_tables 死元组统计判定是否 REINDEX token_hash
+//     索引。
+func (r *sessionRepo) Maintain(ctx context.Context) (biz.MaintenanceReport, error) {
+	report := biz.MaintenanceReport{}
+
+	deleted, err := gen.New(r.data.db).
+		CleanupExpiredSysSessions(ctx, int64(sessionCleanupGrace/time.Second))
+	if err != nil {
+		return report, fmt.Errorf("pg_sqlc: cleanup expired sessions: %w", err)
+	}
+	report.Actions = append(report.Actions, biz.MaintenanceAction{
+		Kind:      "delete_expired_sessions",
+		Target:    "public.sys_session",
+		Rows:      deleted,
+		Performed: true,
+	})
+
+	action, err := r.reindexTokenHashIndex(ctx)
+	if err != nil {
+		return report, err
+	}
+	report.Actions = append(report.Actions, action)
+	return report, nil
+}
+
+// reindexTokenHashIndex 按死元组统计判定是否 REINDEX token_hash 索引。
+// REINDEX CONCURRENTLY 不能在事务块/函数内执行，必须以池直连的顶层
+// 独立语句运行；取裸连接走简单协议（PgConn.Exec），绕开 pgx 扩展协议
+// 对事务块的包装。属主现实：表/索引属主是部署超级用户，应用角色大概率
+// 42501 insufficient_privilege——按跳过处理并留痕，不视为错误；其余
+// 错误向上返回。
+func (r *sessionRepo) reindexTokenHashIndex(ctx context.Context) (biz.MaintenanceAction, error) {
+	action := biz.MaintenanceAction{Kind: "reindex", Target: sessionTokenHashIndex}
+
+	var live, dead int64
+	err := r.data.db.QueryRow(ctx,
+		`SELECT n_live_tup, n_dead_tup
+		 FROM pg_stat_user_tables
+		 WHERE schemaname = 'public' AND relname = 'sys_session'`).
+		Scan(&live, &dead)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// 统计视图无该表（未部署/未访问）即无从判定膨胀，跳过不报错
+		action.Note = "table stats unavailable"
+		return action, nil
+	}
+	if err != nil {
+		return action, fmt.Errorf("pg_sqlc: query sys_session tuple stats: %w", err)
+	}
+	// dead > 10000 蕴含 dead+live > 10000，占比计算无除零
+	if dead <= reindexMinDeadTuples || float64(dead)/float64(dead+live) <= reindexDeadRatio {
+		action.Note = "bloat below threshold"
+		return action, nil
+	}
+
+	conn, err := r.data.db.Acquire(ctx)
+	if err != nil {
+		return action, fmt.Errorf("pg_sqlc: acquire connection for reindex: %w", err)
+	}
+	defer conn.Release()
+	_, err = conn.Conn().PgConn().Exec(ctx,
+		"REINDEX INDEX CONCURRENTLY public."+sessionTokenHashIndex).ReadAll()
+	if err != nil {
+		var pgErr *pgconn.PgError
+		// 42501 insufficient_privilege：索引属主不是应用角色，重建归
+		// 部署侧人工/运维任务，本轮按跳过处理
+		if errors.As(err, &pgErr) && pgErr.Code == "42501" {
+			action.Note = "insufficient privilege: index owner required"
+			return action, nil
+		}
+		return action, fmt.Errorf("pg_sqlc: reindex %s: %w", sessionTokenHashIndex, err)
+	}
+	action.Performed = true
+	return action, nil
 }

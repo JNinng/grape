@@ -7,6 +7,7 @@ import (
 
 	"grape/internal/conf"
 	"grape/internal/encoding/jsoncodec"
+	"grape/internal/task"
 
 	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3"
@@ -36,8 +37,9 @@ func init() {
 	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
 }
 
-// newApp 组装 Kratos 应用。
-func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
+// newApp 组装 Kratos 应用。task 是后台维护任务，以 transport.Server
+// 的身份随应用启停。
+func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server, mt *task.MaintenanceTask) *kratos.App {
 	return kratos.New(
 		kratos.ID(id),
 		kratos.Name(Name),
@@ -47,6 +49,7 @@ func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server) *kratos.App {
 		kratos.Server(
 			gs,
 			hs,
+			mt,
 		),
 	)
 }

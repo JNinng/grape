@@ -14,6 +14,7 @@ import (
 	"grape/internal/data/pg_sqlc"
 	"grape/internal/server"
 	"grape/internal/service"
+	"grape/internal/task"
 	"log/slog"
 )
 
@@ -43,7 +44,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logg
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := server.NewMetricsHandler(v)
 	httpServer := server.NewHTTPServer(confServer, middleware, handler, userService, sessionService)
-	app := newApp(logger, grpcServer, httpServer)
+	facilityMaintenance := pg_sqlc.NewSessionMaintenance(pg_sqlcData)
+	v2 := data.NewFacilityMaintenance(facilityMaintenance)
+	maintenanceTask := task.NewMaintenanceTask(v2, logger)
+	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
 		cleanup()
 	}, nil

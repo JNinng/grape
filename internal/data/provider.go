@@ -12,11 +12,18 @@ import (
 // ProviderSet 是 data 层的 Wire 依赖注入集合，也是存储后端选择点：
 // 当前按编译期静态方式选定 pg_sqlc 关系存储后端，引入第二个后端时
 // 再定切换方案（多 injector / build tag / 运行时按 conf 分支）。
-var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, NewFacilityDiagnostics)
+var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, NewFacilityDiagnostics, NewFacilityMaintenance)
 
 // NewFacilityDiagnostics 聚合各能力目录的诊断面实现（biz.FacilityDiagnostics）。
 // data 是设施聚合点：新设施（如缓存）落地诊断面时在此追加参数与切片元素，
 // 消费方（server 出口、后续 task）只依赖设施无关的契约切片。
 func NewFacilityDiagnostics(postgres biz.FacilityDiagnostics) []biz.FacilityDiagnostics {
 	return []biz.FacilityDiagnostics{postgres}
+}
+
+// NewFacilityMaintenance 聚合各能力目录的维护面实现（biz.FacilityMaintenance）。
+// 与 NewFacilityDiagnostics 同形态：新设施（如缓存）落地维护面时在此
+// 追加参数与切片元素，消费方（task）只依赖设施无关的契约切片。
+func NewFacilityMaintenance(postgres biz.FacilityMaintenance) []biz.FacilityMaintenance {
+	return []biz.FacilityMaintenance{postgres}
 }
