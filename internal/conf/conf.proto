@@ -42,8 +42,16 @@ message Server {
     // 请求超时时间。
     google.protobuf.Duration timeout = 3;
   }
+  // Trace 是链路标识配置。
+  message Trace {
+    // 可信上游网段（CIDR，如 127.0.0.1/32）。仅这些来源发来的合法
+    // traceparent 才被继承；为空表示不信任任何上游，一律新建根。
+    repeated string trusted_networks = 1;
+  }
   HTTP http = 1;
   GRPC grpc = 2;
+  // 链路标识配置。
+  Trace trace = 3;
 }
 
 // Data 是存储层配置。

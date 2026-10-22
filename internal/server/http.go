@@ -17,10 +17,11 @@ import (
 // metrics 是原始指标出口，经 srv.Handle 直挂 /metrics：业务中间件
 // （recovery、认证）只作用于生成代码端点内的 ctx.Middleware，直挂的
 // 原始 handler 天然在其链外——/metrics 免认证即可访问。
-func NewHTTPServer(c *conf.Server, authMiddleware middleware.Middleware, metrics nethttp.Handler, user *service.UserService, session *service.SessionService) *http.Server {
+func NewHTTPServer(c *conf.Server, traceMiddleware TraceMiddleware, authMiddleware middleware.Middleware, metrics nethttp.Handler, user *service.UserService, session *service.SessionService) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
 			recovery.Recovery(),
+			middleware.Middleware(traceMiddleware),
 			authMiddleware,
 		),
 	}

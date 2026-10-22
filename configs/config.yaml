@@ -5,6 +5,11 @@ server:
   grpc:
     addr: 0.0.0.0:9000
     timeout: 1s
+  # trace：可信上游网段。仅这些来源的合法 traceparent 被继承，否则剥头新建根。
+  trace:
+    trusted_networks:
+      - 127.0.0.1/32
+      - ::1/128
 data:
   database:
     # 运行角色 grape_u（非超级用户，真实承受 RLS；授权见 sqlc/rls.sql）。

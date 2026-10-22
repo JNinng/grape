@@ -127,7 +127,9 @@ func TestMetricsRouteBypassesBusinessMiddleware(t *testing.T) {
 		}},
 	})
 	// user/session 服务传 nil：本测试不触达业务路由，注册只需路由存在。
-	srv := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, spy, h, nil, nil)
+	// trace 位传空实现：/metrics 直挂链外，链上中间件不会被调用。
+	noop := func(h middleware.Handler) middleware.Handler { return h }
+	srv := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, noop, spy, h, nil, nil)
 
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))

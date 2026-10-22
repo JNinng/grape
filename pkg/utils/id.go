@@ -49,3 +49,16 @@ func NewTraceID() trace.TraceID {
 		}
 	}
 }
+
+// NewSpanID 生成合法的 otel SpanID：单次 rand.Uint64() 经 binary.NativeEndian
+// 填满 8 字节，字节序不影响结果（消费方只按字节串与十六进制解读）；
+// 全零对 otel 非法（概率 2^-64），循环重生成直至 IsValid 兜底。
+func NewSpanID() trace.SpanID {
+	var sid trace.SpanID
+	for {
+		binary.NativeEndian.PutUint64(sid[:], rand.Uint64())
+		if sid.IsValid() {
+			return sid
+		}
+	}
+}

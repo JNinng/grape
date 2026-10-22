@@ -26,6 +26,7 @@ import (
 
 // wireApp 装配 Kratos 应用。
 func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logger *slog.Logger) (*kratos.App, func(), error) {
+	traceMiddleware := server.NewTraceMiddleware(confServer)
 	pg_sqlcData, cleanup, err := pg_sqlc.NewData(confData)
 	if err != nil {
 		return nil, nil, err
@@ -39,11 +40,11 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logg
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, middleware, userService, sessionService)
+	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middleware, userService, sessionService)
 	facilityDiagnostics := pg_sqlc.NewDiagnostics(pg_sqlcData)
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := server.NewMetricsHandler(v)
-	httpServer := server.NewHTTPServer(confServer, middleware, handler, userService, sessionService)
+	httpServer := server.NewHTTPServer(confServer, traceMiddleware, middleware, handler, userService, sessionService)
 	facilityMaintenance := pg_sqlc.NewSessionMaintenance(pg_sqlcData)
 	v2 := data.NewFacilityMaintenance(facilityMaintenance)
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)

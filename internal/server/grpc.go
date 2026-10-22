@@ -12,10 +12,11 @@ import (
 )
 
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。
-func NewGRPCServer(c *conf.Server, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, traceMiddleware TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			recovery.Recovery(),
+			middleware.Middleware(traceMiddleware),
 			authMiddleware,
 		),
 	}

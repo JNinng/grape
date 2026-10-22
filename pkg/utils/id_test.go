@@ -44,6 +44,21 @@ func TestNewTraceID(t *testing.T) {
 	}
 }
 
+func TestNewSpanID(t *testing.T) {
+	const samples = 1000
+	seen := make(map[trace.SpanID]struct{}, samples)
+	for i := 0; i < samples; i++ {
+		id := NewSpanID()
+		if !id.IsValid() {
+			t.Fatalf("span id #%d invalid (all zero): %s", i, id)
+		}
+		if _, dup := seen[id]; dup {
+			t.Fatalf("span id #%d duplicated: %s", i, id)
+		}
+		seen[id] = struct{}{}
+	}
+}
+
 func TestInstanceId(t *testing.T) {
 	pid := strconv.Itoa(os.Getpid())
 	tests := []struct {
