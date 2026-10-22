@@ -39,44 +39,9 @@ FUNCTION`、本文件的索引表。
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署需要执行的文件与顺序约束见下节「数据库部署执行顺序」。
+- 数据库部署需要执行的文件与顺序约束见仓库根 [deploy_db.md](../../../../deploy_db.md)。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
-
-## 数据库部署执行顺序
-
-对数据库部署时按序执行以下 **13 个文件**，顺序不能变（`queries/`
-是 sqlc 的 Go 生成输入，不对数据库执行）：
-
-| 步骤 | 文件 | 干什么 | 顺序约束 |
-|---|---|---|---|
-| 1–9 | `schema/` 九个域文件（按序号 10→90） | 建表、索引、@dynamic/@scope 注释 DSL、闭包触发器 | 表间无外键，按序号执行即可 |
-| 10 | `rls.sql` | RLS 策略、权限过滤函数（fn_accessible_* 三件套）、updated_at 触发器、grape_u 运行角色与 test_u 演示授权 | 依赖 schema 的表已存在 |
-| 11 | `operate.sql` | 写前判断函数（fn_can_* 四件） | 依赖步骤 10 的 fn_accessible_* |
-| 12 | `expose.sql` | 权限查询判定函数、范围版本表与触发器 | 必须先于步骤 13：种子的角色映射写入要 bump 版本表 |
-| 13 | `seed.sql` | 种子数据（含演示数据） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS）；数据含多个租户 |
-
-```bash
-# psql 按序执行示例
-cd internal/data/pg_sqlc/sqlc
-set -e
-for f in schema/10_basic.sql schema/20_tenant.sql schema/30_user.sql schema/40_rbac.sql \
-         schema/50_dept.sql schema/60_dict.sql schema/70_audit.sql schema/80_session.sql \
-         schema/90_config.sql rls.sql operate.sql expose.sql seed.sql; do
-  psql -v ON_ERROR_STOP=1 -d <库名> -f "$f"
-done
-```
-
-除 seed.sql（语句均带 `ON CONFLICT DO NOTHING`）外，各文件不保证可
-重复执行（CREATE TABLE/POLICY/TRIGGER 均非幂等）；全量重建请先
-DROP DATABASE 再从步骤 1 开始。部署完成后还需以超级用户执行一次
-`GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;`（角色由
-rls.sql 创建，CONNECT 授权依赖库名）——应用 DSN 与验收连接各需一次。
-seed.sql 的语句带 `ON CONFLICT DO NOTHING`，不会覆盖已存在的行：对本
-文件历史版本部署过的库做升级时，涉及种子行修正的变更需手工执行
-UPDATE 或重建库。种子口令统一为 123456，scrypt 格式
-`{scrypt}$e0801$…`（N=2^14, r=8, p=1），登录校验通过后由应用透明重
-哈希为 argon2id。
 
 ## 三层权限模型（速查）
 
