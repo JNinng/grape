@@ -1,20 +1,20 @@
 # grape 关系存储（pg_sqlc 能力）sqlc 配置：两个 sql 块共享同一组 schema 与 queries 文件。
 # 块 1:sqlc-gen-go(built-in gen: go),产出模型与固定查询。
-# 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.2.0),仅消费 Catalog 生成动态 List;
+# 块 2:sqlc_gen_dynamic 插件(wasm 模式,锁定发布资产 v0.2.1),仅消费 Catalog 生成动态 List;
 #       queries 字段 sqlc 要求必填但插件忽略。
 #
 # 在 internal/data/pg_sqlc/sqlc 目录执行:sqlc generate -f sqlc.yaml
 # sqlc 按 url 下载 wasm 并校验 sha256,首次生成后缓存于用户缓存目录。
 #
 # schema 与 queries 均按域拆分（单一事实源），按序号/清单全量加载；
-# 文件/函数/命名查询索引与部署执行顺序见同目录 README.md。
+# 文件/函数/命名查询索引见同目录 README.md；部署执行顺序见仓库根 deploy_db.md。
 # 业务表固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
 version: "2"
 plugins:
   - name: "sqlc_gen_dynamic"
     wasm:
-      url: "https://github.com/JNinng/sqlc_gen_dynamic/releases/download/v0.2.0/sqlc_gen_dynamic-v0.2.0.wasm"
-      sha256: "0b71fc8bc02c93085119e82b1824398aa250c03715dd85e4ff8f78c92f35dac7"
+      url: "https://github.com/JNinng/sqlc_gen_dynamic/releases/download/v0.2.1/sqlc_gen_dynamic-v0.2.1.wasm"
+      sha256: "6d34fda5f84ae83926031656a2eba4a8f4bd7b64902cd888370d6cb30ae96eae"
     env:
       - "DYNQ_DUMP_REQUEST"
 sql:
