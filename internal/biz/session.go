@@ -11,19 +11,19 @@ import (
 
 	sessionv1 "grape/api/session/v1"
 
-	"github.com/go-kratos/kratos/v3/errors"
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
 
 var (
 	// ErrSessionInvalid 表示令牌无效：会话不存在、已撤销、已过期或已
 	// 禁用。不区分具体原因，避免向调用方泄露会话状态。
-	ErrSessionInvalid = errors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID.String(), "session invalid or expired")
+	ErrSessionInvalid = kratoserrors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID.String(), "session invalid or expired")
 	// ErrSessionInvalidArgument 表示会话签发/撤销的入参非法。
-	ErrSessionInvalidArgument = errors.BadRequest(sessionv1.ErrorReason_SESSION_INVALID_ARGUMENT.String(), "invalid session argument")
+	ErrSessionInvalidArgument = kratoserrors.BadRequest(sessionv1.ErrorReason_SESSION_INVALID_ARGUMENT.String(), "invalid session argument")
 	// ErrInvalidCredentials 表示用户名或口令不匹配。两者同因，防枚举。
-	ErrInvalidCredentials = errors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID_CREDENTIALS.String(), "invalid credentials")
+	ErrInvalidCredentials = kratoserrors.Unauthorized(sessionv1.ErrorReason_SESSION_INVALID_CREDENTIALS.String(), "invalid credentials")
 	// ErrAuthUserDisabled 表示口令校验通过但账号处于禁用状态。
-	ErrAuthUserDisabled = errors.Forbidden(sessionv1.ErrorReason_SESSION_USER_DISABLED.String(), "user disabled")
+	ErrAuthUserDisabled = kratoserrors.Forbidden(sessionv1.ErrorReason_SESSION_USER_DISABLED.String(), "user disabled")
 )
 
 // SessionStatusEnabled / SessionStatusDisabled 与存储层 sys_session.status

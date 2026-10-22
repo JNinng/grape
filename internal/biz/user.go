@@ -8,20 +8,20 @@ import (
 
 	v1 "grape/api/user/v1"
 
-	"github.com/go-kratos/kratos/v3/errors"
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 var (
 	// ErrUserNotFound 表示目标用户不存在（含数据范围不可见：不可见等同不存在）。
-	ErrUserNotFound = errors.NotFound(v1.ErrorReason_USER_NOT_FOUND.String(), "user not found")
+	ErrUserNotFound = kratoserrors.NotFound(v1.ErrorReason_USER_NOT_FOUND.String(), "user not found")
 	// ErrUserInvalidArgument 表示用户请求参数非法。
-	ErrUserInvalidArgument = errors.BadRequest(v1.ErrorReason_USER_INVALID_ARGUMENT.String(), "invalid user argument")
+	ErrUserInvalidArgument = kratoserrors.BadRequest(v1.ErrorReason_USER_INVALID_ARGUMENT.String(), "invalid user argument")
 	// ErrUserAlreadyExists 表示租户内 name/email/phone 唯一约束冲突。
-	ErrUserAlreadyExists = errors.Conflict(v1.ErrorReason_USER_ALREADY_EXISTS.String(), "user already exists")
+	ErrUserAlreadyExists = kratoserrors.Conflict(v1.ErrorReason_USER_ALREADY_EXISTS.String(), "user already exists")
 	// ErrUserAccessDenied 表示写侧权限判定不通过（分配角色、归属转移的
 	// 新归属不可达）；数据范围不可见不走这里——那等同不存在。
-	ErrUserAccessDenied = errors.Forbidden(v1.ErrorReason_USER_ACCESS_DENIED.String(), "user access denied")
+	ErrUserAccessDenied = kratoserrors.Forbidden(v1.ErrorReason_USER_ACCESS_DENIED.String(), "user access denied")
 )
 
 // User 是用户领域模型。Password 仅在创建与改密路径携带：创建时为明文
