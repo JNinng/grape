@@ -25,7 +25,7 @@ service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归
 - `@scope` 表的 List/Count 缺 Scope 即报错（fail-closed）；Scope 只从服务端认证上下文注入，不受前端影响
 - 令牌与口令哈希只在 biz 单点生成/校验，仓储出入参只见哈希；登录点查对软删除/跨租户与口令错误同因返回（防枚举）
 - 改 SQL 函数或命名查询需三处同步：SQL 注释、`COMMENT ON`、[sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) 索引表
-- 数据库部署按 13 文件固定顺序执行（seed 须以超级用户连接），顺序与升级注意事项见 sqlc/README.md
+- 数据库部署按 13 文件固定顺序执行（seed 须以超级用户连接），顺序与升级注意事项见 [deploy_db.md](deploy_db.md)
 
 ## 改前必读
 
