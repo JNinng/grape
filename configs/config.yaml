@@ -12,11 +12,18 @@ server:
       - ::1/128
 data:
   database:
-    # 运行角色 grape_u（非超级用户，真实承受 RLS；授权见 sqlc/rls.sql）。
-    # 指向已按 sqlc/README「数据库部署执行顺序」完成部署的库。
-    source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
-    # Log every executed statement. Development only.
-    debug: true
+    # 槽位按用途分层：master 业务主库、system 系统库。过渡期各槽指向
+    # 同一实例，DSN 收敛到 data.database.<用途>.source。
+    master:
+      # 运行角色 grape_u（非超级用户，真实承受 RLS；授权见 sqlc/rls.sql）。
+      # 指向已按 sqlc/README「数据库部署执行顺序」完成部署的库。
+      source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
+      # Log every executed statement. Development only.
+      debug: true
+    system:
+      # 过渡期与 master 同实例；拆分时只改此处。
+      source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
+      debug: true
 auth:
   # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
   # 登录形态确定后由服务端解析替代）。指向种子数据里的全租户管理员。

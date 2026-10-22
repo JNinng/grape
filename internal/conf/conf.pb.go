@@ -415,13 +415,15 @@ func (x *Server_Trace) GetTrustedNetworks() []string {
 	return nil
 }
 
-// PostgreSQL 数据库连接配置。
+// PostgreSQL 数据库连接配置，按用途分槽位；过渡期各槽指向同一实例，
+// 连接选择收在 wire 装配层，按用途注入对应句柄。
 type Data_Database struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 连接 DSN，如 postgres://user:pass@127.0.0.1:5432/db。
-	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	// 记录每条执行的语句与参数。仅开发环境开启。
-	Debug         bool `protobuf:"varint,2,opt,name=debug,proto3" json:"debug,omitempty"`
+	// 业务主库槽位：领域数据的唯一读写点。
+	Master *Data_Database_Slot `protobuf:"bytes,1,opt,name=master,proto3" json:"master,omitempty"`
+	// 系统库槽位：平台级设施（将来全局配置/任务状态等）；过渡期与
+	// master 指向同一实例。
+	System        *Data_Database_Slot `protobuf:"bytes,2,opt,name=system,proto3" json:"system,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -456,14 +458,69 @@ func (*Data_Database) Descriptor() ([]byte, []int) {
 	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0}
 }
 
-func (x *Data_Database) GetSource() string {
+func (x *Data_Database) GetMaster() *Data_Database_Slot {
+	if x != nil {
+		return x.Master
+	}
+	return nil
+}
+
+func (x *Data_Database) GetSystem() *Data_Database_Slot {
+	if x != nil {
+		return x.System
+	}
+	return nil
+}
+
+// Slot 是单一用途槽位的连接配置。
+type Data_Database_Slot struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 连接 DSN，如 postgres://user:pass@127.0.0.1:5432/db。
+	Source string `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	// 记录每条执行的语句与参数。仅开发环境开启。
+	Debug         bool `protobuf:"varint,2,opt,name=debug,proto3" json:"debug,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Data_Database_Slot) Reset() {
+	*x = Data_Database_Slot{}
+	mi := &file_conf_conf_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Data_Database_Slot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Data_Database_Slot) ProtoMessage() {}
+
+func (x *Data_Database_Slot) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Data_Database_Slot.ProtoReflect.Descriptor instead.
+func (*Data_Database_Slot) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0, 0}
+}
+
+func (x *Data_Database_Slot) GetSource() string {
 	if x != nil {
 		return x.Source
 	}
 	return ""
 }
 
-func (x *Data_Database) GetDebug() bool {
+func (x *Data_Database_Slot) GetDebug() bool {
 	if x != nil {
 		return x.Debug
 	}
@@ -495,10 +552,13 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x123\n" +
 	"\atimeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x1a2\n" +
 	"\x05Trace\x12)\n" +
-	"\x10trusted_networks\x18\x01 \x03(\tR\x0ftrustedNetworks\"w\n" +
+	"\x10trusted_networks\x18\x01 \x03(\tR\x0ftrustedNetworks\"\xf0\x01\n" +
 	"\x04Data\x125\n" +
-	"\bdatabase\x18\x01 \x01(\v2\x19.kratos.api.Data.DatabaseR\bdatabase\x1a8\n" +
-	"\bDatabase\x12\x16\n" +
+	"\bdatabase\x18\x01 \x01(\v2\x19.kratos.api.Data.DatabaseR\bdatabase\x1a\xb0\x01\n" +
+	"\bDatabase\x126\n" +
+	"\x06master\x18\x01 \x01(\v2\x1e.kratos.api.Data.Database.SlotR\x06master\x126\n" +
+	"\x06system\x18\x02 \x01(\v2\x1e.kratos.api.Data.Database.SlotR\x06system\x1a4\n" +
+	"\x04Slot\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12\x14\n" +
 	"\x05debug\x18\x02 \x01(\bR\x05debugB\x1aZ\x18grape/internal/conf;confb\x06proto3"
 
@@ -514,7 +574,7 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 	return file_conf_conf_proto_rawDescData
 }
 
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_conf_conf_proto_goTypes = []any{
 	(*Bootstrap)(nil),           // 0: kratos.api.Bootstrap
 	(*Auth)(nil),                // 1: kratos.api.Auth
@@ -524,23 +584,26 @@ var file_conf_conf_proto_goTypes = []any{
 	(*Server_GRPC)(nil),         // 5: kratos.api.Server.GRPC
 	(*Server_Trace)(nil),        // 6: kratos.api.Server.Trace
 	(*Data_Database)(nil),       // 7: kratos.api.Data.Database
-	(*durationpb.Duration)(nil), // 8: google.protobuf.Duration
+	(*Data_Database_Slot)(nil),  // 8: kratos.api.Data.Database.Slot
+	(*durationpb.Duration)(nil), // 9: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
-	2, // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
-	3, // 1: kratos.api.Bootstrap.data:type_name -> kratos.api.Data
-	1, // 2: kratos.api.Bootstrap.auth:type_name -> kratos.api.Auth
-	4, // 3: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
-	5, // 4: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
-	6, // 5: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
-	7, // 6: kratos.api.Data.database:type_name -> kratos.api.Data.Database
-	8, // 7: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	8, // 8: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	2,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
+	3,  // 1: kratos.api.Bootstrap.data:type_name -> kratos.api.Data
+	1,  // 2: kratos.api.Bootstrap.auth:type_name -> kratos.api.Auth
+	4,  // 3: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
+	5,  // 4: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
+	6,  // 5: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
+	7,  // 6: kratos.api.Data.database:type_name -> kratos.api.Data.Database
+	9,  // 7: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	9,  // 8: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	8,  // 9: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
+	8,  // 10: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -554,7 +617,7 @@ func file_conf_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

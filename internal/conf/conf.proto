@@ -56,12 +56,21 @@ message Server {
 
 // Data 是存储层配置。
 message Data {
-  // PostgreSQL 数据库连接配置。
+  // PostgreSQL 数据库连接配置，按用途分槽位；过渡期各槽指向同一实例，
+  // 连接选择收在 wire 装配层，按用途注入对应句柄。
   message Database {
-    // 连接 DSN，如 postgres://user:pass@127.0.0.1:5432/db。
-    string source = 1;
-    // 记录每条执行的语句与参数。仅开发环境开启。
-    bool debug = 2;
+    // Slot 是单一用途槽位的连接配置。
+    message Slot {
+      // 连接 DSN，如 postgres://user:pass@127.0.0.1:5432/db。
+      string source = 1;
+      // 记录每条执行的语句与参数。仅开发环境开启。
+      bool debug = 2;
+    }
+    // 业务主库槽位：领域数据的唯一读写点。
+    Slot master = 1;
+    // 系统库槽位：平台级设施（将来全局配置/任务状态等）；过渡期与
+    // master 指向同一实例。
+    Slot system = 2;
   }
   Database database = 1;
 }
