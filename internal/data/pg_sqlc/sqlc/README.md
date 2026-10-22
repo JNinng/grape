@@ -19,12 +19,12 @@ FUNCTION`、本文件的索引表。
 | 5 | schema/50_dept.sql | sys_dept 组织树、闭包表、闭包维护触发器 | 是 | 2 张表、1 个触发器函数 |
 | 6 | schema/60_dict.sql | 字典类型 + 字典数据 | 是 | 2 张表 |
 | 7 | schema/70_audit.sql | 登录/操作日志（append-only） | 是 | 2 张表 |
-| 8 | schema/80_session.sql | 会话/令牌（仅存哈希） | 是 | 1 张表 |
+| 8 | schema/80_session.sql | 会话/令牌（仅存哈希） | 是 | 1 张表、1 个维护函数 |
 | 9 | schema/90_config.sql | 全局配置、租户配置、功能开关、翻译 | 是 | 4 张表 |
 | 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；sys_session 令牌维度策略；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
 | 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、27 条命名查询 |
+| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、28 条命名查询 |
 | 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -62,8 +62,8 @@ FUNCTION`、本文件的索引表。
 ## 函数索引
 
 属性说明：S=STABLE（同一事务内重复调用结果一致）；默认 SECURITY
-INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数外，调用前
-会话必须已设置 `app.tenant_id`。
+INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与维护函数
+（见「维护函数」一节）外，调用前会话必须已设置 `app.tenant_id`。
 
 ### 权限过滤函数（rls.sql，查询用）
 
@@ -117,6 +117,21 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数外�
 
 挂载清单 = 判定函数的输入表清单，两处必须同步改。
 
+### 维护函数（schema/80_session.sql，介质维护面）
+
+由介质侧维护任务以池直连调用（不经租户/令牌事务门面），删除条件
+（过期宽限、已撤销）收在函数内，调用方只传宽限期。
+
+| 函数 | 签名 | 属性 | 干什么 |
+|---|---|---|---|
+| fn_cleanup_expired_sessions | (宽限期秒数) → bigint | SECURITY DEFINER，`SET search_path = public` | 删除 expires_at 早于 当前时刻-宽限期 或 is_revoked 的会话行，返回删除行数 |
+
+属主/权限语义：sys_session 启用 ENABLE+FORCE 的租户 RLS，维护任务
+没有租户身份，应用角色直删恒 0 行；本函数以属主（部署超级用户）身份
+执行绕过 RLS，是全仓唯一的跨租户写路径。EXECUTE 沿用 PostgreSQL
+默认授权 PUBLIC（与 rls.sql 其他函数一致，无显式 GRANT）：任何角色
+都能调用，但只能以函数内固定的清理条件执行，不构成跨租户扩权面。
+
 ## 命名查询索引（queries/）
 
 约定：归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给
@@ -146,6 +161,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
 | GetActiveSysSessionByTokenHash | sys_session.sql | :one | 访问令牌哈希 → SysSession | 校验访问令牌（启用、未撤销、未过期；SQL WHERE 内判定） |
 | RevokeSysSession | sys_session.sql | :execrows | 操作者 + id → 行数 | 撤销会话（登出幂等，租户内） |
 | RotateSysSession | sys_session.sql | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 刷新令牌轮换（旧刷新令牌立即失效） |
+| CleanupExpiredSysSessions | sys_session.sql | :one | 宽限期秒数 → 删除行数 | 介质维护路径：清理过期超宽限/已撤销的会话行（池直连，不经租户/令牌事务门面；跨租户资格见维护函数 fn_cleanup_expired_sessions） |
 | CheckVisible | perm.sql | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 权限查询：单点可见性判断（fn_check_visible） |
 | HasPermission | perm.sql | :one | 操作者/权限码 → bool | 权限查询：功能权限码判断（fn_has_permission） |
 | GetScope | perm.sql | :one | 操作者 → 三个 int8[] 列（可 NULL） | 权限查询：三维度可见集合一次取回（三件套同返；NULL=全租户，服务层翻成 All） |

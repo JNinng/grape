@@ -39,6 +39,11 @@ type Querier interface {
 	// dims 为维度掩码：1 归属人、2 归属部门、4 归属用户组，可按位组合。
 	// 归属参数传 NULL 表示"没有这个归属"（规则见 fn_check_visible）
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
+	// 过期会话清理（介质维护路径）：以池直连执行，不经租户/令牌事务门面、
+	// 不注入 app.tenant_id——维护任务没有租户身份，跨租户资格由被调函数
+	// 的 SECURITY DEFINER 属主决定（见 schema/80_session.sql 的
+	// fn_cleanup_expired_sessions）。宽限期语义也收在函数内
+	CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error)
 	// 按访问令牌哈希校验会话：有效性条件（启用、未撤销、未过期）放在
 	// SQL WHERE，租户身份尚未成立时 RLS 只放行哈希命中的行。不存在、
 	// 已撤销、已过期一视同仁——无行即无效，不泄露会话状态

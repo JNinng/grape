@@ -9,6 +9,21 @@ import (
 	"context"
 )
 
+const cleanupExpiredSysSessions = `-- name: CleanupExpiredSysSessions :one
+SELECT public.fn_cleanup_expired_sessions($1::bigint) AS deleted
+`
+
+// 过期会话清理（介质维护路径）：以池直连执行，不经租户/令牌事务门面、
+// 不注入 app.tenant_id——维护任务没有租户身份，跨租户资格由被调函数
+// 的 SECURITY DEFINER 属主决定（见 schema/80_session.sql 的
+// fn_cleanup_expired_sessions）。宽限期语义也收在函数内
+func (q *Queries) CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error) {
+	row := q.db.QueryRow(ctx, cleanupExpiredSysSessions, graceSeconds)
+	var deleted int64
+	err := row.Scan(&deleted)
+	return deleted, err
+}
+
 const getActiveSysSessionByTokenHash = `-- name: GetActiveSysSessionByTokenHash :one
 SELECT id, status, user_id, tenant_id, token_hash, refresh_token_hash, expires_at, refresh_expires_at, last_activity_at, device_info, ip_address, is_revoked, created_by, created_at, updated_by, updated_at FROM public.sys_session
 WHERE token_hash = $1

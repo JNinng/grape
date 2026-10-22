@@ -55,3 +55,10 @@ WHERE refresh_token_hash = sqlc.arg('current_refresh_token_hash')
   AND is_revoked = false
   AND refresh_expires_at > CURRENT_TIMESTAMP
 RETURNING *;
+
+-- 过期会话清理（介质维护路径）：以池直连执行，不经租户/令牌事务门面、
+-- 不注入 app.tenant_id——维护任务没有租户身份，跨租户资格由被调函数
+-- 的 SECURITY DEFINER 属主决定（见 schema/80_session.sql 的
+-- fn_cleanup_expired_sessions）。宽限期语义也收在函数内
+-- name: CleanupExpiredSysSessions :one
+SELECT public.fn_cleanup_expired_sessions(sqlc.arg('grace_seconds')::bigint) AS deleted;

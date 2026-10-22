@@ -51,3 +51,45 @@ COMMENT ON COLUMN public.sys_session.created_by IS '创建人 [@dynamic: exact, 
 COMMENT ON COLUMN public.sys_session.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_session.updated_at IS '更新时间 [@dynamic: range @sortable]';
+
+
+-- ============================================================
+-- 过期会话清理（介质维护面）：判定（删除条件）与清理动作同处一个介质
+-- 实现，调用方只传宽限期。清理不属于 biz 会话存取接口（SessionRepo
+-- 不动），由介质侧维护任务经 queries/sys_session.sql 的
+-- CleanupExpiredSysSessions 以池直连调用。
+--
+-- 关键点——SECURITY DEFINER 绕过租户 RLS：sys_session 启用
+-- ENABLE + FORCE 的租户 RLS（见 rls.sql），维护任务没有租户身份，
+-- 应用角色直删恒 0 行。函数以属主（部署超级用户）身份执行绕过 RLS，
+-- 跨租户删除全部过期行。应用角色（grape_u）只经本函数以固定条件
+-- 清理，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（与 rls.sql 其他
+-- 函数的授权风格一致，无显式 GRANT），资格由函数属主而非调用方决定，
+-- 不构成跨租户扩权面。SET search_path = public 是 SECURITY DEFINER
+-- 的安全惯例（防 search_path 劫持函数体内的对象解析）。
+-- ============================================================
+
+-- fn_cleanup_expired_sessions：删除访问令牌已过期超过宽限期或已撤销
+-- 的会话行，返回删除行数。宽限期由调用方传入：访问令牌 TTL 只有
+-- 30 分钟量级，宽限期吸收在途请求对已过期令牌的最后一次合法使用，
+-- 也为审计/排障保留现场。
+CREATE OR REPLACE FUNCTION public.fn_cleanup_expired_sessions(grace_seconds bigint)
+    RETURNS bigint
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    SET search_path = public
+AS $fn$
+DECLARE
+    deleted bigint;
+BEGIN
+    DELETE
+    FROM public.sys_session
+    WHERE expires_at < CURRENT_TIMESTAMP - make_interval(secs => grace_seconds)
+       OR is_revoked;
+    GET DIAGNOSTICS deleted = ROW_COUNT;
+    RETURN deleted;
+END;
+$fn$
+;
+
+COMMENT ON FUNCTION public.fn_cleanup_expired_sessions(bigint) IS '过期会话清理（介质维护面，维护任务专用）：删除 expires_at 早于 当前时刻-宽限期 或 is_revoked 的会话行，返回删除行数。SECURITY DEFINER 以函数属主（部署超级用户）执行绕过 sys_session 的 ENABLE+FORCE 租户 RLS——维护任务无租户身份，应用角色直删恒 0 行；SET search_path = public 防 search_path 劫持。EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC，调用方只能以固定清理条件调用，不构成跨租户扩权面';
