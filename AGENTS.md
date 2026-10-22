@@ -23,6 +23,7 @@ service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归
 
 - 应用以非超级用户 `grape_u` 连接（超级用户绕过 RLS）；每事务 `set_config('app.tenant_id', ..., true)`，漏设默认全拒
 - `@scope` 表的 List/Count 缺 Scope 即报错（fail-closed）；Scope 只从服务端认证上下文注入，不受前端影响
+- 有权限的领域方法默认按权限处理（Scope/RLS 强制生效），无需额外标注；需要无权限或超高权限行为的接口，签名须带 `super` 字样显式区分
 - 令牌与口令哈希只在 biz 单点生成/校验，仓储出入参只见哈希；登录点查对软删除/跨租户与口令错误同因返回（防枚举）
 - 改 SQL 函数或命名查询需三处同步：SQL 注释、`COMMENT ON`、[sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) 索引表
 - 数据库部署按 13 文件固定顺序执行（seed 须以超级用户连接），顺序与升级注意事项见 [deploy_db.md](deploy_db.md)
@@ -30,5 +31,6 @@ service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归
 ## 改前必读
 
 - [internal/README.md](internal/README.md) — 分层规则、能力目录接入规范、新增资源速查、测试约定
-- [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) — SQL 对象索引、三层权限模型、数据库部署执行顺序
+- [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) — SQL 对象索引、三层权限模型
+- [deploy_db.md](deploy_db.md) — 数据库部署执行顺序与升级注意事项
 - [TODO.md](TODO.md) — 在建纵切、运行前提与既定约束（含决策理由）
