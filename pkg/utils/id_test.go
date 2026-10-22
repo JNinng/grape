@@ -35,10 +35,10 @@ func TestNewTraceID(t *testing.T) {
 	for i := 0; i < samples; i++ {
 		id := NewTraceID()
 		if !id.IsValid() {
-			t.Fatalf("第 %d 个 TraceID 无效（全零）: %s", i, id)
+			t.Fatalf("trace id #%d invalid (all zero): %s", i, id)
 		}
 		if _, dup := seen[id]; dup {
-			t.Fatalf("第 %d 个 TraceID 重复: %s", i, id)
+			t.Fatalf("trace id #%d duplicated: %s", i, id)
 		}
 		seen[id] = struct{}{}
 	}
@@ -53,12 +53,12 @@ func TestInstanceId(t *testing.T) {
 		want  string
 	}{
 		{
-			name: "IP可用时为IPv4-PID",
+			name: "ip-pid when IP available",
 			ip:   net.ParseIP("10.0.0.5").To4(),
 			want: "10.0.0.5-" + pid,
 		},
 		{
-			name:  "IP不可用时退化为纯PID",
+			name:  "bare pid when IP unavailable",
 			ipErr: errors.New("boom"),
 			want:  pid,
 		},
@@ -68,7 +68,7 @@ func TestInstanceId(t *testing.T) {
 			withResolveIP(t, tt.ip, tt.ipErr)
 			resetInstanceID(t)
 			if got := InstanceId(); got != tt.want {
-				t.Fatalf("InstanceId() = %q, 期望 %q", got, tt.want)
+				t.Fatalf("InstanceId() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -83,7 +83,7 @@ func TestInstanceIdCached(t *testing.T) {
 
 	withResolveIP(t, nil, errors.New("boom"))
 	if second := InstanceId(); second != first {
-		t.Fatalf("InstanceId() 二次调用 = %q, 与首次 %q 不一致, 缓存未固化", second, first)
+		t.Fatalf("InstanceId() second call = %q, inconsistent with first %q, cache not fixed", second, first)
 	}
 }
 
@@ -96,6 +96,6 @@ func TestInstanceIdShape(t *testing.T) {
 		return
 	}
 	if !strings.HasSuffix(got, "-"+pid) {
-		t.Fatalf("InstanceId() = %q, 既不是纯 PID 也不以 -%s 结尾", got, pid)
+		t.Fatalf("InstanceId() = %q, neither bare pid nor suffixed with -%s", got, pid)
 	}
 }
