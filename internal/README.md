@@ -84,12 +84,14 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 
 各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
-- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）；
-- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）；
+- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面（`NewFacilityDiagnostics`，新设施在此追加）；
+- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）；
 - `biz`：用例构造函数（依赖仓储接口）；
 - `service`：服务构造函数（依赖用例）；
 - `task`：任务构造函数（依赖用例）；
-- `server`：`NewGRPCServer` / `NewHTTPServer`。
+- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewMetricsHandler`（设施压力指标的 Prometheus 出口）。
+
+诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，server 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口（免认证、不在业务中间件链内），后续 task 只认契约消费维护面、不读原始指标。
 
 修改依赖关系后需重新运行 `make all`（或 `wire`）刷新 `wire_gen.go`。
 
