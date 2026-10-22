@@ -4,7 +4,7 @@ grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal
 
 ## 执行顺序
 
-按序执行以下 13 个文件，顺序不能变。同目录不参与部署的 SQL：`queries/` 五个文件是 sqlc 的 Go 生成输入，不对数据库执行；顶层 [schema.sql](internal/data/pg_sqlc/sqlc/schema.sql) 是上游模板遗留的演示表（users/orders），不在 sqlc 清单内，同样不执行。
+按序执行以下 13 个文件，顺序不能变。同目录不参与部署的 SQL：`queries/` 五个文件是 sqlc 的 Go 生成输入，不对数据库执行。
 
 | 步骤 | 文件 | 干什么 | 顺序约束 |
 |---|---|---|---|
