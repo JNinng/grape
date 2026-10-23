@@ -1,4 +1,4 @@
-package server
+package middleware
 
 import (
 	"context"
@@ -28,7 +28,7 @@ const (
 	requestIDHeader = "x-request-id"
 )
 
-// TraceMiddleware 是链路中间件的注入类型。它与认证中间件同为
+// TraceMiddleware 是链路中间件的注入类型。它与认证中间件同为 Kratos 的
 // middleware.Middleware，而 wire 按参数类型装配，同型双参无法区分，
 // 故以命名类型承载；服务器入口装配链时转回 middleware.Middleware，
 // 中间件本体仍是普通 middleware.Middleware。

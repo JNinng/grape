@@ -4,6 +4,7 @@ import (
 	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
+	entrymw "grape/internal/middleware"
 	"grape/internal/service"
 
 	"github.com/go-kratos/kratos/v3/middleware"
@@ -12,7 +13,7 @@ import (
 )
 
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。
-func NewGRPCServer(c *conf.Server, traceMiddleware TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(
 			recovery.Recovery(),

@@ -29,7 +29,7 @@ type MetricSample struct {
 }
 
 // FacilityDiagnostics 是单个设施的只读诊断面：暴露该设施的原始压力
-// 指标。设施无关的统一词汇表——server 出口与 task 均只认本接口，
+// 指标。设施无关的统一词汇表——ops 出口只认本接口，
 // 不感知具体介质；新设施（缓存等）落地时按同一契约接入。
 type FacilityDiagnostics interface {
 	// Facility 返回设施名（如 "postgres"），用于指标归属与错误归因。

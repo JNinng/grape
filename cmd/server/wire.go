@@ -11,6 +11,8 @@ import (
 	"grape/internal/biz"
 	"grape/internal/conf"
 	"grape/internal/data"
+	"grape/internal/middleware"
+	"grape/internal/ops"
 	"grape/internal/server"
 	"grape/internal/service"
 	"grape/internal/task"
@@ -21,5 +23,5 @@ import (
 
 // wireApp 装配 Kratos 应用。
 func wireApp(*conf.Server, *conf.Data, *conf.Auth, *slog.Logger) (*kratos.App, func(), error) {
-	panic(wire.Build(server.ProviderSet, data.ProviderSet, biz.ProviderSet, service.ProviderSet, task.ProviderSet, defaultTenantID, newApp))
+	panic(wire.Build(server.ProviderSet, middleware.ProviderSet, ops.ProviderSet, data.ProviderSet, biz.ProviderSet, service.ProviderSet, task.ProviderSet, defaultTenantID, newApp))
 }

@@ -6,6 +6,7 @@ import (
 	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
+	entrymw "grape/internal/middleware"
 	"grape/internal/service"
 
 	"github.com/go-kratos/kratos/v3/middleware"
@@ -14,10 +15,11 @@ import (
 )
 
 // NewHTTPServer 构造 HTTP 服务器并注册各资源的 HTTP 路由。
-// metrics 是原始指标出口，经 srv.Handle 直挂 /metrics：业务中间件
-// （recovery、认证）只作用于生成代码端点内的 ctx.Middleware，直挂的
-// 原始 handler 天然在其链外——/metrics 免认证即可访问。
-func NewHTTPServer(c *conf.Server, traceMiddleware TraceMiddleware, authMiddleware middleware.Middleware, metrics nethttp.Handler, user *service.UserService, session *service.SessionService) *http.Server {
+// 运维出口（如 metrics）由 ops 包构造，经 srv.Handle 直挂：业务中间件
+// （recovery、链路、认证）只作用于生成代码端点内的 ctx.Middleware，直挂的
+// 原始 handler 天然在其链外——/metrics 免认证即可访问。手写业务端点
+// 不走 srv.Handle，归属与入链要求见 internal/README.md「手写端点归属」。
+func NewHTTPServer(c *conf.Server, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, metrics nethttp.Handler, user *service.UserService, session *service.SessionService) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
 			recovery.Recovery(),

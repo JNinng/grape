@@ -12,6 +12,8 @@ import (
 	"grape/internal/conf"
 	"grape/internal/data"
 	"grape/internal/data/pg_sqlc"
+	"grape/internal/middleware"
+	"grape/internal/ops"
 	"grape/internal/server"
 	"grape/internal/service"
 	"grape/internal/task"
@@ -26,7 +28,7 @@ import (
 
 // wireApp 装配 Kratos 应用。
 func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logger *slog.Logger) (*kratos.App, func(), error) {
-	traceMiddleware, err := server.NewTraceMiddleware(confServer)
+	traceMiddleware, err := middleware.NewTraceMiddleware(confServer)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -36,18 +38,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logg
 	}
 	sessionRepo := pg_sqlc.NewSessionRepo(pg_sqlcData)
 	sessionUsecase := biz.NewSessionUsecase(sessionRepo)
-	middleware := server.NewAuthMiddleware(sessionUsecase)
+	middlewareMiddleware := middleware.NewAuthMiddleware(sessionUsecase)
 	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
 	userUsecase := biz.NewUserUsecase(userRepo)
 	userService := service.NewUserService(userUsecase)
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middleware, userService, sessionService)
+	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middlewareMiddleware, userService, sessionService)
 	facilityDiagnostics := pg_sqlc.NewDiagnostics(pg_sqlcData)
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
-	handler := server.NewMetricsHandler(v)
-	httpServer := server.NewHTTPServer(confServer, traceMiddleware, middleware, handler, userService, sessionService)
+	handler := ops.NewMetricsHandler(v)
+	httpServer := server.NewHTTPServer(confServer, traceMiddleware, middlewareMiddleware, handler, userService, sessionService)
 	facilityMaintenance := pg_sqlc.NewSessionMaintenance(pg_sqlcData)
 	v2 := data.NewFacilityMaintenance(facilityMaintenance)
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
