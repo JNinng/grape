@@ -39,7 +39,13 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署需要执行的文件与顺序约束见仓库根 [deploy_db.md](../../../../deploy_db.md)。
+- 数据库部署按固定顺序执行 13 个文件：`schema/10_basic.sql` →
+  `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
+  `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
+  `schema/80_session.sql` → `schema/90_config.sql` → `rls.sql` →
+  `operate.sql` → `expose.sql` → `seed.sql`。`seed.sql` 必须在 RLS 启用后
+  执行，且以超级用户/表 owner 连接（超级用户绕过 RLS）。执行顺序的依赖
+  细节与升级注意事项见仓库根 [deploy_db.md](../../../../deploy_db.md)。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
