@@ -21,8 +21,7 @@ type AssignUserRoleParams struct {
 	CreatedBy int64 `db:"created_by" json:"created_by"`
 }
 
-// 写入用户-角色映射（判断通过后调用）。租户自动取当前会话的
-// app.tenant_id；重复分配不报错、不重写
+// 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过
 func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error {
 	_, err := q.db.Exec(ctx, assignUserRole, arg.UserID, arg.RoleID, arg.CreatedBy)
 	return err
@@ -41,8 +40,7 @@ type AssignUserRolesParams struct {
 	RoleIds   []int64 `db:"role_ids" json:"role_ids"`
 }
 
-// 批量写入用户-角色映射（CanAssignRoles 全部通过后调用），
-// 返回实际新增的行数（已拥有的角色跳过、不报错）
+// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过
 func (q *Queries) AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, assignUserRoles, arg.UserID, arg.CreatedBy, arg.RoleIds)
 	if err != nil {
@@ -61,11 +59,7 @@ type CanAssignRoleParams struct {
 	Target   int64 `db:"target" json:"target"`
 }
 
-// 写侧链路命名查询：写前判断（fn_can_*）→ 判定通过后写入（角色分配
-// 落库）。判断与写入放同一事务、先检后写，false 即报错回滚。
-// 归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给判断
-// 函数，表示"没有这个归属"，不做零值转换。
-// 判断当前用户能否把某个角色分配给某个用户（规则见 fn_can_assign_role）
+// 判断操作者能否把指定角色授予目标用户
 func (q *Queries) CanAssignRole(ctx context.Context, arg CanAssignRoleParams) (bool, error) {
 	row := q.db.QueryRow(ctx, canAssignRole, arg.Operator, arg.Role, arg.Target)
 	var ok bool
@@ -90,9 +84,7 @@ type CanAssignRolesRow struct {
 	Ok     bool  `db:"ok" json:"ok"`
 }
 
-// 批量版：一次判断多个角色，每个角色一行（role_id, ok），
-// 全部通过才允许批量写入（规则同 fn_can_assign_role；
-// 与 fn_can_assign_roles 函数体一致，直接 SQL 调用时用那个函数）
+// 逐角色判断角色列表能否授予目标用户，每行返回 (role_id, ok)
 func (q *Queries) CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) ([]CanAssignRolesRow, error) {
 	rows, err := q.db.Query(ctx, canAssignRoles, arg.Operator, arg.Target, arg.RoleIds)
 	if err != nil {
@@ -125,9 +117,7 @@ type CanOperateRowParams struct {
 	OwnerGroup *int64 `db:"owner_group" json:"owner_group"`
 }
 
-// 判断当前用户能否修改/删除一条数据（读写同权：能看见就能操作，
-// 规则见 fn_can_operate_row）。归属参数传 NULL 表示"没有这个归属"；
-// 调用方先锁行取当前归属再传入，避免并发修改后按旧值判断
+// 判断操作者能否修改/删除指定归属的数据（读写同权）
 func (q *Queries) CanOperateRow(ctx context.Context, arg CanOperateRowParams) (bool, error) {
 	row := q.db.QueryRow(ctx, canOperateRow,
 		arg.Operator,
@@ -156,8 +146,8 @@ type CanTransferOwnerParams struct {
 	NewGroup *int64 `db:"new_group" json:"new_group"`
 }
 
-// 判断能否把某条数据的归属改成新归属：两头都要过——这条数据本身
-// 有权操作，新归属的人/部门/组也在可见范围内（见 fn_can_transfer_owner）
+// 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作
+// 且新归属可达）
 func (q *Queries) CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error) {
 	row := q.db.QueryRow(ctx, canTransferOwner,
 		arg.Operator,
@@ -185,7 +175,7 @@ type HasUserRoleParams struct {
 	RoleID int64 `db:"role_id" json:"role_id"`
 }
 
-// 查某个用户是否已拥有某个角色（分配后的结果确认）
+// 判断用户是否拥有指定角色
 func (q *Queries) HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasUserRole, arg.UserID, arg.RoleID)
 	var has bool

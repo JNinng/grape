@@ -1,26 +1,17 @@
--- sys_user 用户表固定 CRUD：全部经会话门面在租户事务内执行（RLS 限
--- 租户）。写路径纪律：先锁行取当前归属 → fn_can_operate_row /
--- fn_can_transfer_owner 判定 → 再写入，判断与写入同一事务。
-
--- 按 id 读取用户（租户内，软删除行不可见）。可见性由调用方经
--- CheckVisible 判定：不可见等同不存在。
+-- 按 id 读取未软删的用户（不做数据范围过滤）
 -- name: GetSysUserByID :one
 SELECT * FROM public.sys_user
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL;
 
--- 按 id 锁定并读取一行用户（FOR UPDATE）：写操作前取当前归属，
--- 防止并发修改后按旧值判断；软删除行不可操作
+-- 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤）
 -- name: GetSysUserForUpdate :one
 SELECT * FROM public.sys_user
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL
 FOR UPDATE;
 
--- 创建用户。主键 id 由应用层发号（体系表主键无数据库默认值）；可空列
--- 用 sqlc.narg（NULL 原样落库）；租户取自会话 app.tenant_id；
--- created_at/updated_at 由列默认值生成。租户内 name/email/phone 唯一
--- 冲突由调用方映射为 ALREADY_EXISTS
+-- 插入用户记录；租户取会话 app.tenant_id
 -- name: InsertSysUser :one
 INSERT INTO public.sys_user (id, tenant_id, status, "name", nickname, "password", email, phone,
                              remark, locale, owner_user_id, owner_dept_id,
@@ -31,8 +22,7 @@ VALUES (sqlc.arg('id'), current_setting('app.tenant_id'), sqlc.arg('status'), sq
         sqlc.narg('owner_user_group_id'), sqlc.arg('created_by'), sqlc.arg('updated_by'))
 RETURNING *;
 
--- 覆盖可变字段（不含 password 与归属三元组）。updated_by 记操作者，
--- updated_at 由触发器兜底刷新
+-- 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 -- name: UpdateSysUser :one
 UPDATE public.sys_user
 SET status   = sqlc.arg('status'),
@@ -46,21 +36,20 @@ SET status   = sqlc.arg('status'),
 WHERE id = sqlc.arg('id')
 RETURNING *;
 
--- 替换密码哈希；updated_by 记操作者
+-- 替换口令哈希
 -- name: SetSysUserPassword :execrows
 UPDATE public.sys_user
 SET "password" = sqlc.arg('password'), updated_by = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id');
 
--- 软删除：deleted_at 置位后租户内唯一键（name/email/phone）随之可复用
+-- 置位 deleted_at 软删除用户
 -- name: SoftDeleteSysUser :execrows
 UPDATE public.sys_user
 SET deleted_at = CURRENT_TIMESTAMP, updated_by = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL;
 
--- 归属转移落库（fn_can_transfer_owner 判定通过后调用）；
--- 归属参数传 NULL 表示清掉该归属
+-- 更新用户归属三元组；归属参数为 NULL 表示清空该归属
 -- name: UpdateSysUserOwner :exec
 UPDATE public.sys_user
 SET owner_user_id       = sqlc.narg('owner_user_id'),
@@ -69,9 +58,7 @@ SET owner_user_id       = sqlc.narg('owner_user_id'),
     updated_by          = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id');
 
--- 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
--- 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
--- 行等同不存在。哈希仅供 biz 口令校验单点使用
+-- 按用户名读取口令哈希与状态（仅未软删行）
 -- name: GetUserCredentialByName :one
 SELECT id,
        status,

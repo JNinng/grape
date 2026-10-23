@@ -10,22 +10,22 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 
 ## 文件总览
 
-| # | 文件 | 干什么 | sqlc 输入 | 内容 |
+| # | 文件 | 作用描述 | sqlc 输入 | 内容 |
 |---|---|---|---|---|
-| 1 | schema/10_basic.sql | basic 业务表范式示例（归属三元组 + @scope 守卫） | 是 | 1 张表 |
-| 2 | schema/20_tenant.sql | sys_tenant 租户表（RLS 允许命中自身 id） | 是 | 1 张表 |
-| 3 | schema/30_user.sql | sys_user（@scope 守卫）、用户-角色/用户组映射、用户组 | 是 | 4 张表 |
-| 4 | schema/40_rbac.sql | sys_role、范围明细、分发部门映射、sys_menu、角色-菜单映射 | 是 | 5 张表 |
-| 5 | schema/50_dept.sql | sys_dept 组织树、闭包表、闭包维护触发器 | 是 | 2 张表、1 个触发器函数 |
-| 6 | schema/60_dict.sql | 字典类型 + 字典数据 | 是 | 2 张表 |
-| 7 | schema/70_audit.sql | 登录/操作日志（append-only） | 是 | 2 张表 |
-| 8 | schema/80_session.sql | 会话/令牌（仅存哈希） | 是 | 1 张表、1 个维护函数 |
-| 9 | schema/90_config.sql | 全局配置、租户配置、功能开关、翻译 | 是 | 4 张表 |
-| 10 | rls.sql | 租户隔离 RLS 策略；三个权限过滤函数；updated_at 触发器；sys_session 令牌维度策略；grape_u 运行角色与 test_u 演示授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
-| 11 | operate.sql | 写数据前的权限判断函数 | 是（只读函数签名） | 4 个判断函数 |
-| 12 | expose.sql | 权限查询接口：面向外部进程的只读判定函数；范围版本表 + bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 命名查询：写侧判定链路（operate）、basic 业务表操作（basic）、权限查询接口（perm）、业务表固定 CRUD（sys_user/sys_session） | 是（queries） | 5 个文件、28 条命名查询 |
-| 14 | seed.sql | 种子数据（含权限演示数据） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 1 | schema/10_basic.sql | 定义 basic 业务表：租户列、审计列、归属三元组与 @scope 列注释 | 是 | 1 张表 |
+| 2 | schema/20_tenant.sql | 定义 sys_tenant 租户表 | 是 | 1 张表 |
+| 3 | schema/30_user.sql | 定义 sys_user 用户表、用户-角色/用户组映射与用户组表；sys_user 带 @scope 列注释 | 是 | 4 张表 |
+| 4 | schema/40_rbac.sql | 定义角色、data_scope 范围明细、角色可分发部门、菜单与角色-菜单授权表 | 是 | 5 张表 |
+| 5 | schema/50_dept.sql | 定义组织树与闭包表，以及闭包维护触发器函数 | 是 | 2 张表、1 个触发器函数 |
+| 6 | schema/60_dict.sql | 定义字典类型与字典数据表 | 是 | 2 张表 |
+| 7 | schema/70_audit.sql | 定义登录日志与操作日志表（append-only） | 是 | 2 张表 |
+| 8 | schema/80_session.sql | 定义会话/令牌表（仅存哈希），以及过期会话清理函数 | 是 | 1 张表、1 个维护函数 |
+| 9 | schema/90_config.sql | 定义全局配置、租户配置、功能开关与翻译表 | 是 | 4 张表 |
+| 10 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器、会话令牌维度策略与运行角色授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
+| 11 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
+| 12 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
+| 13 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、28 条命名查询 |
+| 14 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
@@ -133,9 +133,9 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与�
 由介质侧维护任务以池直连调用（不经租户/令牌事务门面），删除条件
 （过期宽限、已撤销）收在函数内，调用方只传宽限期。
 
-| 函数 | 签名 | 属性 | 干什么 |
+| 函数 | 签名 | 属性 | 作用描述 |
 |---|---|---|---|
-| fn_cleanup_expired_sessions | (宽限期秒数) → bigint | SECURITY DEFINER，`SET search_path = public` | 删除 expires_at 早于 当前时刻-宽限期 或 is_revoked 的会话行，返回删除行数 |
+| fn_cleanup_expired_sessions | (宽限期秒数) → bigint | SECURITY DEFINER，`SET search_path = public` | 清理已撤销或过期超过宽限期的会话行，返回删除行数 |
 
 属主/权限语义：sys_session 启用 ENABLE+FORCE 的租户 RLS，维护任务
 没有租户身份，应用角色直删恒 0 行；本函数以属主（部署超级用户）身份
@@ -145,40 +145,61 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与�
 
 ## 命名查询索引（queries/）
 
-约定：归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给
-判断函数，表示"没有这个归属"，不做零值转换。每条查询上方的注释会被
-sqlc 带进生成的 Go 代码（godoc），修改时记得同步。
+约定：归属类参数用 sqlc.narg 传入，NULL 表示没有该归属；查询注释会被
+sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 
-| 查询 | 文件 | 类型 | 参数 → 返回 | 干什么 |
-|---|---|---|---|---|
-| CanAssignRole | operate.sql | :one | 操作者/角色/目标 → bool | 分配前的权限判断 |
-| CanAssignRoles | operate.sql | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 批量分配前的权限判断（逐个角色） |
-| CanTransferOwner | operate.sql | :one | 操作者 + 旧/新归属（可空）→ bool | 改归属前的权限判断 |
-| CanOperateRow | operate.sql | :one | 操作者 + 归属三元组（可空）→ bool | 行操作前的权限判断（读写同权，等价于 fn_check_visible 掩码 7） |
-| AssignUserRole | operate.sql | :exec | 用户/角色/操作者 | 写入一条角色映射，租户自动取会话值，重复分配不报错 |
-| AssignUserRoles | operate.sql | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入角色映射，已拥有的跳过 |
-| HasUserRole | operate.sql | :one | 用户/角色 → bool | 确认分配结果是否落库 |
-| GetBasicForUpdate | basic.sql | :one | id → Basic | 锁行并读出当前归属（FOR UPDATE） |
-| UpdateBasicOwner | basic.sql | :exec | 新归属（可空）+ 操作者 + id | 修改归属，updated_at 自动刷新 |
-| GetSysUserByID | sys_user.sql | :one | id → SysUser | 按 id 读取用户（软删除行不可见；可见性由 CheckVisible 判定） |
-| GetSysUserForUpdate | sys_user.sql | :one | id → SysUser | 锁定并读取用户（FOR UPDATE），写前取当前归属 |
-| InsertSysUser | sys_user.sql | :one | 用户字段 + 操作者 → SysUser | 创建用户，租户取会话 app.tenant_id |
-| UpdateSysUser | sys_user.sql | :one | 可变字段 + 操作者 + id → SysUser | 覆盖可变字段（不含密码与归属三元组） |
-| SetSysUserPassword | sys_user.sql | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换密码哈希 |
-| SoftDeleteSysUser | sys_user.sql | :execrows | 操作者 + id → 行数 | 软删除用户 |
-| UpdateSysUserOwner | sys_user.sql | :exec | 新归属三元组 + 操作者 + id | 归属转移落库（fn_can_transfer_owner 通过后） |
-| GetUserCredentialByName | sys_user.sql | :one | 用户名 → 凭据行（含口令哈希） | 登录路径专用：按名读口令哈希与状态（软删除行不可见） |
-| InsertSysSession | sys_session.sql | :one | 身份 + 令牌哈希/有效期 → SysSession | 签发会话（令牌只存哈希） |
-| GetActiveSysSessionByTokenHash | sys_session.sql | :one | 访问令牌哈希 → SysSession | 校验访问令牌（启用、未撤销、未过期；SQL WHERE 内判定） |
-| RevokeSysSession | sys_session.sql | :execrows | 操作者 + id → 行数 | 撤销会话（登出幂等，租户内） |
-| RotateSysSession | sys_session.sql | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 刷新令牌轮换（旧刷新令牌立即失效） |
-| CleanupExpiredSysSessions | sys_session.sql | :one | 宽限期秒数 → 删除行数 | 介质维护路径：清理过期超宽限/已撤销的会话行（池直连，不经租户/令牌事务门面；跨租户资格见维护函数 fn_cleanup_expired_sessions） |
-| CheckVisible | perm.sql | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 权限查询：单点可见性判断（fn_check_visible） |
-| HasPermission | perm.sql | :one | 操作者/权限码 → bool | 权限查询：功能权限码判断（fn_has_permission） |
-| GetScope | perm.sql | :one | 操作者 → 三个 int8[] 列（可 NULL） | 权限查询：三维度可见集合一次取回（三件套同返；NULL=全租户，服务层翻成 All） |
-| GetUserRoles | perm.sql | :many | 用户 → SysRole 行 | 权限查询：枚举有效角色 |
-| GetPermissionCodes | perm.sql | :many | 用户 → 权限码列表（去重排序） | 权限查询：枚举权限码（菜单渲染/网关缓存） |
-| GetScopeVersion | perm.sql | :one | 用户 → (租户版本, 用户版本) | 权限查询：范围版本，缓存失效信号（行不存在补 0） |
+### operate.sql（写侧判定）
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| CanAssignRole | :one | 操作者/角色/目标 → bool | 判断操作者能否把指定角色授予目标用户 |
+| CanAssignRoles | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 逐角色判断角色列表能否授予目标用户，每行返回 (role_id, ok) |
+| CanTransferOwner | :one | 操作者 + 旧/新归属（可空）→ bool | 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作且新归属可达） |
+| CanOperateRow | :one | 操作者 + 归属三元组（可空）→ bool | 判断操作者能否修改/删除指定归属的数据（读写同权） |
+| AssignUserRole | :exec | 用户/角色/操作者 | 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过 |
+| AssignUserRoles | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过 |
+| HasUserRole | :one | 用户/角色 → bool | 判断用户是否拥有指定角色 |
+
+### perm.sql（权限查询接口）
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| CheckVisible | :one | 操作者/维度掩码/归属三元组（可空）→ bool | 按维度掩码判断归属是否可见/可操作（读写同权）；dims 1=归属人、2=归属部门、4=归属用户组，可按位组合；归属参数为 NULL 表示无该归属 |
+| HasPermission | :one | 操作者/权限码 → bool | 判断用户是否持有指定功能权限码（角色→菜单→权限码，与数据范围正交） |
+| GetScope | :one | 操作者 → 三个 int8[] 列（可 NULL） | 一次取回三个维度的可见集合；列 NULL 表示全租户不过滤，空数组表示无可见项，数组为可见集合并集 |
+| GetUserRoles | :many | 用户 → SysRole 行 | 枚举用户的有效角色；用户无效（不存在/禁用/删除）时返回空集 |
+| GetPermissionCodes | :many | 用户 → 权限码列表（去重排序） | 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集 |
+| GetScopeVersion | :one | 用户 → (租户版本, 用户版本) | 读取租户级与用户级范围版本；行不存在时返回 0 |
+
+### basic.sql（basic 业务表操作）
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetBasicForUpdate | :one | id → Basic | 按 id 锁定并读取一行 basic（FOR UPDATE） |
+| UpdateBasicOwner | :exec | 新归属（可空）+ 操作者 + id | 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，updated_at 由触发器刷新 |
+
+### sys_user.sql（用户固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysUserByID | :one | id → SysUser | 按 id 读取未软删的用户（不做数据范围过滤） |
+| GetSysUserForUpdate | :one | id → SysUser | 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤） |
+| InsertSysUser | :one | 用户字段 + 操作者 → SysUser | 插入用户记录；租户取会话 app.tenant_id |
+| UpdateSysUser | :one | 可变字段 + 操作者 + id → SysUser | 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新 |
+| SetSysUserPassword | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换口令哈希 |
+| SoftDeleteSysUser | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除用户 |
+| UpdateSysUserOwner | :exec | 新归属三元组 + 操作者 + id | 更新用户归属三元组；归属参数为 NULL 表示清空该归属 |
+| GetUserCredentialByName | :one | 用户名 → 凭据行（含口令哈希） | 按用户名读取口令哈希与状态（仅未软删行） |
+
+### sys_session.sql（会话固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| InsertSysSession | :one | 身份 + 令牌哈希/有效期 → SysSession | 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算 |
+| GetActiveSysSessionByTokenHash | :one | 访问令牌哈希 → SysSession | 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效 |
+| RevokeSysSession | :execrows | 操作者 + id → 行数 | 撤销指定会话；已撤销时更新 0 行 |
+| RotateSysSession | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，未命中时更新 0 行 |
+| CleanupExpiredSysSessions | :one | 宽限期秒数 → 删除行数 | 删除已撤销或过期超过宽限期的会话，返回删除行数 |
 
 批量过滤 fn_filter_visible_rows 没有对应命名查询：sqlc 解析不了
 表函数的返回列，权限查询服务层直接以参数化 SQL 调用该函数。
