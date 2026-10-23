@@ -6,7 +6,8 @@ Go 后端项目。
 
 关系存储（pg_sqlc）承载多租户 RBAC 数据权限体系（schema 按业务域拆分声明、
 RLS 租户隔离、@scope 数据范围守卫、写前判断函数、权限查询判定函数、种子
-数据）。SQL 对象索引与三层权限模型见
+数据）。权限约束的落点（租户边界 / 行级数据范围 / 功能权限码）、读写形态
+与错误语义见 [permission.md](permission.md)；SQL 对象索引与三层权限模型见
 [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)，
 部署执行顺序见 [deploy_db.md](deploy_db.md)。
 

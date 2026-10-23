@@ -27,6 +27,7 @@ service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归
 ## 改前必读（按变更选读）
 
 - [internal/README.md](internal/README.md) — 分层规则、能力目录接入规范、新增资源速查、测试约定
+- [permission.md](permission.md) — 权限约束落点（租户边界/行级数据范围/功能权限码）、读写形态与错误语义
 - [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) — SQL 对象索引、三层权限模型、变更流程与部署顺序
 - [deploy_db.md](deploy_db.md) — 数据库部署执行顺序与升级注意事项
 

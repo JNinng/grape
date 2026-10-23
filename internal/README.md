@@ -134,6 +134,9 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 4. 在 `pg_sqlc` 实现仓储（构造函数返回 `biz.<Resource>Repo`），分别注册到 `pg_sqlc` / `biz` / `service` 的 `ProviderSet`（能力 ProviderSet 由 `data` 聚合），并在 `server` 中注册 HTTP / gRPC 服务；
 5. `make generate`（wire + tidy）刷新装配与模块依赖；需要同时重生成契约/存储代码时用 `make all`。
 
+权限约束的落点（租户边界 / 行级数据范围 / 功能权限码）、读写形态与错误
+语义见根目录 [permission.md](../permission.md)。
+
 ## 测试
 
 测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖见各目录 README 的「测试」一节：[biz](biz/README.md)、[service](service/README.md)、[task](task/README.md)、[middleware](middleware/README.md)、[ops](ops/README.md)、[server](server/README.md)、[data](data/README.md)，以及 [pkg](../pkg/README.md) 与 [encoding/jsoncodec](encoding/jsoncodec/README.md)。
