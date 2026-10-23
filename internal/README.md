@@ -7,15 +7,17 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 | 目录                | 职责与规则                                                                                                                              |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | [conf](conf/)       | 配置结构定义。只改 `conf.proto`，生成文件禁止手改，改后由 `make config` 重新生成。                                                       |
-| [server](server/)   | HTTP / gRPC 服务器构建。只做配置读取、中间件装配与服务注册；禁止出现 DTO 翻译或业务逻辑。                                               |
+| [server](server/)   | HTTP / gRPC 服务器构建与挂载：读取配置、装配中间件、注册生成代码路由、直挂运维 Handler；禁止出现 DTO 翻译或业务逻辑。                   |
+| [middleware](middleware/) | 入口中间件（认证、链路标识）。认证中间件持有免认证白名单与 fail-closed 口径，是链上请求身份成立前的唯一放行点；只依赖 `api/...` 操作名、`biz`、`conf` 与 `pkg/utils`。 |
+| [ops](ops/)         | 运维出口：手写原生 `net/http` Handler（当前为设施诊断指标的 `/metrics`），由 server 直挂于业务中间件链外。免认证、只读；只依赖 `biz` 的设施只读契约，不触达业务用例。 |
 | [service](service/) | 传输层适配器，每个资源一个文件。在边界完成 DTO ↔ DO 转换；把 query.v1 动态查询协议转为 dynq.Query；委托给 biz 用例；禁止实现业务规则（入参校验在 biz 落地）。 |
-| task                | 后台异步任务入口（定时、事件、手动触发），与 service 平级构成第二类入口。分层与 service 同构（task → biz → data），无 DTO，直接以 DO 或设施契约调用 biz 声明的能力；禁止实现业务规则（入参校验在 biz 落地）。 |
+| task                | 后台异步任务入口（定时、事件、手动触发），与 service 平级构成第二类业务入口。分层与 service 同构（task → biz → data），无 DTO，直接以 DO 或设施契约调用 biz 声明的能力；禁止实现业务规则（入参校验在 biz 落地）。 |
 | [biz](biz/)         | 领域层，只认 DO。定义 DO、用例、仓储接口（依赖反转的接缝）、类型化错误与查询选项；领域规则（如必填校验）只在这里落地。                   |
 | [data](data/)       | 存储基础设施集合：一能力一子目录，目录内自包含（定位与接入细则见「能力目录接入规范」）。能力目录实现 `biz` 声明的仓储接口与设施契约，DO ↔ PO 转换、驱动错误映射在仓储内完成；现有能力与生成资产见 [data/README.md](data/README.md)。  |
 
 ## 分层与数据流向
 
-service 与 task 是两类平级入口，各自自上而下单向流动，越往下越贴近存储。
+service 与 task 是两类业务入口，各自自上而下单向流动，越往下越贴近存储。`middleware` 与 `ops` 挂在入口侧但不承载业务数据流：`middleware` 在身份成立前放行/拒绝并注入链路事实，`ops` 输出运维只读指标。
 
 service 入口（HTTP / gRPC）：
 
@@ -77,21 +79,36 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界）；`data` 只为仓储接口与设施契约导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http`）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops`；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界）；`data` 只为仓储接口与设施契约导入 `biz`；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
+
+## 手写端点归属
+
+非 proto 生成的手写 handler 按是否需要身份分两类，实现都不放 `server`，`server` 只保留挂载：
+
+| 类别 | 典型端点 | 归属 | 注册方式 | 中间件链 |
+| ---- | -------- | ---- | -------- | -------- |
+| 运维 / 探针 | `/metrics`（现有）；`/healthz`、`/readyz`、`/debug/pprof` 同类新增 | `ops` | `srv.Handle`（原生 `net/http.Handler`） | 链外、免认证、只读 |
+| 业务手写 | 文件上传下载、SSE、WebSocket | `service/<资源>_http.go` | `srv.Route` + handler 内 `ctx.Middleware` | 入链、认证生效 |
+
+Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv.Handle` 的原生 Handler 拿不到 `http.Context`；`srv.Route` 中漏调 `ctx.Middleware` 则静默绕过认证。业务手写端点必须调用它，并用「无令牌 401」的测试守住。
+
+确需免认证的业务回调（验签替代令牌）仍归 `service`，但需把路径显式加入 `middleware` 的免认证集合（`tr.Operation()` 对手写路由取值即路径模板），不要靠漏调入链实现。
 
 ## 依赖注入
 
-各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
+各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` / `middleware` / `ops` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
 - `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
 - 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；
 - `biz`：用例构造函数（依赖仓储接口）；
 - `service`：服务构造函数（依赖用例）；
 - `task`：任务构造函数（依赖用例）；
-- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewMetricsHandler`（设施压力指标的 Prometheus 出口）/ `NewAuthMiddleware` / `NewTraceMiddleware`。
+- `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
+- `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
+- `server`：`NewGRPCServer` / `NewHTTPServer`，是唯一挂载点（生成代码路由 + 运维原始 Handler）。
 
-诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，server 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
+诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
 
 修改依赖关系后需重新运行 `make generate`（wire + tidy）刷新 `wire_gen.go`。
 
@@ -123,7 +140,9 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 - `encoding/jsoncodec`：protobuf JSON 编解码契约；
 - `biz`：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举；
 - `service`：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；
-- `server`：认证中间件、链路标识生成/继承/回传与指标出口；
+- `middleware`：认证中间件、链路标识生成/继承/回传；
+- `ops`：指标出口的样本映射与采集失败计数；
+- `server`：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；
 - `task`：维护循环的启停、失败隔离与动作日志；
 - `pkg`：工具函数契约（IP 解析、ID 生成、日志截断/掩码、版本摘要）。
 

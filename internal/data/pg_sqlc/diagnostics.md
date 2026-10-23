@@ -10,8 +10,8 @@ PostgreSQL 设施的只读压力指标采集，实现 [biz/maintenance.go](../..
 
 ```
 diagnostics.go（采集） → data.NewFacilityDiagnostics（聚合，../provider.go）
-                       → server.NewMetricsHandler（出口，../../server/metrics.go）
-                       → GET /metrics（挂在 HTTP 端口上）
+                       → ops.NewMetricsHandler（出口，../../ops/metrics.go）
+                       → server 直挂 /metrics（HTTP 端口，业务中间件链外）
 ```
 
 采集是**抓取驱动**的：出口收到 scrape 时才调用 `Pressure`，无后台循环、无缓存。
@@ -103,6 +103,7 @@ increase(grape_diagnostics_scrape_errors_total{facility="postgres"}[5m]) > 0
 
 ## 测试
 
-- `../../server/metrics_test.go`：出口映射、故障隔离与失败计数的单元测试
+- `../../ops/metrics_test.go`：出口映射、故障隔离与失败计数的单元测试
+- `../../server/metrics_route_test.go`：`/metrics` 直挂路由绕过业务中间件链的挂载测试
 - `diagnostics_test.go`：集成测试，`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控
   （未设置自动跳过），自建临时库后断言池、表、索引样本齐全

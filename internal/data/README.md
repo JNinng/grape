@@ -8,4 +8,4 @@
 
 ## 诊断面
 
-能力目录可另挂「诊断面」：实现 [biz/maintenance.go](../biz/maintenance.go) 声明的 `FacilityDiagnostics`，输出本设施的**原始**压力指标（不做比率与判定，阈值归监控配置层），经 data 的 `NewFacilityDiagnostics` 聚合、server 的指标出口统一输出到 `/metrics`；维护契约 `FacilityMaintenance` 按同一接缝消费。postgres 同时实现诊断面（[pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go)）与维护面（[pg_sqlc/session_repo.go](pg_sqlc/session_repo.go)）；缓存等新设施按同一模式接入（实现 + 追加进聚合点，不新增出口）。
+能力目录可另挂「诊断面」：实现 [biz/maintenance.go](../biz/maintenance.go) 声明的 `FacilityDiagnostics`，输出本设施的**原始**压力指标（不做比率与判定，阈值归监控配置层），经 data 的 `NewFacilityDiagnostics` 聚合、ops 的指标出口统一输出到 `/metrics`（server 直挂）；维护契约 `FacilityMaintenance` 按同一接缝消费。postgres 同时实现诊断面（[pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go)）与维护面（[pg_sqlc/session_repo.go](pg_sqlc/session_repo.go)）；缓存等新设施按同一模式接入（实现 + 追加进聚合点，不新增出口）。
