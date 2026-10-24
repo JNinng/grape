@@ -49,7 +49,7 @@
 
 ## 新增资源接入要点
 
-- 声明 DO 与 `<Resource>Repo` 接口：DO 为纯领域模型（无 proto/存储标签）；读/写方法收 `Identity` 作为租户边界与审计操作者（身份成立前的登录点查例外，以租户 ID 入参，见 `GetCredentialByName`），List 收 `*dynq.Query`，接口由 data 实现而 biz 不导入 data。
+- 声明 DO 与 `<Resource>Repo` 接口：DO 为纯领域模型（无 proto/存储标签）；读/写方法收 `Identity` 作为租户边界与审计操作者（身份成立前的登录点查例外，以租户 ID 入参，见 `GetCredentialForLogin`，不使用 `super` 命名），List 收 `*dynq.Query`，接口由 data 实现而 biz 不导入 data。
 - 基于接口实现 `<Resource>Usecase`：入参必填校验、缺省值与跨字段规则在此落地；失败返回 Kratos 类型化错误，reason 使用 `api/<domain>/v1` 中声明的枚举。
 - 需要在 biz 内生成的敏感值（口令哈希、令牌及哈希）沿用现有单点函数；选项类型零值在用例内落为缺省值。
 - 新增 `New<Resource>Usecase` 构造函数并加入 [provider.go](provider.go) 的 `ProviderSet`；装配变化后按仓库约定重跑 `make generate`。

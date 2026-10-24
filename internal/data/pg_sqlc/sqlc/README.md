@@ -24,7 +24,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 10 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器、会话令牌维度策略与运行角色授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
 | 11 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 12 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、28 条命名查询 |
+| 13 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、29 条命名查询 |
 | 14 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -55,7 +55,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 |---|---|---|---|
 | PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 2 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
-| 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定 + 同事务先检后写 | 判定 false → 报错回滚 |
+| 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 
 - **@scope 只挂在有归属字段的表上**：当前为 `basic` 与 `sys_user`
   （见 schema 文件表注释）；其余表租户内所有人可见。
@@ -70,7 +70,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   令牌事务与介质维护是文档化例外）；Scope 只从服务端认证上下文注入，
   永不受前端请求影响。
 
-某类约束该落在哪一层、写路径为什么是「锁行 → 库内判定 → 写入」、新增
+某类约束该落在哪一层、读写形态为何把取行与判定合并、新增
 资源照哪条路径实现，见根目录 [permission.md](../../../../permission.md)。
 
 ## 函数索引
@@ -107,11 +107,12 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与�
 | fn_can_operate_row | (用户, 归属人, 归属部门, 归属组) → boolean | S | 能否修改/删除一条数据。能看见就能操作：有全租户角色直接通过；否则任一归属命中可见范围即通过；三个归属全空的数据只有全租户能操作 |
 | fn_can_transfer_owner | (用户, 旧归属×3, 新归属×3) → boolean | S | 能否修改数据的归属。两头都要过：这条数据本身有权操作，且新归属的人/部门/组在可见范围内（防止把数据转给自己看不见的人） |
 
-### 查询判断函数（expose.sql，外部查询用）
+### 查询判断函数（expose.sql，只读判定）
 
-只读判定，不与写事务绑定；与上面两个家族共用同一套 data_scope
-推导（内外同源）。供权限查询服务层（宿主侧，待建）调用，HTTP/gRPC
-由宿主自包。拒绝返回 false/空集，不是错误。
+只读判定，不写库，可与写事务共用同一事务与快照；与上面两个家族共用同一套
+data_scope 推导（内外同源）。供权限查询服务层（宿主侧，待建）调用，HTTP/gRPC
+由宿主自包；`fn_has_permission` 同时被取行查询用于可空权限码校验。
+拒绝返回 false/空集，不是错误。
 
 | 函数 | 签名 | 属性 | 判断什么 |
 |---|---|---|---|
@@ -185,14 +186,15 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
-| GetSysUserByID | :one | id → SysUser | 按 id 读取未软删的用户（不做数据范围过滤） |
-| GetSysUserForUpdate | :one | id → SysUser | 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤） |
+| GetSysUserByID | :one | id → SysUser | 按 id 读取未软删的用户（不做数据范围过滤；仅限已授权事务内回读） |
+| GetSysUserPermitted | :one | id/操作者/可空权限码 → SysUser | 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限 |
+| LockSysUserPermitted | :one | id/操作者/可空权限码 → SysUser | 按 id 锁定数据范围内可操作的用户（FOR UPDATE）；permission_code 非空时同时校验功能权限 |
 | InsertSysUser | :one | 用户字段 + 操作者 → SysUser | 插入用户记录；租户取会话 app.tenant_id |
 | UpdateSysUser | :one | 可变字段 + 操作者 + id → SysUser | 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新 |
 | SetSysUserPassword | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换口令哈希 |
 | SoftDeleteSysUser | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除用户 |
 | UpdateSysUserOwner | :exec | 新归属三元组 + 操作者 + id | 更新用户归属三元组；归属参数为 NULL 表示清空该归属 |
-| GetUserCredentialByName | :one | 用户名 → 凭据行（含口令哈希） | 按用户名读取口令哈希与状态（仅未软删行） |
+| GetUserCredentialByName | :one | 用户名 → 凭据行（含口令哈希） | 登录路径专用：按用户名读取口令哈希与状态（仅未软删行） |
 
 ### sys_session.sql（会话固定 CRUD）
 

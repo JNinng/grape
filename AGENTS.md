@@ -22,7 +22,7 @@ service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归
 ## 关键约束
 
 - 应用以非超级用户 `grape_u` 连接（超级用户绕过 RLS）；业务事务每事务 `set_config('app.tenant_id', ..., true)`，漏设默认全拒（身份成立前的令牌事务与介质维护是文档化例外，见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)）
-- 有权限的领域方法默认按权限处理（Scope/RLS 强制生效），无需额外标注；需要无权限或超高权限行为的接口，签名须带 `super` 字样显式区分
+- 有权限的领域方法默认按权限处理（Scope/RLS 强制生效），无需额外标注；只有身份已成立但接口有意绕过租户/数据范围约束时才在方法名带 `super`。身份成立前的凭据/令牌查询、设施维护面、已授权事务内的内部回读属文档化例外，不使用 `super`（见 [permission.md](permission.md)）
 
 ## 改前必读（按变更选读）
 

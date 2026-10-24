@@ -49,28 +49,45 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 
 ## 写形态
 
-锁行 → 库内判定 → 写入，三步在同一 `IdentityTx` 内，判定不通过整体回滚：
+锁定、取行与行权限判定合并为一条语句：`LockXxxPermitted` 用
+`fn_can_operate_row` 过滤并 `FOR UPDATE`，返回的行即已锁定且可操作；
+业务逻辑与写入继续在同一 `IdentityTx` 内执行。
+
+```sql
+-- queries/sys_user.sql
+-- name: LockSysUserPermitted :one
+SELECT * FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+  AND public.fn_can_operate_row(sqlc.arg('operator'),
+        owner_user_id, owner_dept_id, owner_user_group_id)
+  AND (sqlc.narg('permission_code')::varchar IS NULL
+    OR public.fn_has_permission(sqlc.arg('operator'), sqlc.narg('permission_code')::varchar))
+FOR UPDATE;
+```
+
+`permission_code` 可空：传值则同时校验功能权限，传 NULL 只校验行级数据范围；空串按无此权限处理。
 
 ```go
 // internal/data/pg_sqlc/user.go 的 Update 形态
-row, err := s.Q().GetSysUserForUpdate(ctx, id) // 1. FOR UPDATE 锁行，按当前归属取值
-if err != nil {
-    return err
+if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+    ID: u.ID, Operator: auth.UserID, PermissionCode: nil,
+}); err != nil {
+    return err // pgx.ErrNoRows → NotFound
 }
-if err := requireOperable(ctx, s, auth.UserID, &row); err != nil { // 2. fn_can_operate_row
-    return err
-}
-updated, err := s.Q().UpdateSysUser(ctx, params) // 3. 写入，同一事务
+updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有到提交
 ```
 
 约束：
 
-- 判定使用行的当前归属，必须锁行取值，防止并发修改归属后按旧值判定；
-- 判定与写入同事务，false 即回滚，不存在「判了没写」或「写了没判」；
-- 可见性谓词只在判定函数里写一份，不内联进 `UPDATE` / `DELETE` 的 `WHERE`；
-- 不在 biz / Go 里重算 `data_scope`，可见范围推导只在库内进行。
+- 无行 = 不存在、不可见或权限码不匹配，统一 NotFound；不可见行不会被锁定。
+- READ COMMITTED 下 `FOR UPDATE` 对并发更新后的行复核 `WHERE`，不会按旧归属放行。
+- 判定与写入同事务，行锁持有到提交。
+- 业务授权（新归属可达、角色分发）仍用专用函数单独判定，失败返回 Forbidden。
+- 可见性谓词只在判定函数里写一份，`UPDATE` / `DELETE` 不重复谓词。
+- 不在 biz / Go 里重算 `data_scope`。
 
-业务授权用专用函数：
+[业务授权用专用函数](internal/data/pg_sqlc/sqlc/README.md)：
 
 | 操作 | 判定函数 |
 |---|---|
@@ -79,52 +96,86 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 3. 写入，同一事务
 | 分配角色 | `fn_can_assign_role` / `fn_can_assign_roles` |
 | 其他业务授权 | 在 `operate.sql` 新增专用 `fn_can_*`，配命名查询并同步索引 |
 
+### 以 User 增删改为例
+
+| 操作 | 判定与写入 |
+|---|---|
+| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID`。请求可携带归属三元组，按约束应校验新归属可达（口径同 `fn_can_transfer_owner` 的新归属部分）；`CreateUser` 尚未接入该判定，属待补约束 |
+| 修改 `UpdateUser` | `LockSysUserPermitted` 锁定并判定 → `UpdateSysUser`；不可见返回 NotFound |
+| 删除 `DeleteUser` | `LockSysUserPermitted` 锁定并判定 → `SoftDeleteSysUser` 置 `deleted_at` |
+| 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |
+| 改归属 `TransferUserOwner` | `LockSysUserPermitted`（旧归属）→ `fn_can_transfer_owner`（新归属可达）→ `UpdateSysUserOwner` |
+| 分配角色 `AssignRoles` | `fn_can_assign_roles` 逐角色判定（不锁目标行）→ `AssignUserRoles`；任一 false 整体回滚 |
+
 ## 读形态
 
 | 场景 | 路径 |
 |---|---|
 | 列表 / 计数 | 动态查询协议；生成代码在 WHERE 头部注入 `@scope` 三维守卫，缺 Scope fail-closed；List 与 Count 共用守卫，`total` 与 `items` 权限视图一致 |
-| 单行 / 详情 | `GetXxxByID` + `CheckVisible`（掩码 7）；不可见等同不存在 → NotFound |
+| 单行 / 详情 | `GetXxxPermitted`：`fn_check_visible`（掩码 7）+ 可空权限码，一条查询完成取行与判定；不可见 → NotFound |
 | 外部批量过滤 | `fn_filter_visible_rows`；只读，拒绝表现为空集，不是错误 |
+
+```sql
+-- name: GetSysUserPermitted :one
+SELECT * FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+  AND public.fn_check_visible(sqlc.arg('operator'), 7::int2,
+        owner_user_id, owner_dept_id, owner_user_group_id)
+  AND (sqlc.narg('permission_code')::varchar IS NULL
+    OR public.fn_has_permission(sqlc.arg('operator'), sqlc.narg('permission_code')::varchar));
+```
 
 - 软删过滤由表注释 `@filter` 在解析期注入；固定命名查询在 SQL 里自写 `deleted_at IS NULL`。
 - 不手写绕过 `@scope` 的聚合查询；专用列表走专用命名查询，守卫仍取自 `fn_accessible_*`。
-- 单行读没有生成代码兜底，判定需在仓储手写，照 `userRepo.GetByID` 实现。
+- 单行读用 `GetXxxPermitted` 一次完成取行与判定。
+
+### 以 User 读为例
+
+| 场景 | 路径 |
+|---|---|
+| 列表 | `ParseSysUserQuery` → `params.Scope = s.SysUserScope()` → `ListSysUser` / `CountSysUser`；守卫由 `@scope` 注入，缺 Scope 报错 |
+| 详情 | `GetSysUserPermitted`（掩码 7；权限码可空）→ 不可见 NotFound，不泄露存在性 |
+| 登录凭据 | `GetUserCredentialByName` 走 `TenantTx`：身份成立前只注入租户，不做数据范围判定；仅返回未软删行的口令哈希 |
 
 ## 错误语义
 
 | 情况 | 返回 | 理由 |
 |---|---|---|
-| 行不存在 / 数据范围不可见 | NotFound | 不泄露存在性；`requireOperable` 判定 false 返回 `pgx.ErrNoRows`，由仓储 `mapErr` 统一映射 |
+| 行不存在 / 数据范围不可见 / 权限码不匹配 | NotFound | 不泄露存在性；`LockXxxPermitted` / `GetXxxPermitted` 未命中返回 `pgx.ErrNoRows`，由仓储 `mapErr` 统一映射 |
 | 看得见，但业务授权不允许（分配角色、转归属到不可达对象） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感，明确拒绝 |
 | 只读判定的 false | 不是错误 | 调用方按布尔值处理 |
 
-权限失败不用「0 行」隐式表达：0 行既可能是没权限，也可能是并发删除，仓储层无法区分，调用方也无从给出正确状态码。
+取行查询里的权限码校验未命中同样落到 NotFound；需要 403 的功能权限拒绝，应在入口层单独判 `fn_has_permission`，取行查询传 NULL。权限失败不用「0 行」隐式表达：0 行既可能是没权限，也可能是并发删除，仓储层无法区分。
 
 ## 功能权限码
 
 功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链，不管能看见哪些行。
 
-落点：入口层（service 或 auth 中间件）按 `tr.Operation()` 映射权限码，调 `fn_has_permission` 判定，不通过返回 Forbidden。
+落点：入口层（service 或 auth 中间件）按 `tr.Operation()` 映射权限码，再透传给 `GetXxxPermitted` / `LockXxxPermitted`，在库内随行判定一起校验；需要 403 的入口在透传前单独判 `fn_has_permission`。
 
-- 与行无关，不进入仓储方法；
-- 一次判定、可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）；
+- 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
+- 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。
+- 仓储缺省传 NULL；入口层强制功能权限时把权限码透传到仓储参数。
+- 取行查询内的权限码拒绝表现为 NotFound。
 - 不与 `@scope` 合并成一层。
 
-现状：`fn_has_permission` 与 `HasPermission` 命名查询已生成，Go 侧尚无调用点；接入前，已注册 RPC 只受令牌校验与行级判定约束。
+在入口层映射权限码之前，RPC 只受令牌校验与行级判定约束。
 
 ## 新增资源 / 操作速查
 
 1. **建表**：`tenant_id` + 审计列 + 归属三元组；表注释声明 `@scope`、`@filter: deleted_at is_null`、`@pk`、`@page`；`owner_*` 建索引；`rls.sql` 补策略并 ENABLE + FORCE。
 2. **列表 / 计数**：复用 `query.v1.Query` 动态协议，Scope 由 `IdentityTx` 注入。
-3. **详情**：`GetXxxByID` + `CheckVisible`（掩码 7），不可见返回 NotFound。
-4. **修改 / 删除 / 改密**：锁行 + `fn_can_operate_row` + 写入；每个资源放一个 `requireOperable` 同款 helper。
-5. **修改归属**：锁行 + `fn_can_transfer_owner`，新归属每个非空字段都要在可见范围内。
+3. **详情**：`GetXxxPermitted`（`fn_check_visible` 掩码 7，权限码可空），不可见返回 NotFound。
+4. **修改 / 删除 / 改密**：`LockXxxPermitted`（`fn_can_operate_row` + `FOR UPDATE`，权限码可空）→ 写入；业务授权另判。
+5. **修改归属**：`LockXxxPermitted`（旧归属可操作）+ `fn_can_transfer_owner`（新归属可达）→ 写入。
 6. **批量写**：单事务内逐行锁 + 判，或新增批量判定函数；外部批量读过滤用 `fn_filter_visible_rows`。
 7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。
 8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）是仅有的绕过路径，不得扩展到其他读写。
 9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设 `app.tenant_id` 全拒。
-10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注；确需无权限或超高权限行为时，方法签名带 `super` 字样显式区分。
+10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询 `ListAllTenantsSuper`），并配审计日志、受限端点与跨范围测试。
+    - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询（`GetCredentialForLogin`、`SessionRepo.Validate` / `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。
+    - SQL 命名查询不参与该约定；内部回读靠使用边界注释约束，不在 biz 接口上暴露。
 
 ## 索引
 
@@ -134,7 +185,8 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 3. 写入，同一事务
 | 写前判断函数 `fn_can_*` | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) |
 | 只读判定、功能权限码、范围版本 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) |
 | 判定函数的命名查询 | [queries/operate.sql](internal/data/pg_sqlc/sqlc/queries/operate.sql)、[queries/perm.sql](internal/data/pg_sqlc/sqlc/queries/perm.sql) |
+| 取行与判定的合并查询（`GetSysUserPermitted` / `LockSysUserPermitted`） | [queries/sys_user.sql](internal/data/pg_sqlc/sqlc/queries/sys_user.sql) |
 | `@scope` 声明 | [schema/10_basic.sql](internal/data/pg_sqlc/sqlc/schema/10_basic.sql)、[schema/30_user.sql](internal/data/pg_sqlc/sqlc/schema/30_user.sql) |
 | 会话门面、Scope 注入口 | [internal/data/pg_sqlc/session.go](internal/data/pg_sqlc/session.go) |
-| 写路径范式（锁行 + 判定） | [internal/data/pg_sqlc/user.go](internal/data/pg_sqlc/user.go) |
+| 写路径（`LockSysUserPermitted` + 写入） | [internal/data/pg_sqlc/user.go](internal/data/pg_sqlc/user.go) |
 | 生成的三维守卫 | [internal/data/pg_sqlc/gen/sys_user_dynamic_gen.go](internal/data/pg_sqlc/gen/sys_user_dynamic_gen.go) |
