@@ -13,8 +13,8 @@ import (
 )
 
 // userRepo 是 biz.UserRepo 的 PostgreSQL 实现。全部操作经会话门面在
-// 租户事务内执行；写路径按「锁行 → 库内判定 → 写入」先检后写，判定
-// 与写入同一事务，判定不通过整体回滚。
+// 租户事务内执行；写路径先经 LockSysUserPermitted 锁行并判定，再写入，
+// 判定与写入同一事务，判定不通过整体回滚。
 type userRepo struct {
 	data *Data
 }
@@ -23,10 +23,6 @@ type userRepo struct {
 func NewUserRepo(data *Data) biz.UserRepo {
 	return &userRepo{data: data}
 }
-
-// scopeDimsAll 是 fn_check_visible 的全维度掩码：1 归属人、2 归属部门、
-// 4 归属用户组。读写同权下等价于 fn_can_operate_row 的判定口径。
-const scopeDimsAll int16 = 7
 
 // toBizUser 将持久化用户转换为领域模型。密码哈希不随行：biz.User 的
 // Password 仅在创建与改密路径由用例填充。
@@ -54,27 +50,18 @@ func toBizUser(po *gen.SysUser) *biz.User {
 	}
 }
 
-// GetByID 按主键读取用户。租户内存在但数据范围不可见的行等同不存在，
-// 一律返回 ErrUserNotFound，不泄露存在性。
+// GetByID 按主键读取用户。可见性由 GetSysUserPermitted 在同一条语句内
+// 判定；不可见等同不存在，一律返回 ErrUserNotFound，不泄露存在性。
 func (r *userRepo) GetByID(ctx context.Context, auth biz.Identity, id int64) (*biz.User, error) {
 	var out *biz.User
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysUserByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		visible, err := s.Q().CheckVisible(ctx, gen.CheckVisibleParams{
-			Operator:   auth.UserID,
-			Dims:       scopeDimsAll,
-			OwnerUser:  row.OwnerUserID,
-			OwnerDept:  row.OwnerDeptID,
-			OwnerGroup: row.OwnerUserGroupID,
+		row, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
 		})
 		if err != nil {
 			return err
-		}
-		if !visible {
-			return pgx.ErrNoRows
 		}
 		out = toBizUser(&row)
 		return nil
@@ -163,16 +150,16 @@ func (r *userRepo) Create(ctx context.Context, auth biz.Identity, u *biz.User) (
 	return out, nil
 }
 
-// Update 覆盖可变字段。目标行先锁行并经 fn_can_operate_row 判定：
+// Update 覆盖可变字段。目标行经 LockSysUserPermitted 锁定并判定可操作：
 // 不可见等同不存在（读写同权下可见即可操作）。
 func (r *userRepo) Update(ctx context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {
 	var out *biz.User
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysUserForUpdate(ctx, u.ID)
-		if err != nil {
-			return err
-		}
-		if err := requireOperable(ctx, s, auth.UserID, &row); err != nil {
+		if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+			ID:             u.ID,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		}); err != nil {
 			return err
 		}
 		updated, err := s.Q().UpdateSysUser(ctx, gen.UpdateSysUserParams{
@@ -198,14 +185,14 @@ func (r *userRepo) Update(ctx context.Context, auth biz.Identity, u *biz.User) (
 	return out, nil
 }
 
-// SetPassword 替换密码哈希，先经行操作判定。
+// SetPassword 替换密码哈希，先经 LockSysUserPermitted 锁定并判定。
 func (r *userRepo) SetPassword(ctx context.Context, auth biz.Identity, id int64, hashedPassword string) error {
 	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysUserForUpdate(ctx, id)
-		if err != nil {
-			return err
-		}
-		if err := requireOperable(ctx, s, auth.UserID, &row); err != nil {
+		if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		}); err != nil {
 			return err
 		}
 		rows, err := s.Q().SetSysUserPassword(ctx, gen.SetSysUserPasswordParams{
@@ -221,14 +208,14 @@ func (r *userRepo) SetPassword(ctx context.Context, auth biz.Identity, id int64,
 	}))
 }
 
-// SoftDelete 软删除用户，先经行操作判定。
+// SoftDelete 软删除用户，先经 LockSysUserPermitted 锁定并判定。
 func (r *userRepo) SoftDelete(ctx context.Context, auth biz.Identity, id int64) error {
 	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysUserForUpdate(ctx, id)
-		if err != nil {
-			return err
-		}
-		if err := requireOperable(ctx, s, auth.UserID, &row); err != nil {
+		if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		}); err != nil {
 			return err
 		}
 		rows, err := s.Q().SoftDeleteSysUser(ctx, gen.SoftDeleteSysUserParams{
@@ -271,16 +258,17 @@ func (r *userRepo) AssignRoles(ctx context.Context, auth biz.Identity, userID in
 	return added, nil
 }
 
-// TransferOwner 修改归属三元组：两头校验——该用户本身有权操作（不可见
-// 等同不存在），新归属的人/部门/组在可见范围内（不可达即拒绝）。
+// TransferOwner 修改归属三元组：LockSysUserPermitted 锁定并判定旧归属可
+// 操作（不可见等同不存在），fn_can_transfer_owner 再校验新归属可达。
 func (r *userRepo) TransferOwner(ctx context.Context, auth biz.Identity, id int64, to biz.OwnerTriple) (*biz.User, error) {
 	var out *biz.User
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysUserForUpdate(ctx, id)
+		row, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		})
 		if err != nil {
-			return err
-		}
-		if err := requireOperable(ctx, s, auth.UserID, &row); err != nil {
 			return err
 		}
 		ok, err := s.Q().CanTransferOwner(ctx, gen.CanTransferOwnerParams{
@@ -303,6 +291,7 @@ func (r *userRepo) TransferOwner(ctx context.Context, auth biz.Identity, id int6
 		}); err != nil {
 			return err
 		}
+		// 事务内已锁定并判定，回读无需重复行权限判定。
 		updated, err := s.Q().GetSysUserByID(ctx, id)
 		if err != nil {
 			return err
@@ -314,24 +303,6 @@ func (r *userRepo) TransferOwner(ctx context.Context, auth biz.Identity, id int6
 		return nil, r.mapErr(err)
 	}
 	return out, nil
-}
-
-// requireOperable 对已锁定的行执行行操作判定：判定不通过说明该行在
-// 当前用户的数据范围之外，等同不存在（读写同权：可见即可操作）。
-func requireOperable(ctx context.Context, s *IdentityTx, operator int64, row *gen.SysUser) error {
-	ok, err := s.Q().CanOperateRow(ctx, gen.CanOperateRowParams{
-		Operator:   operator,
-		OwnerUser:  row.OwnerUserID,
-		OwnerDept:  row.OwnerDeptID,
-		OwnerGroup: row.OwnerUserGroupID,
-	})
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return pgx.ErrNoRows
-	}
-	return nil
 }
 
 // pgAuth 将 biz 层身份事实映射为存储层会话门面入参。
@@ -363,10 +334,10 @@ func (r *userRepo) mapErr(err error) error {
 	return mapStorageError(err, biz.ErrUserNotFound, biz.ErrUserInvalidArgument, biz.ErrUserAlreadyExists)
 }
 
-// GetCredentialByName 登录路径专用：按租户内用户名读取口令哈希与状态。
-// 经 TenantTx 执行（操作者身份尚未成立，只注入租户）；软删除行
-// 等同不存在。哈希仅供 biz 口令校验单点使用。
-func (r *userRepo) GetCredentialByName(ctx context.Context, tenantID, name string) (*biz.UserCredential, error) {
+// GetCredentialForLogin 登录路径专用：按租户内用户名读取口令哈希与状态。
+// 经 TenantTx 执行（操作者身份尚未成立，只注入租户）；软删除行等同不存在。
+// 哈希仅供 biz 口令校验单点使用。
+func (r *userRepo) GetCredentialForLogin(ctx context.Context, tenantID, name string) (*biz.UserCredential, error) {
 	var out *biz.UserCredential
 	err := r.data.TenantTx(ctx, tenantID, func(s *TenantTx) error {
 		row, err := s.Q().GetUserCredentialByName(ctx, name)

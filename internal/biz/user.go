@@ -86,11 +86,11 @@ type UserRepo interface {
 	// TransferOwner 修改归属三元组：两头校验（该用户有权操作 + 新归属
 	// 可达），新归属不可达返回 ErrUserAccessDenied。返回转移后的用户。
 	TransferOwner(ctx context.Context, auth Identity, id int64, to OwnerTriple) (*User, error)
-	// GetCredentialByName 登录路径专用：按租户内用户名读取口令哈希与
+	// GetCredentialForLogin 登录路径专用：按租户内用户名读取口令哈希与
 	// 状态。调用发生在操作者身份成立之前，故入参是租户 ID 而非
-	// Identity；软删除行等同不存在返回 ErrUserNotFound。返回的哈希
-	// 仅供口令校验单点使用，不跨越 biz。
-	GetCredentialByName(ctx context.Context, tenantID, name string) (*UserCredential, error)
+	// Identity；属文档化例外，不使用 super 命名。软删除行等同不存在
+	// 返回 ErrUserNotFound。返回的哈希仅供口令校验单点使用，不跨越 biz。
+	GetCredentialForLogin(ctx context.Context, tenantID, name string) (*UserCredential, error)
 }
 
 // UserUsecase 是用户用例。

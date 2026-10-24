@@ -310,6 +310,38 @@ func TestUserRepo(t *testing.T) {
 		}
 	})
 
+	t.Run("permitted queries honor optional permission code", func(t *testing.T) {
+		allowed := "sys:user:query" // 角色 102 持有
+		denied := "sys:user:delete" // 角色 102 不持有
+
+		err := d.IdentityTx(ctx, Identity{TenantID: deptAdmin.TenantID, UserID: deptAdmin.UserID}, func(s *IdentityTx) error {
+			if _, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
+				ID: deptAdmin.UserID, Operator: deptAdmin.UserID, PermissionCode: &allowed,
+			}); err != nil {
+				t.Fatalf("get with allowed code: %v", err)
+			}
+			if _, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
+				ID: deptAdmin.UserID, Operator: deptAdmin.UserID, PermissionCode: &denied,
+			}); !errors.Is(err, pgx.ErrNoRows) {
+				t.Fatalf("get with denied code: want ErrNoRows, got %v", err)
+			}
+			if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+				ID: deptAdmin.UserID, Operator: deptAdmin.UserID, PermissionCode: &allowed,
+			}); err != nil {
+				t.Fatalf("lock with allowed code: %v", err)
+			}
+			if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+				ID: deptAdmin.UserID, Operator: deptAdmin.UserID, PermissionCode: &denied,
+			}); !errors.Is(err, pgx.ErrNoRows) {
+				t.Fatalf("lock with denied code: want ErrNoRows, got %v", err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("identity tx: %v", err)
+		}
+	})
+
 	t.Run("list respects scope and filters", func(t *testing.T) {
 		q := &dynq.Query{Where: []dynq.Condition{{Field: "name", Op: "eq", Value: "grape_it_user"}}}
 		superList, err := repo.List(ctx, super, q)
@@ -776,7 +808,7 @@ func TestAuthLogin(t *testing.T) {
 	}
 
 	// 透明重哈希：登录后库内哈希应已是 argon2id，且原口令仍可登录
-	cred, err := users.GetCredentialByName(ctx, "t-super-01", "admin")
+	cred, err := users.GetCredentialForLogin(ctx, "t-super-01", "admin")
 	if err != nil {
 		t.Fatalf("credential after login: %v", err)
 	}

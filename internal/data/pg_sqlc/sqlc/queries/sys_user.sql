@@ -1,14 +1,30 @@
--- 按 id 读取未软删的用户（不做数据范围过滤）
+-- 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 -- name: GetSysUserByID :one
 SELECT * FROM public.sys_user
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL;
 
--- 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤）
--- name: GetSysUserForUpdate :one
-SELECT * FROM public.sys_user
+-- 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+-- name: GetSysUserPermitted :one
+SELECT *
+FROM public.sys_user
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL
+  AND public.fn_check_visible(sqlc.arg('operator'), 7::int2,
+                              owner_user_id, owner_dept_id, owner_user_group_id)
+  AND (sqlc.narg('permission_code')::varchar IS NULL
+    OR public.fn_has_permission(sqlc.arg('operator'), sqlc.narg('permission_code')::varchar));
+
+-- 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+-- name: LockSysUserPermitted :one
+SELECT *
+FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+  AND public.fn_can_operate_row(sqlc.arg('operator'),
+                                owner_user_id, owner_dept_id, owner_user_group_id)
+  AND (sqlc.narg('permission_code')::varchar IS NULL
+    OR public.fn_has_permission(sqlc.arg('operator'), sqlc.narg('permission_code')::varchar))
 FOR UPDATE;
 
 -- 插入用户记录；租户取会话 app.tenant_id
@@ -58,7 +74,7 @@ SET owner_user_id       = sqlc.narg('owner_user_id'),
     updated_by          = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id');
 
--- 按用户名读取口令哈希与状态（仅未软删行）
+-- 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
 -- name: GetUserCredentialByName :one
 SELECT id,
        status,

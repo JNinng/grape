@@ -15,7 +15,7 @@ WHERE id = $1
   AND deleted_at IS NULL
 `
 
-// 按 id 读取未软删的用户（不做数据范围过滤）
+// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 func (q *Queries) GetSysUserByID(ctx context.Context, id int64) (SysUser, error) {
 	row := q.db.QueryRow(ctx, getSysUserByID, id)
 	var i SysUser
@@ -45,16 +45,26 @@ func (q *Queries) GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
 	return i, err
 }
 
-const getSysUserForUpdate = `-- name: GetSysUserForUpdate :one
-SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.sys_user
+const getSysUserPermitted = `-- name: GetSysUserPermitted :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
 WHERE id = $1
   AND deleted_at IS NULL
-FOR UPDATE
+  AND public.fn_check_visible($2, 7::int2,
+                              owner_user_id, owner_dept_id, owner_user_group_id)
+  AND ($3::varchar IS NULL
+    OR public.fn_has_permission($2, $3::varchar))
 `
 
-// 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤）
-func (q *Queries) GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error) {
-	row := q.db.QueryRow(ctx, getSysUserForUpdate, id)
+type GetSysUserPermittedParams struct {
+	ID             int64   `db:"id" json:"id"`
+	Operator       int64   `db:"operator" json:"operator"`
+	PermissionCode *string `db:"permission_code" json:"permission_code"`
+}
+
+// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+func (q *Queries) GetSysUserPermitted(ctx context.Context, arg GetSysUserPermittedParams) (SysUser, error) {
+	row := q.db.QueryRow(ctx, getSysUserPermitted, arg.ID, arg.Operator, arg.PermissionCode)
 	var i SysUser
 	err := row.Scan(
 		&i.ID,
@@ -101,7 +111,7 @@ type GetUserCredentialByNameRow struct {
 	PasswordHash string `db:"password_hash" json:"password_hash"`
 }
 
-// 按用户名读取口令哈希与状态（仅未软删行）
+// 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
 func (q *Queries) GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error) {
 	row := q.db.QueryRow(ctx, getUserCredentialByName, name)
 	var i GetUserCredentialByNameRow
@@ -161,6 +171,54 @@ func (q *Queries) InsertSysUser(ctx context.Context, arg InsertSysUserParams) (S
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
+	var i SysUser
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.Password,
+		&i.Email,
+		&i.Phone,
+		&i.Remark,
+		&i.Locale,
+		&i.LastLoginAt,
+		&i.FailedCount,
+		&i.LockedUntil,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
+	)
+	return i, err
+}
+
+const lockSysUserPermitted = `-- name: LockSysUserPermitted :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
+WHERE id = $1
+  AND deleted_at IS NULL
+  AND public.fn_can_operate_row($2,
+                                owner_user_id, owner_dept_id, owner_user_group_id)
+  AND ($3::varchar IS NULL
+    OR public.fn_has_permission($2, $3::varchar))
+FOR UPDATE
+`
+
+type LockSysUserPermittedParams struct {
+	ID             int64   `db:"id" json:"id"`
+	Operator       int64   `db:"operator" json:"operator"`
+	PermissionCode *string `db:"permission_code" json:"permission_code"`
+}
+
+// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+func (q *Queries) LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error) {
+	row := q.db.QueryRow(ctx, lockSysUserPermitted, arg.ID, arg.Operator, arg.PermissionCode)
 	var i SysUser
 	err := row.Scan(
 		&i.ID,

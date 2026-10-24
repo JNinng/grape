@@ -38,11 +38,11 @@ type Querier interface {
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
 	// 读取租户级与用户级范围版本；行不存在时返回 0
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
-	// 按 id 读取未软删的用户（不做数据范围过滤）
+	// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
-	// 按 id 锁定并读取未软删的用户（FOR UPDATE；不做数据范围过滤）
-	GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error)
-	// 按用户名读取口令哈希与状态（仅未软删行）
+	// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+	GetSysUserPermitted(ctx context.Context, arg GetSysUserPermittedParams) (SysUser, error)
+	// 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
 	GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error)
 	// 枚举用户的有效角色；用户无效（不存在/禁用/删除）时返回空集
 	GetUserRoles(ctx context.Context, userID int64) ([]SysRole, error)
@@ -54,6 +54,8 @@ type Querier interface {
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
 	// 撤销指定会话；已撤销时更新 0 行
 	RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error)
 	// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
