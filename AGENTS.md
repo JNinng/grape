@@ -19,18 +19,18 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 
 service/task → biz → data 单向依赖；跨界对象 DTO/Query/DO/PO 各归其主，同一 DO 贯穿全程禁止中途换形。各层允许的 import 方向与新增资源速查见 [internal/README.md](internal/README.md)。
 
-## 安全不变量（动相关代码前逐条对照）
+## 关键约束
 
 - 应用以非超级用户 `grape_u` 连接（超级用户绕过 RLS）；业务事务每事务 `set_config('app.tenant_id', ..., true)`，漏设默认全拒（身份成立前的令牌事务与介质维护是文档化例外，见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)）
-- `@scope` 表的 List/Count 缺 Scope 即报错（fail-closed）；Scope 只从服务端认证上下文注入，不受前端影响
-- 有权限的领域方法默认按权限处理（Scope/RLS 强制生效），无需额外标注；需要无权限或超高权限行为的接口，签名须带 `super` 字样显式区分
-- 令牌与口令哈希只在 biz 单点生成/校验，仓储出入参只见哈希；登录点查对软删除/跨租户与口令错误同因返回（防枚举）
-- 改 SQL 函数需三处同步：SQL 注释、`COMMENT ON`、[sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) 索引表；改命名查询需同步查询注释（sqlc 带入 Go doc）与索引表
-- 数据库部署按 13 文件固定顺序执行（seed 须以超级用户连接），顺序与升级注意事项见 [deploy_db.md](deploy_db.md)
+- 有权限的领域方法默认按权限处理（Scope/RLS 强制生效），无需额外标注；只有身份已成立但接口有意绕过租户/数据范围约束时才在方法名带 `super`。身份成立前的凭据/令牌查询、设施维护面、已授权事务内的内部回读属文档化例外，不使用 `super`（见 [permission.md](permission.md)）
 
-## 改前必读
+## 改前必读（按变更选读）
 
 - [internal/README.md](internal/README.md) — 分层规则、能力目录接入规范、新增资源速查、测试约定
-- [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) — SQL 对象索引、三层权限模型
+- [permission.md](permission.md) — 权限约束落点（租户边界/行级数据范围/功能权限码）、读写形态与错误语义
+- [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) — SQL 对象索引、三层权限模型、变更流程与部署顺序
 - [deploy_db.md](deploy_db.md) — 数据库部署执行顺序与升级注意事项
-- [TODO.md](TODO.md) — 在建纵切、运行前提与既定约束（含决策理由）
+
+## 变更收尾同步文档
+
+- 增删文件同步所在子目录 README 的「关键文件导览」表；改 SQL 对象或命名查询同步 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) 索引表；上层文档仅当变更触及其内容时更新，不逐级联动；与代码同批提交。

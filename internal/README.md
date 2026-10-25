@@ -4,16 +4,18 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 
 ## 目录职责
 
-| 目录                | 职责与规则                                                                                                                              |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [conf](conf/)       | 配置结构定义。只改 `conf.proto`，生成文件禁止手改，改后由 `make config` 重新生成。                                                       |
-| [server](server/)   | HTTP / gRPC 服务器构建与挂载：读取配置、装配中间件、注册生成代码路由、直挂运维 Handler；禁止出现 DTO 翻译或业务逻辑。                   |
-| [middleware](middleware/) | 入口中间件（认证、链路标识）。认证中间件持有免认证白名单与 fail-closed 口径，是链上请求身份成立前的唯一放行点；只依赖 `api/...` 操作名、`biz`、`conf` 与 `pkg/utils`。 |
-| [ops](ops/)         | 运维出口：手写原生 `net/http` Handler（当前为设施诊断指标的 `/metrics`），由 server 直挂于业务中间件链外。免认证、只读；只依赖 `biz` 的设施只读契约，不触达业务用例。 |
-| [service](service/) | 传输层适配器，每个资源一个文件。在边界完成 DTO ↔ DO 转换；把 query.v1 动态查询协议转为 dynq.Query；委托给 biz 用例；禁止实现业务规则（入参校验在 biz 落地）。 |
-| task                | 后台异步任务入口（定时、事件、手动触发），与 service 平级构成第二类业务入口。分层与 service 同构（task → biz → data），无 DTO，直接以 DO 或设施契约调用 biz 声明的能力；禁止实现业务规则（入参校验在 biz 落地）。 |
-| [biz](biz/)         | 领域层，只认 DO。定义 DO、用例、仓储接口（依赖反转的接缝）、类型化错误与查询选项；领域规则（如必填校验）只在这里落地。                   |
-| [data](data/)       | 存储基础设施集合：一能力一子目录，目录内自包含（定位与接入细则见「能力目录接入规范」）。能力目录实现 `biz` 声明的仓储接口与设施契约，DO ↔ PO 转换、驱动错误映射在仓储内完成；现有能力与生成资产见 [data/README.md](data/README.md)。  |
+| 目录 | 简述职责 | 文档 |
+| ---- | -------- | ---- |
+| conf | 配置结构定义 | [conf/](conf/) |
+| server | HTTP / gRPC 构建与挂载 | [server/README.md](server/README.md) |
+| middleware | 入口中间件 | [middleware/README.md](middleware/README.md) |
+| ops | 运维出口 | [ops/README.md](ops/README.md) |
+| service | 传输适配 | [service/README.md](service/README.md) |
+| task | 异步任务入口 | [task/README.md](task/README.md) |
+| biz | 领域层 | [biz/README.md](biz/README.md) |
+| data | 存储基础设施集合 | [data/README.md](data/README.md) |
+
+上表各子目录的 README 承接其数据流向、关键文件与接入要点；`conf` 无 README，链接指向目录。
 
 ## 分层与数据流向
 
@@ -132,18 +134,11 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 4. 在 `pg_sqlc` 实现仓储（构造函数返回 `biz.<Resource>Repo`），分别注册到 `pg_sqlc` / `biz` / `service` 的 `ProviderSet`（能力 ProviderSet 由 `data` 聚合），并在 `server` 中注册 HTTP / gRPC 服务；
 5. `make generate`（wire + tidy）刷新装配与模块依赖；需要同时重生成契约/存储代码时用 `make all`。
 
+权限约束的落点（租户边界 / 行级数据范围 / 功能权限码）、读写形态与错误
+语义见根目录 [permission.md](../permission.md)。
+
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖：
-
-- `data/pg_sqlc`：驱动错误映射、debug 参数脱敏、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控，未设置时自动跳过；
-- `encoding/jsoncodec`：protobuf JSON 编解码契约；
-- `biz`：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举；
-- `service`：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；
-- `middleware`：认证中间件、链路标识生成/继承/回传；
-- `ops`：指标出口的样本映射与采集失败计数；
-- `server`：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；
-- `task`：维护循环的启停、失败隔离与动作日志；
-- `pkg`：工具函数契约（IP 解析、ID 生成、日志截断/掩码、版本摘要）。
+测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖见各目录 README 的「测试」一节：[biz](biz/README.md)、[service](service/README.md)、[task](task/README.md)、[middleware](middleware/README.md)、[ops](ops/README.md)、[server](server/README.md)、[data](data/README.md)，以及 [pkg](../pkg/README.md) 与 [encoding/jsoncodec](encoding/jsoncodec/README.md)。
 
 新增测试沿用分层职责：`service` 用假仓储隔离传输适配，`biz` mock 仓储接口只验证用例逻辑，`data` 以真实 PostgreSQL 集成测试验证存储边界（自建临时库、按 `deploy_db.md` 顺序装载 SQL、以 `grape_u` 运行角色断言语义）。

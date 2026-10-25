@@ -58,7 +58,8 @@ type MaintenanceReport struct {
 }
 
 // FacilityMaintenance 是单个设施的维护面：判定逻辑（阈值、对象选择）
-// 完全下沉到介质实现，维护任务只认本契约、不读原始指标。
+// 完全下沉到介质实现，维护任务只认本契约、不读原始指标。维护面是设施级
+// 契约，不承接调用者数据范围，属文档化例外，不使用 super 命名。
 type FacilityMaintenance interface {
 	// Facility 返回设施名（如 "postgres"）。
 	Facility() string

@@ -13,10 +13,7 @@ const cleanupExpiredSysSessions = `-- name: CleanupExpiredSysSessions :one
 SELECT public.fn_cleanup_expired_sessions($1::bigint) AS deleted
 `
 
-// 过期会话清理（介质维护路径）：以池直连执行，不经租户/令牌事务门面、
-// 不注入 app.tenant_id——维护任务没有租户身份，跨租户资格由被调函数
-// 的 SECURITY DEFINER 属主决定（见 schema/80_session.sql 的
-// fn_cleanup_expired_sessions）。宽限期语义也收在函数内
+// 删除已撤销或过期超过宽限期的会话，返回删除行数
 func (q *Queries) CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error) {
 	row := q.db.QueryRow(ctx, cleanupExpiredSysSessions, graceSeconds)
 	var deleted int64
@@ -32,9 +29,7 @@ WHERE token_hash = $1
   AND expires_at > CURRENT_TIMESTAMP
 `
 
-// 按访问令牌哈希校验会话：有效性条件（启用、未撤销、未过期）放在
-// SQL WHERE，租户身份尚未成立时 RLS 只放行哈希命中的行。不存在、
-// 已撤销、已过期一视同仁——无行即无效，不泄露会话状态
+// 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效
 func (q *Queries) GetActiveSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (SysSession, error) {
 	row := q.db.QueryRow(ctx, getActiveSysSessionByTokenHash, accessTokenHash)
 	var i SysSession
@@ -60,7 +55,6 @@ func (q *Queries) GetActiveSysSessionByTokenHash(ctx context.Context, accessToke
 }
 
 const insertSysSession = `-- name: InsertSysSession :one
-
 INSERT INTO public.sys_session (id, tenant_id, user_id, token_hash, refresh_token_hash,
                                 expires_at, refresh_expires_at, last_activity_at,
                                 device_info, ip_address, created_by, updated_by)
@@ -87,13 +81,7 @@ type InsertSysSessionParams struct {
 	UpdatedBy         int64   `db:"updated_by" json:"updated_by"`
 }
 
-// sys_session 会话表固定操作：令牌只以 SHA-256 哈希出入（明文只在
-// biz 用例内存中短暂存在）。签发与撤销经租户会话门面执行；校验与
-// 刷新发生在租户身份成立之前，以令牌哈希作为 RLS 可见性凭据（见
-// rls.sql 的 sys_session_token_* 策略）。
-// 签发会话：租户取自会话 app.tenant_id；status/created_at/updated_at
-// 由列默认值生成，last_activity_at 从签发时刻起算。有效期按 TTL 在
-// 数据库时钟上起算，与应用时钟/时区解耦
+// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 func (q *Queries) InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error) {
 	row := q.db.QueryRow(ctx, insertSysSession,
 		arg.ID,
@@ -142,8 +130,7 @@ type RevokeSysSessionParams struct {
 	ID        int64 `db:"id" json:"id"`
 }
 
-// 撤销租户内的一条会话（登出）：已撤销或不可见的行更新 0 行，调用方
-// 按幂等处理；updated_by 记操作者
+// 撤销指定会话；已撤销时更新 0 行
 func (q *Queries) RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error) {
 	result, err := q.db.Exec(ctx, revokeSysSession, arg.UpdatedBy, arg.ID)
 	if err != nil {
@@ -175,10 +162,8 @@ type RotateSysSessionParams struct {
 	CurrentRefreshTokenHash *string `db:"current_refresh_token_hash" json:"current_refresh_token_hash"`
 }
 
-// 刷新令牌轮换：以当前刷新令牌哈希点更新，命中行必须启用、未撤销且
-// 刷新令牌未过期（条件放 SQL WHERE，并发轮换时后到者更新 0 行）。
-// 新旧令牌哈希均由 biz 计算；有效期按新 TTL 在数据库时钟上重新起算；
-// 操作者是会话所属用户，updated_at 由触发器兜底刷新
+// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
+// 未命中时更新 0 行
 func (q *Queries) RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error) {
 	row := q.db.QueryRow(ctx, rotateSysSession,
 		arg.NewAccessTokenHash,

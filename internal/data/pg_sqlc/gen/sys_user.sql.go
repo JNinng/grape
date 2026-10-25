@@ -10,17 +10,12 @@ import (
 )
 
 const getSysUserByID = `-- name: GetSysUserByID :one
-
 SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.sys_user
 WHERE id = $1
   AND deleted_at IS NULL
 `
 
-// sys_user 用户表固定 CRUD：全部经会话门面在租户事务内执行（RLS 限
-// 租户）。写路径纪律：先锁行取当前归属 → fn_can_operate_row /
-// fn_can_transfer_owner 判定 → 再写入，判断与写入同一事务。
-// 按 id 读取用户（租户内，软删除行不可见）。可见性由调用方经
-// CheckVisible 判定：不可见等同不存在。
+// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 func (q *Queries) GetSysUserByID(ctx context.Context, id int64) (SysUser, error) {
 	row := q.db.QueryRow(ctx, getSysUserByID, id)
 	var i SysUser
@@ -50,17 +45,26 @@ func (q *Queries) GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
 	return i, err
 }
 
-const getSysUserForUpdate = `-- name: GetSysUserForUpdate :one
-SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.sys_user
+const getSysUserPermitted = `-- name: GetSysUserPermitted :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
 WHERE id = $1
   AND deleted_at IS NULL
-FOR UPDATE
+  AND public.fn_check_visible($2, 7::int2,
+                              owner_user_id, owner_dept_id, owner_user_group_id)
+  AND ($3::varchar IS NULL
+    OR public.fn_has_permission($2, $3::varchar))
 `
 
-// 按 id 锁定并读取一行用户（FOR UPDATE）：写操作前取当前归属，
-// 防止并发修改后按旧值判断；软删除行不可操作
-func (q *Queries) GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error) {
-	row := q.db.QueryRow(ctx, getSysUserForUpdate, id)
+type GetSysUserPermittedParams struct {
+	ID             int64   `db:"id" json:"id"`
+	Operator       int64   `db:"operator" json:"operator"`
+	PermissionCode *string `db:"permission_code" json:"permission_code"`
+}
+
+// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+func (q *Queries) GetSysUserPermitted(ctx context.Context, arg GetSysUserPermittedParams) (SysUser, error) {
+	row := q.db.QueryRow(ctx, getSysUserPermitted, arg.ID, arg.Operator, arg.PermissionCode)
 	var i SysUser
 	err := row.Scan(
 		&i.ID,
@@ -107,9 +111,7 @@ type GetUserCredentialByNameRow struct {
 	PasswordHash string `db:"password_hash" json:"password_hash"`
 }
 
-// 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
-// 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
-// 行等同不存在。哈希仅供 biz 口令校验单点使用
+// 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
 func (q *Queries) GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error) {
 	row := q.db.QueryRow(ctx, getUserCredentialByName, name)
 	var i GetUserCredentialByNameRow
@@ -151,10 +153,7 @@ type InsertSysUserParams struct {
 	UpdatedBy        int64   `db:"updated_by" json:"updated_by"`
 }
 
-// 创建用户。主键 id 由应用层发号（体系表主键无数据库默认值）；可空列
-// 用 sqlc.narg（NULL 原样落库）；租户取自会话 app.tenant_id；
-// created_at/updated_at 由列默认值生成。租户内 name/email/phone 唯一
-// 冲突由调用方映射为 ALREADY_EXISTS
+// 插入用户记录；租户取会话 app.tenant_id
 func (q *Queries) InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error) {
 	row := q.db.QueryRow(ctx, insertSysUser,
 		arg.ID,
@@ -199,6 +198,54 @@ func (q *Queries) InsertSysUser(ctx context.Context, arg InsertSysUserParams) (S
 	return i, err
 }
 
+const lockSysUserPermitted = `-- name: LockSysUserPermitted :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
+WHERE id = $1
+  AND deleted_at IS NULL
+  AND public.fn_can_operate_row($2,
+                                owner_user_id, owner_dept_id, owner_user_group_id)
+  AND ($3::varchar IS NULL
+    OR public.fn_has_permission($2, $3::varchar))
+FOR UPDATE
+`
+
+type LockSysUserPermittedParams struct {
+	ID             int64   `db:"id" json:"id"`
+	Operator       int64   `db:"operator" json:"operator"`
+	PermissionCode *string `db:"permission_code" json:"permission_code"`
+}
+
+// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+func (q *Queries) LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error) {
+	row := q.db.QueryRow(ctx, lockSysUserPermitted, arg.ID, arg.Operator, arg.PermissionCode)
+	var i SysUser
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.Password,
+		&i.Email,
+		&i.Phone,
+		&i.Remark,
+		&i.Locale,
+		&i.LastLoginAt,
+		&i.FailedCount,
+		&i.LockedUntil,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
+	)
+	return i, err
+}
+
 const setSysUserPassword = `-- name: SetSysUserPassword :execrows
 UPDATE public.sys_user
 SET "password" = $1, updated_by = $2
@@ -211,7 +258,7 @@ type SetSysUserPasswordParams struct {
 	ID        int64  `db:"id" json:"id"`
 }
 
-// 替换密码哈希；updated_by 记操作者
+// 替换口令哈希
 func (q *Queries) SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setSysUserPassword, arg.Password, arg.UpdatedBy, arg.ID)
 	if err != nil {
@@ -232,7 +279,7 @@ type SoftDeleteSysUserParams struct {
 	ID        int64 `db:"id" json:"id"`
 }
 
-// 软删除：deleted_at 置位后租户内唯一键（name/email/phone）随之可复用
+// 置位 deleted_at 软删除用户
 func (q *Queries) SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeleteSysUser, arg.UpdatedBy, arg.ID)
 	if err != nil {
@@ -267,8 +314,7 @@ type UpdateSysUserParams struct {
 	ID        int64   `db:"id" json:"id"`
 }
 
-// 覆盖可变字段（不含 password 与归属三元组）。updated_by 记操作者，
-// updated_at 由触发器兜底刷新
+// 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 func (q *Queries) UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error) {
 	row := q.db.QueryRow(ctx, updateSysUser,
 		arg.Status,
@@ -325,8 +371,7 @@ type UpdateSysUserOwnerParams struct {
 	ID               int64  `db:"id" json:"id"`
 }
 
-// 归属转移落库（fn_can_transfer_owner 判定通过后调用）；
-// 归属参数传 NULL 表示清掉该归属
+// 更新用户归属三元组；归属参数为 NULL 表示清空该归属
 func (q *Queries) UpdateSysUserOwner(ctx context.Context, arg UpdateSysUserOwnerParams) error {
 	_, err := q.db.Exec(ctx, updateSysUserOwner,
 		arg.OwnerUserID,

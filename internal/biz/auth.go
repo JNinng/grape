@@ -91,7 +91,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, in *LoginInput) (*LoginResult,
 	if tenantID == "" || in.UserName == "" || in.Password == "" {
 		return nil, ErrSessionInvalidArgument
 	}
-	cred, err := uc.users.GetCredentialByName(ctx, tenantID, in.UserName)
+	cred, err := uc.users.GetCredentialForLogin(ctx, tenantID, in.UserName)
 	if err != nil {
 		// 目标用户不存在（含软删除）与口令不匹配同因，不泄露存在性。
 		if errors.Is(err, ErrUserNotFound) {

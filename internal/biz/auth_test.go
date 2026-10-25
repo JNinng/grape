@@ -19,7 +19,7 @@ type fakeAuthUsers struct {
 	setPasswordErr   error
 }
 
-func (f *fakeAuthUsers) GetCredentialByName(_ context.Context, tenantID, name string) (*UserCredential, error) {
+func (f *fakeAuthUsers) GetCredentialForLogin(_ context.Context, tenantID, name string) (*UserCredential, error) {
 	if tenantID != "t-1" || name != "admin" {
 		return nil, ErrUserNotFound
 	}

@@ -18,6 +18,8 @@
 --   fn_check_visible        单点判断：按指定维度判断一条归属是否可见
 --   fn_filter_visible_rows  批量版：一次过滤一组归属，返回可见子集
 --   fn_has_permission       功能权限轴：用户是否持有某权限码
+-- 这三个函数只读、不写库；fn_has_permission 同时被 queries/ 的
+-- 取行查询（GetXxxPermitted / LockXxxPermitted）用于可空权限码校验。
 --
 -- 范围版本：
 --   sys_perm_version 表 + bump 触发器。外部进程缓存判定结果后，

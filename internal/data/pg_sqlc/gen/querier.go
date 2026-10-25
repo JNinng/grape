@@ -9,114 +9,68 @@ import (
 )
 
 type Querier interface {
-	// 写入用户-角色映射（判断通过后调用）。租户自动取当前会话的
-	// app.tenant_id；重复分配不报错、不重写
+	// 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过
 	AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error
-	// 批量写入用户-角色映射（CanAssignRoles 全部通过后调用），
-	// 返回实际新增的行数（已拥有的角色跳过、不报错）
+	// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过
 	AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error)
-	// 写侧链路命名查询：写前判断（fn_can_*）→ 判定通过后写入（角色分配
-	// 落库）。判断与写入放同一事务、先检后写，false 即报错回滚。
-	// 归属类参数用 sqlc.narg（生成 *int64 可空指针），NULL 原样传给判断
-	// 函数，表示"没有这个归属"，不做零值转换。
-	// 判断当前用户能否把某个角色分配给某个用户（规则见 fn_can_assign_role）
+	// 判断操作者能否把指定角色授予目标用户
 	CanAssignRole(ctx context.Context, arg CanAssignRoleParams) (bool, error)
-	// 批量版：一次判断多个角色，每个角色一行（role_id, ok），
-	// 全部通过才允许批量写入（规则同 fn_can_assign_role；
-	// 与 fn_can_assign_roles 函数体一致，直接 SQL 调用时用那个函数）
+	// 逐角色判断角色列表能否授予目标用户，每行返回 (role_id, ok)
 	CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) ([]CanAssignRolesRow, error)
-	// 判断当前用户能否修改/删除一条数据（读写同权：能看见就能操作，
-	// 规则见 fn_can_operate_row）。归属参数传 NULL 表示"没有这个归属"；
-	// 调用方先锁行取当前归属再传入，避免并发修改后按旧值判断
+	// 判断操作者能否修改/删除指定归属的数据（读写同权）
 	CanOperateRow(ctx context.Context, arg CanOperateRowParams) (bool, error)
-	// 判断能否把某条数据的归属改成新归属：两头都要过——这条数据本身
-	// 有权操作，新归属的人/部门/组也在可见范围内（见 fn_can_transfer_owner）
+	// 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作
+	// 且新归属可达）
 	CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error)
-	// 权限查询接口命名查询：只读判定与枚举，供权限查询服务层（宿主侧）
-	// 调用；拒绝以 false/空集表达，不是错误。单点判断、功能权限码、
-	// 可视范围、角色/权限码枚举、范围版本。
-	// 按指定维度判断一条归属是否可见/可操作（读写同权）。
-	// dims 为维度掩码：1 归属人、2 归属部门、4 归属用户组，可按位组合。
-	// 归属参数传 NULL 表示"没有这个归属"（规则见 fn_check_visible）
+	// 按维度掩码判断归属是否可见/可操作（读写同权）；dims 1=归属人、
+	// 2=归属部门、4=归属用户组，可按位组合；归属参数为 NULL 表示无该归属
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
-	// 过期会话清理（介质维护路径）：以池直连执行，不经租户/令牌事务门面、
-	// 不注入 app.tenant_id——维护任务没有租户身份，跨租户资格由被调函数
-	// 的 SECURITY DEFINER 属主决定（见 schema/80_session.sql 的
-	// fn_cleanup_expired_sessions）。宽限期语义也收在函数内
+	// 删除已撤销或过期超过宽限期的会话，返回删除行数
 	CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error)
-	// 按访问令牌哈希校验会话：有效性条件（启用、未撤销、未过期）放在
-	// SQL WHERE，租户身份尚未成立时 RLS 只放行哈希命中的行。不存在、
-	// 已撤销、已过期一视同仁——无行即无效，不泄露会话状态
+	// 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效
 	GetActiveSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (SysSession, error)
-	// basic 业务表固定操作：归属转移链路的锁行读取与落库。
-	// 业务表的固定 CRUD 一资源一文件（如 queries/sys_user.sql），随资源
-	// 纵切补入；动态 List 由 sqlc_gen_dynamic 逐表生成，无需手写。
-	// 按 id 锁定并读取一行 basic（FOR UPDATE）：改归属前先拿到它
-	// 现在的归属值，防止并发修改后按旧值判断
+	// 按 id 锁定并读取一行 basic（FOR UPDATE）
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
-	// 枚举有效用户的全部权限码（去重；前端菜单渲染、网关/远程系统缓存）。
-	// 用户无效（不存在/禁用/删除）时返回空集
+	// 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集
 	GetPermissionCodes(ctx context.Context, userID int64) ([]string, error)
-	// 一次取回三个维度的可见集合（三件套一条 SQL 同返，省往返）。
-	// 三态契约：列 NULL = 全租户不过滤（perm 层翻成 All=true），
-	// 空数组 = 什么都看不见，数组 = 可见集合并集（NULL 由调用方翻成全租户）
+	// 一次取回三个维度的可见集合；列 NULL 表示全租户不过滤，
+	// 空数组表示无可见项，数组为可见集合并集
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
-	// 取范围版本（缓存失效信号）：租户级 + 用户级一次取回，
-	// 缓存有效性 = 两个版本都未变。行不存在时返回 0；RLS 已限本租户
+	// 读取租户级与用户级范围版本；行不存在时返回 0
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
-	// sys_user 用户表固定 CRUD：全部经会话门面在租户事务内执行（RLS 限
-	// 租户）。写路径纪律：先锁行取当前归属 → fn_can_operate_row /
-	// fn_can_transfer_owner 判定 → 再写入，判断与写入同一事务。
-	// 按 id 读取用户（租户内，软删除行不可见）。可见性由调用方经
-	// CheckVisible 判定：不可见等同不存在。
+	// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
-	// 按 id 锁定并读取一行用户（FOR UPDATE）：写操作前取当前归属，
-	// 防止并发修改后按旧值判断；软删除行不可操作
-	GetSysUserForUpdate(ctx context.Context, id int64) (SysUser, error)
-	// 登录路径专用：按租户内用户名读取口令哈希与状态。调用发生在操作者
-	// 身份成立之前，经 TenantTx（只注入 app.tenant_id）执行；软删除
-	// 行等同不存在。哈希仅供 biz 口令校验单点使用
+	// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+	GetSysUserPermitted(ctx context.Context, arg GetSysUserPermittedParams) (SysUser, error)
+	// 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
 	GetUserCredentialByName(ctx context.Context, name string) (GetUserCredentialByNameRow, error)
-	// 枚举有效用户的全部有效角色（展示/审计/外部缓存角色变更）。
-	// 用户无效（不存在/禁用/删除）时返回空集
+	// 枚举用户的有效角色；用户无效（不存在/禁用/删除）时返回空集
 	GetUserRoles(ctx context.Context, userID int64) ([]SysRole, error)
-	// 判断用户是否持有某功能权限码（角色→菜单→权限码，与数据范围正交）
+	// 判断用户是否持有指定功能权限码（角色→菜单→权限码，与数据范围正交）
 	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
-	// 查某个用户是否已拥有某个角色（分配后的结果确认）
+	// 判断用户是否拥有指定角色
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
-	// sys_session 会话表固定操作：令牌只以 SHA-256 哈希出入（明文只在
-	// biz 用例内存中短暂存在）。签发与撤销经租户会话门面执行；校验与
-	// 刷新发生在租户身份成立之前，以令牌哈希作为 RLS 可见性凭据（见
-	// rls.sql 的 sys_session_token_* 策略）。
-	// 签发会话：租户取自会话 app.tenant_id；status/created_at/updated_at
-	// 由列默认值生成，last_activity_at 从签发时刻起算。有效期按 TTL 在
-	// 数据库时钟上起算，与应用时钟/时区解耦
+	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
-	// 创建用户。主键 id 由应用层发号（体系表主键无数据库默认值）；可空列
-	// 用 sqlc.narg（NULL 原样落库）；租户取自会话 app.tenant_id；
-	// created_at/updated_at 由列默认值生成。租户内 name/email/phone 唯一
-	// 冲突由调用方映射为 ALREADY_EXISTS
+	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
-	// 撤销租户内的一条会话（登出）：已撤销或不可见的行更新 0 行，调用方
-	// 按幂等处理；updated_by 记操作者
+	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
+	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
+	// 撤销指定会话；已撤销时更新 0 行
 	RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error)
-	// 刷新令牌轮换：以当前刷新令牌哈希点更新，命中行必须启用、未撤销且
-	// 刷新令牌未过期（条件放 SQL WHERE，并发轮换时后到者更新 0 行）。
-	// 新旧令牌哈希均由 biz 计算；有效期按新 TTL 在数据库时钟上重新起算；
-	// 操作者是会话所属用户，updated_at 由触发器兜底刷新
+	// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
+	// 未命中时更新 0 行
 	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)
-	// 替换密码哈希；updated_by 记操作者
+	// 替换口令哈希
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
-	// 软删除：deleted_at 置位后租户内唯一键（name/email/phone）随之可复用
+	// 置位 deleted_at 软删除用户
 	SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error)
-	// 修改一行 basic 的归属（判断通过后调用）。归属参数传 NULL 表示
-	// 清掉该归属；updated_at 由触发器自动刷新，不用手动设置
+	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
+	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
-	// 覆盖可变字段（不含 password 与归属三元组）。updated_by 记操作者，
-	// updated_at 由触发器兜底刷新
+	// 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 	UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error)
-	// 归属转移落库（fn_can_transfer_owner 判定通过后调用）；
-	// 归属参数传 NULL 表示清掉该归属
+	// 更新用户归属三元组；归属参数为 NULL 表示清空该归属
 	UpdateSysUserOwner(ctx context.Context, arg UpdateSysUserOwnerParams) error
 }
 
