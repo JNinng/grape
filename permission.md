@@ -10,7 +10,7 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 
 | 约束 | 回答的问题 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| 租户边界 | 数据属于哪个租户 | PostgreSQL RLS（21 张租户表，ENABLE + FORCE） | 未设 `app.tenant_id` → 默认全拒 |
+| 租户边界 | 数据属于哪个租户 | PostgreSQL RLS（23 张租户表，ENABLE + FORCE：21 张基线在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql——策略随域文件走） | 未设 `app.tenant_id` → 默认全拒 |
 | 行级数据范围 | 用户能看见、操作哪些行 | 读：`@scope`（列表）与 `fn_check_visible`（单行）；写：`fn_can_*` | 缺 Scope → 生成代码报错；判定 false → 拒绝 |
 | 功能权限码 | 用户能否调用某个操作 | 入口层（service / middleware）调 `fn_has_permission` | 未接入；接入后判定 false → 拒绝 |
 
@@ -154,6 +154,8 @@ WHERE id = sqlc.arg('id')
 功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链，不管能看见哪些行。
 
 落点：入口层（service 或 auth 中间件）按 `tr.Operation()` 映射权限码，再透传给 `GetXxxPermitted` / `LockXxxPermitted`，在库内随行判定一起校验；需要 403 的入口在透传前单独判 `fn_has_permission`。
+
+已落地的入口（C2）：Agent 工具授权管理（手写端点，无 proto 操作名，码在 `biz` 常量声明）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据）。判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。
