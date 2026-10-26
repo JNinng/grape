@@ -41,12 +41,8 @@
 | [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`Logout` 免认证（幂等语义，见认证中间件白名单），自取 `Authorization: Bearer` 头交用例按哈希撤销；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
 | [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`、`TransferUserOwner`；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
 | [agent_http.go](agent_http.go) | `AgentService`：Agent 手写端点（非 proto 生成）。把 [agent](../agent/) Stack 的外层 ServeMux 经 `srv.Route` + `ctx.Middleware` 入 Kratos 链，注册精确路径与前缀通配两条路由，认证后的 ctx 回绑请求交给框架直写 SSE；`BasePath` 供 server 的路由级超时跳过名单使用。 |
-<<<<<<< HEAD
 | [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：agent 会话列表手写端点（非 proto 生成，A2）的路由注册面。GET `{agui 前缀}/sessions` 的列表装配与 HTTP 形态收在 [agent](../agent/)（`Stack.SessionsHandler`：按认证身份编码的 userKey 列出会话元数据，`WithListSessionOnlyMeta` + offset 分页，非法参数 400，归属过滤只认服务端身份、跨用户不可见），本类型只负责注册精确路径并入 Kratos 链（先于 agent 前缀通配）。 |
-=======
-| [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：agent 会话列表手写端点（非 proto 生成，A2）。GET `{agui 前缀}/sessions` 经 wire 既有的框架 `session.Service` 实例按认证身份编码的 userKey 列出会话元数据（`WithListSessionOnlyMeta` + offset 分页，非法参数 400）；归属过滤只认服务端身份，跨用户不可见。框架 session 包与 conf 的 import 是 C1 并行窗口的受控例外（见文件头说明），C1 并入后收进 [agent](../agent/) 归还边界。 |
 | [agent_audit.go](agent_audit.go) | `AgentAuditService`：Agent 业务审计查询手写端点（非 proto 生成，E2）。GET `/v1/agent/audit/tool-calls` 与 `/confirmations` 委托 [biz](../biz/) 审计用例，按会话过滤分页（默认 20/上限 200）与按 `tool_call_id` / `confirmation_id` 点查（未命中 404、点查与列表参数混用 400）；依赖只有 biz 用例（无受控例外），租户边界由仓储 IdentityTx 与表 RLS 强制，返回的摘要是落库时已脱敏形态。 |
->>>>>>> feat/audit-e2
 
 ## 接入要点
 
