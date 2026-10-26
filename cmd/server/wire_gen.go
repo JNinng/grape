@@ -68,7 +68,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
-	stack, cleanup5, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore)
+	stack, cleanup5, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase)
 	if err != nil {
 		cleanup4()
 		cleanup3()
