@@ -86,7 +86,7 @@ const (
 
 // grantAdmin 是授权管理 REST 端点（C2）的装配物：列出与吊销当前认证
 // 身份相关的工具授权。装配期随 Stack 构造并挂进外层 ServeMux
-//（GET {basePath}/grants 与 DELETE {basePath}/grants/{id}，Go ServeMux
+// （GET {basePath}/grants 与 DELETE {basePath}/grants/{id}，Go ServeMux
 // 按模式特异性命中，先于 AG-UI 前缀子树），认证链路由 AgentService 的
 // 前缀入链保证。权限码语义收在 biz.GrantUsecase：本人列表/本人吊销
 // 不设码，全租户列表验 agent:grant:query、吊销他人验 agent:grant:revoke，
@@ -103,12 +103,12 @@ func newGrantAdmin(grants *biz.GrantUsecase) *grantAdmin {
 // grantItem 是授权列表项的响应 DTO：sessionId 为 null 即全局级；
 // scope 冗余一份人类可读作用域，前端免判空分支。
 type grantItem struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"userId"`
-	ToolName  string `json:"toolName"`
+	ID        int64   `json:"id"`
+	UserID    int64   `json:"userId"`
+	ToolName  string  `json:"toolName"`
 	SessionID *string `json:"sessionId"`
-	Scope     string `json:"scope"`
-	CreatedAt string `json:"createdAt"`
+	Scope     string  `json:"scope"`
+	CreatedAt string  `json:"createdAt"`
 }
 
 // grantListReply 是授权列表响应体。grants 恒非 nil，空授权返回空数组。

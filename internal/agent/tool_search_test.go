@@ -45,7 +45,7 @@ func newSearchToolForTest(fake *fakeVectorStore) (tool.Tool, *fakeVectorStore, *
 }
 
 // callSearchTool 以 JSON 入参直调检索工具：走框架 CallableTool 转换面
-//（与 tool_user_test.go 的 callTool 同形态）。
+// （与 tool_user_test.go 的 callTool 同形态）。
 func callSearchTool(t *testing.T, tl tool.Tool, ctx context.Context, args string) (searchDocsOutput, error) {
 	t.Helper()
 	out, err := tl.(tool.CallableTool).Call(ctx, []byte(args))
