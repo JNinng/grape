@@ -50,8 +50,8 @@ type TraceMiddleware middleware.Middleware
 //     下游 slog.XxxContext 无需手工拼链路字段。
 //   - 回传：调 handler 之前写 ReplyHeader，错误路径同样回传——HTTP 走
 //     响应头，gRPC 经初始 metadata，两协议统一口径；trace-id 不进响应体、
-//     不进 errors.Metadata。将来配 CORS 时需补
-//     Access-Control-Expose-Headers: x-trace-id, x-request-id。
+//     不进 errors.Metadata。跨域暴露（Access-Control-Expose-Headers 含
+//     x-trace-id）归 [cors.go](cors.go) 的 CORS 中间件，本中间件不感知。
 //
 // 本实现自研生成；接入 otel SDK 时只需把 NewTraceID/NewSpanID 换成真实
 // tracer 的生成实现，中间件形态不变。对端取不到传输上下文时原样放行
