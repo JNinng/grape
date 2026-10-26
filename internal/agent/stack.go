@@ -184,7 +184,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	base := basePathOf(c)
 	return &Stack{
-		handler:  newMux(aguiServer.Handler(), gateway, base),
+		handler:  newMux(aguiServer.Handler(), gateway, sessions, c.GetAppName(), base),
 		runner:   coreRunner,
 		basePath: base,
 		vectors:  vectors,
@@ -215,11 +215,17 @@ func (s *Stack) BasePath() string { return s.basePath }
 
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的
-// /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中）。
-func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, basePath string) nethttp.Handler {
+// /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中）。ack
+// 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
+// ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
+// 自己名下的会话」。
+func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, appName, basePath string) nethttp.Handler {
 	mux := nethttp.NewServeMux()
 	mux.Handle(basePath+"/", aguiHandler)
-	ackhttp.Mount(mux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
+	ackMux := nethttp.NewServeMux()
+	ackhttp.Mount(ackMux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
+	mux.Handle(basePath+defaultAckSuffix+"/",
+		newAckOwnerGuard(ackMux, sessions, appName))
 	return mux
 }
 
