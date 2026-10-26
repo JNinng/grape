@@ -263,8 +263,12 @@ func (uc *AuditUsecase) RecordToolCallWithConfirmation(ctx context.Context, tool
 	return uc.repo.AppendBatch(ctx, toolRec, confRec)
 }
 
-// ListToolCalls 分页查询工具调用审计（时间倒序）。
+// ListToolCalls 分页查询工具调用审计（时间倒序）。身份缺失按未认证
+// fail-closed：读面与写面同一纪律，查询只以认证身份发生。
 func (uc *AuditUsecase) ListToolCalls(ctx context.Context, filter *AuditFilter) (*ToolCallAuditList, error) {
+	if _, ok := IdentityFromContext(ctx); !ok {
+		return nil, ErrSessionInvalid
+	}
 	f, err := auditFilterOf(filter)
 	if err != nil {
 		return nil, err
@@ -274,6 +278,9 @@ func (uc *AuditUsecase) ListToolCalls(ctx context.Context, filter *AuditFilter) 
 
 // ListConfirmations 分页查询授权确认审计（时间倒序）。
 func (uc *AuditUsecase) ListConfirmations(ctx context.Context, filter *AuditFilter) (*ConfirmationAuditList, error) {
+	if _, ok := IdentityFromContext(ctx); !ok {
+		return nil, ErrSessionInvalid
+	}
 	f, err := auditFilterOf(filter)
 	if err != nil {
 		return nil, err
@@ -283,6 +290,9 @@ func (uc *AuditUsecase) ListConfirmations(ctx context.Context, filter *AuditFilt
 
 // GetToolCall 按工具调用 ID 点查。
 func (uc *AuditUsecase) GetToolCall(ctx context.Context, toolCallID string) (*ToolCallAudit, error) {
+	if _, ok := IdentityFromContext(ctx); !ok {
+		return nil, ErrSessionInvalid
+	}
 	if strings.TrimSpace(toolCallID) == "" {
 		return nil, ErrAuditInvalidArgument
 	}
@@ -291,6 +301,9 @@ func (uc *AuditUsecase) GetToolCall(ctx context.Context, toolCallID string) (*To
 
 // GetConfirmation 按确认 ID 点查。
 func (uc *AuditUsecase) GetConfirmation(ctx context.Context, confirmationID string) (*ConfirmationAudit, error) {
+	if _, ok := IdentityFromContext(ctx); !ok {
+		return nil, ErrSessionInvalid
+	}
 	if strings.TrimSpace(confirmationID) == "" {
 		return nil, ErrAuditInvalidArgument
 	}
