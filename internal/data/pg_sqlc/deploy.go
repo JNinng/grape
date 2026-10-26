@@ -17,7 +17,7 @@ import (
 // 顺序与仓库根 deploy_db.md 一致，两处禁止另行维护副本：
 //
 //	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql →
-//	seed.sql → agent_session.sql → agent_vector.sql
+//	seed.sql → agent_session.sql → agent_vector.sql → 96_agent_grant.sql
 //
 // role.sql 建角色与授权（口令占位符见下方占位符常量），必须先于
 // rls.sql：后续 operate/expose 的函数授权语句依赖角色先行存在；
@@ -25,7 +25,9 @@ import (
 // agent_session.sql 建 Agent 会话存储（trpc-agent-go 框架表，独立
 // schema agent），只依赖 role.sql 的 grape_u 存在（GRANT 授权对象），
 // 与 public 业务域零耦合；agent_vector.sql（向量设施，同超级用户面）
-// 与其互不依赖，两文件均幂等建 schema、尾部追加互不扰动。
+// 与其互不依赖，两文件均幂等建 schema、尾部追加互不扰动；
+// 96_agent_grant.sql（工具授权表，public 业务域 + RLS，C2）只依赖
+// role.sql 的角色存在，同为尾部追加域。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
 	"schema/20_tenant.sql",
@@ -48,6 +50,11 @@ var DeployFiles = []string{
 	// 向量设施（D1，TODO 决策 6）：pgvector 扩展 + agent.agent_document
 	// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
 	"agent_vector.sql",
+	// Agent 工具授权（C2，TODO 流 C）：public.agent_tool_grant 表 + 租户
+	// RLS 策略 + 运行角色授权；入 sqlc catalog（命名查询见
+	// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
+	// sys_perm_version），只依赖 role.sql 的角色存在。
+	"96_agent_grant.sql",
 }
 
 // role.sql 中的口令占位符：部署方（dbdeploy）在执行前对文件内容做

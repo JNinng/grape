@@ -1,6 +1,6 @@
 # 数据库部署
 
-grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 15 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令与集成测试共用），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。
+grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 17 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令与集成测试共用），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。
 
 ## 一键部署（推荐）
 
@@ -12,13 +12,13 @@ export GRAPE_DEPLOY_TEST_U_PASSWORD=<test_u 口令>
 make dbdeploy ARGS="--database <库名>"
 ```
 
-流程：连接 `postgres` 库幂等创建目标库（已存在时沿用）→ 连接目标库 → **单事务内**按清单顺序执行 15 个文件（任一文件失败整体回滚）→ 事务内以当前库名补 `GRANT CONNECT`。role.sql 的角色口令以 `{{GRAPE_U_PASSWORD}}` / `{{TEST_U_PASSWORD}}` 占位，dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
+流程：连接 `postgres` 库幂等创建目标库（已存在时沿用）→ 连接目标库 → **单事务内**按清单顺序执行 17 个文件（任一文件失败整体回滚）→ 事务内以当前库名补 `GRANT CONNECT`。role.sql 的角色口令以 `{{GRAPE_U_PASSWORD}}` / `{{TEST_U_PASSWORD}}` 占位，dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
 
 幂等边界：角色（判存）与种子（`ON CONFLICT DO NOTHING`）可重复执行；结构 DDL 为裸创建，对已部署库重复执行会报错退出——全量重建先手动 `DROP DATABASE` 再执行，本命令不宣称全量幂等（若需全量幂等，另立迁移台账任务）。
 
 ## 执行顺序
 
-按序执行以下 15 个文件，顺序不能变。同目录不参与部署的 SQL：`queries/` 五个文件是 sqlc 的 Go 生成输入，不对数据库执行。
+按序执行以下 17 个文件，顺序不能变。同目录不参与部署的 SQL：`queries/` 六个文件是 sqlc 的 Go 生成输入，不对数据库执行。
 
 | 步骤 | 文件 | 干什么 | 顺序约束 |
 |---|---|---|---|
@@ -38,6 +38,7 @@ make dbdeploy ARGS="--database <库名>"
 | 14 | [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) | 种子数据（含权限演示数据，覆盖多个租户） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS） |
 | 15 | [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) | Agent 会话存储：`CREATE SCHEMA agent` + 框架 session/postgres 六张 `agent_*` 表与索引 + grape_u 授权（trpc-agent-go 框架自管表，不入 sqlc catalog） | 只依赖步骤 10 的 grape_u 存在（授权对象）；与 public 业务域零耦合，放尾部不动既有顺序；schema 幂等建立 |
 | 16 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 表、HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制（TODO 决策 6）；授权收窄到 agent_document，不覆盖 agent schema 全表 |
+| 17 | [96_agent_grant.sql](internal/data/pg_sqlc/sqlc/96_agent_grant.sql) | Agent 工具授权（C2）：public.agent_tool_grant 表、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权；入 sqlc catalog，命名查询见 queries/agent_grant.sql | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；策略随域文件走（口径同 expose.sql 的 sys_perm_version，不进 rls.sql）；吊销置 revoked_at 不删行，TTL/清理归 E3 |
 
 手工按序执行时用 psql：
 
@@ -73,6 +74,8 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) 的语句均带 `ON CONFLICT DO NOTHING`，对已部署库重复执行不报错、也不覆盖已有行：涉及种子行修正的变更，对历史版本部署过的库需手工执行 UPDATE 或重建库。
 
 [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) 对历史版本部署过的库属追加对象：以超级用户连接目标库单独执行即可（扩展与 schema 判存沿用，建表/建索引为裸创建，重复执行在表已存在时报错）。调整 embedding 维度时须同时改该文件的列类型 `vector(维度)` 与 `conf.vector.dimension` 并重建表与索引（改维度的存量迁移不在本任务范围）。
+
+[96_agent_grant.sql](internal/data/pg_sqlc/sqlc/96_agent_grant.sql) 同为历史库追加对象：以超级用户连接目标库单独执行（建表/建索引/策略为裸创建，重复执行在对象已存在时报错）；授权管理权限码的种子（sys_menu 250–253 与角色 101 的映射）随 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) 追加段执行，`ON CONFLICT DO NOTHING` 可重复。已部署库升级时，权限码在 seed 执行前不生效——入口层判定返回 403，属预期收紧。
 
 ## 种子口令
 
