@@ -6,7 +6,13 @@
 server:
   http:
     addr: 0.0.0.0:8000
-    timeout: 1s
+    # SSE 治理：全局超时归零，避免 Kratos 入站 filter 的 WithTimeout 截断
+    # AG-UI 长流（SSE 写循环监听请求 ctx.Done，1s 即断）。普通路由的请求
+    # 超时由 server 层的路由级超时中间件按 http.request_timeout 恢复；
+    # AG-UI / ack 前缀路径跳过该中间件，运行时长由 agent.agui.timeout 兜底。
+    timeout: 0s
+    # 非 agent 路由的请求超时（覆盖生成代码端点与未来手写端点）。
+    request_timeout: 1s
   grpc:
     addr: 0.0.0.0:9000
     timeout: 1s
@@ -33,3 +39,25 @@ auth:
   # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
   # 登录形态确定后由服务端解析替代）。指向种子数据里的全租户管理员。
   default_tenant_id: t-super-01
+agent:
+  # app_name：core runner / AG-UI / ack 三者共用的会话存储键组成部分，
+  # 三处必须一致，否则会话定位失败。
+  app_name: grape-agent
+  llm:
+    # provider：OpenAI 兼容变体（openai / deepseek / qwen / minimax / kimi）；
+    # base_url 留空时由框架按变体取内置默认端点。
+    provider: openai
+    base_url: ${AGENT_LLM_BASE_URL:}
+    # api_key 只经环境变量注入，不落默认配置。
+    api_key: ${AGENT_LLM_API_KEY:}
+    model: ${AGENT_LLM_MODEL:gpt-4o-mini}
+    # 单次模型调用超时；未设置用框架默认。
+    timeout: 60s
+  agui:
+    # base_path：AG-UI 与 ack 的共同路由前缀；chat 在前缀根，
+    # /history、/cancel 与 /ack/confirmations 同前缀。
+    base_path: /agui
+    # 单次运行超时（服务端兜底；将来未决确认最终由它结算为拒绝）。
+    timeout: 1800s
+    # SSE 心跳间隔，保持中间设备不掐空闲流。
+    heartbeat_interval: 15s

@@ -57,8 +57,12 @@ func Test_template_when_loaded_by_server_path_yields_required_sections(t *testin
 	if got := bc.GetServer().GetHttp().GetAddr(); got != "0.0.0.0:8000" {
 		t.Errorf("server.http.addr = %q, want %q", got, "0.0.0.0:8000")
 	}
-	if got := bc.GetServer().GetHttp().GetTimeout().AsDuration(); got != time.Second {
-		t.Errorf("server.http.timeout = %v, want %v", got, time.Second)
+	// SSE 治理后全局传输超时归零，普通路由限时由 request_timeout 恢复。
+	if got := bc.GetServer().GetHttp().GetTimeout().AsDuration(); got != 0 {
+		t.Errorf("server.http.timeout = %v, want 0s (SSE governance)", got)
+	}
+	if got := bc.GetServer().GetHttp().GetRequestTimeout().AsDuration(); got != time.Second {
+		t.Errorf("server.http.request_timeout = %v, want %v", got, time.Second)
 	}
 	if got := bc.GetServer().GetGrpc().GetAddr(); got != "0.0.0.0:9000" {
 		t.Errorf("server.grpc.addr = %q, want %q", got, "0.0.0.0:9000")

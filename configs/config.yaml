@@ -53,6 +53,6 @@ agent:
     # /history、/cancel 与 /ack/confirmations 同前缀。
     base_path: /agui
     # 单次运行超时（服务端兜底；将来未决确认最终由它结算为拒绝）。
-    timeout: 30m
+    timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s
