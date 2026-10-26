@@ -19,6 +19,7 @@ require (
 	google.golang.org/protobuf v1.36.12
 	trpc.group/trpc-go/trpc-agent-go v1.11.2
 	trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0
 )
 
 require (
@@ -70,4 +71,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	trpc.group/trpc-go/trpc-a2a-go v0.2.6-0.20260721084546-18c8244d0acb // indirect
+	trpc.group/trpc-go/trpc-agent-go/storage/postgres v0.8.0 // indirect
 )

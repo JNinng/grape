@@ -47,7 +47,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
 	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middlewareMiddleware, userService, sessionService)
-	service2, cleanup2, err := agent.NewSessionService()
+	service2, cleanup2, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
 		cleanup()
 		return nil, nil, err
