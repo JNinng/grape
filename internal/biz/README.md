@@ -43,7 +43,10 @@
 | [maintenance.go](maintenance.go)  | 设施无关契约：诊断面 `FacilityDiagnostics` 与 `MetricSample` / `MetricType`，维护面 `FacilityMaintenance` 与 `MaintenanceAction` / `MaintenanceReport`；ops 指标出口与 task 维护循环只认契约，不读原始实现。             |
 | [vectorstore.go](vectorstore.go)   | 向量存储设施契约 `VectorStore`（框架无关形状，决策 6 的强制隔离点）：`VectorDocument` / `VectorFilter` / `ScoredVectorDocument` 与 Add/Get/Update/Delete/Search/DeleteByFilter/Count/GetMetadata；身份不进契约参数，实现必须从认证 ctx 提取并强制租户过滤；`ErrVectorStoreDisabled` / `ErrVectorDocNotFound` 类型化错误。 |
 | [audit.go](audit.go)               | Agent 业务审计（TODO E2）：工具调用/授权确认的记录入参与完整行 DO、`AuditRepo` 契约（Append/List/Get/组合批量）与 `AuditUsecase`（入参校验、身份与 trace_id 从认证 ctx 提取、参数/结果摘要按 `pkg/redact` 的 tool_param/retrieval 类别脱敏——类别未登记放行原值但保留 4096 rune 截断兜底）；`ErrAuditInvalidArgument` / `ErrAuditNotFound`。 |
-| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewRedactRegistry`（审计表与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
+| [embedder.go](embedder.go)        | 文本向量化设施契约 `Embedder`（Embed/Dimensions，框架无关最小面）：维度纪律——声明维度须与 conf.vector.dimension 对账（摄取管线装配期校验），实现须在每次响应复核；`ErrEmbedderDisabled` 类型化错误。                      |
+| [document.go](document.go)        | 摄取管线 `DocumentUsecase`（D2）：简版固定长度 + 重叠切分（rune 窗口，可替换点）→ 逐块 embed → 经 VectorStore 契约写入；幂等取「同来源覆盖」（切片 ID 确定性派生 `#index`，摄取前按 source_id 锚点清旧行）；切片元数据含来源标识与原文 rune 区间锚点；装配期校验 embedder 维度与 conf 一致（不一致拒绝构造）。`ErrDocumentSourceTooLong` 类型化错误。 |
+| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewRedactRegistry`（审计表与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
+
 
 ## 关键约束
 
@@ -58,4 +61,5 @@
 
 ## 测试
 
-现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发。
+现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发。；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报。
+

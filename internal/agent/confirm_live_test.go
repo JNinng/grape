@@ -67,7 +67,7 @@ func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *fakeUse
 	}
 	t.Cleanup(closeSessions)
 	stack, err := NewStackWithOptions(confirmStackConf(), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), WithModelOverride(llm))
+		biz.NewUserUsecase(repo), &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}

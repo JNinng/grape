@@ -61,6 +61,16 @@ func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) 
 // agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
 // 用例非 nil（C1 业务工具的依赖），但路由用例不触发工具执行，任何方法
 // 被调用都属用例越界，按非法入参失败暴露。
+// agentStubEmbedder 是 server 路由测试的替身 embedder：固定维度、恒
+// 返回单位向量，检索工具装配需要非 nil 实现而路由用例不触达它。
+type agentStubEmbedder struct{}
+
+func (*agentStubEmbedder) Embed(context.Context, string) ([]float32, error) {
+	return make([]float32, 4), nil
+}
+
+func (*agentStubEmbedder) Dimensions() int { return 4 }
+
 type agentStubUserRepo struct{}
 
 func (*agentStubUserRepo) GetByID(context.Context, biz.Identity, int64) (*biz.User, error) {
@@ -110,7 +120,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索，D2 接入真实契约。
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), agent.WithModelOverride(llm))
+		biz.NewUserUsecase(&agentStubUserRepo{}), &agentStubEmbedder{}, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

@@ -100,11 +100,22 @@ vector:
   # 不触库。
   enabled: false
   # embedding 维度：必须与 agent_vector.sql 的列类型 vector(维度) 一致
-  # （默认部署为 1024），装配期探针校验不一致即拒绝启动。
+  # （默认部署为 1024），同时必须与 embedding 模型的产出维度一致，
+  # 两处不一致分别在装配期失败。
   dimension: 1024
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
+  # embedding：OpenAI 兼容 embeddings 端点（决策 5 同口径）。启用向量
+  # 设施时必填 base_url 与 model；api_key 只经环境变量注入。
+  embedding:
+    # provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空即可。
+    provider: openai
+    base_url: ${VECTOR_EMBEDDING_BASE_URL:}
+    api_key: ${VECTOR_EMBEDDING_API_KEY:}
+    model: ${VECTOR_EMBEDDING_MODEL:text-embedding-3-small}
+    # 单次 embedding 调用超时；未设置取 30s。
+    timeout: 30s
 telemetry:
   # OpenTelemetry 链路遥测（E1）。enabled=false 完全 noop：不构造
   # exporter、不发起任何连接；开启后 server span 经 OTLP gRPC 导出。
