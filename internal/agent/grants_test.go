@@ -22,6 +22,11 @@ type fakeGrantRepo struct {
 	// toolName)，sessionID 空=全局级。
 	active map[agentGrantKey]*biz.ToolGrant
 
+	// nextID 是种子行的发号器：行 ID 必须唯一——seed 的 map 键是三元组，
+	// 固定 ID 会让按 ID 吊销命中 map 随机序的任意一行（按 ID 吊销的用例
+	// 因此间歇失败）。
+	nextID int64
+
 	lastResolveSession string
 	lastRememberTool   string
 	lastRememberSess   string
@@ -38,7 +43,8 @@ func newFakeGrantRepo() *fakeGrantRepo {
 }
 
 func (r *fakeGrantRepo) seed(userID int64, sessionID, toolName string) {
-	g := &biz.ToolGrant{ID: 1, TenantID: "t-1", UserID: userID, ToolName: toolName}
+	r.nextID++
+	g := &biz.ToolGrant{ID: r.nextID, TenantID: "t-1", UserID: userID, ToolName: toolName}
 	if sessionID != "" {
 		s := sessionID
 		g.SessionID = &s
