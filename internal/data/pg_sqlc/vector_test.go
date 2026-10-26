@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	"grape/internal/conf"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -413,25 +415,46 @@ func TestVectorStore_filters_count_delete_and_metadata_paging(t *testing.T) {
 		t.Fatalf("Count(after purge) = (%d, %v), want (2, nil)", remaining, err)
 	}
 
-	// GetMetadata 分页：升序 + limit/offset；向量与正文不随行。
-	metadata, err := store.GetMetadata(ctx, &biz.VectorFilter{Limit: 1, Offset: 1})
+	// GetMetadata 分页：created_at 为秒级精度、两行同秒写入，排序由 id
+	// tie-break（doc-01 < doc-03），翻页结果必须确定唯一；向量与正文不随行。
+	firstPage, err := store.GetMetadata(ctx, &biz.VectorFilter{Limit: 1, Offset: 0})
 	if err != nil {
-		t.Fatalf("GetMetadata(page): %v", err)
+		t.Fatalf("GetMetadata(page 0): %v", err)
 	}
-	if len(metadata) != 1 {
-		t.Fatalf("GetMetadata rows = %d, want 1", len(metadata))
+	if len(firstPage) != 1 {
+		t.Fatalf("GetMetadata page 0 rows = %d, want 1", len(firstPage))
 	}
-	for id, m := range metadata {
-		if id != "doc-01" && id != "doc-03" {
-			t.Fatalf("unexpected page row %q", id)
-		}
+	if _, ok := firstPage["doc-01"]; !ok {
+		t.Fatalf("GetMetadata page 0 = %v, want exactly doc-01 (id tie-break)", pageIDs(firstPage))
+	}
+	secondPage, err := store.GetMetadata(ctx, &biz.VectorFilter{Limit: 1, Offset: 1})
+	if err != nil {
+		t.Fatalf("GetMetadata(page 1): %v", err)
+	}
+	if len(secondPage) != 1 {
+		t.Fatalf("GetMetadata page 1 rows = %d, want 1", len(secondPage))
+	}
+	if _, ok := secondPage["doc-03"]; !ok {
+		t.Fatalf("GetMetadata page 1 = %v, want exactly doc-03 (id tie-break)", pageIDs(secondPage))
+	}
+	for _, m := range secondPage {
 		if _, hasContent := m["tenant_id"]; !hasContent {
-			t.Fatalf("metadata row %q lacks injected tenant_id: %+v", id, m)
+			t.Fatalf("metadata row lacks injected tenant_id: %+v", m)
 		}
 	}
 	if _, err := store.GetMetadata(ctx, &biz.VectorFilter{Offset: 2}); err == nil {
 		t.Fatal("GetMetadata(offset without limit) = nil error, want rejection")
 	}
+}
+
+// pageIDs 是 metadata 分页结果的 ID 集合，用于失败信息定位。
+func pageIDs(metadata map[string]map[string]any) []string {
+	ids := make([]string, 0, len(metadata))
+	for id := range metadata {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
 }
 
 func TestNewVectorStore_startup_probe_rejects_dimension_mismatch(t *testing.T) {
@@ -456,4 +479,97 @@ func TestNewVectorStore_startup_probe_rejects_dimension_mismatch(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Add after probe: %v", err)
 	}
+}
+
+func TestVectorStore_search_minscore_filters_in_sql(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	// 以 e0 检索的理论分数：doc-e0 为 1.0，doc-e1/doc-e2 为 0.5。阈值
+	// 取 0.25 / 0.75，避开 0.5 边界（float4 距离计算有舍入），使断言只
+	// 依赖区间归属而非浮点边界。
+	for _, id := range []string{"doc-e0", "doc-e1", "doc-e2"} {
+		index := int(id[len(id)-1] - '0')
+		addVectorDocument(t, store, vectorTenantA, &biz.VectorDocument{
+			ID:        id,
+			Content:   "content",
+			Embedding: unitVector(int(vectorDimension), index),
+		})
+	}
+
+	// MinScore 0.75：0.5 档被 SQL 阈值（score >= $N）滤除，只剩同向行。
+	hits, err := store.Search(ctx, unitVector(int(vectorDimension), 0), &biz.VectorFilter{Limit: 10, MinScore: 0.75})
+	if err != nil {
+		t.Fatalf("search with min_score 0.75: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Document.ID != "doc-e0" {
+		t.Fatalf("min_score 0.75 hits = %s, want exactly [doc-e0]", searchIDs(hits))
+	}
+	// MinScore 0.25：三行全部越过阈值。
+	hits, err = store.Search(ctx, unitVector(int(vectorDimension), 0), &biz.VectorFilter{Limit: 10, MinScore: 0.25})
+	if err != nil {
+		t.Fatalf("search with min_score 0.25: %v", err)
+	}
+	if len(hits) != 3 {
+		t.Fatalf("min_score 0.25 hits = %d, want 3", len(hits))
+	}
+	// 阈值与租户过滤叠加：租户 B 同阈值检索为空。
+	foreign, err := store.Search(vectorIdentityContext(vectorTenantB), unitVector(int(vectorDimension), 0), &biz.VectorFilter{Limit: 10, MinScore: 0.25})
+	if err != nil || len(foreign) != 0 {
+		t.Fatalf("cross-tenant search with min_score = (%d, %v), want (0, nil)", len(foreign), err)
+	}
+}
+
+func TestVectorStore_add_duplicate_id_rejected_by_unique_constraint(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	doc := &biz.VectorDocument{
+		ID:        "doc-dup",
+		Content:   "first",
+		Embedding: unitVector(int(vectorDimension), 0),
+	}
+	addVectorDocument(t, store, vectorTenantA, doc)
+	doc.Content = "second"
+	err := store.Add(ctx, doc)
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" {
+		t.Fatalf("duplicate Add = %v, want unique violation (23505)", err)
+	}
+	got, err := store.Get(ctx, "doc-dup")
+	if err != nil || got.Content != "first" {
+		t.Fatalf("row after duplicate Add = (%+v, %v), want original untouched", got, err)
+	}
+}
+
+func TestVectorStore_get_metadata_offset_beyond_total_returns_empty(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	for i := 0; i < 2; i++ {
+		addVectorDocument(t, store, vectorTenantA, &biz.VectorDocument{
+			ID:        fmt.Sprintf("doc-%02d", i),
+			Content:   "content",
+			Embedding: unitVector(int(vectorDimension), i),
+		})
+	}
+	metadata, err := store.GetMetadata(ctx, &biz.VectorFilter{Limit: 10, Offset: 100})
+	if err != nil {
+		t.Fatalf("GetMetadata(offset beyond total): %v", err)
+	}
+	if len(metadata) != 0 {
+		t.Fatalf("GetMetadata(offset beyond total) = %v, want empty", pageIDs(metadata))
+	}
+}
+
+// searchIDs 是检索命中结果的 ID 列表，用于失败信息定位。
+func searchIDs(hits []*biz.ScoredVectorDocument) []string {
+	ids := make([]string, 0, len(hits))
+	for _, hit := range hits {
+		ids = append(ids, hit.Document.ID)
+	}
+	return ids
 }

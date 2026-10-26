@@ -61,7 +61,10 @@ SELECT count(*) FROM deleted`
 
 	vectorCountSQL = `SELECT count(*) FROM %s WHERE tenant_id = $1%s`
 
-	vectorMetadataSQL = `SELECT id, metadata FROM %s WHERE tenant_id = $1%s`
+	// GetMetadata 的排序键：created_at 是 timestamp(0) 秒级精度，同秒
+	// 写入必须以 id tie-break，否则 LIMIT/OFFSET 翻页不确定；排序键与
+	// agent_document_tenant_created_idx（租户前缀）对齐。
+	vectorMetadataSQL = `SELECT id, metadata FROM %s WHERE tenant_id = $1%s ORDER BY created_at, id`
 
 	// vectorScoreExpr 是归一化相似度：余弦距离（<=>）映射到 [0,1]，与
 	// 框架 pgvector 实现的分数语义一致；占位符是查询向量。
