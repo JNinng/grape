@@ -79,7 +79,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder)
+	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
+	registry := biz.NewRedactRegistry()
+	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
+	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, auditUsecase)
 	if err != nil {
 		cleanup5()
 		cleanup4()
@@ -94,9 +97,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := ops.NewMetricsHandler(v)
 	agentSessionsService := service.NewAgentSessionsService(stack)
-	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
-	registry := biz.NewRedactRegistry()
-	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	webHandler := server.NewWebHandler(agentService)
 	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentAuditService, webHandler)

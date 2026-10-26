@@ -10,6 +10,7 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 - 身份与租户：AG-UI 的 UserIDResolver、ack 的 WithUserFunc 与业务工具的执行身份都从认证 ctx（`biz.IdentityFromContext`）取，userKey 编码（`tenant_id:user_id`）共用 `EncodeUserKey` 单一代码点；身份缺失一律 fail-closed，禁止回落框架默认用户 `"user"`。
 - 工具授权（C1/C2，TODO §1.3）：ack 网关持有工具分级静态表（见下）与全量工具集（`WithStaticTools`，恢复路径代执行按名解析）；每次 AG-UI 运行（含恢复路径续跑）经 `gateway.RunOptionResolver()` 挂许可策略，Confirm 工具阻塞等待人工决定。许可源（C2）是 [grants.go](grants.go) 的 `storedGrants`：ack 的 string UserID（userKey）经 `DecodeUserKey` 映射内部身份，评估走 `biz.GrantUsecase.Resolve`（会话级先于全局级）落 `agent_tool_grant` 表（IdentityTx + RLS + 应用层租户过滤双保险），同意 + remember 落库（会话级/全局级两形态，同键活跃许可幂等跳过），吊销后 Lookup 不命中自然重新确认；一切失败按未命中处理（fail-closed，代价只是重复确认）。策略源恒为弃权空实现（`noopPolicy`，abstain 不介入裁决；C3 接入点），分级表 conf 化留 C2/E3。防风暴：LLMAgent 恒设 `WithMaxToolIterations`（单次运行工具调用轮数上限，拒绝后模型无视「不得重试」循环重试时按上限以 RUN_ERROR 终止）；未决确认由 AG-UI 运行超时（conf `agent.agui.timeout`，缺省 30m）结算为拒绝。
 - ack 路由归属守卫：ack 的 live 决定路径不校验决定者与会话归属（等待者按会话+确认 ID 键控；仅恢复路径经 userKey 会话定位天然隔离），ackhttp 自身不做鉴权——grape 在唯一挂载点以 `ackOwnerGuard` 强制归属：threadId 取值源与 ackhttp 严格对齐（POST 决定只认请求体、GET 列表只认查询参数），目标会话不在调用者 userKey 名下即 404（不区分不存在与非你所有）。上游缺陷备案（升级 ack 或排查历史数据时需知）：若 live 路径被跨用户触达（守卫缺失或绕过），`settleLive` 的 savePending 以调用者 uid 定位会话失败仅记日志（ack confirm.go），工具执行不受阻，而属主会话状态里的待确认指针无人清理——归属者后续的合法决定会因等待者已消失被误路由到恢复路径（代执行重放，二次执行风险）；E3 部署文档写运维口径时应引用本条做故障诊断。
+- 业务审计写入（E2 接口、C1 接线）：`AuditHook` 挂点经 `WithAuditHook` 可选注入（wire 生产装配传 biz.AuditUsecase，与 A3 查询端点共用同一用例实例；缺省 nil 即不审计，装配形态与接线前完全一致）。两个写入点：工具执行终态——[tool_audit.go](tool_audit.go) 的 wrapper 包住全量工具（echo 含），同时覆盖运行内执行（调用 ID 由框架注入 ctx）与恢复路径网关代执行（确认 ID 由决定审计面注入，ack Payload 两字段同源）；ack 决定结算——[ack_audit.go](ack_audit.go) 在归属守卫内层拦截决定路由，恰在 `gateway.Decide` 返回后写确认行（live 工具行由执行终态自然落库；recovery 代执行工具行与确认行组合批量原子落库）。语义纪律：deny 归一 `Remember=""`（ack 静默忽略、biz 校验拒绝非空）；decided_by 取网关身份回填值（userKey）；重试数记 0（框架不暴露，E3 评估）；摘要传原文、脱敏与截断归 biz 用例（E1 注册表）；挂点写入失败只记日志、不中断运行（审计是旁路观察面）。
 - 会话能力（B2）：/history 快照与 tail follow 开启（AG-UI track 事件持久化进 `agent.agent_session_track_events`）、cancel 生效；TTL 经 conf `agent.session_storage` 注入框架（0 值语义见 conf.proto 注释；track TTL 仅在正值时传入——框架对显式 0 的解释是禁用过期而非沿用 session TTL）。grape 不用 app 级 state 存租户业务数据（ack 的待确认指针存 Session.State，属框架会话设施内的授权状态而非租户业务数据，随会话生命周期管理）。agent 会话列表端点（A2）同在本层装配（[sessions.go](sessions.go)）：GET `{basePath}/sessions` 按认证身份 userKey 列出会话元数据（仅元数据 + offset 分页），HTTP 形态经 `Stack.SessionsHandler` 交 service 注册。
 - 上下文压缩（B2）：conf `agent.compression` 翻译为 LLMAgent 同名选项（总开关关闭时不改写任何工具结果）；压缩只作用于请求投影副本，session 事件流保留原文，占位符携带 event_id 恢复引用。LLMAgent 恒开 `WithEnableOnDemandSession`，session_load 经框架 WindowService（session/postgres 已实现）取回原文片段。会话摘要仅留配置位 `agent.summarization`（当前恒关闭，未实现）。
 - 观测面：ack 网关经 `ack.WithLogger` 桥 grape logger（本层装配）；trpc-agent-go 全框架日志门面与 LLM/工具 span 的 Tracer 桥接归 [../telemetry/](../telemetry/)（进程级全局桥接 + trace_id 注入与局限声明），不在本层重复装配。
@@ -33,31 +34,21 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [stack.go](stack.go) | `Stack` 骨架装配：模型 → 工具集 → ack 网关 → LLMAgent（工具 + OnDemandSession + 压缩选项翻译 + MaxToolIterations）→ core runner → AG-UI runner（RunOptionResolver 挂许可策略 + Bind 续跑 + /history follow）→ AG-UI server（chat / cancel / history）→ 外层 ServeMux（ack 子树套归属守卫）；`Handler` 返回挂载物，`BasePath` 供挂载方与超时跳过名单使用。 |
+| [stack.go](stack.go) | `Stack` 骨架装配：模型 → 工具集 → ack 网关 → LLMAgent（工具 + OnDemandSession + 压缩选项翻译 + MaxToolIterations）→ core runner → AG-UI runner（RunOptionResolver 挂许可策略 + Bind 续跑 + /history follow）→ AG-UI server（chat / cancel / history）→ 外层 ServeMux（ack 子树套归属守卫，审计挂点非 nil 时再套决定路由审计面）；`WithAuditHook` 注入审计挂点（非 nil 时工具清单包终态 wrapper），`Handler` 返回挂载物，`BasePath` 供挂载方与超时跳过名单使用。 |
 | [tool_user.go](tool_user.go) | 业务工具首批（上表）：框架 function 工具注册 → biz 用户用例调用；入参服务端校验与用户摘要投影（口令/审计列/归属不出工具层）。 |
 | [tool_search.go](tool_search.go) | 检索工具 `search_internal_docs`（D2）：embedder 查询向量化 → 向量框架适配器 Search（唯一取用点，决策 6）；不可信内容围栏（标记 + notice + 防逃逸打散）与来源引用投影；top_k 缺省 5、上限由适配器钳制。 |
-| [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册。 |
+| [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册；C1 起业务工具经 biz 用例接入（tool_user.go），不在本层堆积。 |
 | [ack_guard.go](ack_guard.go) | ack 路由会话归属守卫：解析 threadId（决定体/查询参数），会话不在调用者 userKey 名下即 404；形状错误放行给 ackhttp（400 语义不变）。 |
 | [sessions.go](sessions.go) | agent 会话列表端点（A2）装配：`sessionList` 消费骨架既有的 session.Service 与 app 名（与 AG-UI / ack 同源），`listSessions` 程序化取用点（仅元数据 + offset 分页）与 HTTP 形态（分页非法 400、身份缺失 fail-closed 401、存储故障 500 固定文案、空会话返回空数组）；经 `Stack.SessionsHandler` 交 service 注册。 |
-<<<<<<< HEAD
-| [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码；分级静态表 + WithStaticTools 登记；grants/policy 为 no-op 空实现（C2 填充许可存储与策略源）。 |
-| [vectorstore.go](vectorstore.go) | biz 向量契约 → 框架 `knowledge/vectorstore.VectorStore` 适配器（决策 6）：Add/Get/Update/Delete/Search 向量模式/DeleteByFilter/Count/GetMetadata 直映，Search 钳制 top_k 上限（20，D2 检索的唯一强制点）；keyword/hybrid 与 searchfilter DSL 无消费方、DeleteAll 归 super 管理口径、UpdateByFilter 无消费方，均显式 unsupported 并注明理由。 |
-=======
-| [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码；分级静态表 + WithStaticTools 登记；许可源经参数注入（C2 接授权存储，nil 供测试装配）、策略源恒弃权空实现（C3 接入点）。 |
+| [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码，日志经 WithLogger 落 grape logger（ack 日志 API 无 ctx，不带 trace_id——全框架日志桥接见 [../telemetry/README.md](../telemetry/README.md)）；WithTiers 静态分级（读 allow/写 confirm）、WithStaticTools 服务恢复代执行；许可源经参数注入（C2 接授权存储，nil 供测试装配）、策略源恒弃权空实现（C3 接入点）。 |
 | [vectorstore.go](vectorstore.go) | biz 向量契约 → 框架 `knowledge/vectorstore.VectorStore` 适配器（决策 6）：Add/Get/Update/Delete/Search 向量模式/DeleteByFilter/Count/GetMetadata 直映；keyword/hybrid 与 searchfilter DSL 归 D2、DeleteAll 归 super 管理口径、UpdateByFilter 无消费方，均显式 unsupported 并注明理由。 |
->>>>>>> feat/grants-c2
 | [userkey.go](userkey.go) | userKey（`tenant_id:user_id`）编解码单一代码点：会话归属、许可归属与后续审计共用；缺租户/非正数用户拒绝。 |
 | [grants.go](grants.go) | 工具授权（C2）装配：`storedGrants` 把 ack GrantSource 适配到 `biz.GrantUsecase`（userKey 解码 → 内部身份 → agent_tool_grant 表，失败按未命中 fail-closed）；`grantAdmin` 是授权管理端点（GET `{basePath}/grants?scope=self|tenant` 与 DELETE `{basePath}/grants/{id}`，挂进骨架 ServeMux）——本人列表/本人吊销不设码，全租户列表验 `agent:grant:query`、吊销他人验 `agent:grant:revoke`（403），不可见统一 404。 |
 | [llm.go](llm.go) | OpenAI 兼容 provider 构造（TODO 决策 5）：provider 名映射框架变体，base_url 留空走框架内置默认端点，超时落 HTTP client。 |
-| [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册；C1 起业务工具经 biz 用例接入（tool_user.go），不在本层堆积。 |
-<<<<<<< HEAD
-| [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码，日志经 WithLogger 落 grape logger（ack 日志 API 无 ctx，不带 trace_id——全框架日志桥接见 [../telemetry/README.md](../telemetry/README.md)）；WithTiers 静态分级（读 allow/写 confirm）、WithStaticTools 服务恢复代执行；grants/policy 为 no-op 空实现（C2 填充许可存储与策略源）。 |
-| [audit_hook.go](audit_hook.go) | 审计写入挂点 `AuditHook`（TODO E2 接口预留，不接线）：工具执行与 ack 决定两个写入点的形状，签名与 biz.AuditUsecase 同名方法一致（编译期断言固定）；Stack 注入点与调用接线归 C1 并入后的小修，写入失败只记日志、不中断运行。deny 决定按 ack 语义忽略 remember，接线时归一 `Remember=""` 再入参。 |
-| [provider.go](provider.go) | Wire `ProviderSet`：`NewStack`（依赖会话存储/向量存储/用户用例/embedder；cleanup 释放 runner）、`NewSessionService`（框架 session/postgres：schema agent + agent_ 表前缀 + SkipDBInit，TTL 按 conf 注入，连接复用 master DSN——框架强制自建池）、`NewMemorySessionService`（单测/本地体验用进程内实现）。 |
-=======
-| [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码，日志经 WithLogger 落 grape logger（ack 日志 API 无 ctx，不带 trace_id——全框架日志桥接见 [../telemetry/README.md](../telemetry/README.md)）；WithTiers 静态分级（读 allow/写 confirm）、WithStaticTools 服务恢复代执行；许可源经参数注入（C2 接授权存储）、策略源恒弃权空实现（C3 接入点）。 |
-| [provider.go](provider.go) | Wire `ProviderSet`：`NewStack`（依赖会话存储/向量存储/用户用例/授权用例；cleanup 释放 runner）、`NewSessionService`（框架 session/postgres：schema agent + agent_ 表前缀 + SkipDBInit，TTL 按 conf 注入，连接复用 master DSN——框架强制自建池）、`NewMemorySessionService`（单测/本地体验用进程内实现）。 |
->>>>>>> feat/grants-c2
+| [tool_audit.go](tool_audit.go) | 工具执行终态审计 wrapper（E2 接口、C1 接线）：自建 CallableTool 包装器包住装配层全量工具（echo 含），Call 终态记工具调用行——调用 ID 取框架 ctx 注入（恢复路径代执行由决定审计面注入确认 ID）、会话 ID 取 Invocation、耗时自带计时、重试数记 0（框架不暴露，E3 评估）、参数/结果摘要传原文由 biz 侧脱敏；命中恢复路径捕获器只归集不直写；挂点错误与 panic 只记日志不中断。选型说明：框架 AfterTool 回调看不到恢复路径代执行且无耗时，wrapper 是两条执行路径的单一覆盖面。 |
+| [ack_audit.go](ack_audit.go) | ack 决定路由审计面（E2 接口、C1 接线）：ackhttp.Mount 收具体网关无法装饰，在归属守卫内层拦截 `POST {prefix}/confirmation`——请求体得决定事实（与 ackhttp/归属守卫同一解码契约）、结算前 `gateway.Pending` 预读待确认负载（工具名/工具调用 ID，结算即删指针）、ctx 注入确认 ID 与捕获器供代执行归集、200 响应体得生效路径；live 只写确认行（工具行由执行终态自然落库）、recovery 与代执行工具行组合批量（无代执行单边批量 `RecordToolCallWithConfirmation(ctx, nil, conf)`）、deny 归一 `Remember=""`、decided_by 取网关回填的同一 userKey；无结算（400/404/409）不审计。 |
+| [audit_hook.go](audit_hook.go) | 审计写入挂点 `AuditHook`（E2 接口、C1 已接线）：工具调用、授权确认与组合批量三个方法的形状，签名与 biz.AuditUsecase 同名方法一致（编译期断言固定）；Stack 经 `WithAuditHook` 可选注入（wire 生产装配传 biz.AuditUsecase），缺省 nil 即不审计（测试装配不受影响），写入失败只记日志、不中断运行。deny 决定按 ack 语义忽略 remember，接线处归一 `Remember=""` 再入参。 |
+| [provider.go](provider.go) | Wire `ProviderSet`：`NewStack`（依赖会话存储/向量存储/用户用例/授权用例/审计用例；cleanup 释放 runner）、`NewSessionService`（框架 session/postgres：schema agent + agent_ 表前缀 + SkipDBInit，TTL 按 conf 注入，连接复用 master DSN——框架强制自建池）、`NewMemorySessionService`（单测/本地体验用进程内实现）。 |
 
 
 ## 与其他层的关系
@@ -72,14 +63,12 @@ server ──► service ──► agent（本层）──► trpc-agent-go / ac
 
 ## 测试
 
-测试与被测代码同目录：userKey 编解码边界、echo 工具行为、业务工具入参/身份面（[tool_user_test.go](tool_user_test.go)，经框架 CallableTool 转换面直调）、provider/配置缺省值、压缩选项接线与会话服务装配期校验；live 确认流（同意继续且工具真实执行、拒绝 denied 且不重试、跨用户决定 404、MaxToolIterations 上限终止）在 [confirm_live_test.go](confirm_live_test.go)（进程内会话存储 + acktest 脚本化模型 + 内存用户仓储）；完整挂载链（无令牌 401、SSE 流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)，经 `NewStackWithOptions` 的 `WithModelOverride` 注入替身模型，不发真实网络请求；会话列表端点直测（分页缺省与边界、身份缺失与编码失败 fail-closed、userKey 归属过滤、存储故障 500 固定文案）在 [sessions_test.go](sessions_test.go)。
+测试与被测代码同目录：userKey 编解码边界、echo 工具行为、业务工具入参/身份面（[tool_user_test.go](tool_user_test.go)，经框架 CallableTool 转换面直调）、provider/配置缺省值、压缩选项接线与会话服务装配期校验；live 确认流（同意继续且工具真实执行、拒绝 denied 且不重试、跨用户决定 404、MaxToolIterations 上限终止）在 [confirm_live_test.go](confirm_live_test.go)（进程内会话存储 + acktest 脚本化模型 + 内存用户仓储）；审计接线（live 同意的工具行直写与确认行、deny+remember 归一、同意作用域原样入参、恢复路径同意的组合批量与拒绝的单边批量、挂点错误与 panic 不中断运行、echo 循环执行数与审计行数一致、wrapper 无调用 ID 跳过/失败终态/panic 不传播/捕获器归集）在 [audit_wire_test.go](audit_wire_test.go)（内存审计挂点替身，恢复路径以同一会话存储上的第二栈模拟重启）；完整挂载链（无令牌 401、SSE 流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)，经 `NewStackWithOptions` 的 `WithModelOverride` 注入替身模型，不发真实网络请求；会话列表端点直测（分页缺省与边界、身份缺失与编码失败 fail-closed、userKey 归属过滤、存储故障 500 固定文案）在 [sessions_test.go](sessions_test.go)。
 
 会话存储集成测试在 [session_pg_test.go](session_pg_test.go)（`GRAPE_B2_TEST_ADMIN_DSN` 门控跳过）：专属库 grape_agent_b2_test 上按 DeployFiles 全清单装载后，以真实 PostgreSQL 验证跨请求持久、跨用户 userKey 隔离、TTL 落库、压缩投影与事件原文分野、按 event_id 取回原文、/history 快照回放与重启持久、cancel 终止。
 
 确认恢复路径集成测试在 [confirm_pg_test.go](confirm_pg_test.go)（`GRAPE_C1_TEST_ADMIN_DSN` 门控跳过）：专属库 grape_agent_c1_test 验证重启后孤儿确认经恢复路径的两种结算——同意侧网关代执行工具并拉起续跑（/history 可回放），拒绝侧合成 denied 续跑且工具不执行。「重启」以全新连接池 + 全新栈模拟（不 Close 旧栈：Close 会取消在途运行、按取消语义清理待确认指针，孤儿场景即被破坏）。
 
-<<<<<<< HEAD
 D2 摄取检索集成测试在 [search_pg_test.go](search_pg_test.go)（`GRAPE_D2_TEST_ADMIN_DSN` 门控跳过）：专属库 grape_vector_d2_test 验证摄取→检索闭环（真实 VectorStore 契约实现 + 框架适配器 + 检索工具，embedding 用确定性替身不发真实网络请求）、RLS 关闭场景跨租户经工具与 biz 两路径均 0 命中、引用可反查（命中 ID 点查回切片原文）、同来源重摄整体覆盖、维度失配装配期拒绝、超限 top_k 被适配器收敛到上限。检索工具单测（入参边界、缺省 top_k、围栏防逃逸、来源引用投影、设施缺失错误透传）在 [tool_search_test.go](tool_search_test.go)。
-=======
+
 工具授权单测在 [grants_test.go](grants_test.go)：GrantSource 适配器的 userKey 映射（畸形拒绝/失败 fail-closed）、会话级先于全局级命中、Save 的会话/全局作用域映射、管理端点 HTTP 面（列表/吊销/404/400/401 与权限码 403 边界）。集成测试在 [grants_pg_test.go](grants_pg_test.go)（`GRAPE_C2_TEST_ADMIN_DSN` 门控跳过）：专属库 grape_grant_c2_test 验证 live 全链路（remember=session 同意落库 → 同会话二次调用免确认，ack 评估 basis=grant）、吊销后重新确认、会话级/全局级作用域差异、重启（重建池）后许可仍生效、同键重复授权幂等跳过与吊销后重授、RLS 关闭场景跨租户不可见（应用层兜底）、管理端点权限码边界（种子角色经 fn_has_permission 库内判定）。
->>>>>>> feat/grants-c2

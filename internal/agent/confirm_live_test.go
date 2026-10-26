@@ -58,8 +58,9 @@ type confirmTestStack struct {
 
 // newConfirmTestStack 组装进程内确认流测试栈：内存会话存储 + 注入模型
 // + 内存用户仓储，handler 外包身份注入（等价认证中间件命中后的形态，
-// 挂载链治理由 internal/server 套件守卫）。
-func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *fakeUserRepo) *confirmTestStack {
+// 挂载链治理由 internal/server 套件守卫）。可变参数透传 StackOption
+// （如审计挂点注入，见 audit_wire_test.go）。
+func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *fakeUserRepo, opts ...StackOption) *confirmTestStack {
 	t.Helper()
 	svc, closeSessions, err := NewMemorySessionService()
 	if err != nil {
@@ -67,7 +68,7 @@ func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *fakeUse
 	}
 	t.Cleanup(closeSessions)
 	stack, err := NewStackWithOptions(confirmStackConf(), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
+		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4}, append([]StackOption{WithModelOverride(llm)}, opts...)...)
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}

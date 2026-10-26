@@ -75,13 +75,16 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // 的强制应用层适配器），装配即实例化——数据侧的启动维度探针随装配
 // 生效，维度配置错误在此失败；检索工具（D2）从本字段取用，不另行构造。
 // sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
-// 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。
+// 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
+// 审计写入挂点（E2/C1 接线）：nil 即不审计——工具清单不包终态 wrapper、
+// ack 决定路由不装审计面，装配形态与接线前完全一致。
 type Stack struct {
 	handler  nethttp.Handler
 	runner   runner.Runner
 	basePath string
 	vectors  vectorstore.VectorStore
 	sessions *sessionList
+	audit    AuditHook
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -89,11 +92,19 @@ type StackOption func(*stackOptions)
 
 type stackOptions struct {
 	modelOverride model.Model
+	audit         AuditHook
 }
 
 // WithModelOverride 用给定模型替换按配置构造的 LLM provider。
 func WithModelOverride(m model.Model) StackOption {
 	return func(o *stackOptions) { o.modelOverride = m }
+}
+
+// WithAuditHook 注入审计写入挂点（E2/C1 接线）：wire 生产装配传
+// biz.AuditUsecase（满足 AuditHook 的编译期断言见 audit_hook.go）。缺省
+// nil = 不审计（测试装配不受影响）；挂点写入失败只记日志、不中断运行。
+func WithAuditHook(hook AuditHook) StackOption {
+	return func(o *stackOptions) { o.audit = hook }
 }
 
 // NewStackWithOptions 按 conf 与注入的会话服务、向量存储、业务用例装配
@@ -138,6 +149,12 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	// 检索工具经向量适配器访问向量（TODO 决策 6，D2）。
 	tools := append([]tool.Tool{newEchoTool()}, newUserTools(users)...)
 	tools = append(tools, newSearchTool(embedder, vectors))
+	// 审计接线（E2/C1）：挂点非 nil 时给全量工具清单包上终态审计 wrapper
+	//（echo 是链路验证工具，同样留痕保持全量），包装后的清单同时进
+	// LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper 被审计。
+	if o.audit != nil {
+		tools = auditedTools(tools, o.audit, logger)
+	}
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
 	// 工具集在构造期登记（分级决定 live 确认、工具集支撑恢复路径代执行），
@@ -206,11 +223,12 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	base := basePathOf(c)
 	return &Stack{
-		handler:  newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base),
+		handler:  newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, logger),
 		runner:   coreRunner,
 		basePath: base,
 		vectors:  vectors,
 		sessions: newSessionList(sessions, c.GetAppName()),
+		audit:    o.audit,
 	}, nil
 }
 
@@ -250,8 +268,9 @@ func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
 // DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
 // ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
 // ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
-// 自己名下的会话」。grants 管理端点为 nil 仅供不触达授权面的测试装配。
-func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string) nethttp.Handler {
+// 自己名下的会话」。audit 非 nil 时归属守卫内层再套决定路由审计面
+// （见 ack_audit.go）。grants 管理端点为 nil 仅供不触达授权面的测试装配。
+func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string, audit AuditHook, logger *slog.Logger) nethttp.Handler {
 	mux := nethttp.NewServeMux()
 	if grants != nil {
 		mux.Handle(nethttp.MethodGet+" "+basePath+"/grants", grants)
@@ -260,8 +279,13 @@ func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.
 	mux.Handle(basePath+"/", aguiHandler)
 	ackMux := nethttp.NewServeMux()
 	ackhttp.Mount(ackMux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
+	var ackHandler nethttp.Handler = ackMux
+	if audit != nil {
+		ackHandler = newAckAuditGuard(ackMux, gateway, audit, logger,
+			basePath+defaultAckSuffix+"/confirmation")
+	}
 	mux.Handle(basePath+defaultAckSuffix+"/",
-		newAckOwnerGuard(ackMux, sessions, appName))
+		newAckOwnerGuard(ackHandler, sessions, appName))
 	return mux
 }
 

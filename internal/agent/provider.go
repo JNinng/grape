@@ -95,9 +95,11 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 // 唯一挂载；cleanup 释放 core runner 等框架资源。业务工具经注入的
 // 用户用例访问数据（TODO 决策 4），许可源经授权用例落 agent_tool_grant
 // 表（C2），检索工具经向量适配器与 embedder 访问向量（TODO 决策 6/D2）；
-// 测试经 NewStackWithOptions 注入替身。
-func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder) (*Stack, func(), error) {
-	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder)
+// 审计经注入的审计用例接 AuditHook（E2/C1：工具执行终态与 ack 决定两
+// 个写入点，与 A3 查询端点共用同一用例实例）；测试经 NewStackWithOptions
+// 注入替身。
+func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, audit *biz.AuditUsecase) (*Stack, func(), error) {
+	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, WithAuditHook(audit))
 	if err != nil {
 		return nil, nil, err
 	}
