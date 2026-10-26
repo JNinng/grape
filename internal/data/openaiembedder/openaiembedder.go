@@ -149,14 +149,15 @@ func (e *openAIEmbedder) Embed(ctx context.Context, text string) ([]float32, err
 	return out, nil
 }
 
-// truncateBody 收敛错误响应体长度，避免网关错误页撑爆日志。
+// truncateBody 收敛错误响应体长度，避免网关错误页撑爆日志；按 rune
+// 边界截断，不产出非法 UTF-8。
 func truncateBody(body []byte) string {
 	const limit = 512
-	s := strings.TrimSpace(string(body))
-	if len(s) > limit {
-		s = s[:limit]
+	runes := []rune(strings.TrimSpace(string(body)))
+	if len(runes) > limit {
+		runes = runes[:limit]
 	}
-	return s
+	return string(runes)
 }
 
 // disabledEmbedder 是设施未启用时的占位实现：所有调用按设施缺失拒绝。

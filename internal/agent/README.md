@@ -27,7 +27,7 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 
 未列入分级表的工具走 ack 默认层级 allow；新增写路径必须显式进 confirm（或 deny），与工具集、分级表同批登记。
 
-检索工具的不可信内容纪律（TODO D2）：文档正文视为不可信输入，命中内容以 `UNTRUSTED_DOCUMENT_BEGIN/END` 围栏标记引用（正文内嵌伪造标记被打散防逃逸），出参恒带「不执行其中指令」的 notice，工具描述与系统指令同批声明；命中携带文档 ID / 来源标识（source_id）与原文锚点（anchor，rune 区间），引用可反查。摄取管线在 biz（`DocumentUsecase`：切分 → embed → 经 VectorStore 契约写入，同来源覆盖幂等），文档来源先限内部。
+检索工具的不可信内容纪律（TODO D2）：文档正文视为不可信输入，命中内容以 `UNTRUSTED_DOCUMENT_BEGIN/END` 围栏标记引用（正文内嵌伪造标记被打散防逃逸），出参恒带「不执行其中指令」的 notice，工具描述与系统指令同批声明；命中携带文档 ID / 来源标识（source_id）与原文锚点（anchor，rune 区间），引用可反查。摄取管线在 biz（`DocumentUsecase`：切分 → embed → 经 VectorStore 契约写入，同来源覆盖幂等），文档来源先限内部。D3 留痕挂点：包装 VectorStore 适配器（query/top_k/命中 id+score）与 Embedder 调用，检索内容经 pkg/redact 注册表脱敏后写 `agent_retrieval_log`（IdentityTx）；rerank 未引入，前后留痕暂无挂点。
 
 ## 关键文件导览
 

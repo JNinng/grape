@@ -81,7 +81,8 @@ type DocumentUsecase struct {
 }
 
 // NewDocumentUsecase 构造摄取管线。dimension 是 conf.vector.dimension 的
-// 透传（装配期由 wire 提供方从配置解出）：与 embedder.Dimensions() 不
+// 透传（摄取入口接线时须补 conf.vector.dimension 的 wire 提供方——当前
+// 生产 injector 尚无消费方，wire 会剪枝本 provider）：与 embedder.Dimensions() 不
 // 一致即拒绝构造——维度链路（embedder 模型 → conf → DDL 列）的中间一
 // 环在启动期对账，与 D1 的 conf vs DDL 探针同口径，不一致启动即失败。
 func NewDocumentUsecase(store VectorStore, embedder Embedder, dimension int, opts ...DocumentOption) (*DocumentUsecase, error) {
@@ -134,8 +135,10 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 	if sourceID == "" {
 		return nil, errors.New("biz: document id is required")
 	}
+	// 以字节计（保守侧失效）：非 ASCII 来源 ID 会提前拒绝，varchar(128)
+	// 按字符计故该上限留有余量。
 	if len(sourceID) > maxSourceIDChars {
-		return nil, fmt.Errorf("%w: got %d chars, max %d", ErrDocumentSourceTooLong, len(sourceID), maxSourceIDChars)
+		return nil, fmt.Errorf("%w: got %d bytes, max %d", ErrDocumentSourceTooLong, len(sourceID), maxSourceIDChars)
 	}
 	content := doc.Content
 	if strings.TrimSpace(content) == "" {
