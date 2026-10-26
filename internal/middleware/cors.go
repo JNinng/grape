@@ -74,8 +74,8 @@ func (cr *CORS) originAllowed(origin string) bool {
 // Middleware 返回链内 CORS 中间件：
 //   - 启用即恒回 Access-Control-Expose-Headers（E1：x-trace-id 必须可读），
 //     Origin 命中白名单时回 Allow-Origin（回显具体 origin，兼容携带
-//     Authorization 的请求）与 Vary: Origin（防缓存串答）；未命中不带
-//     Allow-Origin，由浏览器侧自拒；
+//     Authorization 的请求）；带 Origin 即回 Vary: Origin（防共享缓存
+//     串答），未命中白名单不带 Allow-Origin，由浏览器侧自拒；
 //   - 预检（OPTIONS 且带 Access-Control-Request-Method）短路 204，不进
 //     认证与其后的任何链环；方法与请求头按预检请求回显。
 //
@@ -90,9 +90,12 @@ func (cr *CORS) Middleware() middleware.Middleware {
 				return handler(ctx, req)
 			}
 			origin := tr.RequestHeader().Get("Origin")
+			if origin != "" {
+				// 带 Origin 即声明 Vary：白名单外的响应也要防共享缓存串答。
+				tr.ReplyHeader().Set("Vary", "Origin")
+			}
 			if cr.originAllowed(origin) {
 				tr.ReplyHeader().Set("Access-Control-Allow-Origin", origin)
-				tr.ReplyHeader().Set("Vary", "Origin")
 			}
 			tr.ReplyHeader().Set("Access-Control-Expose-Headers", corsExposeHeaders)
 			if isPreflight(tr) {
@@ -114,9 +117,11 @@ func (cr *CORS) Middleware() middleware.Middleware {
 func (cr *CORS) MethodNotAllowed(fallback nethttp.Handler) nethttp.Handler {
 	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
 		if isPreflightRequest(r.Method, r.Header.Get("Access-Control-Request-Method")) {
+			if r.Header.Get("Origin") != "" {
+				w.Header().Set("Vary", "Origin")
+			}
 			if cr.originAllowed(r.Header.Get("Origin")) {
 				w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))
-				w.Header().Set("Vary", "Origin")
 			}
 			w.Header().Set("Access-Control-Expose-Headers", corsExposeHeaders)
 			cr.setPreflightEcho(hset(w.Header()), r.Header.Get("Access-Control-Request-Method"),

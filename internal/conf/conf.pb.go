@@ -127,7 +127,9 @@ type Telemetry struct {
 	Endpoint string `protobuf:"bytes,2,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
 	// exporter 是否走明文（无 TLS）。本地 collector 通常为 true。
 	Insecure bool `protobuf:"varint,3,opt,name=insecure,proto3" json:"insecure,omitempty"`
-	// 根 span 采样比例，0~1；未设置取 1.0（全采）。
+	// 根 span 采样比例，0~1；未设置取 1.0（全采）。采样器为裸
+	// TraceIDRatioBased（非 ParentBased 包装）：决策独立于父 span 的
+	// sampled 标志；需要跟随上游采样决策时在装配处包 ParentBased。
 	SamplerRatio float64 `protobuf:"fixed64,4,opt,name=sampler_ratio,json=samplerRatio,proto3" json:"sampler_ratio,omitempty"`
 	// 资源属性 service.name；空取 "grape"。
 	ServiceName string `protobuf:"bytes,5,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`

@@ -15,7 +15,9 @@ Shutdown）与 trpc-agent-go 框架观测面桥接（日志门面 + Tracer 全�
   `otel.SetTracerProvider` 注入全局 → 框架 Tracer 桥接。进程退出经
   cleanup `Shutdown`（5s 上限）冲刷缓冲。
 
-采样（`sampler_ratio`）只影响 span 是否导出；`x-trace-id` 响应头与日志
+采样（`sampler_ratio`）只影响 span 是否导出；采样器为裸
+TraceIDRatioBased（非 ParentBased），决策独立于父 span 的 sampled
+标志；`x-trace-id` 响应头与日志
 `trace_id` 字段来自 ctx 中的 SpanContext（[internal/middleware](../middleware/)
 链路中间件注入），与开关和采样无关、恒可用。`sampler_ratio=0` 视为未
 设置（全采），零导出需求直接 `enabled=false`。
