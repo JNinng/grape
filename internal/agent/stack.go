@@ -48,8 +48,9 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // + ackhttp 路由），server 层经 service 把它挂进 Kratos 中间件链；runner
 // 持引用只为 Close 释放框架资源。
 type Stack struct {
-	handler nethttp.Handler
-	runner  runner.Runner
+	handler  nethttp.Handler
+	runner   runner.Runner
+	basePath string
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -135,9 +136,11 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		return nil, fmt.Errorf("agent: create agui server: %w", err)
 	}
 
+	base := basePathOf(c)
 	return &Stack{
-		handler: newMux(aguiServer.Handler(), gateway, basePathOf(c)),
-		runner:  coreRunner,
+		handler:  newMux(aguiServer.Handler(), gateway, base),
+		runner:   coreRunner,
+		basePath: base,
 	}, nil
 }
 
@@ -152,6 +155,10 @@ func (s *Stack) Close() {
 // ackhttp（confirmation 决定与待确认查询）共用一个前缀空间。子路径
 // 的方法分发在 mux 内完成，外层只需前缀整体入 Kratos 链。
 func (s *Stack) Handler() nethttp.Handler { return s.handler }
+
+// BasePath 返回归一化后的 AG-UI 路由前缀。挂载方（service 注册路由、
+// server 路由级超时的跳过名单）都以它为准，不自行推导。
+func (s *Stack) BasePath() string { return s.basePath }
 
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的

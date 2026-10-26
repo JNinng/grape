@@ -8,6 +8,7 @@ package main
 
 import (
 	"github.com/go-kratos/kratos/v3"
+	"grape/internal/agent"
 	"grape/internal/biz"
 	"grape/internal/conf"
 	"grape/internal/data"
@@ -27,7 +28,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logger *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, logger *slog.Logger) (*kratos.App, func(), error) {
 	traceMiddleware, err := middleware.NewTraceMiddleware(confServer)
 	if err != nil {
 		return nil, nil, err
@@ -46,15 +47,30 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, logg
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
 	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middlewareMiddleware, userService, sessionService)
+	service2, cleanup2, err := agent.NewSessionService()
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	stack, cleanup3, err := agent.NewStack(confAgent, logger, service2)
+	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	agentService := service.NewAgentService(stack)
+	routeTimeoutMiddleware := server.NewRouteTimeoutMiddleware(confServer, agentService)
 	facilityDiagnostics := pg_sqlc.NewDiagnostics(pg_sqlcData)
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := ops.NewMetricsHandler(v)
-	httpServer := server.NewHTTPServer(confServer, traceMiddleware, middlewareMiddleware, handler, userService, sessionService)
+	httpServer := server.NewHTTPServer(confServer, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService)
 	facilityMaintenance := pg_sqlc.NewSessionMaintenance(pg_sqlcData)
 	v2 := data.NewFacilityMaintenance(facilityMaintenance)
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup3()
+		cleanup2()
 		cleanup()
 	}, nil
 }
