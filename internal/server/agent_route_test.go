@@ -48,6 +48,10 @@ func (*agentFakeSessionRepo) Revoke(context.Context, biz.Identity, int64) error 
 	return biz.ErrSessionInvalidArgument
 }
 
+func (*agentFakeSessionRepo) RevokeByAccessTokenHash(context.Context, string) error {
+	return biz.ErrSessionInvalidArgument
+}
+
 func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) (*biz.Session, error) {
 	return nil, biz.ErrSessionInvalid
 }
