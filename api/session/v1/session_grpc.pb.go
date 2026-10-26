@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	SessionService_Login_FullMethodName   = "/session.v1.SessionService/Login"
 	SessionService_Refresh_FullMethodName = "/session.v1.SessionService/Refresh"
+	SessionService_Logout_FullMethodName  = "/session.v1.SessionService/Logout"
 )
 
 // SessionServiceClient is the client API for SessionService service.
@@ -39,6 +40,12 @@ type SessionServiceClient interface {
 	// 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
 	// SESSION_INVALID。
 	Refresh(ctx context.Context, in *RefreshRequest, opts ...grpc.CallOption) (*LoginReply, error)
+	// Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+	// 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+	// 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+	// 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+	// 也不泄露会话状态），重放登出不报错。
+	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutReply, error)
 }
 
 type sessionServiceClient struct {
@@ -69,6 +76,16 @@ func (c *sessionServiceClient) Refresh(ctx context.Context, in *RefreshRequest, 
 	return out, nil
 }
 
+func (c *sessionServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LogoutReply)
+	err := c.cc.Invoke(ctx, SessionService_Logout_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SessionServiceServer is the server API for SessionService service.
 // All implementations must embed UnimplementedSessionServiceServer
 // for forward compatibility.
@@ -85,6 +102,12 @@ type SessionServiceServer interface {
 	// 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
 	// SESSION_INVALID。
 	Refresh(context.Context, *RefreshRequest) (*LoginReply, error)
+	// Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+	// 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+	// 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+	// 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+	// 也不泄露会话状态），重放登出不报错。
+	Logout(context.Context, *LogoutRequest) (*LogoutReply, error)
 	mustEmbedUnimplementedSessionServiceServer()
 }
 
@@ -100,6 +123,9 @@ func (UnimplementedSessionServiceServer) Login(context.Context, *LoginRequest) (
 }
 func (UnimplementedSessionServiceServer) Refresh(context.Context, *RefreshRequest) (*LoginReply, error) {
 	return nil, status.Error(codes.Unimplemented, "method Refresh not implemented")
+}
+func (UnimplementedSessionServiceServer) Logout(context.Context, *LogoutRequest) (*LogoutReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Logout not implemented")
 }
 func (UnimplementedSessionServiceServer) mustEmbedUnimplementedSessionServiceServer() {}
 func (UnimplementedSessionServiceServer) testEmbeddedByValue()                        {}
@@ -158,6 +184,24 @@ func _SessionService_Refresh_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SessionService_Logout_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LogoutRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SessionServiceServer).Logout(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SessionService_Logout_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SessionServiceServer).Logout(ctx, req.(*LogoutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SessionService_ServiceDesc is the grpc.ServiceDesc for SessionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -172,6 +216,10 @@ var SessionService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Refresh",
 			Handler:    _SessionService_Refresh_Handler,
+		},
+		{
+			MethodName: "Logout",
+			Handler:    _SessionService_Logout_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

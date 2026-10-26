@@ -308,6 +308,82 @@ func (x *RefreshRequest) GetRefreshToken() string {
 	return ""
 }
 
+// LogoutRequest 是 SessionService.Logout 的输入：无请求体字段，访问
+// 令牌经 Authorization: Bearer 头携带，不经请求体。
+type LogoutRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutRequest) Reset() {
+	*x = LogoutRequest{}
+	mi := &file_session_v1_session_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutRequest) ProtoMessage() {}
+
+func (x *LogoutRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_session_v1_session_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutRequest.ProtoReflect.Descriptor instead.
+func (*LogoutRequest) Descriptor() ([]byte, []int) {
+	return file_session_v1_session_proto_rawDescGZIP(), []int{4}
+}
+
+// LogoutReply 是 SessionService.Logout 的输出：无字段。幂等语义下
+// 令牌已撤销或无对应会话时同样返回空响应。
+type LogoutReply struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LogoutReply) Reset() {
+	*x = LogoutReply{}
+	mi := &file_session_v1_session_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LogoutReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LogoutReply) ProtoMessage() {}
+
+func (x *LogoutReply) ProtoReflect() protoreflect.Message {
+	mi := &file_session_v1_session_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LogoutReply.ProtoReflect.Descriptor instead.
+func (*LogoutReply) Descriptor() ([]byte, []int) {
+	return file_session_v1_session_proto_rawDescGZIP(), []int{5}
+}
+
 var File_session_v1_session_proto protoreflect.FileDescriptor
 
 const file_session_v1_session_proto_rawDesc = "" +
@@ -339,10 +415,13 @@ const file_session_v1_session_proto_rawDesc = "" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12+\n" +
 	"\x04user\x18\x05 \x01(\v2\x17.session.v1.SessionUserR\x04user\":\n" +
 	"\x0eRefreshRequest\x12(\n" +
-	"\rrefresh_token\x18\x01 \x01(\tB\x03\xe0A\x02R\frefreshToken2\xc2\x01\n" +
+	"\rrefresh_token\x18\x01 \x01(\tB\x03\xe0A\x02R\frefreshToken\"\x0f\n" +
+	"\rLogoutRequest\"\r\n" +
+	"\vLogoutReply2\x9c\x02\n" +
 	"\x0eSessionService\x12T\n" +
 	"\x05Login\x12\x18.session.v1.LoginRequest\x1a\x16.session.v1.LoginReply\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/auth/login\x12Z\n" +
-	"\aRefresh\x12\x1a.session.v1.RefreshRequest\x1a\x16.session.v1.LoginReply\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/auth/refreshBG\n" +
+	"\aRefresh\x12\x1a.session.v1.RefreshRequest\x1a\x16.session.v1.LoginReply\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/auth/refresh\x12X\n" +
+	"\x06Logout\x12\x19.session.v1.LogoutRequest\x1a\x17.session.v1.LogoutReply\"\x1a\x82\xd3\xe4\x93\x02\x14:\x01*\"\x0f/v1/auth/logoutBG\n" +
 	"\x1bio.grpc.examples.session.v1P\x01Z\x17grape/api/session/v1;v1\xa2\x02\fAPISessionV1b\x06proto3"
 
 var (
@@ -357,23 +436,27 @@ func file_session_v1_session_proto_rawDescGZIP() []byte {
 	return file_session_v1_session_proto_rawDescData
 }
 
-var file_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_session_v1_session_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_session_v1_session_proto_goTypes = []any{
 	(*LoginRequest)(nil),          // 0: session.v1.LoginRequest
 	(*SessionUser)(nil),           // 1: session.v1.SessionUser
 	(*LoginReply)(nil),            // 2: session.v1.LoginReply
 	(*RefreshRequest)(nil),        // 3: session.v1.RefreshRequest
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*LogoutRequest)(nil),         // 4: session.v1.LogoutRequest
+	(*LogoutReply)(nil),           // 5: session.v1.LogoutReply
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
 }
 var file_session_v1_session_proto_depIdxs = []int32{
-	4, // 0: session.v1.LoginReply.expires_at:type_name -> google.protobuf.Timestamp
+	6, // 0: session.v1.LoginReply.expires_at:type_name -> google.protobuf.Timestamp
 	1, // 1: session.v1.LoginReply.user:type_name -> session.v1.SessionUser
 	0, // 2: session.v1.SessionService.Login:input_type -> session.v1.LoginRequest
 	3, // 3: session.v1.SessionService.Refresh:input_type -> session.v1.RefreshRequest
-	2, // 4: session.v1.SessionService.Login:output_type -> session.v1.LoginReply
-	2, // 5: session.v1.SessionService.Refresh:output_type -> session.v1.LoginReply
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	4, // 4: session.v1.SessionService.Logout:input_type -> session.v1.LogoutRequest
+	2, // 5: session.v1.SessionService.Login:output_type -> session.v1.LoginReply
+	2, // 6: session.v1.SessionService.Refresh:output_type -> session.v1.LoginReply
+	5, // 7: session.v1.SessionService.Logout:output_type -> session.v1.LogoutReply
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -391,7 +474,7 @@ func file_session_v1_session_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_session_v1_session_proto_rawDesc), len(file_session_v1_session_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
