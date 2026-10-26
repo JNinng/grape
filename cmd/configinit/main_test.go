@@ -78,6 +78,10 @@ func Test_template_when_loaded_by_server_path_yields_required_sections(t *testin
 	if got := bc.GetAuth().GetDefaultTenantId(); got != "t-super-01" {
 		t.Errorf("auth.default_tenant_id = %q, want %q", got, "t-super-01")
 	}
+	trusted := bc.GetServer().GetTrace().GetTrustedNetworks()
+	if len(trusted) != 2 || trusted[0] != "127.0.0.1/32" || trusted[1] != "::1/128" {
+		t.Errorf("server.trace.trusted_networks = %v, want [127.0.0.1/32 ::1/128]", trusted)
+	}
 }
 
 func Test_existing_target_when_run_without_force_refuses_overwrite(t *testing.T) {
@@ -154,5 +158,34 @@ func Test_missing_dir_when_run_creates_it(t *testing.T) {
 	}
 	if info.IsDir() {
 		t.Errorf("output path %s is a directory, want a file", filepath.Join(dir, outputName))
+	}
+}
+
+func Test_dir_path_colliding_with_existing_file_when_run_fails(t *testing.T) {
+	dir := t.TempDir()
+	collision := filepath.Join(dir, "occupied")
+	if err := os.WriteFile(collision, []byte("not a directory\n"), 0o644); err != nil {
+		t.Fatalf("prepare collision file: %v", err)
+	}
+
+	err := run(collision, false, &bytes.Buffer{})
+
+	if err == nil {
+		t.Fatal("run with -dir pointing at a file should fail, got nil error")
+	}
+	if !strings.Contains(err.Error(), "create output directory") {
+		t.Errorf("error = %q, want it to mention directory creation failure", err.Error())
+	}
+}
+
+func Test_template_when_configs_body_changes_fails_loudly(t *testing.T) {
+	// 模板正文必须与 configs/config.yaml 逐字节一致（模板仅多出头部说明注释）；
+	// 该测试把「conf 变更时同批更新两份文件」的同步义务变成机械强制。
+	content, err := os.ReadFile(filepath.Join("..", "..", "configs", "config.yaml"))
+	if err != nil {
+		t.Fatalf("read configs/config.yaml: %v", err)
+	}
+	if !bytes.HasSuffix(templateConfig, content) {
+		t.Errorf("template/config.yaml diverged from configs/config.yaml body; update both in the same commit")
 	}
 }
