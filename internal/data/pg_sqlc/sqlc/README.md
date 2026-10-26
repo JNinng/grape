@@ -22,10 +22,10 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 8 | schema/80_session.sql | 定义会话/令牌表（仅存哈希），以及过期会话清理函数 | 是 | 1 张表、1 个维护函数 |
 | 9 | schema/90_config.sql | 定义全局配置、租户配置、功能开关与翻译表 | 是 | 4 张表 |
 | 10 | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
-| 11 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
+| 11 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 24 条策略（含 sys_session 令牌维度 3 条）、4 个函数 |
 | 12 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、29 条命名查询 |
+| 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、30 条命名查询 |
 | 15 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -57,7 +57,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 
 | 层 | 维度 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 2 条令牌维度策略 | 漏设变量 → 默认全拒 |
+| PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 
@@ -215,6 +215,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | InsertSysSession | :one | 身份 + 令牌哈希/有效期 → SysSession | 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算 |
 | GetActiveSysSessionByTokenHash | :one | 访问令牌哈希 → SysSession | 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效 |
 | RevokeSysSession | :execrows | 操作者 + id → 行数 | 撤销指定会话；已撤销时更新 0 行 |
+| RevokeSysSessionByTokenHash | :execrows | 访问令牌哈希 → 行数 | 登出：按访问令牌哈希撤销所属会话，updated_by 记会话用户；已撤销、已删除或令牌不匹配时更新 0 行（幂等）。经 `sys_session_token_revoke` 策略走令牌维度事务 |
 | RotateSysSession | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，未命中时更新 0 行 |
 | CleanupExpiredSysSessions | :one | 宽限期秒数 → 删除行数 | 删除已撤销或过期超过宽限期的会话，返回删除行数 |
 
@@ -233,11 +234,14 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 父租户名下时还能读写自己的行）。sys_config 是全局配置、没有租户列，
 不设 RLS；范围版本表 sys_perm_version 的策略在 expose.sql。
 
-sys_session 另有两条令牌维度策略（`sys_session_token_read` /
-`sys_session_token_rotate`），服务会话校验与刷新：这两个动作发生在
-租户身份成立之前，令牌哈希（访问令牌或刷新令牌）是全局唯一的秘密
-凭据，持有即授权命中那一行。哈希以事务级 GUC `app.session_token_hash` /
-`app.session_refresh_token_hash` / `app.session_new_refresh_token_hash`
-声明；未设时 `current_setting(..., true)` 为 NULL，比较恒为假，不会
-额外放行任何行。校验/刷新事务不设 app.tenant_id，除命中行外所有
-租户数据仍默认全拒。
+sys_session 另有三条令牌维度策略（`sys_session_token_read` /
+`sys_session_token_rotate` / `sys_session_token_revoke`），服务会话
+校验、刷新与登出：这三个动作发生在租户身份成立之前，令牌哈希（访问
+令牌或刷新令牌）是全局唯一的秘密凭据，持有即授权对命中那一行的读取
+（校验）、轮换（刷新）或撤销（登出）。哈希以事务级 GUC
+`app.session_token_hash` / `app.session_refresh_token_hash` /
+`app.session_new_refresh_token_hash` 声明；未设时
+`current_setting(..., true)` 为 NULL，比较恒为假，不会额外放行任何行。
+校验/登出/刷新事务不设 app.tenant_id，除命中行外所有租户数据仍默认
+全拒。`token_revoke` 的 WITH CHECK 与 USING 同为 token_hash 匹配，
+固定撤销不得改动该列（防止借撤销路径偷换会话凭据）。

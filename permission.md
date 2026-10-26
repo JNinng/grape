@@ -171,10 +171,10 @@ WHERE id = sqlc.arg('id')
 5. **修改归属**：`LockXxxPermitted`（旧归属可操作）+ `fn_can_transfer_owner`（新归属可达）→ 写入。
 6. **批量写**：单事务内逐行锁 + 判，或新增批量判定函数；外部批量读过滤用 `fn_filter_visible_rows`。
 7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。
-8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）是仅有的绕过路径，不得扩展到其他读写。
+8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）是仅有的绕过路径，不得扩展到其他读写。
 9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设 `app.tenant_id` 全拒。
 10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询 `ListAllTenantsSuper`），并配审计日志、受限端点与跨范围测试。
-    - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询（`GetCredentialForLogin`、`SessionRepo.Validate` / `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。
+    - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询与令牌维度撤销（`GetCredentialForLogin`、`SessionRepo.Validate` / `RevokeByAccessTokenHash`（登出）/ `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。
     - SQL 命名查询不参与该约定；内部回读靠使用边界注释约束，不在 biz 接口上暴露。
 
 ## 索引
