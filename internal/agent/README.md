@@ -23,6 +23,7 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 | [llm.go](llm.go) | OpenAI 兼容 provider 构造（TODO 决策 5）：provider 名映射框架变体，base_url 留空走框架内置默认端点，超时落 HTTP client。 |
 | [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册；C1 起业务工具经 biz 用例接入，不在本层堆积。 |
 | [gateway.go](gateway.go) | ack 许可网关骨架：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码，日志经 WithLogger 落 grape logger（ack 日志 API 无 ctx，不带 trace_id——全框架日志桥接见 [../telemetry/README.md](../telemetry/README.md)）；grants/policy 为 no-op 空实现（C1/C2 填充分级表、许可存储与策略源）。 |
+| [audit_hook.go](audit_hook.go) | 审计写入挂点 `AuditHook`（TODO E2 接口预留，不接线）：工具执行与 ack 决定两个写入点的形状，签名与 biz.AuditUsecase 同名方法一致（编译期断言固定）；Stack 注入点与调用接线归 C1 并入后的小修，写入失败只记日志、不中断运行。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：`NewStack`（cleanup 释放 runner）、`NewSessionService`（框架 session/postgres：schema agent + agent_ 表前缀 + SkipDBInit，TTL 按 conf 注入，连接复用 master DSN——框架强制自建池）、`NewMemorySessionService`（单测/本地体验用进程内实现）。 |
 
 

@@ -4,7 +4,7 @@
 
 ## 现有能力
 
-- [pg_sqlc](pg_sqlc/)：关系存储（PostgreSQL，pgx/v5）。装配与仓储实现在 `pg_sqlc/`，声明资产在 [pg_sqlc/sqlc](pg_sqlc/sqlc/)（schema 按业务域拆分于 `sqlc/schema/`，另有 role/rls/operate/expose/queries/seed 与 sqlc.yaml），生成产物在 `pg_sqlc/gen/`（禁止手改）；SQL 对象索引、权限模型与生成命令见 [sqlc/README.md](pg_sqlc/sqlc/README.md)。 pg_sqlc 内另有向量存储设施（biz.VectorStore 契约的 pgvector 介质，[vector_repo.go](pg_sqlc/vector_repo.go)）：DDL 是超级用户面 [pg_sqlc/sqlc/agent_vector.sql](pg_sqlc/sqlc/agent_vector.sql)（不进 sqlc catalog，存取 SQL 手写参数化），租户隔离由应用层强制（每条 SQL 带租户过滤、缺认证身份拒绝），装配期探针校验 conf.vector.dimension 与部署列一致。
+- [pg_sqlc](pg_sqlc/)：关系存储（PostgreSQL，pgx/v5）。装配与仓储实现在 `pg_sqlc/`，声明资产在 [pg_sqlc/sqlc](pg_sqlc/sqlc/)（schema 按业务域拆分于 `sqlc/schema/`，另有 role/rls/operate/expose/queries/seed 与 sqlc.yaml），生成产物在 `pg_sqlc/gen/`（禁止手改）；SQL 对象索引、权限模型与生成命令见 [sqlc/README.md](pg_sqlc/sqlc/README.md)。 pg_sqlc 内另有向量存储设施（biz.VectorStore 契约的 pgvector 介质，[vector_repo.go](pg_sqlc/vector_repo.go)）：DDL 是超级用户面 [pg_sqlc/sqlc/agent_vector.sql](pg_sqlc/sqlc/agent_vector.sql)（不进 sqlc catalog，存取 SQL 手写参数化），租户隔离由应用层强制（每条 SQL 带租户过滤、缺认证身份拒绝），装配期探针校验 conf.vector.dimension 与部署列一致。Agent 业务审计仓储在 [pg_sqlc/audit_repo.go](pg_sqlc/audit_repo.go)（TODO E2，biz.AuditRepo 契约的 PostgreSQL 实现）：两表 append-only + 租户 RLS（DDL 见 [pg_sqlc/sqlc/schema/95_agent_audit.sql](pg_sqlc/sqlc/schema/95_agent_audit.sql)，命名查询见 queries/agent_audit.sql），写入/查询经 IdentityTx，读侧 WHERE 带同源租户谓词兜底。
 
 ## 诊断面
 
@@ -12,4 +12,4 @@
 
 ## 测试
 
-现有覆盖：驱动错误映射、debug 参数脱敏（经 [pkg/redact](../../pkg/redact/) 注册表：会话令牌哈希注入脱敏 + 凭据哈希语句按值形态脱敏）、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定、向量存储租户隔离与检索语义；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`（会话等关系面）与 `GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN`（向量面，专属库 grape_vector_d1_test）门控，未设置时自动跳过。
+现有覆盖：驱动错误映射、debug 参数脱敏（经 [pkg/redact](../../pkg/redact/) 注册表：会话令牌哈希注入脱敏 + 凭据哈希语句按值形态脱敏）、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定、向量存储租户隔离与检索语义、Agent 审计租户隔离（RLS 启用与关闭两口径）与写入-查询往返；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`（会话等关系面）、`GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN`（向量面，专属库 grape_vector_d1_test）与 `GRAPE_E2_TEST_ADMIN_DSN` / `GRAPE_E2_TEST_DSN`（审计面，专属库 grape_audit_e2_test）门控，未设置时自动跳过。
