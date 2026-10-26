@@ -23,6 +23,6 @@ import (
 )
 
 // wireApp 装配 Kratos 应用。
-func wireApp(*conf.Server, *conf.Data, *conf.Auth, *conf.Agent, *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.Auth, *conf.Agent, *conf.Vector, *slog.Logger) (*kratos.App, func(), error) {
 	panic(wire.Build(server.ProviderSet, middleware.ProviderSet, ops.ProviderSet, data.ProviderSet, biz.ProviderSet, service.ProviderSet, agent.ProviderSet, task.ProviderSet, defaultTenantID, newApp))
 }
