@@ -7,4 +7,3 @@ import "github.com/google/wire"
 // 消费方按用途直接注入 SystemData。NewVectorStore 同理（消费方 D2 检索
 // 工具落地时接入），装配期维度探针随之生效。
 var ProviderSet = wire.NewSet(NewData, NewSystemData, NewUserRepo, NewSessionRepo, NewVectorStore, NewAuditRepo, NewGrantRepo, NewDiagnostics, NewSessionMaintenance)
-
