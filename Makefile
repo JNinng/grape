@@ -41,6 +41,7 @@ build:
 
 .PHONY: web
 # build web frontend into web/dist (must run BEFORE go build: go:embed collects dist at compile time)
+# npm ci requires network; offline: run `npm install` in web/ manually first.
 web:
 	cd web && npm ci && npm run build
 

@@ -5,7 +5,6 @@ import { login, logout } from './session'
 
 vi.mock('./http', () => ({
   authFetch: vi.fn(),
-  toApiError: (res: Response) => new Error(`HTTP ${res.status}`),
 }))
 
 import { authFetch } from './http'

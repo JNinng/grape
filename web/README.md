@@ -11,7 +11,7 @@ go build**。
 
 ```bash
 # 1. 前端构建（或仓库根 make web）
-cd web && npm install && npm run build
+cd web && npm ci && npm run build
 # 2. 后端编译（嵌入最新产物）
 go build ./cmd/server
 ```
