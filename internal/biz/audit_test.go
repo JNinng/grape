@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"grape/pkg/redact"
 	"go.opentelemetry.io/otel/trace"
+	"grape/pkg/redact"
 )
 
 // auditFakeRepo 捕获用例转发的审计行，供断言构造与脱敏结果。
@@ -117,7 +117,7 @@ func TestAuditUsecase_redacts_registered_categories_before_repo(t *testing.T) {
 
 func TestAuditUsecase_unregistered_category_passes_through_with_truncation(t *testing.T) {
 	uc := NewAuditUsecase(&auditFakeRepo{}, redact.NewRegistry()) // 空注册表：tool_param/retrieval 未登记
-	long := strings.Repeat("文", AuditSummaryMaxRunes + 50)
+	long := strings.Repeat("文", AuditSummaryMaxRunes+50)
 	err := uc.RecordToolCall(auditIdentityContext(false), &ToolCallRecordInput{
 		ToolCallID:       "call-2",
 		ToolName:         "echo",

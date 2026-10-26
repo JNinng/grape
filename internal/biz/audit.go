@@ -183,7 +183,7 @@ type AuditRepo interface {
 	// AppendConfirmation 写入一条授权确认审计。
 	AppendConfirmation(ctx context.Context, rec *ConfirmationAudit) error
 	// AppendBatch 在同一事务内原子写入批量组合（两参至少一个非空，校验在
-// 用例侧完成）；单行写入 AppendToolCall / AppendConfirmation 是其退化形。
+	// 用例侧完成）；单行写入 AppendToolCall / AppendConfirmation 是其退化形。
 	AppendBatch(ctx context.Context, tool *ToolCallAudit, confirmation *ConfirmationAudit) error
 	// ListToolCalls 分页查询工具调用审计（时间倒序）。
 	ListToolCalls(ctx context.Context, filter *AuditFilter) (*ToolCallAuditList, error)
@@ -398,7 +398,7 @@ func (uc *AuditUsecase) buildConfirmation(ctx context.Context, in *ConfirmationR
 // 完全没有审计行——审计的目的是留痕，因脱敏语义未声明而丢弃记录比
 // 落一条已截断的原文危害更大；截断兜底保证不会落超长原文。装配方按
 // E1 口径补齐类别后自动全量生效。已登记类别输出脱敏值后同样过上限
-//（非截断型实现如掩码/哈希天然短，此处只为统一语义）。
+// （非截断型实现如掩码/哈希天然短，此处只为统一语义）。
 func (uc *AuditUsecase) redactSummary(category, value string) string {
 	if value == "" {
 		return ""
@@ -427,9 +427,7 @@ func auditFilterOf(filter *AuditFilter) (*AuditFilter, error) {
 	if filter != nil {
 		*f = *filter
 	}
-	if f.SessionID == "" {
-		f.SessionID = strings.TrimSpace(f.SessionID)
-	}
+	f.SessionID = strings.TrimSpace(f.SessionID)
 	if len(f.SessionID) > auditSessionColumnWidth {
 		return nil, ErrAuditInvalidArgument
 	}

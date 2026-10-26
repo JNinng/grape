@@ -45,7 +45,7 @@ var (
 var auditTestTraceID = [16]byte{0xaa, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
 // auditIdentityContext 注入认证身份；withTrace 为真时附加 SpanContext
-//（模拟链路中间件注入，审计的 trace_id 从这里来）。
+// （模拟链路中间件注入，审计的 trace_id 从这里来）。
 func auditIdentityContext(id biz.Identity, withTrace bool) context.Context {
 	ctx := biz.WithIdentity(context.Background(), id)
 	if !withTrace {
@@ -347,6 +347,21 @@ func TestAuditRepo_batch_write_is_atomic_and_partial_allowed(t *testing.T) {
 	if err := uc.RecordToolCallWithConfirmation(ctx, nil, nil); !errors.Is(err, biz.ErrAuditInvalidArgument) {
 		t.Fatalf("empty batch = %v, want ErrAuditInvalidArgument", err)
 	}
+
+	// 原子性负例：确认行撞唯一约束时，同批的工具行必须一并回滚。
+	err = uc.RecordToolCallWithConfirmation(ctx, &biz.ToolCallRecordInput{
+		ToolCallID: "call-batch-rollback", ToolName: "write", Status: biz.ToolCallStatusSuccess,
+	}, &biz.ConfirmationRecordInput{
+		ConfirmationID: "call-sess-batch", SessionID: "sess-batch", ToolName: "write",
+		Decision: biz.ConfirmationDecisionApproved, Path: biz.ConfirmationPathLive,
+		DecidedBy: "t-audit-a:31",
+	})
+	if err == nil {
+		t.Fatal("batch with duplicate confirmation id should fail, got nil")
+	}
+	if _, err := uc.GetToolCall(ctx, "call-batch-rollback"); !errors.Is(err, biz.ErrAuditNotFound) {
+		t.Fatalf("tool row should be rolled back with failed batch, got %v", err)
+	}
 }
 
 func TestAuditRepo_pagination_orders_by_time_desc_and_filters_session(t *testing.T) {
@@ -358,9 +373,9 @@ func TestAuditRepo_pagination_orders_by_time_desc_and_filters_session(t *testing
 	// 会话过滤与 limit/offset，不依赖行内时间戳精度。
 	for i, session := range []string{"p-1", "p-1", "p-1", "p-2", "p-2"} {
 		if err := uc.RecordToolCall(ctx, &biz.ToolCallRecordInput{
-			SessionID: session,
+			SessionID:  session,
 			ToolCallID: fmt.Sprintf("call-p-%02d", i),
-			ToolName: "echo", Status: biz.ToolCallStatusSuccess,
+			ToolName:   "echo", Status: biz.ToolCallStatusSuccess,
 		}); err != nil {
 			t.Fatalf("seed tool call: %v", err)
 		}

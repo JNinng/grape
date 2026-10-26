@@ -11,6 +11,10 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 ## 文件总览
 
 | # | 文件 | 作用描述 | sqlc 输入 | 内容 |
+
+> 表内 # 为 sqlc.yaml 装载序，不是部署执行序：部署顺序以
+> `internal/data/pg_sqlc/deploy.go` 的 DeployFiles 清单与仓库根
+> deploy_db.md 为准（schema 域文件整体先于 role.sql）。
 |---|---|---|---|---|
 | 1 | schema/10_basic.sql | 定义 basic 业务表：租户列、审计列、归属三元组与 @scope 列注释 | 是 | 1 张表 |
 | 2 | schema/20_tenant.sql | 定义 sys_tenant 租户表 | 是 | 1 张表 |
