@@ -82,8 +82,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := ops.NewMetricsHandler(v)
 	agentSessionsService := service.NewAgentSessionsService(stack)
+	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
+	registry := biz.NewRedactRegistry()
+	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
+	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentAuditService, webHandler)
 	if err != nil {
 		cleanup5()
 		cleanup4()
