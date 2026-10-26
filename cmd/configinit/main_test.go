@@ -109,6 +109,12 @@ func Test_template_llm_reliability_sections_when_loaded_default_to_off(t *testin
 	if got := llm.GetLogging().GetEnabled(); got {
 		t.Errorf("template llm.logging.enabled = true, want false (zero wrapping default)")
 	}
+	if got := llm.GetLogging().GetLogPrompts(); got {
+		t.Errorf("template llm.logging.log_prompts = true, want false (no prompt content by default)")
+	}
+	if got := llm.GetLogging().GetLogCompletions(); got {
+		t.Errorf("template llm.logging.log_completions = true, want false (no completion content by default)")
+	}
 }
 
 func Test_existing_target_when_run_without_force_refuses_overwrite(t *testing.T) {

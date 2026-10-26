@@ -129,7 +129,11 @@ func newHedgeModel(c *conf.Agent_LLM_Hedge, primary model.Model) (model.Model, e
 		models[i] = primary
 	}
 	opts := []hedge.Option{hedge.WithCandidates(models...)}
-	if d := c.GetDelay().AsDuration(); d > 0 {
+	// delay 负值按误配拒绝启动（与 max_copies 的校验口径一致）；0 取
+	// 框架默认 100ms。
+	if d := c.GetDelay().AsDuration(); d < 0 {
+		return nil, fmt.Errorf("agent: llm.hedge.delay must not be negative, got %s", d)
+	} else if d > 0 {
 		opts = append(opts, hedge.WithDelay(d))
 	}
 	return hedge.New(opts...)
@@ -194,6 +198,20 @@ func newLoggingModel(inner model.Model, c *conf.Agent_LLM_Logging) *loggingModel
 
 // Info 透传内层模型信息（failover/hedge 依赖 Info().Name 标识候选）。
 func (m *loggingModel) Info() model.Info { return m.inner.Info() }
+
+// InputTokenBudget 透传内层模型的可选预算接口：failover/hedge 聚合跨候
+// 选最小预算、框架 summarizer 取 token 预算时都按该接口类型断言——包装
+// 层不透传会静默把预算退化为 0，改变「开日志不改语义」的缺省等价口径。
+func (m *loggingModel) InputTokenBudget(ctx context.Context, request *model.Request) int {
+	type budgeter interface {
+		InputTokenBudget(ctx context.Context, request *model.Request) int
+	}
+	b, ok := m.inner.(budgeter)
+	if !ok {
+		return 0
+	}
+	return b.InputTokenBudget(ctx, request)
+}
 
 // GenerateContent 实现流式模型调用：前回调（请求日志）→ 内层调用 →
 // 透传分片并累积补全 → 流结束后回调（响应日志）。内层系统级错误同样

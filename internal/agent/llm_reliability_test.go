@@ -386,6 +386,12 @@ func Test_newOpenAIModel_when_upstream_exceeds_timeout_reports_error(t *testing.
 	if last.Error == nil {
 		t.Fatal("final response carries no error, want timeout surfaced as response error")
 	}
+	// 断言错误特征来自 HTTP client 超时而非解码失败：装配回归脱落时
+	// （300ms 后的 200+空 body）错误文案不含该特征，用例即失败。
+	msg := last.Error.Error()
+	if !strings.Contains(msg, "Client.Timeout") && !strings.Contains(msg, "context deadline exceeded") {
+		t.Fatalf("error = %q, want an HTTP client timeout signature", msg)
+	}
 }
 
 // ---------- 回调日志（脱敏面） ----------
