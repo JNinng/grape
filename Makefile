@@ -39,6 +39,11 @@ dbdeploy:
 build:
 	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
 
+.PHONY: web
+# build web frontend into web/dist (must run BEFORE go build: go:embed collects dist at compile time)
+web:
+	cd web && npm ci && npm run build
+
 .PHONY: generate
 # generate
 generate:
