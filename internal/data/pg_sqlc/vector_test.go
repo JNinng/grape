@@ -24,7 +24,7 @@ import (
 //
 //	GRAPE_VECTOR_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_d1_test \
-//	go test ./internal/data/pg_sqlc -run TestVectorStore -count=1 -v
+//	go test ./internal/data/pg_sqlc -run "TestVectorStore|TestNewVectorStore" -count=1 -v
 //
 // 隔离口径：agent_document 不启用 RLS，租户边界由 vector_repo 的应用层
 // 过滤强制——用例显式断言 RLS 关闭（relrowsecurity=false）时跨租户仍
