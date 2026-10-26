@@ -58,6 +58,14 @@ type Querier interface {
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
 	// 撤销指定会话；已撤销时更新 0 行
 	RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error)
+	// 登出：按访问令牌哈希撤销所属会话。令牌哈希是身份成立前的秘密凭据，
+	// 持有即授权撤销命中的那一行（RLS 见 sys_session_token_revoke 策略），
+	// 走令牌维度事务执行。会话级撤销同时使该会话的刷新令牌失效（轮换
+	// 查询要求未撤销）。已撤销、已删除或令牌不匹配时更新 0 行——登出
+	// 幂等，重放与未知令牌都不报错、不泄露会话是否存在；updated_by 记
+	// 会话用户：令牌维度事务无调用者身份，令牌持有者作用于会话属主自己
+	// 的会话（与轮换的审计归属一致）。
+	RevokeSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (int64, error)
 	// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
 	// 未命中时更新 0 行
 	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)

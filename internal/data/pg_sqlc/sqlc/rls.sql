@@ -11,7 +11,7 @@
 --      动态查询（List/Count）会把结果自动拼进 WHERE
 --   3. 21 张基线租户表的 RLS 策略（范围版本表策略在 expose.sql）：
 --      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）；
---      sys_session 另加令牌维度策略：校验/刷新先于租户身份成立，
+--      sys_session 另加令牌维度策略：校验/登出/刷新先于租户身份成立，
 --      以令牌哈希为唯一可见性凭据
 --
 -- 应用运行角色 grape_u 与演示用户 test_u 的创建及授权在 role.sql
@@ -450,13 +450,13 @@ CREATE POLICY sys_session_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
--- sys_session 令牌维度：会话校验/刷新发生在租户身份成立之前。访问
+-- sys_session 令牌维度：会话校验/登出/刷新发生在租户身份成立之前。访问
 -- 令牌哈希、刷新令牌哈希是全局唯一的秘密凭据：持有即授权读取（或
--- 轮换）命中的那一行。该策略在租户维度之外单独放行，但范围严格
--- 收窄到哈希命中的单行。哈希以事务级 GUC 声明，未设时
+-- 轮换/登出撤销）命中的那一行。该组策略在租户维度之外单独放行，但范围
+-- 严格收窄到哈希命中的单行。哈希以事务级 GUC 声明，未设时
 -- current_setting(...,true) 为 NULL，比较恒为假 → 不额外放行任何行。
--- 三条条件分别覆盖：按访问令牌校验、按刷新令牌轮换（旧值）与轮换
--- 后的 RETURNING（新值）。
+-- 各条覆盖：按访问令牌校验、按刷新令牌轮换（旧值）与轮换后的
+-- RETURNING（新值）、按访问令牌登出撤销。
 CREATE POLICY sys_session_token_read
     ON public.sys_session
     FOR SELECT
@@ -472,6 +472,17 @@ CREATE POLICY sys_session_token_rotate
     FOR UPDATE
     USING (refresh_token_hash = current_setting('app.session_refresh_token_hash', true))
     WITH CHECK (refresh_token_hash = current_setting('app.session_new_refresh_token_hash', true));
+
+-- 登出撤销：按访问令牌哈希命中行置位 is_revoked，与读取共用
+-- app.session_token_hash 凭据。UPDATE 同时受 USING（旧行）与 WITH
+-- CHECK（新行）约束，显式声明后者以固定「撤销不得改动 token_hash」
+-- ——撤销后的行仍须匹配本事务声明的令牌，防止借撤销路径偷换会话
+-- 凭据；is_revoked/updated_by 不在策略谓词内，属自由列。
+CREATE POLICY sys_session_token_revoke
+    ON public.sys_session
+    FOR UPDATE
+    USING (token_hash = current_setting('app.session_token_hash', true))
+    WITH CHECK (token_hash = current_setting('app.session_token_hash', true));
 
 -- sys_tenant_config
 CREATE POLICY sys_tenant_config_tenant_isolation
