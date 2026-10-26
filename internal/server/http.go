@@ -37,6 +37,7 @@ func NewHTTPServer(
 	user *service.UserService,
 	session *service.SessionService,
 	agent *service.AgentService,
+	agentSessions *service.AgentSessionsService,
 	web WebHandler,
 ) *http.Server {
 	var opts = []http.ServerOption{
@@ -66,6 +67,12 @@ func NewHTTPServer(
 	srv.Handle("/metrics", metrics)
 	userv1.RegisterUserServiceHTTPServer(srv, user)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
+	// agentSessions 为 nil 仅出现在不触达业务路由的测试装配里；生产装配
+	// 恒非 nil。必须先于 agent 注册：gorilla/mux 按注册顺序匹配，
+	// /agui/sessions 精确路径只有排在 agent 前缀通配之前才不被吞并。
+	if agentSessions != nil {
+		agentSessions.RegisterHTTP(srv)
+	}
 	// agent 为 nil 仅出现在不触达业务路由的测试装配里；生产装配恒非 nil。
 	if agent != nil {
 		agent.RegisterHTTP(srv)

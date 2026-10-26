@@ -42,10 +42,10 @@ go build ./cmd/server
 | [embed.go](embed.go) | `//go:embed all:dist` 导出 `fs.FS`；`go:embed` 不能引用父目录，故本包必须与 `dist` 同级，`server` 只导入该导出。 |
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`toApiError.ts`、`types.ts`。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 占位对话页。 |
-| [src/agui/](src/agui/) | A2 对话页接入点：`@ag-ui/client` `HttpAgent` 工厂（本任务只留接缝）。 |
+| [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）。 |
 
 ## 登录与令牌策略
 
@@ -59,6 +59,30 @@ go build ./cmd/server
   调用共享同一结果，避免旧刷新令牌被并发轮换互相作废；失败传播给全部等待方，
   清态后经 `callbacks.ts` 通知 App 跳转登录页。
 - 登出不依赖后端结果：无论撤销成败（含网络失败）都清本地态并回登录页。
+
+## 对话页形态（A2）
+
+- 流式问答：`agui/agent.ts` 的 `createChatAgent` 构造 `HttpAgent`，注入
+  `authFetch` 作为传输（EventSource 不能带头，fetch 可带令牌，见 TODO 决策 2）；
+  每次运行发起时从 auth store 取当前令牌，401 时复用 `api/http.ts` 的单飞刷新
+  状态机，刷新失败清态回登录页。运行事件经 `agui/events.ts` 的纯函数 reducer
+  折叠为渲染态：文本增量（TEXT_MESSAGE_*）、工具调用生命周期（TOOL_CALL_*，
+  参数/结果折叠展示）、步骤（STEP_*）与错误（RUN_ERROR → 错误横幅）。
+- 历史（thread）回放：切换会话时 POST `/agui/history` 拉一次 messages snapshot
+  （`agui/history.ts` 手解 SSE data 行）。不跟 follow 流——上游 track follow 的
+  同毫秒事件可能被跳过（TODO §1.5 / ack D4），快照即回放，新消息由运行事件折叠。
+- 确认卡：流内 `tool_confirmation` 自定义事件（载荷字段与 ack `Payload` 一字
+  对齐）出卡；决定 POST `/agui/ack/confirmation`（approve/deny × remember
+  session|global），404 视为已失效收敛；待确认列表 GET `/agui/ack/confirmations?threadId=`
+  在加载会话、运行结束与 30s 低频轮询兜底，服务端列表为对账基准。
+- 取消：运行中显示取消按钮，POST `/agui/cancel`（RunAgentInput 形状，
+  threadId + runId 定位）；404 为运行已结束的正常竞态。
+- 会话列表：GET `/agui/sessions`（后端见 `internal/service/agent_sessions.go`）
+  列出当前用户会话元数据，按更新时间降序；点击切换 thread（重置对话态并拉
+  历史），新建会话生成新 threadId。归属由服务端认证身份决定。
+- sanitize 口径：模型文本与工具参数/结果一律不可信，全部以 React 文本节点
+  渲染（等价 textContent），不引入 innerHTML / markdown 注入路径；将来引入
+  markdown 渲染必须先过 sanitizer（如 dompurify）并另行评审。
 
 ## 命令
 

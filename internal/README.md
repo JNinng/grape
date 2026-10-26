@@ -82,7 +82,7 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`，例外仅此一处）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops` / `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`；agent 会话列表端点在 C1 并行窗口内额外导入框架 `session` 包与 `conf`（受控例外，C1 并入后收进 `internal/agent` 归还边界））；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops` / `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 手写端点归属

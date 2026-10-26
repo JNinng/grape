@@ -36,11 +36,12 @@
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService` / `NewAgentService`，由 cmd 的 Wire 统一装配。 |
+| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService` / `NewAgentService` / `NewAgentSessionsService`，由 cmd 的 Wire 统一装配。 |
 | [query.go](query.go) | 跨资源查询转换：`convertQuery` 把 `queryv1.Query` 转 `dynq.Query`；`normalizeEnumValue` 归一化枚举过滤值（仅 `eq` / `neq` / `in` / `not_in` 且字段已登记别名时生效）；`invalidQueryError` 包装转换错误；`pageOf` 计算分页信封页码。 |
 | [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`Logout` 免认证（幂等语义，见认证中间件白名单），自取 `Authorization: Bearer` 头交用例按哈希撤销；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
 | [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`、`TransferUserOwner`；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
 | [agent_http.go](agent_http.go) | `AgentService`：Agent 手写端点（非 proto 生成）。把 [agent](../agent/) Stack 的外层 ServeMux 经 `srv.Route` + `ctx.Middleware` 入 Kratos 链，注册精确路径与前缀通配两条路由，认证后的 ctx 回绑请求交给框架直写 SSE；`BasePath` 供 server 的路由级超时跳过名单使用。 |
+| [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：agent 会话列表手写端点（非 proto 生成，A2）。GET `{agui 前缀}/sessions` 经 wire 既有的框架 `session.Service` 实例按认证身份编码的 userKey 列出会话元数据（`WithListSessionOnlyMeta` + offset 分页，非法参数 400）；归属过滤只认服务端身份，跨用户不可见。框架 session 包与 conf 的 import 是 C1 并行窗口的受控例外（见文件头说明），C1 并入后收进 [agent](../agent/) 归还边界。 |
 
 ## 接入要点
 
@@ -55,4 +56,4 @@
 
 ## 测试
 
-现有覆盖：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；Agent 手写端点的入链语义（无令牌 401、SSE 长流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)——其挂载物由框架装配，链上验证不属本层单元测试。
+现有覆盖：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；Agent 手写端点的入链语义（无令牌 401、SSE 长流、trace-id）与会话列表端点的认证归属边界守卫在 [../server/agent_route_test.go](../server/agent_route_test.go) 与 [../server/agent_sessions_route_test.go](../server/agent_sessions_route_test.go)——其挂载物由框架装配，链上验证不属本层单元测试。

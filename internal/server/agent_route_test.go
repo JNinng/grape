@@ -80,8 +80,10 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	srv := NewHTTPServer(confServer, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
 		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
-		// 静态托管一并挂载：守卫「agent 路由先于 SPA fallback」的注册
-		// 顺序语义（/agui/* 绝不被静态吞）。
+		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
+		// 不触达该路由；挂载顺序（sessions 先于 agent 前缀通配、agent
+		// 先于静态兜底）在 agent_sessions_route_test.go 守卫。
+		nil,
 		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
 	closeAll := func() {
 		stack.Close()
