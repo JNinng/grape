@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"grape/internal/agent"
+	"grape/internal/biz"
 	"grape/internal/service"
 
 	"github.com/go-kratos/kratos/v3/middleware"
@@ -50,7 +51,8 @@ func newRouteTimeoutForTest(t *testing.T, requestTimeout time.Duration) middlewa
 		t.Fatalf("build session service: %v", err)
 	}
 	t.Cleanup(closeSessions)
-	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil))
+	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
+		biz.NewUserUsecase(&agentStubUserRepo{}))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

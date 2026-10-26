@@ -30,14 +30,17 @@ import (
 
 // agentDefault* 是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
 // 对将来未决确认的结算过宽；心跳不开则空闲长流可能被中间设备掐断。
-// 压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
+// MaxToolIterations 是单次运行的工具调用轮数上限（TODO C1 防风暴）：
+// 被拒绝的确认会把「不得重试」的工具结果返回给模型，模型仍无视而循环
+// 重试时由该上限终止运行（框架默认 0 = 不限，必须显式设置）；conf 化
+// 留 C2/E3。压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
 // conf 0 值回落到这里，而非框架零值语义（0 会关掉对应 Pass）。
 const (
 	defaultBasePath       = "/agui"
 	defaultRunTimeout     = 30 * time.Minute
 	defaultHeartbeat      = 15 * time.Second
 	defaultAckSuffix      = "/ack"
-	defaultInstruction    = "You are the grape assistant. Use the echo tool when the user asks you to repeat text."
+	defaultMaxToolIter    = 8
 	defaultMaxTokens      = 512
 	defaultTemperature    = 0.7
 	defaultCompactionMax  = 1024
@@ -45,6 +48,17 @@ const (
 
 	errMissingIdentityMsg = "agent: missing identity in context"
 )
+
+// defaultInstruction 是注入给 Agent 的系统提示词：声明工具面与拒绝后
+// 的行为约束（ack 人工拒绝的工具结果自带「不得重试」文案，这里再以
+// 系统级约束加固一层；MaxToolIterations 是最终兜底）。
+const defaultInstruction = "You are the grape assistant. Available tools: " +
+	"get_current_user (read the signed-in user's own profile), " +
+	"find_users_by_name (search users by name within the caller's data scope), " +
+	"update_my_nickname (change the signed-in user's own nickname; the user must confirm it first), " +
+	"echo (repeat text verbatim). " +
+	"If a tool result reports status \"denied\", the user refused that operation: " +
+	"do not call the same tool again, and tell the user the operation was cancelled."
 
 // errMissingIdentity 是认证身份缺失的统一错误：UserIDResolver 与 ack
 // WithUserFunc 都以它 fail-closed，禁止回落框架默认用户 "user"。
@@ -74,11 +88,11 @@ func WithModelOverride(m model.Model) StackOption {
 	return func(o *stackOptions) { o.modelOverride = m }
 }
 
-// NewStackWithOptions 按 conf 与注入的会话服务、向量存储装配 Agent 骨架。
-// 装配顺序固定为 模型 → 工具 → LLMAgent → core runner → ack 网关 →
-// AG-UI runner（ack 恢复路径续跑用它）→ AG-UI server → 外层 ServeMux；
-// 任一环失败即返回错误，装配失败拒绝启动。
-func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, opts ...StackOption) (*Stack, error) {
+// NewStackWithOptions 按 conf 与注入的会话服务、向量存储、业务用例装配
+// Agent 骨架。装配顺序固定为 模型 → 工具 → ack 网关 → LLMAgent → core
+// runner → AG-UI runner（挂许可策略 + ack 恢复路径续跑用它）→ AG-UI
+// server → 外层 ServeMux；任一环失败即返回错误，装配失败拒绝启动。
+func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, opts ...StackOption) (*Stack, error) {
 	o := &stackOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -92,6 +106,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	if vectors == nil {
 		return nil, fmt.Errorf("agent: vector store is required")
 	}
+	if users == nil {
+		return nil, fmt.Errorf("agent: user usecase is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -101,15 +118,17 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		return nil, err
 	}
 
-	// B1 骨架只挂 echo 只读工具；C1 起业务工具经 biz 用例接入。
-	echoTools := []tool.Tool{newEchoTool()}
-	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, echoTools)...)
+	// echo 打通框架链路；业务工具经 biz 用户用例访问数据（TODO 决策 4）。
+	tools := append([]tool.Tool{newEchoTool()}, newUserTools(users)...)
+
+	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
+	// 工具集在构造期登记（分级决定 live 确认、工具集支撑恢复路径代执行），
+	// 许可/策略维持 no-op，C2 填充。
+	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext, tools)
+
+	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, tools)...)
 
 	coreRunner := runner.NewRunner(c.GetAppName(), ag, runner.WithSessionService(sessions))
-
-	// ack 网关骨架：app 名与 AG-UI runner 一致（会话定位的前提），
-	// 分级/许可/策略在 B1 走默认与空实现，C1/C2 填充。
-	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext)
 
 	runTimeout := runTimeoutOf(c)
 	aguiRunner := aguirunner.New(coreRunner,
@@ -117,11 +136,21 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		aguirunner.WithSessionService(sessions),
 		aguirunner.WithUserIDResolver(resolveUserID),
 		aguirunner.WithTimeout(runTimeout),
+		// B1 评审硬性项：每次 AG-UI 运行（含恢复路径的续跑运行）都经
+		// 网关的 RunOptionResolver 挂上许可策略——工具调用先经 ack 评估，
+		// Confirm 层级阻塞等待人工决定。缺它则分级表形同虚设，恢复路径
+		// 降级为拒绝。
+		aguirunner.WithRunOptionResolver(gateway.RunOptionResolver()),
 		// /history tail follow（B2 会话能力）：快照响应尾部持续输出新
 		// 持久化的 track 事件。agui.New 的同名选项只进 aguiRunnerOptions，
 		// 会被下方 runner 工厂丢弃，必须在此同步一份。
 		aguirunner.WithMessagesSnapshotFollowEnabled(true),
 	)
+	// B1 评审硬性项：Bind 把 AG-UI runner 注入恢复路径——服务重启后的
+	// 孤儿确认经网关 Decide 时由它拉起续跑运行（代执行工具或合成拒绝）。
+	// 未 Bind 的网关对孤儿决定返回 ErrNotBound（HTTP 500），恢复路径
+	// 退化为拒绝。必须与实际服务请求的 runner 是同一实例（见下方
+	// WithRunnerFactory 的陷阱声明）。
 	if err := gateway.Bind(aguiRunner); err != nil {
 		return nil, fmt.Errorf("agent: bind ack resume runner: %w", err)
 	}
@@ -235,8 +264,8 @@ func heartbeatOf(c *conf.Agent) time.Duration {
 }
 
 // llmAgentOptions 组装 LLMAgent 选项：基础骨架（模型/工具/指令/生成
-// 参数）+ OnDemandSession + 压缩段翻译。单独成函数以便单测断言传入
-// 框架的选项值。
+// 参数）+ 工具迭代上限 + OnDemandSession + 压缩段翻译。单独成函数以便
+// 单测断言传入框架的选项值。
 func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmagent.Option {
 	opts := []llmagent.Option{
 		llmagent.WithModel(llm),
@@ -247,6 +276,9 @@ func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmage
 			MaxTokens:   ptr(defaultMaxTokens),
 			Temperature: ptr(defaultTemperature),
 		}),
+		// 防风暴（TODO C1）：单次运行内模型发起工具调用的轮数上限；
+		// 拒绝后模型若无视「不得重试」约束循环重试，由它终止运行。
+		llmagent.WithMaxToolIterations(defaultMaxToolIter),
 		// 暴露 session_load / session_search 给模型（TODO §1.1）：压缩
 		// 占位符携带的 event_id 恢复引用要经 session_load 取回原文，
 		// 前提是会话存储实现 WindowService（session/postgres 已实现）。

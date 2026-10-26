@@ -92,10 +92,10 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 }
 
 // NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler
-// 唯一挂载；cleanup 释放 core runner 等框架资源。测试经
-// NewStackWithOptions 注入替身。
-func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore) (*Stack, func(), error) {
-	st, err := NewStackWithOptions(c, logger, sessions, vectors)
+// 唯一挂载；cleanup 释放 core runner 等框架资源。业务工具经注入的
+// 用户用例访问数据（TODO 决策 4）；测试经 NewStackWithOptions 注入替身。
+func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase) (*Stack, func(), error) {
+	st, err := NewStackWithOptions(c, logger, sessions, vectors, users)
 	if err != nil {
 		return nil, nil, err
 	}

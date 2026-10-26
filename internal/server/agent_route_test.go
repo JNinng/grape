@@ -19,6 +19,7 @@ import (
 	"grape/web"
 
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 	"github.com/jninng/trpc_agent_go_ack/acktest"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -57,6 +58,47 @@ func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) 
 	return nil, biz.ErrSessionInvalid
 }
 
+// agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
+// 用例非 nil（C1 业务工具的依赖），但路由用例不触发工具执行，任何方法
+// 被调用都属用例越界，按非法入参失败暴露。
+type agentStubUserRepo struct{}
+
+func (*agentStubUserRepo) GetByID(context.Context, biz.Identity, int64) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) List(context.Context, biz.Identity, *dynq.Query) (*biz.UserList, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) Create(context.Context, biz.Identity, *biz.User) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) Update(context.Context, biz.Identity, *biz.User) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) SetPassword(context.Context, biz.Identity, int64, string) error {
+	return biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) SoftDelete(context.Context, biz.Identity, int64) error {
+	return biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) AssignRoles(context.Context, biz.Identity, int64, []int64) (int64, error) {
+	return 0, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) TransferOwner(context.Context, biz.Identity, int64, biz.OwnerTriple) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) GetCredentialForLogin(context.Context, string, string) (*biz.UserCredential, error) {
+	return nil, biz.ErrUserNotFound
+}
+
 // newAgentTestServer 用替身模型装配完整 HTTP 服务器：真实 trace / auth /
 // 路由级超时中间件链与真实挂载，越界与超时治理在链上验证。返回服务器
 // 与资源释放函数。
@@ -67,7 +109,8 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		t.Fatalf("build session service: %v", err)
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索，D2 接入真实契约。
-	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil), agent.WithModelOverride(llm))
+	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
+		biz.NewUserUsecase(&agentStubUserRepo{}), agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}
