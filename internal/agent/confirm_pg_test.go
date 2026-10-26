@@ -24,6 +24,7 @@ package agent
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
@@ -157,19 +158,39 @@ func c1NewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedM
 	return stack
 }
 
-// c1WaitHistoryPoll 轮询 /history 直到快照包含期望文本：恢复路径的续跑
-// 运行异步执行、track 事件在收尾期持久化，轮询消除竞态。
+// historyPollGrace 是单次 /history 采样的宽限期：follow 尾随未在宽限期
+// 内闭合时按已写入的部分响应体判定（快照头先于尾随写出）。
+const historyPollGrace = 300 * time.Millisecond
+
+// c1WaitHistoryPoll 轮询 /history 直到快照包含期望文本。请求在后台
+// goroutine 发起，宽限期内检查已写入的部分响应体：follow 开启时，快照
+// 响应在尾随终止前不闭合，而上游 D4 缺陷（track 事件按时间戳严格大于
+// 游标过滤，同毫秒事件被跳过）会让尾随一直等到下一个终态事件（如搁置
+// 旧运行的 30s 超时 RUN_ERROR）才闭合——这正是 TODO §1.2/A3 要求前端
+// 以「快照轮询 + 部分读取」兜底的场景，此处按同一模式取样。未闭合的
+// 请求随之搁置（其尾随 goroutine 随旧运行终态或进程退出消亡）。
 func c1WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains string) string {
 	t.Helper()
 	deadline := time.Now().Add(confirmTestWaitLimit)
 	for {
-		rec := postJSON(t, h, http.MethodPost, "/agui/history",
-			`{"threadId":"`+threadID+`","runId":"snap-recovery","messages":[]}`)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("history status = %d, want 200\n%s", rec.Code, rec.Body.String())
-		}
-		if strings.Contains(rec.Body.String(), wantContains) {
-			return rec.Body.String()
+		rec := httptest.NewRecorder()
+		served := make(chan struct{})
+		go func() {
+			defer close(served)
+			body := `{"threadId":"` + threadID + `","runId":"snap-recovery","messages":[]}`
+			req := httptest.NewRequest(http.MethodPost, "/agui/history", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			h.ServeHTTP(rec, req)
+		}()
+		select {
+		case <-served:
+			if strings.Contains(rec.Body.String(), wantContains) {
+				return rec.Body.String()
+			}
+		case <-time.After(historyPollGrace):
+			if strings.Contains(rec.Body.String(), wantContains) {
+				return rec.Body.String()
+			}
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("history snapshot missing %q after polling:\n%s", wantContains, rec.Body.String())
