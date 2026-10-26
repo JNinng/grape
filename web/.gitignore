@@ -1,0 +1,6 @@
+node_modules/
+
+# npm 构建产物整体不入库；仓库只保留极简占位 index.html，
+# 保证未执行前端构建时 go:embed 与 go build 仍可通过。
+dist/*
+!dist/index.html
