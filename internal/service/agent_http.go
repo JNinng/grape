@@ -6,8 +6,8 @@ import (
 
 	"grape/internal/agent"
 
-	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 	"github.com/go-kratos/kratos/v3/middleware"
+	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
 // agentRoutePrefixSuffix 是前缀通配路由的 gorilla/mux 尾段：覆盖前缀下

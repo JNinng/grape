@@ -5,7 +5,7 @@
 ## 分层角色
 
 - 第一类业务入口，与 [task](../task/) 平级；上游是 `api/` 中声明的 HTTP / gRPC 契约，下游是 [biz](../biz/)。
-- 只导入 `api/...` 与 `biz`；手写端点可额外导入 `transport/http`。完整 import 方向见 [internal/README.md](../README.md) 的「分层与数据流向」。
+- 只导入 `api/...` 与 `biz`；手写端点可额外导入 `transport/http` 与 [agent](../agent/)（Agent 框架适配层的挂载物）。完整 import 方向见 [internal/README.md](../README.md) 的「分层与数据流向」。
 - 服务由 [server](../server/) 按生成代码路由挂载；本层不构建传输层、不装配中间件链。
 - 受保护端点的身份事实只从 context 取（`authOf`），缺失按未认证 fail-closed；令牌校验由中间件完成，不在本层重复实现。
 
@@ -36,10 +36,11 @@
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService`，由 cmd 的 Wire 统一装配。 |
+| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService` / `NewAgentService`，由 cmd 的 Wire 统一装配。 |
 | [query.go](query.go) | 跨资源查询转换：`convertQuery` 把 `queryv1.Query` 转 `dynq.Query`；`normalizeEnumValue` 归一化枚举过滤值（仅 `eq` / `neq` / `in` / `not_in` 且字段已登记别名时生效）；`invalidQueryError` 包装转换错误；`pageOf` 计算分页信封页码。 |
 | [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
 | [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`、`TransferUserOwner`；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
+| [agent_http.go](agent_http.go) | `AgentService`：Agent 手写端点（非 proto 生成）。把 [agent](../agent/) Stack 的外层 ServeMux 经 `srv.Route` + `ctx.Middleware` 入 Kratos 链，注册精确路径与前缀通配两条路由，认证后的 ctx 回绑请求交给框架直写 SSE；`BasePath` 供 server 的路由级超时跳过名单使用。 |
 
 ## 接入要点
 
@@ -50,8 +51,8 @@
 3. 受保护端点先用 `authOf` 取身份，再委托用例；
 4. 在 `server` 的 HTTP / gRPC 注册处挂载服务；改依赖后 `make generate` 刷新 wire 装配。
 
-手写端点（非 proto 生成）：归属与中间件链见 [internal/README.md](../README.md) 的「手写端点归属」；实现放 `service/<资源>_http.go`，用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware`，且必须提供「无令牌 → 401」的测试守住认证链。
+手写端点（非 proto 生成）：归属与中间件链见 [internal/README.md](../README.md) 的「手写端点归属」；实现放 `service/<资源>_http.go`，用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware`，且必须提供「无令牌 → 401」的测试守住认证链。Agent 手写路由（AG-UI / ack）是现有参照：框架 handler 直写 `ResponseWriter`，本层只负责入链与身份 ctx 回绑，不翻译 SSE 事件。
 
 ## 测试
 
-现有覆盖：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传。
+现有覆盖：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传；Agent 手写端点的入链语义（无令牌 401、SSE 长流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)——其挂载物由框架装配，链上验证不属本层单元测试。
