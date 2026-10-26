@@ -49,7 +49,7 @@ func TestMetricsRouteBypassesBusinessMiddleware(t *testing.T) {
 	// 不会被调用；超时位传直通中间件，普通请求超时不属于本测试关注点。
 	noop := func(h middleware.Handler) middleware.Handler { return h }
 	// telemetry 位传 nil：本测试不涉 OTel（nil 接收者按未启用处理）。
-	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, nil, noop, noop, spy, h, nil, nil, nil, nil, nil)
+	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, nil, noop, noop, spy, h, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}
