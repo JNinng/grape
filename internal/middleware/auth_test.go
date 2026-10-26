@@ -38,6 +38,10 @@ func (f *fakeSessionRepo) Revoke(context.Context, biz.Identity, int64) error {
 	return biz.ErrSessionInvalidArgument
 }
 
+func (f *fakeSessionRepo) RevokeByAccessTokenHash(context.Context, string) error {
+	return biz.ErrSessionInvalidArgument
+}
+
 func (f *fakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) (*biz.Session, error) {
 	return nil, biz.ErrSessionInvalid
 }
@@ -84,6 +88,7 @@ func TestAuthMiddlewarePublicOperationSkipsValidation(t *testing.T) {
 	for _, op := range []string{
 		sessionv1.OperationSessionServiceLogin,
 		sessionv1.OperationSessionServiceRefresh,
+		sessionv1.OperationSessionServiceLogout,
 	} {
 		called, err := invoke(serverContext(context.Background(), op, fakeHeader{}), m)
 		if err != nil {

@@ -120,11 +120,11 @@ type RefreshSessionInput struct {
 	RefreshTTL time.Duration
 }
 
-// SessionRepo 是会话仓储接口。签发/校验/撤销/刷新四个动作按领域建模，
+// SessionRepo 是会话仓储接口。签发/校验/撤销/刷新/登出按领域建模，
 // 介质（数据库/缓存）差异收在实现之后；令牌哈希由 biz 用例计算后
-// 传入，仓储出入参只见哈希。校验/刷新发生在身份成立前（以令牌哈希为
-// 凭据），属文档化例外，不使用 super 命名。过期会话清理不属于存取接口：
-// 它由介质侧的维护任务承担，调用方无需感知。
+// 传入，仓储出入参只见哈希。校验/刷新/登出发生在身份成立前（以令牌
+// 哈希为凭据），属文档化例外，不使用 super 命名。过期会话清理不属于
+// 存取接口：它由介质侧的维护任务承担，调用方无需感知。
 type SessionRepo interface {
 	// Issue 写入一条会话并返回落库后的会话事实。owner 是会话所属身份，
 	// 同时作为仓储的租户边界与审计操作者。
@@ -134,6 +134,11 @@ type SessionRepo interface {
 	Validate(ctx context.Context, accessTokenHash string) (*Session, error)
 	// Revoke 撤销租户内的指定会话；已撤销或不可见时幂等返回 nil。
 	Revoke(ctx context.Context, auth Identity, id int64) error
+	// RevokeByAccessTokenHash 按访问令牌哈希撤销所属会话（登出）。
+	// 令牌不匹配、会话不存在或已撤销时同样返回 nil：登出幂等，重放
+	// 与未知令牌都不报错，也不泄露会话是否存在。会话级撤销同时使该
+	// 会话的刷新令牌失效。
+	RevokeByAccessTokenHash(ctx context.Context, accessTokenHash string) error
 	// Refresh 按当前刷新令牌哈希轮换令牌：命中的行必须启用、未撤销、
 	// 刷新令牌未过期；旧刷新令牌随即失效。返回轮换后的会话。
 	Refresh(ctx context.Context, in *RefreshSessionInput) (*Session, error)
@@ -216,12 +221,24 @@ func (uc *SessionUsecase) Validate(ctx context.Context, accessToken string) (*Se
 	return uc.repo.Validate(ctx, hashSessionToken(accessToken))
 }
 
-// Revoke 撤销会话（登出）。重复撤销幂等。
+// Revoke 撤销会话（按会话 ID，供租户内管理动作使用）。重复撤销幂等。
 func (uc *SessionUsecase) Revoke(ctx context.Context, auth Identity, sessionID int64) error {
 	if auth.TenantID == "" || auth.UserID <= 0 || sessionID <= 0 {
 		return ErrSessionInvalidArgument
 	}
 	return uc.repo.Revoke(ctx, auth, sessionID)
+}
+
+// Logout 登出：撤销访问令牌所属会话。会话级撤销使该会话的访问令牌与
+// 刷新令牌一并失效。幂等语义：令牌无效、会话已撤销或不存在时同样
+// 成功——登出只表达"令牌不再可用"的意图，重放与过期令牌都不报错，
+// 也不泄露会话是否存在；空令牌属请求形态错误，按未认证拒绝。发生在
+// 身份成立前（以令牌哈希为凭据），沿用令牌维度事务的文档化例外。
+func (uc *SessionUsecase) Logout(ctx context.Context, accessToken string) error {
+	if accessToken == "" {
+		return ErrSessionInvalid
+	}
+	return uc.repo.RevokeByAccessTokenHash(ctx, hashSessionToken(accessToken))
 }
 
 // Refresh 用刷新令牌轮换一对新令牌：访问令牌与刷新令牌都是独立随机

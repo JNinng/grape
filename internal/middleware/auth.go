@@ -19,10 +19,14 @@ const (
 )
 
 // publicOperations 是免认证端点：登录与刷新在身份成立之前调用，凭据
-// 分别是用户名口令与刷新令牌，不参与访问令牌校验。
+// 分别是用户名口令与刷新令牌，不参与访问令牌校验。登出同理且必须
+// 免认证：其凭据是访问令牌本身，且重复登出幂等——严格的活跃会话校验
+// 会把已撤销令牌拦在 401，令牌对应会话已撤销/不存在时无法按约定成功
+// 返回，故登出由 service 层自取 Authorization 头处理。
 var publicOperations = map[string]struct{}{
 	sessionv1.OperationSessionServiceLogin:   {},
 	sessionv1.OperationSessionServiceRefresh: {},
+	sessionv1.OperationSessionServiceLogout:  {},
 }
 
 // NewAuthMiddleware 构造认证中间件：对非公开端点提取 Bearer 访问令牌，

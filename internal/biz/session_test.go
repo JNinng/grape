@@ -25,6 +25,8 @@ type fakeSessionRepo struct {
 	revokeCalls   int
 	revokeAuth    Identity
 	revokeID      int64
+	logoutCalls   int
+	logoutHash    string
 }
 
 func (f *fakeSessionRepo) Issue(_ context.Context, owner Identity, in *IssueSessionInput) (*Session, error) {
@@ -44,6 +46,12 @@ func (f *fakeSessionRepo) Revoke(_ context.Context, auth Identity, id int64) err
 	f.revokeCalls++
 	f.revokeAuth = auth
 	f.revokeID = id
+	return f.err
+}
+
+func (f *fakeSessionRepo) RevokeByAccessTokenHash(_ context.Context, accessTokenHash string) error {
+	f.logoutCalls++
+	f.logoutHash = accessTokenHash
 	return f.err
 }
 
@@ -243,6 +251,41 @@ func TestSessionUsecaseRevoke(t *testing.T) {
 
 	if err := uc.Revoke(context.Background(), auth, 0); !errors.Is(err, ErrSessionInvalidArgument) {
 		t.Fatalf("zero session id: want ErrSessionInvalidArgument, got %v", err)
+	}
+}
+
+func TestSessionUsecaseLogoutHashesToken(t *testing.T) {
+	repo := &fakeSessionRepo{}
+	uc := NewSessionUsecase(repo)
+
+	if err := uc.Logout(context.Background(), "plain-access-token"); err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+	if repo.logoutCalls != 1 || repo.logoutHash != hashSessionToken("plain-access-token") {
+		t.Fatalf("repo got %q (calls=%d), want token hash", repo.logoutHash, repo.logoutCalls)
+	}
+}
+
+func TestSessionUsecaseLogoutRejectsEmptyToken(t *testing.T) {
+	repo := &fakeSessionRepo{}
+	uc := NewSessionUsecase(repo)
+
+	if err := uc.Logout(context.Background(), ""); !errors.Is(err, ErrSessionInvalid) {
+		t.Fatalf("empty token: want ErrSessionInvalid, got %v", err)
+	}
+	if repo.logoutCalls != 0 {
+		t.Fatalf("empty token reached repo (%d calls)", repo.logoutCalls)
+	}
+}
+
+// 仓储对未知令牌/已撤销会话按幂等返回 nil；存储故障不在幂等语义内，
+// 用例必须原样上抛，不得吞成假成功。
+func TestSessionUsecaseLogoutPropagatesRepoError(t *testing.T) {
+	repo := &fakeSessionRepo{err: errors.New("storage down")}
+	uc := NewSessionUsecase(repo)
+
+	if err := uc.Logout(context.Background(), "plain-access-token"); err == nil {
+		t.Fatal("storage failure must surface, got nil")
 	}
 }
 
