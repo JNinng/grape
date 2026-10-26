@@ -23,7 +23,7 @@ func toolTestUsers() []*biz.User {
 }
 
 // callTool 以 JSON 入参直调指定名称的工具：走框架 CallableTool 转换面
-//（schema 反序列化与模型入参形态一致），返回出参 JSON。
+// （schema 反序列化与模型入参形态一致），返回出参 JSON。
 func callTool(t *testing.T, ctx context.Context, name, args string) (string, error) {
 	t.Helper()
 	var found tool.Tool
