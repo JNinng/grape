@@ -215,7 +215,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | InsertSysSession | :one | 身份 + 令牌哈希/有效期 → SysSession | 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算 |
 | GetActiveSysSessionByTokenHash | :one | 访问令牌哈希 → SysSession | 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效 |
 | RevokeSysSession | :execrows | 操作者 + id → 行数 | 撤销指定会话；已撤销时更新 0 行 |
-| RevokeSysSessionByTokenHash | :execrows | 访问令牌哈希 → 行数 | 登出：按访问令牌哈希撤销所属会话，updated_by 记会话用户；已撤销、已删除或令牌不匹配时更新 0 行（幂等）。经 `sys_session_token_revoke` 策略走令牌维度事务 |
+| RevokeSysSessionByTokenHash | :execrows | 访问令牌哈希 → 行数 | 登出：按访问令牌哈希撤销所属会话，updated_by 记会话用户；已撤销、已被清理或令牌不匹配时更新 0 行（幂等）。经 `sys_session_token_revoke` 策略走令牌维度事务 |
 | RotateSysSession | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，未命中时更新 0 行 |
 | CleanupExpiredSysSessions | :one | 宽限期秒数 → 删除行数 | 删除已撤销或过期超过宽限期的会话，返回删除行数 |
 
