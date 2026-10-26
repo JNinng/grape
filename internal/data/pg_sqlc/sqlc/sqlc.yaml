@@ -32,12 +32,14 @@ sql:
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
+      - "96_agent_grant.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
       - "queries/perm.sql"
       - "queries/sys_user.sql"
       - "queries/sys_session.sql"
+      - "queries/agent_grant.sql"
     gen:
       go:
         package: "gen"
@@ -62,12 +64,14 @@ sql:
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
+      - "96_agent_grant.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
       - "queries/perm.sql"
       - "queries/sys_user.sql"
       - "queries/sys_session.sql"
+      - "queries/agent_grant.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

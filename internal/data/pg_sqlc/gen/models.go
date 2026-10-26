@@ -8,6 +8,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// Agent 工具授权（ack 许可存储，C2）：用户对工具的预先授权，满足 confirm 层级的确认要求；查询键 (tenant_id, user_id, tool_name, session_id)，session_id 为 NULL 即全局级；未撤销行每键至多一条（部分唯一表达式索引）；吊销置 revoked_at 不删行。租户隔离 RLS + 应用层 tenant_id 参数双保险（决策 6/D1 口径）
+type AgentToolGrant struct {
+	// 授权 ID（应用层发号）
+	ID int64 `db:"id" json:"id"`
+	// 租户 ID：仓储从认证 ctx 提取并显式过滤，不来自请求侧输入
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 被授权用户 ID（许可归属，即确认决定者本人）
+	UserID int64 `db:"user_id" json:"user_id"`
+	// 工具名（ack 分级表与工具集登记名）
+	ToolName string `db:"tool_name" json:"tool_name"`
+	// 绑定的会话（AG-UI threadId）；NULL 即全局级，对该用户全部会话生效
+	SessionID *string `db:"session_id" json:"session_id"`
+	// 授权来源操作者（确认决定的 DecidedBy 解码，正常流即属主本人）
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 授权时间（数据库时钟）
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 吊销操作者：属主本人或持有 agent:grant:revoke 权限码的管理者
+	RevokedBy *int64 `db:"revoked_by" json:"revoked_by"`
+	// 吊销时间；NULL 即许可有效，非 NULL 行保留作审计现场（E3 定保留期）
+	RevokedAt pgtype.Timestamp `db:"revoked_at" json:"revoked_at"`
+}
+
 // 基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type Basic struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
