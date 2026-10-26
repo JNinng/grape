@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,27 +55,10 @@ func TestTokenLookupValidate(t *testing.T) {
 //	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
 //	go test ./internal/data/pg_sqlc -run TestSession -count=1 -v
 //
-// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按部署顺序装载 sqlc/
-// 全部文件），不触碰其他数据库。
+// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 DeployFiles 部署清单
+// 装载 sqlc/ 全部文件，见 deploy.go），不触碰其他数据库。
 
 const testDatabase = "grape_pgsqlc_test"
-
-// deployFiles 是部署执行顺序（见仓库根 deploy_db.md）。
-var deployFiles = []string{
-	"sqlc/schema/10_basic.sql",
-	"sqlc/schema/20_tenant.sql",
-	"sqlc/schema/30_user.sql",
-	"sqlc/schema/40_rbac.sql",
-	"sqlc/schema/50_dept.sql",
-	"sqlc/schema/60_dict.sql",
-	"sqlc/schema/70_audit.sql",
-	"sqlc/schema/80_session.sql",
-	"sqlc/schema/90_config.sql",
-	"sqlc/rls.sql",
-	"sqlc/operate.sql",
-	"sqlc/expose.sql",
-	"sqlc/seed.sql",
-}
 
 // setupTestDB 重建测试库、按序装载部署文件并返回门面所属的连接池。
 func setupTestDB(t *testing.T) *Data {
@@ -106,10 +90,18 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("close admin: %v", err)
 	}
 
-	// 装载部署文件：文件内含多语句与函数体，走 simple protocol
+	// 装载部署文件：清单即 deploy.go 的 DeployFiles（与 dbdeploy 共用）；
+	// 文件内含多语句与函数体，走 simple protocol
 	deployCfg, err := pgx.ParseConfig(adminDSN)
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
+	}
+	deployDir, err := DeployDir()
+	if err != nil {
+		t.Fatalf("locate deploy dir: %v", err)
+	}
+	if err := ValidateDeployFiles(deployDir); err != nil {
+		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg.Database = testDatabase
 	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
@@ -118,8 +110,8 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("connect deploy: %v", err)
 	}
 	defer deployConn.Close(ctx)
-	for _, f := range deployFiles {
-		sql, err := os.ReadFile(f)
+	for _, f := range DeployFiles {
+		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
@@ -127,7 +119,7 @@ func setupTestDB(t *testing.T) *Data {
 			t.Fatalf("deploy %s: %v", f, err)
 		}
 	}
-	// grape_u/test_u 由 rls.sql 创建（见部署清单），此时才可授权 CONNECT
+	// grape_u/test_u 由 role.sql 创建（见部署清单），此时才可授权 CONNECT
 	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+testDatabase+" TO grape_u, test_u"); err != nil {
 		t.Fatalf("grant connect: %v", err)
 	}
