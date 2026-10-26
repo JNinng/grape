@@ -88,6 +88,35 @@ func Test_template_when_loaded_by_server_path_yields_required_sections(t *testin
 	}
 }
 
+func Test_template_llm_reliability_sections_when_loaded_default_to_off(t *testing.T) {
+	// B3 模型层可靠性段（failover / hedge / logging）在模板中恒默认
+	// 关闭：全缺省装配为零包装的裸 provider，密钥项只经环境变量占位。
+	dir := t.TempDir()
+	writeTemplateToDir(t, dir)
+
+	bc := loadBootstrapViaServerPath(t, dir)
+
+	llm := bc.GetAgent().GetLlm()
+	if got := llm.GetFailover().GetEnabled(); got {
+		t.Errorf("template llm.failover.enabled = true, want false (zero wrapping default)")
+	}
+	if got := len(llm.GetFailover().GetCandidates()); got != 0 {
+		t.Errorf("template llm.failover.candidates = %d entries, want 0", got)
+	}
+	if got := llm.GetHedge().GetEnabled(); got {
+		t.Errorf("template llm.hedge.enabled = true, want false (zero wrapping default)")
+	}
+	if got := llm.GetLogging().GetEnabled(); got {
+		t.Errorf("template llm.logging.enabled = true, want false (zero wrapping default)")
+	}
+	if got := llm.GetLogging().GetLogPrompts(); got {
+		t.Errorf("template llm.logging.log_prompts = true, want false (no prompt content by default)")
+	}
+	if got := llm.GetLogging().GetLogCompletions(); got {
+		t.Errorf("template llm.logging.log_completions = true, want false (no completion content by default)")
+	}
+}
+
 func Test_existing_target_when_run_without_force_refuses_overwrite(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, outputName)

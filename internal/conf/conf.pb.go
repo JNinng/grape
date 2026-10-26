@@ -617,7 +617,9 @@ func (x *Vector_Embedding) GetTimeout() *durationpb.Duration {
 	return nil
 }
 
-// LLM 是模型 provider 配置（OpenAI 兼容直连）。
+// LLM 是模型 provider 配置（OpenAI 兼容直连），含模型层可靠性段
+// （failover / hedge / logging，TODO B3）。各可靠性段默认关闭：
+// 全缺省时装配为零包装的裸 provider，与 B1 行为逐字节等价。
 type Agent_LLM struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// provider 变体（openai / deepseek / qwen / minimax / kimi）。
@@ -631,6 +633,9 @@ type Agent_LLM struct {
 	Model string `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
 	// 单次模型调用超时；未设置用框架默认。
 	Timeout       *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	Failover      *Agent_LLM_Failover  `protobuf:"bytes,6,opt,name=failover,proto3" json:"failover,omitempty"`
+	Hedge         *Agent_LLM_Hedge     `protobuf:"bytes,7,opt,name=hedge,proto3" json:"hedge,omitempty"`
+	Logging       *Agent_LLM_Logging   `protobuf:"bytes,8,opt,name=logging,proto3" json:"logging,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -696,6 +701,27 @@ func (x *Agent_LLM) GetModel() string {
 func (x *Agent_LLM) GetTimeout() *durationpb.Duration {
 	if x != nil {
 		return x.Timeout
+	}
+	return nil
+}
+
+func (x *Agent_LLM) GetFailover() *Agent_LLM_Failover {
+	if x != nil {
+		return x.Failover
+	}
+	return nil
+}
+
+func (x *Agent_LLM) GetHedge() *Agent_LLM_Hedge {
+	if x != nil {
+		return x.Hedge
+	}
+	return nil
+}
+
+func (x *Agent_LLM) GetLogging() *Agent_LLM_Logging {
+	if x != nil {
+		return x.Logging
 	}
 	return nil
 }
@@ -985,6 +1011,288 @@ func (x *Agent_Summarization) GetEnabled() bool {
 	return false
 }
 
+// Failover 是主 provider 故障时按优先级切换备 provider 的配置
+// （框架 model/failover）。框架语义：候选按序尝试，在首个非错误
+// 响应块出现前可切换（流式已向用户吐字后不再切换）；全部候选失败
+// 时以单个聚合错误响应上抛（各候选的失败摘要串联）。
+type Agent_LLM_Failover struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 是否启用。false（默认）时零包装——不构造 failover 包装器，
+	// 行为与无本段完全一致。
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// 备选 provider 清单，按优先级排序（主模型之后依次尝试）。
+	// enabled=true 时至少一项，否则装配失败拒绝启动。
+	Candidates    []*Agent_LLM_Failover_Candidate `protobuf:"bytes,2,rep,name=candidates,proto3" json:"candidates,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Agent_LLM_Failover) Reset() {
+	*x = Agent_LLM_Failover{}
+	mi := &file_conf_conf_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Agent_LLM_Failover) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Agent_LLM_Failover) ProtoMessage() {}
+
+func (x *Agent_LLM_Failover) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Agent_LLM_Failover.ProtoReflect.Descriptor instead.
+func (*Agent_LLM_Failover) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0, 0}
+}
+
+func (x *Agent_LLM_Failover) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *Agent_LLM_Failover) GetCandidates() []*Agent_LLM_Failover_Candidate {
+	if x != nil {
+		return x.Candidates
+	}
+	return nil
+}
+
+// Hedge 是对延迟敏感的重复请求策略（框架 model/hedge）：先发原始
+// 请求，delay 后仍未出结果则再发副本，谁先产出有效内容谁获胜，
+// 落后副本取消。重复请求会成倍放大上游调用量（计费按请求计），
+// 只应对延迟抖动显著、幂等的推理调用；跨候选去重框架不做，取消
+// 策略即「首个有效内容出现，其余全部取消」。
+type Agent_LLM_Hedge struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 是否启用。false（默认）时零包装。
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// 相邻两次启动的固定间隔；0 取框架默认 100ms。
+	Delay *durationpb.Duration `protobuf:"bytes,2,opt,name=delay,proto3" json:"delay,omitempty"`
+	// 并发副本总数（含原始请求）。框架按 candidates 逐个错峰启动，
+	// 主模型副本即同一 provider 的重复请求；启用时必须 ≥ 2，否则
+	// 装配失败拒绝启动（副本数为 1 的 hedge 无意义，按误配拒绝）。
+	MaxCopies     int32 `protobuf:"varint,3,opt,name=max_copies,json=maxCopies,proto3" json:"max_copies,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Agent_LLM_Hedge) Reset() {
+	*x = Agent_LLM_Hedge{}
+	mi := &file_conf_conf_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Agent_LLM_Hedge) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Agent_LLM_Hedge) ProtoMessage() {}
+
+func (x *Agent_LLM_Hedge) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Agent_LLM_Hedge.ProtoReflect.Descriptor instead.
+func (*Agent_LLM_Hedge) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0, 1}
+}
+
+func (x *Agent_LLM_Hedge) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *Agent_LLM_Hedge) GetDelay() *durationpb.Duration {
+	if x != nil {
+		return x.Delay
+	}
+	return nil
+}
+
+func (x *Agent_LLM_Hedge) GetMaxCopies() int32 {
+	if x != nil {
+		return x.MaxCopies
+	}
+	return 0
+}
+
+// Logging 是 LLM 调用回调日志的配置（TODO B3）：经框架
+// model.Callbacks 形态注册前后回调，把每次模型调用（含 failover
+// 的每次候选尝试）落到 grape logger；ctx 携带 SpanContext 时
+// trace_id / span_id 由 logger extractor 自动展开（E1 桥接口径）。
+type Agent_LLM_Logging struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 是否启用。false（默认）时零包装——不注册回调、不产生任何
+	// 新日志行，调用面与无本段完全一致。
+	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	// 记录请求提示词文本（按 512 rune 截断）。提示词含用户输入与
+	// 工具结果回传，属内容面开关；内容级脱敏（工具敏感参数/检索
+	// 内容）的审计面归 E2/A3，本处只做开关门控与截断。
+	LogPrompts bool `protobuf:"varint,2,opt,name=log_prompts,json=logPrompts,proto3" json:"log_prompts,omitempty"`
+	// 记录模型补全文本（跨流式分片累积后按 512 rune 截断）。
+	LogCompletions bool `protobuf:"varint,3,opt,name=log_completions,json=logCompletions,proto3" json:"log_completions,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *Agent_LLM_Logging) Reset() {
+	*x = Agent_LLM_Logging{}
+	mi := &file_conf_conf_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Agent_LLM_Logging) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Agent_LLM_Logging) ProtoMessage() {}
+
+func (x *Agent_LLM_Logging) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Agent_LLM_Logging.ProtoReflect.Descriptor instead.
+func (*Agent_LLM_Logging) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0, 2}
+}
+
+func (x *Agent_LLM_Logging) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *Agent_LLM_Logging) GetLogPrompts() bool {
+	if x != nil {
+		return x.LogPrompts
+	}
+	return false
+}
+
+func (x *Agent_LLM_Logging) GetLogCompletions() bool {
+	if x != nil {
+		return x.LogCompletions
+	}
+	return false
+}
+
+// Candidate 是一台备选 provider（与主 provider 同构）。
+type Agent_LLM_Failover_Candidate struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// provider 变体，语义同主 provider（留空按 openai 处理）。
+	Provider string `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	// OpenAI 兼容端点；留空用框架内置默认。
+	BaseUrl string `protobuf:"bytes,2,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	// API key，经 ${ENV:...} 占位注入，不落默认配置。
+	ApiKey string `protobuf:"bytes,3,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
+	// 模型名，必填。
+	Model string `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	// 单次模型调用超时；未设置用框架默认。
+	Timeout       *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Agent_LLM_Failover_Candidate) Reset() {
+	*x = Agent_LLM_Failover_Candidate{}
+	mi := &file_conf_conf_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Agent_LLM_Failover_Candidate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Agent_LLM_Failover_Candidate) ProtoMessage() {}
+
+func (x *Agent_LLM_Failover_Candidate) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Agent_LLM_Failover_Candidate.ProtoReflect.Descriptor instead.
+func (*Agent_LLM_Failover_Candidate) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0, 0, 0}
+}
+
+func (x *Agent_LLM_Failover_Candidate) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *Agent_LLM_Failover_Candidate) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *Agent_LLM_Failover_Candidate) GetApiKey() string {
+	if x != nil {
+		return x.ApiKey
+	}
+	return ""
+}
+
+func (x *Agent_LLM_Failover_Candidate) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *Agent_LLM_Failover_Candidate) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.Timeout
+	}
+	return nil
+}
+
 // HTTP 服务器配置。
 type Server_HTTP struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1009,7 +1317,7 @@ type Server_HTTP struct {
 
 func (x *Server_HTTP) Reset() {
 	*x = Server_HTTP{}
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1021,7 +1329,7 @@ func (x *Server_HTTP) String() string {
 func (*Server_HTTP) ProtoMessage() {}
 
 func (x *Server_HTTP) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1090,7 +1398,7 @@ type Server_CORS struct {
 
 func (x *Server_CORS) Reset() {
 	*x = Server_CORS{}
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1410,7 @@ func (x *Server_CORS) String() string {
 func (*Server_CORS) ProtoMessage() {}
 
 func (x *Server_CORS) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1154,7 +1462,7 @@ type Server_GRPC struct {
 
 func (x *Server_GRPC) Reset() {
 	*x = Server_GRPC{}
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1166,7 +1474,7 @@ func (x *Server_GRPC) String() string {
 func (*Server_GRPC) ProtoMessage() {}
 
 func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1215,7 +1523,7 @@ type Server_Trace struct {
 
 func (x *Server_Trace) Reset() {
 	*x = Server_Trace{}
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1227,7 +1535,7 @@ func (x *Server_Trace) String() string {
 func (*Server_Trace) ProtoMessage() {}
 
 func (x *Server_Trace) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1573,7 @@ type Data_Database struct {
 
 func (x *Data_Database) Reset() {
 	*x = Data_Database{}
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1277,7 +1585,7 @@ func (x *Data_Database) String() string {
 func (*Data_Database) ProtoMessage() {}
 
 func (x *Data_Database) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1320,7 +1628,7 @@ type Data_Database_Slot struct {
 
 func (x *Data_Database_Slot) Reset() {
 	*x = Data_Database_Slot{}
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1332,7 +1640,7 @@ func (x *Data_Database_Slot) String() string {
 func (*Data_Database_Slot) ProtoMessage() {}
 
 func (x *Data_Database_Slot) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1393,21 +1701,44 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
 	"\aapi_key\x18\x03 \x01(\tR\x06apiKey\x12\x14\n" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x123\n" +
-	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\x85\n" +
-	"\n" +
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xa9\x0f\n" +
 	"\x05Agent\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12'\n" +
 	"\x03llm\x18\x02 \x01(\v2\x15.kratos.api.Agent.LLMR\x03llm\x12*\n" +
 	"\x04agui\x18\x03 \x01(\v2\x16.kratos.api.Agent.AGUIR\x04agui\x12I\n" +
 	"\x0fsession_storage\x18\x04 \x01(\v2 .kratos.api.Agent.SessionStorageR\x0esessionStorage\x12?\n" +
 	"\vcompression\x18\x05 \x01(\v2\x1d.kratos.api.Agent.CompressionR\vcompression\x12E\n" +
-	"\rsummarization\x18\x06 \x01(\v2\x1f.kratos.api.Agent.SummarizationR\rsummarization\x1a\xa0\x01\n" +
+	"\rsummarization\x18\x06 \x01(\v2\x1f.kratos.api.Agent.SummarizationR\rsummarization\x1a\xc4\x06\n" +
 	"\x03LLM\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x19\n" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
 	"\aapi_key\x18\x03 \x01(\tR\x06apiKey\x12\x14\n" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x123\n" +
-	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x1a\xa2\x01\n" +
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12:\n" +
+	"\bfailover\x18\x06 \x01(\v2\x1e.kratos.api.Agent.LLM.FailoverR\bfailover\x121\n" +
+	"\x05hedge\x18\a \x01(\v2\x1b.kratos.api.Agent.LLM.HedgeR\x05hedge\x127\n" +
+	"\alogging\x18\b \x01(\v2\x1d.kratos.api.Agent.LLM.LoggingR\alogging\x1a\x97\x02\n" +
+	"\bFailover\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12H\n" +
+	"\n" +
+	"candidates\x18\x02 \x03(\v2(.kratos.api.Agent.LLM.Failover.CandidateR\n" +
+	"candidates\x1a\xa6\x01\n" +
+	"\tCandidate\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x19\n" +
+	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
+	"\aapi_key\x18\x03 \x01(\tR\x06apiKey\x12\x14\n" +
+	"\x05model\x18\x04 \x01(\tR\x05model\x123\n" +
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x1aq\n" +
+	"\x05Hedge\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12/\n" +
+	"\x05delay\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x05delay\x12\x1d\n" +
+	"\n" +
+	"max_copies\x18\x03 \x01(\x05R\tmaxCopies\x1am\n" +
+	"\aLogging\x12\x18\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1f\n" +
+	"\vlog_prompts\x18\x02 \x01(\bR\n" +
+	"logPrompts\x12'\n" +
+	"\x0flog_completions\x18\x03 \x01(\bR\x0elogCompletions\x1a\xa2\x01\n" +
 	"\x04AGUI\x12\x1b\n" +
 	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x123\n" +
 	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12H\n" +
@@ -1470,28 +1801,32 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 	return file_conf_conf_proto_rawDescData
 }
 
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_conf_conf_proto_goTypes = []any{
-	(*Bootstrap)(nil),            // 0: kratos.api.Bootstrap
-	(*Telemetry)(nil),            // 1: kratos.api.Telemetry
-	(*Vector)(nil),               // 2: kratos.api.Vector
-	(*Agent)(nil),                // 3: kratos.api.Agent
-	(*Auth)(nil),                 // 4: kratos.api.Auth
-	(*Server)(nil),               // 5: kratos.api.Server
-	(*Data)(nil),                 // 6: kratos.api.Data
-	(*Vector_Embedding)(nil),     // 7: kratos.api.Vector.Embedding
-	(*Agent_LLM)(nil),            // 8: kratos.api.Agent.LLM
-	(*Agent_AGUI)(nil),           // 9: kratos.api.Agent.AGUI
-	(*Agent_SessionStorage)(nil), // 10: kratos.api.Agent.SessionStorage
-	(*Agent_Compression)(nil),    // 11: kratos.api.Agent.Compression
-	(*Agent_Summarization)(nil),  // 12: kratos.api.Agent.Summarization
-	(*Server_HTTP)(nil),          // 13: kratos.api.Server.HTTP
-	(*Server_CORS)(nil),          // 14: kratos.api.Server.CORS
-	(*Server_GRPC)(nil),          // 15: kratos.api.Server.GRPC
-	(*Server_Trace)(nil),         // 16: kratos.api.Server.Trace
-	(*Data_Database)(nil),        // 17: kratos.api.Data.Database
-	(*Data_Database_Slot)(nil),   // 18: kratos.api.Data.Database.Slot
-	(*durationpb.Duration)(nil),  // 19: google.protobuf.Duration
+	(*Bootstrap)(nil),                    // 0: kratos.api.Bootstrap
+	(*Telemetry)(nil),                    // 1: kratos.api.Telemetry
+	(*Vector)(nil),                       // 2: kratos.api.Vector
+	(*Agent)(nil),                        // 3: kratos.api.Agent
+	(*Auth)(nil),                         // 4: kratos.api.Auth
+	(*Server)(nil),                       // 5: kratos.api.Server
+	(*Data)(nil),                         // 6: kratos.api.Data
+	(*Vector_Embedding)(nil),             // 7: kratos.api.Vector.Embedding
+	(*Agent_LLM)(nil),                    // 8: kratos.api.Agent.LLM
+	(*Agent_AGUI)(nil),                   // 9: kratos.api.Agent.AGUI
+	(*Agent_SessionStorage)(nil),         // 10: kratos.api.Agent.SessionStorage
+	(*Agent_Compression)(nil),            // 11: kratos.api.Agent.Compression
+	(*Agent_Summarization)(nil),          // 12: kratos.api.Agent.Summarization
+	(*Agent_LLM_Failover)(nil),           // 13: kratos.api.Agent.LLM.Failover
+	(*Agent_LLM_Hedge)(nil),              // 14: kratos.api.Agent.LLM.Hedge
+	(*Agent_LLM_Logging)(nil),            // 15: kratos.api.Agent.LLM.Logging
+	(*Agent_LLM_Failover_Candidate)(nil), // 16: kratos.api.Agent.LLM.Failover.Candidate
+	(*Server_HTTP)(nil),                  // 17: kratos.api.Server.HTTP
+	(*Server_CORS)(nil),                  // 18: kratos.api.Server.CORS
+	(*Server_GRPC)(nil),                  // 19: kratos.api.Server.GRPC
+	(*Server_Trace)(nil),                 // 20: kratos.api.Server.Trace
+	(*Data_Database)(nil),                // 21: kratos.api.Data.Database
+	(*Data_Database_Slot)(nil),           // 22: kratos.api.Data.Database.Slot
+	(*durationpb.Duration)(nil),          // 23: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
 	5,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
@@ -1506,30 +1841,36 @@ var file_conf_conf_proto_depIdxs = []int32{
 	10, // 9: kratos.api.Agent.session_storage:type_name -> kratos.api.Agent.SessionStorage
 	11, // 10: kratos.api.Agent.compression:type_name -> kratos.api.Agent.Compression
 	12, // 11: kratos.api.Agent.summarization:type_name -> kratos.api.Agent.Summarization
-	13, // 12: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
-	15, // 13: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
-	16, // 14: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
-	17, // 15: kratos.api.Data.database:type_name -> kratos.api.Data.Database
-	19, // 16: kratos.api.Vector.Embedding.timeout:type_name -> google.protobuf.Duration
-	19, // 17: kratos.api.Agent.LLM.timeout:type_name -> google.protobuf.Duration
-	19, // 18: kratos.api.Agent.AGUI.timeout:type_name -> google.protobuf.Duration
-	19, // 19: kratos.api.Agent.AGUI.heartbeat_interval:type_name -> google.protobuf.Duration
-	19, // 20: kratos.api.Agent.SessionStorage.session_ttl:type_name -> google.protobuf.Duration
-	19, // 21: kratos.api.Agent.SessionStorage.track_event_ttl:type_name -> google.protobuf.Duration
-	19, // 22: kratos.api.Agent.SessionStorage.app_state_ttl:type_name -> google.protobuf.Duration
-	19, // 23: kratos.api.Agent.SessionStorage.user_state_ttl:type_name -> google.protobuf.Duration
-	19, // 24: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	19, // 25: kratos.api.Server.HTTP.request_timeout:type_name -> google.protobuf.Duration
-	14, // 26: kratos.api.Server.HTTP.cors:type_name -> kratos.api.Server.CORS
-	19, // 27: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
-	19, // 28: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	18, // 29: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
-	18, // 30: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
-	31, // [31:31] is the sub-list for method output_type
-	31, // [31:31] is the sub-list for method input_type
-	31, // [31:31] is the sub-list for extension type_name
-	31, // [31:31] is the sub-list for extension extendee
-	0,  // [0:31] is the sub-list for field type_name
+	17, // 12: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
+	19, // 13: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
+	20, // 14: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
+	21, // 15: kratos.api.Data.database:type_name -> kratos.api.Data.Database
+	23, // 16: kratos.api.Vector.Embedding.timeout:type_name -> google.protobuf.Duration
+	23, // 17: kratos.api.Agent.LLM.timeout:type_name -> google.protobuf.Duration
+	13, // 18: kratos.api.Agent.LLM.failover:type_name -> kratos.api.Agent.LLM.Failover
+	14, // 19: kratos.api.Agent.LLM.hedge:type_name -> kratos.api.Agent.LLM.Hedge
+	15, // 20: kratos.api.Agent.LLM.logging:type_name -> kratos.api.Agent.LLM.Logging
+	23, // 21: kratos.api.Agent.AGUI.timeout:type_name -> google.protobuf.Duration
+	23, // 22: kratos.api.Agent.AGUI.heartbeat_interval:type_name -> google.protobuf.Duration
+	23, // 23: kratos.api.Agent.SessionStorage.session_ttl:type_name -> google.protobuf.Duration
+	23, // 24: kratos.api.Agent.SessionStorage.track_event_ttl:type_name -> google.protobuf.Duration
+	23, // 25: kratos.api.Agent.SessionStorage.app_state_ttl:type_name -> google.protobuf.Duration
+	23, // 26: kratos.api.Agent.SessionStorage.user_state_ttl:type_name -> google.protobuf.Duration
+	16, // 27: kratos.api.Agent.LLM.Failover.candidates:type_name -> kratos.api.Agent.LLM.Failover.Candidate
+	23, // 28: kratos.api.Agent.LLM.Hedge.delay:type_name -> google.protobuf.Duration
+	23, // 29: kratos.api.Agent.LLM.Failover.Candidate.timeout:type_name -> google.protobuf.Duration
+	23, // 30: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	23, // 31: kratos.api.Server.HTTP.request_timeout:type_name -> google.protobuf.Duration
+	18, // 32: kratos.api.Server.HTTP.cors:type_name -> kratos.api.Server.CORS
+	23, // 33: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
+	23, // 34: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	22, // 35: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
+	22, // 36: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
+	37, // [37:37] is the sub-list for method output_type
+	37, // [37:37] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -1543,7 +1884,7 @@ func file_conf_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
