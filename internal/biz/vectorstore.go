@@ -82,6 +82,7 @@ type VectorStore interface {
 	// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量。
 	Count(ctx context.Context, filter *VectorFilter) (int64, error)
 	// GetMetadata 按 IDs/Metadata 过滤枚举文档 metadata（不含向量与
-	// 正文），按写入时间升序分页；返回值以文档 ID 为键。
+	// 正文），按写入时间升序分页；返回值以文档 ID 为键。Limit 非正为
+	// 不限量，此时 Offset 必须为 0。
 	GetMetadata(ctx context.Context, filter *VectorFilter) (map[string]map[string]any, error)
 }
