@@ -11,6 +11,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 | middleware | 入口中间件 | [middleware/README.md](middleware/README.md) |
 | ops | 运维出口 | [ops/README.md](ops/README.md) |
 | service | 传输适配 | [service/README.md](service/README.md) |
+| agent | Agent 框架适配层 | [agent/README.md](agent/README.md) |
 | task | 异步任务入口 | [task/README.md](task/README.md) |
 | biz | 领域层 | [biz/README.md](biz/README.md) |
 | data | 存储基础设施集合 | [data/README.md](data/README.md) |
@@ -19,7 +20,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 
 ## 分层与数据流向
 
-service 与 task 是两类业务入口，各自自上而下单向流动，越往下越贴近存储。`middleware` 与 `ops` 挂在入口侧但不承载业务数据流：`middleware` 在身份成立前放行/拒绝并注入链路事实，`ops` 输出运维只读指标。
+service 与 task 是两类业务入口，各自自上而下单向流动，越往下越贴近存储。`middleware` 与 `ops` 挂在入口侧但不承载业务数据流：`middleware` 在身份成立前放行/拒绝并注入链路事实，`ops` 输出运维只读指标。`agent` 是框架适配层，平行于 service 挂在入口侧：构造 trpc-agent-go / ack 的模型、runner、AG-UI handler 与许可网关，经 service 的手写端点入 Kratos 链，不承载 DTO ↔ DO 数据流。
 
 service 入口（HTTP / gRPC）：
 
@@ -81,7 +82,7 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http`；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`，例外仅此一处）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops`；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界）；`data` 只为仓储接口与设施契约导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`，例外仅此一处）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops`；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 手写端点归属
@@ -99,7 +100,7 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 
 ## 依赖注入
 
-各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` / `middleware` / `ops` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
+各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` / `middleware` / `ops` / `agent` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
 - `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
 - 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；
@@ -108,7 +109,8 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 - `task`：任务构造函数（依赖用例）；
 - `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
 - `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
-- `server`：`NewGRPCServer` / `NewHTTPServer`，是唯一挂载点（生成代码路由 + 运维原始 Handler）。
+- `agent`：`NewStack`（Agent 框架骨架，cleanup 释放 runner）与 `NewSessionService`（会话存储接口占位实现）；
+- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware`，是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由）。
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
 

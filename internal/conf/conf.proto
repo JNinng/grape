@@ -13,6 +13,43 @@ message Bootstrap {
   Data data = 2;
   // 登录配置（请求未指明租户时的回落租户）。
   Auth auth = 3;
+  // Agent 服务配置（LLM provider 与 AG-UI 暴露形态）。
+  Agent agent = 4;
+}
+
+// Agent 是 Agent 服务（AG-UI + ack）的配置：应用名、LLM provider 与
+// AG-UI 暴露参数。由 internal/agent 框架适配层消费。
+message Agent {
+  // 应用名：core runner、AG-UI 与 ack 三者共用的会话存储键组成部分，
+  // 必须一致，否则会话定位失败。
+  string app_name = 1;
+
+  // LLM 是模型 provider 配置（OpenAI 兼容直连）。
+  message LLM {
+    // provider 变体（openai / deepseek / qwen / minimax / kimi）。
+    // 留空按 openai 处理；base_url 为空时由框架按变体取内置默认端点。
+    string provider = 1;
+    // OpenAI 兼容端点；留空用框架内置默认。
+    string base_url = 2;
+    // API key，经 ${ENV:...} 占位注入，不落默认配置。
+    string api_key = 3;
+    // 模型名。
+    string model = 4;
+    // 单次模型调用超时；未设置用框架默认。
+    google.protobuf.Duration timeout = 5;
+  }
+  LLM llm = 2;
+
+  // AGUI 是 AG-UI 协议端点的暴露配置。
+  message AGUI {
+    // 路由前缀（如 /agui）；chat 挂在前缀根，/history 与 /cancel 同前缀。
+    string base_path = 1;
+    // 单次运行超时（服务端兜底，未决确认最终由它结算为拒绝）。
+    google.protobuf.Duration timeout = 2;
+    // SSE 心跳间隔，保持中间设备不掐空闲流。
+    google.protobuf.Duration heartbeat_interval = 3;
+  }
+  AGUI agui = 3;
 }
 
 // Auth 是登录的过渡期配置：请求未指明租户时的回落租户（多租户登录
@@ -30,8 +67,13 @@ message Server {
     string network = 1;
     // 监听地址，如 0.0.0.0:8000。
     string addr = 2;
-    // 请求超时时间。
+    // 入站请求超时，作用于传输层为每个请求派生的 ctx。设为 0 表示
+    // 不在传输层限时不截断长流（SSE），普通路由改由 request_timeout
+    // 经中间件链施加。
     google.protobuf.Duration timeout = 3;
+    // 路由级请求超时：对非 agent 前缀（AG-UI / ack）的 HTTP 路由由
+    // server 层超时中间件施加，恢复被 timeout: 0s 关掉的普通端点限时。
+    google.protobuf.Duration request_timeout = 4;
   }
   // gRPC 服务器配置。
   message GRPC {
