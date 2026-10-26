@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -162,6 +163,39 @@ func c1NewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedM
 // 内闭合时按已写入的部分响应体判定（快照头先于尾随写出）。
 const historyPollGrace = 300 * time.Millisecond
 
+// lockedRecorder 是带互斥的 ResponseWriter：部分读取场景下后台 follow
+// goroutine 仍在向 recorder 写事件，httptest.ResponseRecorder 自身无
+// 同步，读写必须经同一把锁。
+type lockedRecorder struct {
+	mu  sync.Mutex
+	rec *httptest.ResponseRecorder
+}
+
+func (l *lockedRecorder) Header() http.Header {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rec.Header()
+}
+
+func (l *lockedRecorder) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rec.Write(p)
+}
+
+func (l *lockedRecorder) WriteHeader(code int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rec.WriteHeader(code)
+}
+
+// snapshot 返回状态码与已写入响应体的快照（同一临界区内读取）。
+func (l *lockedRecorder) snapshot() (int, string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.rec.Code, l.rec.Body.String()
+}
+
 // c1WaitHistoryPoll 轮询 /history 直到快照包含期望文本。请求在后台
 // goroutine 发起，宽限期内检查已写入的部分响应体：follow 开启时，快照
 // 响应在尾随终止前不闭合，而上游 D4 缺陷（track 事件按时间戳严格大于
@@ -173,7 +207,7 @@ func c1WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains stri
 	t.Helper()
 	deadline := time.Now().Add(confirmTestWaitLimit)
 	for {
-		rec := httptest.NewRecorder()
+		rec := &lockedRecorder{rec: httptest.NewRecorder()}
 		served := make(chan struct{})
 		go func() {
 			defer close(served)
@@ -184,16 +218,19 @@ func c1WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains stri
 		}()
 		select {
 		case <-served:
-			if strings.Contains(rec.Body.String(), wantContains) {
-				return rec.Body.String()
-			}
 		case <-time.After(historyPollGrace):
-			if strings.Contains(rec.Body.String(), wantContains) {
-				return rec.Body.String()
+		}
+		code, body := rec.snapshot()
+		if strings.Contains(body, wantContains) {
+			// 命中即要求快照请求本身成功：非 200 的响应体不该被当作
+			// 有效回放证据。
+			if code != http.StatusOK {
+				t.Fatalf("history status = %d, want 200\n%s", code, body)
 			}
+			return body
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("history snapshot missing %q after polling:\n%s", wantContains, rec.Body.String())
+			t.Fatalf("history snapshot missing %q after polling (last status %d):\n%s", wantContains, code, body)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

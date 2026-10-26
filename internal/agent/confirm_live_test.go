@@ -412,6 +412,52 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	_ = strangerChat
 }
 
+// TestConfirmLive_when_decide_body_trailing_data_rejected 防回归（复评
+// 实证的解码分歧形态）：body 为「合法 JSON + 尾随数据」时 ackhttp 的
+// json.Decoder 能正常解码并照常决定，守卫必须以完全同一的解码方式取值
+//——若退化为 json.Unmarshal 会误判形状非法而放行，跨用户决定直达
+// ackhttp。该形态不依赖查询参数（旧取值源缺陷与解码分歧两条路都封死）。
+func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
+	const (
+		ownerThread = "thread-trailing-owner"
+		ownerRun    = "run-trailing-owner"
+		ownerCall   = "call-trailing-owner"
+	)
+	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
+	s := newConfirmTestStack(t, nicknameCallScript(ownerCall, "trailing-nick", "nickname updated"), repo)
+
+	chat := startChat(s.h, ownerThread, ownerRun, "rename me")
+	items := waitForPending(t, s.h, ownerThread, 1)
+
+	stranger := s.asUser(confirmTestStrangerID)
+	attempt := postJSON(t, stranger, nethttp.MethodPost, "/agui/ack/confirmation",
+		fmt.Sprintf(`{"threadId":%q,"confirmationId":%q,"approved":true}{}`,
+			ownerThread, items[0].ConfirmationID))
+	if attempt.Code != nethttp.StatusNotFound {
+		t.Fatalf("trailing-data decide status = %d, want 404\n%s", attempt.Code, attempt.Body.String())
+	}
+
+	left := listPending(t, s.h, ownerThread)
+	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
+		t.Fatalf("owner's pending disturbed: %+v", left)
+	}
+	if updates := repo.updates(); len(updates) != 0 {
+		t.Fatalf("tool executed %d times via trailing-data bypass, want 0", len(updates))
+	}
+
+	// 归属者合法决定照常 live、链路收尾（排除残留状态）。
+	rec := decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
+	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"path":"live"`) {
+		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
+	}
+	chatEvents(t, chat)
+	if updates := repo.updates(); len(updates) != 1 {
+		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
+	}
+	waitForPending(t, s.h, ownerThread, 0)
+}
+
 // TestConfirmLive_when_tool_iterations_exhausted_run_terminates 验证
 // MaxToolIterations 防风暴：脚本化模型对 allow 层级的 echo 工具死循环
 // 调用（脚本耗尽重复末步），运行按上限终止（RUN_ERROR），实际执行的

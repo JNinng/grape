@@ -52,12 +52,16 @@ func (g *ackOwnerGuard) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) 
 		}
 		_ = r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		// 与 ackhttp 相同的解码器与字段标签，取值结果必然一致；
-		// 解析失败放行，形状校验（400）归 ackhttp。
+		// 与 ackhttp decide 完全同一的解码方式：json.NewDecoder(...).Decode
+		// 只取首个 JSON 值、容忍尾随数据。取值结果必然一致——若退化为
+		// json.Unmarshal（拒绝尾随数据），「合法 JSON + 尾随数据」的请求
+		// 会被守卫当作形状非法放行，ackhttp 却能正常解码照常决定，
+		// 形成跨用户绕过（复评实证形态）。解码失败放行：ackhttp 对同一
+		// 输入同样失败，以 400 拒绝。
 		var req struct {
 			ThreadID string `json:"threadId"`
 		}
-		if err := json.Unmarshal(body, &req); err == nil {
+		if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err == nil {
 			threadID = req.ThreadID
 		}
 	case nethttp.MethodGet:

@@ -150,6 +150,40 @@ func TestAckOwnerGuard_when_post_ignores_query_param_and_trusts_body(t *testing.
 	}
 }
 
+// TestAckOwnerGuard_when_post_body_has_trailing_data_still_checked 锁定
+// 守卫解码方式与 ackhttp 一致（Decode 只取首个 JSON 值、容忍尾随数据）：
+// 「合法 JSON + 尾随数据」必须照常经过归属判定——若退化为 json.Unmarshal
+//（拒绝尾随数据），该形态会被守卫误判形状非法而放行，ackhttp 却能正常
+// 解码照常决定，形成跨用户绕过（复评实证形态，变异检验钉住）。
+func TestAckOwnerGuard_when_post_body_has_trailing_data_still_checked(t *testing.T) {
+	f := newGuardFixture(t)
+	ctx := guardIdentityCtx()
+	ownKey := session.Key{AppName: confirmTestAppName, UserID: "t-1:7", SessionID: "own-session"}
+	if _, err := f.svc.CreateSession(context.Background(), ownKey, nil); err != nil {
+		t.Fatalf("create own session: %v", err)
+	}
+
+	rec, reached := f.do(t, ctx, nethttp.MethodPost,
+		"/agui/ack/confirmation?threadId=own-session",
+		`{"threadId":"foreign-session","confirmationId":"c1","approved":true}{}`)
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("body with trailing data (foreign) status = %d, want 404\n%s", rec.Code, rec.Body.String())
+	}
+	if reached {
+		t.Fatal("guard must block foreign threadId even with trailing data")
+	}
+
+	rec, reached = f.do(t, ctx, nethttp.MethodPost,
+		"/agui/ack/confirmation?threadId=foreign-session",
+		`{"threadId":"own-session","confirmationId":"c1","approved":true}{}`)
+	if rec.Code != nethttp.StatusTeapot {
+		t.Fatalf("body with trailing data (own) status = %d, want pass-through 418", rec.Code)
+	}
+	if !reached {
+		t.Fatal("guard must relay owned threadId even with trailing data")
+	}
+}
+
 func TestAckOwnerGuard_when_get_thread_id_foreign_returns_404(t *testing.T) {
 	f := newGuardFixture(t)
 	ctx := guardIdentityCtx()
