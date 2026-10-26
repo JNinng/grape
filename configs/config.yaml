@@ -8,6 +8,12 @@ server:
     timeout: 0s
     # 非 agent 路由的请求超时（覆盖生成代码端点与未来手写端点）。
     request_timeout: 1s
+    # CORS 跨域共享（可选，默认关闭不输出任何 CORS 头）。开启时响应恒带
+    # Access-Control-Expose-Headers: x-trace-id, x-request-id；allowed_origins
+    # 为精确 origin（scheme://host[:port]）清单，条目 "*" 表示任意来源。
+    cors:
+      enabled: false
+      allowed_origins: []
   grpc:
     addr: 0.0.0.0:9000
     timeout: 1s
@@ -94,4 +100,17 @@ vector:
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
+telemetry:
+  # OpenTelemetry 链路遥测（E1）。enabled=false 完全 noop：不构造
+  # exporter、不发起任何连接；开启后 server span 经 OTLP gRPC 导出。
+  enabled: false
+  # OTLP gRPC exporter 地址。
+  endpoint: localhost:4317
+  # exporter 是否走明文（无 TLS）。本地 collector 通常为 true。
+  insecure: true
+  # 根 span 采样比例 0~1；未设置取 1.0（全采）。按 trace-id 确定性判定，
+  # x-trace-id 头与日志 trace_id 字段不受采样影响。
+  sampler_ratio: 1.0
+  # 资源属性 service.name；空取 grape。service_version 空省略。
+  service_name: grape
 

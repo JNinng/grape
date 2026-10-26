@@ -17,6 +17,31 @@ message Bootstrap {
   Agent agent = 4;
   // 向量检索设施配置。
   Vector vector = 5;
+  // 遥测配置（OpenTelemetry trace）。
+  Telemetry telemetry = 6;
+}
+
+// Telemetry 是 OpenTelemetry 遥测配置：SDK 开关与 OTLP 导出目标。
+// 由 internal/telemetry 装配层消费；enabled=false 完全 noop（不构造
+// exporter、不发起任何连接）。采样比例按 trace-id 确定性判定：同一
+// trace-id 在多实例上决策一致，链路不因实例而断裂；x-trace-id 响应头
+// 与日志 trace_id 字段不受采样影响，恒可用。
+message Telemetry {
+  // 是否启用 OTel SDK。启用前须确认 endpoint 可达，否则导出失败只记
+  // 内部日志不影响请求。
+  bool enabled = 1;
+  // OTLP gRPC exporter 地址，如 localhost:4317。启用时必填。
+  string endpoint = 2;
+  // exporter 是否走明文（无 TLS）。本地 collector 通常为 true。
+  bool insecure = 3;
+  // 根 span 采样比例，0~1；未设置取 1.0（全采）。采样器为裸
+  // TraceIDRatioBased（非 ParentBased 包装）：决策独立于父 span 的
+  // sampled 标志；需要跟随上游采样决策时在装配处包 ParentBased。
+  double sampler_ratio = 4;
+  // 资源属性 service.name；空取 "grape"。
+  string service_name = 5;
+  // 资源属性 service.version；空省略该属性。
+  string service_version = 6;
 }
 
 // Vector 是向量检索设施（pgvector）的配置：表结构与维度由部署 DDL
@@ -139,6 +164,22 @@ message Server {
     // 路由级请求超时：对非 agent 前缀（AG-UI / ack）的 HTTP 路由由
     // server 层超时中间件施加，恢复被 timeout: 0s 关掉的普通端点限时。
     google.protobuf.Duration request_timeout = 4;
+    // CORS 是跨域资源共享的可选配置。默认关闭：不输出任何 CORS 头。
+    // 开启时所有链内响应恒带 Access-Control-Expose-Headers:
+    // x-trace-id, x-request-id（E1 明文要求，前端可读链路 ID）。
+    CORS cors = 5;
+  }
+  // CORS 是跨域资源共享配置，由 internal/middleware 的轻量 CORS 中间件
+  // 消费（不引入第三方 CORS 库）。预检请求在链内短路（agent 前缀路由）
+  // 或经 server 层的 405 兜底 handler 应答（生成代码路由）。
+  message CORS {
+    // 是否启用。启用时 allowed_origins 必填，构造期校验，非法拒绝启动。
+    bool enabled = 1;
+    // 允许跨域的 origin 精确清单（scheme://host[:port]），条目 "*"
+    // 表示允许任意 origin。启用时必填。
+    repeated string allowed_origins = 2;
+    // 预检结果缓存时长（Access-Control-Max-Age）；未设置不发该头。
+    google.protobuf.Duration max_age = 3;
   }
   // gRPC 服务器配置。
   message GRPC {

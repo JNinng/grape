@@ -37,9 +37,13 @@ func newWebTestServer(t *testing.T, dist fs.FS, reserved []string) *kratoshttp.S
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	noop := func(h middleware.Handler) middleware.Handler { return h }
-	return NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, traceMiddleware,
+	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, nil, traceMiddleware,
 		noop, authMiddleware, ops.NewMetricsHandler(nil), nil, nil, nil, nil,
 		WebHandler(newWebFileHandler(dist, reserved)))
+	if err != nil {
+		panic("build http server: " + err.Error())
+	}
+	return srv
 }
 
 // webDo 执行一次请求并返回响应。

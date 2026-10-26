@@ -77,7 +77,8 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		t.Fatalf("build trace middleware: %v", err)
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
-	srv := NewHTTPServer(confServer, traceMiddleware,
+	// telemetry 位传 nil：路由挂载测试不涉 OTel（nil 接收者按未启用处理）。
+	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
 		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
 		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
@@ -85,6 +86,9 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		// 先于静态兜底）在 agent_sessions_route_test.go 守卫。
 		nil,
 		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
+	if err != nil {
+		t.Fatalf("build http server: %v", err)
+	}
 	closeAll := func() {
 		stack.Close()
 		closeSessions()

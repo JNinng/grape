@@ -18,6 +18,7 @@ import (
 	"grape/internal/server"
 	"grape/internal/service"
 	"grape/internal/task"
+	"grape/internal/telemetry"
 	"log/slog"
 )
 
@@ -28,13 +29,19 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, vector *conf.Vector, logger *slog.Logger) (*kratos.App, func(), error) {
-	traceMiddleware, err := middleware.NewTraceMiddleware(confServer)
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, vector *conf.Vector, confTelemetry *conf.Telemetry, logger *slog.Logger) (*kratos.App, func(), error) {
+	setup, cleanup, err := telemetry.NewSetup(confTelemetry, logger)
 	if err != nil {
 		return nil, nil, err
 	}
-	pg_sqlcData, cleanup, err := pg_sqlc.NewData(confData)
+	traceMiddleware, err := middleware.NewTraceMiddleware(confServer)
 	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+	pg_sqlcData, cleanup2, err := pg_sqlc.NewData(confData)
+	if err != nil {
+		cleanup()
 		return nil, nil, err
 	}
 	sessionRepo := pg_sqlc.NewSessionRepo(pg_sqlcData)
@@ -46,21 +53,24 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, traceMiddleware, middlewareMiddleware, userService, sessionService)
-	service2, cleanup2, err := agent.NewSessionService(confAgent, confData)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	vectorStore, cleanup3, err := pg_sqlc.NewVectorStore(vector, pg_sqlcData)
+	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, userService, sessionService)
+	service2, cleanup3, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
-	stack, cleanup4, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore)
+	vectorStore, cleanup4, err := pg_sqlc.NewVectorStore(vector, pg_sqlcData)
 	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
+	stack, cleanup5, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore)
+	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -73,12 +83,21 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	handler := ops.NewMetricsHandler(v)
 	agentSessionsService := service.NewAgentSessionsService(service2, confAgent, agentService)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer := server.NewHTTPServer(confServer, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, webHandler)
+	if err != nil {
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	facilityMaintenance := pg_sqlc.NewSessionMaintenance(pg_sqlcData)
 	v2 := data.NewFacilityMaintenance(facilityMaintenance)
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()

@@ -56,11 +56,15 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 		t.Fatalf("build trace middleware: %v", err)
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
-	srv := NewHTTPServer(confServer, traceMiddleware,
+	// telemetry 位传 nil：本测试不涉 OTel（nil 接收者按未启用处理）。
+	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
 		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
 		sessionsService,
 		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
+	if err != nil {
+		t.Fatalf("build http server: %v", err)
+	}
 	closeAll := func() {
 		stack.Close()
 		closeSessions()

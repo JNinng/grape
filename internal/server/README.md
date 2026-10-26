@@ -4,7 +4,7 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
 
 ## 挂载与流向
 
-入参：`conf`（`http` / `grpc` 监听网络、地址与超时）、`service`（生成契约的服务实现与 Agent 手写端点）、`middleware`（链路与认证）、`ops`（`/metrics` 原始 Handler）、`web`（前端静态托管 Handler，由 [web](../../web/) 的嵌入产物构造）。出参：`*http.Server` / `*grpc.Server`（Kratos `transport.Server`），由 `cmd/server` 交给 `kratos.App` 随应用启停。
+入参：`conf`（`http` / `grpc` 监听网络、地址与超时；`http.cors` 跨域；`telemetry` 遥测开关）、`telemetry`（`*Setup` 时序锚点：保证 OTel 全局注入先于 otel 中间件构造）、`service`（生成契约的服务实现与 Agent 手写端点）、`middleware`（链路与认证）、`ops`（`/metrics` 原始 Handler）、`web`（前端静态托管 Handler，由 [web](../../web/) 的嵌入产物构造）。出参：`*http.Server` / `*grpc.Server`（Kratos `transport.Server`），由 `cmd/server` 交给 `kratos.App` 随应用启停。
 
 ```
 client
@@ -13,7 +13,7 @@ client
 listener（conf 的 network / addr / timeout；http.timeout 归零即传输层不限时）
   │
   ▼
-中间件链：recovery → 路由级超时（agent 前缀跳过）→ trace → auth
+中间件链：recovery → CORS（可选，预检在此短路）→ 路由级超时（agent 前缀跳过）→ trace → otel（telemetry.enabled 时产生 server span）→ auth
   │
   ▼
 生成代码 handler（api/... 的 Register 函数）＋ Agent 手写路由（/agui 前缀）
@@ -34,11 +34,14 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 
 静态托管与免认证的取舍：gorilla/mux 按注册顺序匹配，SPA 兜底必须最后注册（语义即「其余路由全部未命中」）；静态内容（登录页壳、assets）本身无需身份，鉴权发生在 API 调用上，故与 `/metrics` 同类走 `srv.HandlePrefix` 链外直挂，不经认证链，也不需要维护免认证路径名单。handler 内部对保留前缀（`/v1`、`/metrics`、agent 前缀，见 `ReservedAPIPrefixes`，按边界匹配）返回 404，保证 API 路径绝不落入 SPA fallback。
 
+遥测与跨域：`telemetry.enabled` 时 [kratos contrib otel](https://github.com/go-kratos/kratos) 的 `tracing.Server()` 入链（链路中间件之内、认证之外——不可信 `traceparent` 已被链路中间件剥除，otel 的 Extract 以其注入的 SpanContext 为父，可信网络 fail-closed 信任模型不被绕过），HTTP 与 gRPC 同链，agent 前缀手写路由经 `ctx.Middleware` 入链同被 span 覆盖；SDK 生命周期归 [../telemetry/](../telemetry/)。`http.cors.enabled` 时 CORS 中间件入链（预检短路、`Access-Control-Expose-Headers` 必含 `x-trace-id`）并经 `http.MethodNotAllowedHandler` 兜底生成代码路由的预检（OPTIONS 方法不匹配在 gorilla/mux 层即 405、进不了链），机制见 [../middleware/README.md](../middleware/README.md)。
+
+
 ## 关键文件导览
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [http.go](http.go) | `NewHTTPServer`：按 `conf.Server.Http` 设置 network / addr / timeout 并关闭 StrictSlash，装配 `recovery → 路由级超时 → trace → auth` 链，经 `srv.Handle` 直挂 `/metrics`，注册 user / session 的生成 HTTP 路由，挂载 Agent 手写路由（会话列表精确路径先于 AG-UI 前缀通配注册，gorilla/mux 按注册顺序匹配），最后 `srv.HandlePrefix("/")` 挂载前端静态托管（SPA fallback）。 |
+| [http.go](http.go) | `NewHTTPServer`：按 `conf.Server.Http` 设置 network / addr / timeout 并关闭 StrictSlash，装配 `recovery → CORS（可选）→ 路由级超时 → trace → otel（telemetry.enabled 时）→ auth` 链，CORS 启用时经 405 兜底生成路由预检、配置错误装配期拒绝启动；经 `srv.Handle` 直挂 `/metrics`，注册 user / session 的生成 HTTP 路由，挂载 Agent 手写路由（会话列表精确路径先于 AG-UI 前缀通配注册，gorilla/mux 按注册顺序匹配），最后 `srv.HandlePrefix("/")` 挂载前端静态托管（SPA fallback）。 |
 | [web.go](web.go) | `NewWebHandler` / `webFileHandler`：嵌入 dist 的静态托管——assets 直出（immutable 长缓存）、未命中回退 `index.html`（no-cache）、保留 API 前缀按边界匹配返回 404、非 GET/HEAD 返回 405；`ReservedAPIPrefixes` 给出保留名单。 |
 | [timeout.go](timeout.go) | `NewRouteTimeoutMiddleware`：路由级请求超时中间件，按 `request_timeout` 恢复普通路由限时，agent 前缀（SSE 长流）跳过；`server.http.timeout` 归零后的 SSE 治理配套。 |
 | [grpc.go](grpc.go) | `NewGRPCServer`：按 `conf.Server.Grpc` 构造 gRPC 服务器，装配 `recovery → trace → auth` 链，注册 user / session 的生成 gRPC 服务；不挂运维出口，gRPC 无 SSE 不涉超时治理。 |
@@ -48,14 +51,19 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 | [agent_sessions_route_test.go](agent_sessions_route_test.go) | 守卫 agent 会话列表端点：无令牌 401、只返回调用者 userKey 名下会话（跨用户不可见）、分页边界与非法参数 400、精确路径先于 agent 前缀通配的注册顺序。 |
 | [web_route_test.go](web_route_test.go) | 守卫静态托管语义：SPA 路由刷新不 404、未知 API 路径（含方法失配）不回页面壳、`/metrics` 与 `/agui/*` 不被静态吞、无令牌 API 仍 401、assets 缓存头、占位产物可服务。 |
 
+| [telemetry_route_test.go](telemetry_route_test.go) | 守卫 OTel 接入：enabled 时经内存导出器断言 agent 路由产生并导出 server span。 |
+| [cors_route_test.go](cors_route_test.go) | 守卫 CORS 挂载行为：agent 路由预检链内短路（204 + 回显 + Max-Age）、生成路由预检经 405 兜底、白名单外来源不带 Allow-Origin、关闭时零 CORS 头、配置缺白名单装配期拒绝。 |
+| [sse_trace_test.go](sse_trace_test.go) | 守卫 SSE 分片阶段 `x-trace-id` 中途可见（门控模型 + 原子首次写标志，无数据竞争）。 |
+
+
 ## 接入要点
 
 - 新增服务：在 [http.go](http.go) 与 [grpc.go](grpc.go) 中分别调用生成的 `Register<X>ServiceHTTPServer` / `Register<X>ServiceServer`，并把 `*service.<X>Service` 加入两个构造函数入参，随后 `make generate` 刷新 Wire。
-- 中间件链只在本目录装配（当前 `recovery → 路由级超时 → trace → auth`）；新增中间件在此插入，不在 `service` 内另行包装。
+- 中间件链只在本目录装配（当前 `recovery → CORS（可选）→ 路由级超时 → trace → otel（可选）→ auth`）；新增中间件在此插入，不在 `service` 内另行包装。otel 中间件必须排在链路中间件之内（信任模型），认证之外（401 也应有 span）。
 - 运维 / 探针 Handler 由 `ops` 构造后经 `srv.Handle` 直挂：原生 `net/http.Handler`，位于业务链外、免认证；不要用它挂业务端点。
 - 前端静态托管是链外直挂的另一既有实例（`NewWebHandler`）：构建产物更新走 `make web` 后重新编译，路由与缓存语义改在 [web.go](web.go)；新增保留前缀（如未来非 `/v1` 的契约前缀）加进 `ReservedAPIPrefixes`。
 - 业务手写端点（上传下载、SSE、WebSocket 等）归 `service/<资源>_http.go`，须用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware` 入链；归属、注册方式与中间件链要求见 [../README.md](../README.md) 的「手写端点归属」，此处不复述。Agent 手写路由（AG-UI / ack）由 [../service/agent_http.go](../service/agent_http.go) 提供注册方法，agent 会话列表由 [../service/agent_sessions.go](../service/agent_sessions.go) 提供（须先于前者注册），[http.go](http.go) 只调用。
 
 ## 测试
 
-现有覆盖：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；Agent 手写路由的入链语义（无令牌 401、SSE 长流跨超时点、trace-id 回传、echo 工具端到端）；agent 会话列表端点的认证与归属边界（无令牌 401、跨用户不可见、分页边界）；前端静态托管的挂载与回退语义（SPA 刷新不 404、API 前缀优先、免认证、占位产物）。
+现有覆盖：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；Agent 手写路由的入链语义（无令牌 401、SSE 长流跨超时点、trace-id 回传与分片阶段中途可见、echo 工具端到端）；agent 会话列表端点的认证与归属边界（无令牌 401、跨用户不可见、分页边界）；前端静态托管的挂载与回退语义（SPA 刷新不 404、API 前缀优先、免认证、占位产物）；OTel 接入（内存导出器断言 span 导出）；CORS 挂载（预检短路/兜底、白名单、关闭零头、装配期校验）。

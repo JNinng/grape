@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"grape/internal/conf"
+	"grape/pkg/redact"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -91,7 +92,8 @@ func newData(slot *conf.Data_Database_Slot) (*Data, func(), error) {
 
 // parseSlot 把单一槽位解析为连接池配置：source 必填（空串会被 pgx 视为
 // 未设置而回落默认连接目标，须显式拒绝）、DSN 非法即报错；debug 开启时
-// 挂 queryTracer。不触库、不建池，装配期校验与建池共用，可独立单测。
+// 挂 queryTracer（脱敏注册表随 tracer 注入）。不触库、不建池，装配期
+// 校验与建池共用，可独立单测。
 func parseSlot(slot *conf.Data_Database_Slot) (*pgxpool.Config, error) {
 	if slot.GetSource() == "" {
 		return nil, errors.New("source is empty")
@@ -101,38 +103,113 @@ func parseSlot(slot *conf.Data_Database_Slot) (*pgxpool.Config, error) {
 		return nil, err
 	}
 	if slot.GetDebug() {
-		cfg.ConnConfig.Tracer = &queryTracer{logger: slog.Default()}
+		cfg.ConnConfig.Tracer = &queryTracer{logger: slog.Default(), registry: redact.NewStandardRegistry()}
 	}
 	return cfg, nil
 }
 
 // queryTracer 逐条记录执行的语句与参数。仅开发便利，
-// 经 data.database.<槽位>.debug 开启。
+// 经 data.database.<槽位>.debug 开启；参数脱敏经 pkg/redact 注册表
+// （TODO E1：与审计表、复现视图共用同一脱敏器）。
 type queryTracer struct {
-	logger *slog.Logger
+	logger   *slog.Logger
+	registry *redact.Registry
 }
 
 func (t *queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	t.logger.DebugContext(ctx, "sql query", "sql", data.SQL, "args", redactArgs(data.SQL, data.Args))
+	t.logger.DebugContext(ctx, "sql query", "sql", data.SQL, "args", redactArgs(t.registry, data.SQL, data.Args))
 	return ctx
 }
 
 func (t *queryTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
-// redactArgs 对 set_config 注入的令牌哈希做脱敏：app.session_* 的值是
-// 凭据（令牌哈希），debug 日志也不落盘。GUC 名与值成对出现在
-// set_config($1, $2, true) 的前两个参数；租户注入
-// set_config('app.tenant_id', $1, true) 的名字在 SQL 文本里，租户 ID
-// 非凭据，保留可见。
-func redactArgs(sql string, args []any) []any {
-	if len(args) < 2 || !strings.Contains(sql, "set_config") {
+// redactArgs 对 debug 日志的语句参数做脱敏，两类面：
+//
+//   - set_config 注入的会话令牌哈希：app.session_* 的名字/值成对出现在
+//     前两个参数，值按 token 类别脱敏；租户注入 set_config('app.tenant_id',
+//     ...) 的名字在 SQL 文本里，租户 ID 非凭据，保留可见。
+//   - 凭据哈希语句（SQL 文本涉及 password_hash / token_hash 列）中的字符串
+//     参数按值形态判定：sha256 十六进制（64 位）是令牌哈希，argon2/bcrypt
+//     前缀是口令哈希，分别按 token / password 类别脱敏。按形态而非参数
+//     位序判定，避免解析 SQL；误伤面收敛于「凭据哈希才会长成的样子」，
+//     租户 ID（t-*）与数值参数不受影响。未脱敏的参数原样透传。
+func redactArgs(r *redact.Registry, sql string, args []any) []any {
+	if len(args) >= 2 && strings.Contains(sql, "set_config") {
+		if name, ok := args[0].(string); ok && strings.HasPrefix(name, "app.session_") {
+			out := slices.Clone(args)
+			if v, ok := out[1].(string); ok {
+				out[1], _ = r.Redact(redact.CategoryToken, v)
+			} else {
+				out[1] = "[redacted]"
+			}
+			return out
+		}
+	}
+	if !credentialStatement(sql) {
 		return args
 	}
-	name, ok := args[0].(string)
-	if !ok || !strings.HasPrefix(name, "app.session_") {
+	var out []any
+	for i, a := range args {
+		s, ok := a.(string)
+		if !ok {
+			continue
+		}
+		category := credentialValueCategory(s)
+		if category == "" {
+			continue
+		}
+		if out == nil {
+			out = slices.Clone(args)
+		}
+		out[i], _ = r.Redact(category, s)
+	}
+	if out == nil {
 		return args
 	}
-	redacted := slices.Clone(args)
-	redacted[1] = "[redacted]"
-	return redacted
+	return out
+}
+
+// credentialStatement 判定语句是否触达凭据哈希列（列名出现在 SET、
+// WHERE、INSERT 列清单等任意位置，按子串匹配即可）。
+func credentialStatement(sql string) bool {
+	return strings.Contains(sql, "password_hash") || strings.Contains(sql, "token_hash")
+}
+
+// credentialValueCategory 按字符串形态归类凭据：sha256 十六进制（令牌
+// 哈希，见 biz 会话令牌的哈希纪律）归 token，argon2/bcrypt 编码前缀
+// （口令哈希）归 password，其余返回空串（非凭据）。
+func credentialValueCategory(s string) string {
+	if sha256HexShape(s) {
+		return redact.CategoryToken
+	}
+	if strings.HasPrefix(s, "$argon2id$") || strings.HasPrefix(s, "$argon2i$") ||
+		strings.HasPrefix(s, "$argon2d$") || bcryptShape(s) {
+		return redact.CategoryPassword
+	}
+	return ""
+}
+
+// sha256HexShape 判定 64 位小写十六进制（sha256 摘要形态）。
+func sha256HexShape(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// bcryptShape 判定 bcrypt 编码前缀（$2a/$2b/$2x/$2y）。
+func bcryptShape(s string) bool {
+	if len(s) < 4 || s[0] != '$' || s[1] != '2' || s[3] != '$' {
+		return false
+	}
+	switch s[2] {
+	case 'a', 'b', 'x', 'y':
+		return true
+	}
+	return false
 }

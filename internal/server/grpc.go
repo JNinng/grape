@@ -6,20 +6,28 @@ import (
 	"grape/internal/conf"
 	entrymw "grape/internal/middleware"
 	"grape/internal/service"
+	"grape/internal/telemetry"
 
+	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3/middleware"
 	"github.com/go-kratos/kratos/v3/middleware/recovery"
 	"github.com/go-kratos/kratos/v3/transport/grpc"
 )
 
-// NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。
-func NewGRPCServer(c *conf.Server, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
+// NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
+// 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
+// server span。
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, session *service.SessionService) *grpc.Server {
+	mws := []middleware.Middleware{
+		recovery.Recovery(),
+		middleware.Middleware(traceMiddleware),
+	}
+	if tele.Enabled() {
+		mws = append(mws, tracing.Server())
+	}
+	mws = append(mws, authMiddleware)
 	var opts = []grpc.ServerOption{
-		grpc.Middleware(
-			recovery.Recovery(),
-			middleware.Middleware(traceMiddleware),
-			authMiddleware,
-		),
+		grpc.Middleware(mws...),
 	}
 	if c.Grpc.Network != "" {
 		opts = append(opts, grpc.Network(c.Grpc.Network))

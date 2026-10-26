@@ -10,6 +10,8 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 - 身份与租户：AG-UI 的 UserIDResolver 与 ack 的 WithUserFunc 都从认证 ctx（`biz.IdentityFromContext`）取身份并经 `EncodeUserKey` 编码为 `tenant_id:user_id`；身份缺失一律 fail-closed，禁止回落框架默认用户 `"user"`。
 - 会话能力（B2）：/history 快照与 tail follow 开启（AG-UI track 事件持久化进 `agent.agent_session_track_events`）、cancel 生效；TTL 经 conf `agent.session_storage` 注入框架（0 值语义见 conf.proto 注释；track TTL 仅在正值时传入——框架对显式 0 的解释是禁用过期而非沿用 session TTL）。grape 不用 app 级 state 存租户业务数据。
 - 上下文压缩（B2）：conf `agent.compression` 翻译为 LLMAgent 同名选项（总开关关闭时不改写任何工具结果）；压缩只作用于请求投影副本，session 事件流保留原文，占位符携带 event_id 恢复引用。LLMAgent 恒开 `WithEnableOnDemandSession`，session_load 经框架 WindowService（session/postgres 已实现）取回原文片段。会话摘要仅留配置位 `agent.summarization`（当前恒关闭，未实现）。
+- 观测面：ack 网关经 `ack.WithLogger` 桥 grape logger（本层装配）；trpc-agent-go 全框架日志门面与 LLM/工具 span 的 Tracer 桥接归 [../telemetry/](../telemetry/)（进程级全局桥接 + trace_id 注入与局限声明），不在本层重复装配。
+
 
 ## 关键文件导览
 
@@ -20,8 +22,9 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 | [userkey.go](userkey.go) | userKey（`tenant_id:user_id`）编解码单一代码点：会话归属、许可归属与后续审计共用；缺租户/非正数用户拒绝。 |
 | [llm.go](llm.go) | OpenAI 兼容 provider 构造（TODO 决策 5）：provider 名映射框架变体，base_url 留空走框架内置默认端点，超时落 HTTP client。 |
 | [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册；C1 起业务工具经 biz 用例接入，不在本层堆积。 |
-| [gateway.go](gateway.go) | ack 许可网关骨架：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码；grants/policy 为 no-op 空实现（C1/C2 填充分级表、许可存储与策略源）。 |
+| [gateway.go](gateway.go) | ack 许可网关骨架：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码，日志经 WithLogger 落 grape logger（ack 日志 API 无 ctx，不带 trace_id——全框架日志桥接见 [../telemetry/README.md](../telemetry/README.md)）；grants/policy 为 no-op 空实现（C1/C2 填充分级表、许可存储与策略源）。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：`NewStack`（cleanup 释放 runner）、`NewSessionService`（框架 session/postgres：schema agent + agent_ 表前缀 + SkipDBInit，TTL 按 conf 注入，连接复用 master DSN——框架强制自建池）、`NewMemorySessionService`（单测/本地体验用进程内实现）。 |
+
 
 ## 与其他层的关系
 

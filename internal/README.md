@@ -10,6 +10,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 | server | HTTP / gRPC 构建与挂载 | [server/README.md](server/README.md) |
 | middleware | 入口中间件 | [middleware/README.md](middleware/README.md) |
 | ops | 运维出口 | [ops/README.md](ops/README.md) |
+| telemetry | 观测装配（OTel SDK 与框架桥接） | [telemetry/README.md](telemetry/README.md) |
 | service | 传输适配 | [service/README.md](service/README.md) |
 | agent | Agent 框架适配层 | [agent/README.md](agent/README.md) |
 | task | 异步任务入口 | [task/README.md](task/README.md) |
@@ -20,7 +21,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 
 ## 分层与数据流向
 
-service 与 task 是两类业务入口，各自自上而下单向流动，越往下越贴近存储。`middleware` 与 `ops` 挂在入口侧但不承载业务数据流：`middleware` 在身份成立前放行/拒绝并注入链路事实，`ops` 输出运维只读指标。`agent` 是框架适配层，平行于 service 挂在入口侧：构造 trpc-agent-go / ack 的模型、runner、AG-UI handler 与许可网关，经 service 的手写端点入 Kratos 链，不承载 DTO ↔ DO 数据流。
+service 与 task 是两类业务入口，各自自上而下单向流动，越往下越贴近存储。`middleware` 与 `ops` 挂在入口侧但不承载业务数据流：`middleware` 在身份成立前放行/拒绝并注入链路事实，`ops` 输出运维只读指标。`telemetry` 是观测装配层，同样不承载业务数据流：OTel TracerProvider 生命周期与 trpc-agent-go 日志/Tracer 桥接只在这里落子（开关语义与桥接局限见 [telemetry/README.md](telemetry/README.md)）。`agent` 是框架适配层，平行于 service 挂在入口侧：构造 trpc-agent-go / ack 的模型、runner、AG-UI handler 与许可网关，经 service 的手写端点入 Kratos 链，不承载 DTO ↔ DO 数据流。
 
 service 入口（HTTP / gRPC）：
 
@@ -82,7 +83,7 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`；agent 会话列表端点在 C1 并行窗口内额外导入框架 `session` 包与 `conf`（受控例外，C1 并入后收进 `internal/agent` 归还边界））；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops` / `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`；agent 会话列表端点在 C1 并行窗口内额外导入框架 `session` 包与 `conf`（受控例外，C1 并入后收进 `internal/agent` 归还边界））；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`telemetry` 只导入 `conf`、otel SDK 与 trpc-agent-go 的观测门面（`log` / `telemetry/trace`，仅桥接赋值，不装配框架对象）；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）、`middleware` / `ops` / `telemetry`（otel 中间件开关的时序锚点）与 `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；`pkg/` 与 internal 各层解耦，仅 `pkg/redact`（脱敏单一代码点）被 `data` 的 debug tracer 消费，审计表（E2）与复现视图（A3）沿用同一注册表；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 手写端点归属
@@ -112,8 +113,9 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 - `task`：任务构造函数（依赖用例）；
 - `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
 - `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
+- `telemetry`：`NewSetup`（OTel SDK 生命周期与框架观测面桥接，返回 `*Setup` 依赖锚点——server 持它保证全局注入先于 otel 中间件构造，cleanup 随应用停机 Shutdown）；
 - `agent`：`NewStack`（Agent 框架骨架，cleanup 释放 runner）、`NewSessionService`（Agent 会话存储，框架 session/postgres：schema agent + agent_ 表前缀，部署面预建表，运行期不做 DDL；TTL 与压缩经 conf Agent 段注入。会话表无 RLS、不存租户业务数据，属文档化「设施面」例外，userKey = tenant_id:user_id 应用层隔离）与 `NewVectorStore`（biz 向量契约的框架适配器，经 Stack 进入骨架）；
-- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`（前端静态托管 Handler，产物来自根目录 `web/` 的 `go:embed` 导出），是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由 + SPA 静态兜底）。
+- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`（前端静态托管 Handler，产物来自根目录 `web/` 的 `go:embed` 导出），是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由 + SPA 静态兜底）；HTTP 链为 `recovery → CORS（可选）→ 路由级超时 → trace → otel（telemetry.enabled 时）→ auth`，gRPC 为 `recovery → trace → otel（同上）→ auth`。
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
 
@@ -144,6 +146,6 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 ## 测试
 
-测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖见各目录 README 的「测试」一节：[biz](biz/README.md)、[service](service/README.md)、[task](task/README.md)、[middleware](middleware/README.md)、[ops](ops/README.md)、[server](server/README.md)、[data](data/README.md)，以及 [pkg](../pkg/README.md) 与 [encoding/jsoncodec](encoding/jsoncodec/README.md)。
+测试文件与被测代码同目录（`*_test.go`），按层隔离。现有覆盖见各目录 README 的「测试」一节：[biz](biz/README.md)、[service](service/README.md)、[task](task/README.md)、[middleware](middleware/README.md)、[ops](ops/README.md)、[telemetry](telemetry/README.md)、[server](server/README.md)、[data](data/README.md)，以及 [pkg](../pkg/README.md) 与 [encoding/jsoncodec](encoding/jsoncodec/README.md)。
 
 新增测试沿用分层职责：`service` 用假仓储隔离传输适配，`biz` mock 仓储接口只验证用例逻辑，`data` 以真实 PostgreSQL 集成测试验证存储边界（自建临时库、按 `deploy_db.md` 顺序装载 SQL、以 `grape_u` 运行角色断言语义）。
