@@ -31,21 +31,28 @@ func TestValidateDeployFiles_reports_missing_file(t *testing.T) {
 	}
 }
 
-func TestValidateDeployFiles_rejects_transaction_breaking_statement(t *testing.T) {
-	dir := t.TempDir()
+// writeManifest 把清单文件全部写入 dir（内容为无害占位语句），
+// infected 文件的内容替换为给定语句。
+func writeManifest(t *testing.T, dir, infected, content string) {
+	t.Helper()
 	for _, name := range pg_sqlc.DeployFiles {
-		content := "-- ok\nSELECT 1;\n"
-		if name == "rls.sql" {
-			content = "CREATE INDEX CONCURRENTLY idx ON public.t (col);\n"
+		body := "-- ok\nSELECT 1;\n"
+		if name == infected {
+			body = content
 		}
 		path := filepath.Join(dir, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatalf("setup: %v", err)
 		}
 	}
+}
+
+func TestValidateDeployFiles_rejects_concurrently_statement(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, "rls.sql", "CREATE INDEX CONCURRENTLY idx ON public.t (col);\n")
 	err := pg_sqlc.ValidateDeployFiles(dir)
 	if err == nil {
 		t.Fatal("CONCURRENTLY in a manifest file must be rejected")
@@ -53,22 +60,12 @@ func TestValidateDeployFiles_rejects_transaction_breaking_statement(t *testing.T
 	if !strings.Contains(err.Error(), "rls.sql") {
 		t.Fatalf("error %q must name the offending file rls.sql", err.Error())
 	}
+}
 
-	dir2 := t.TempDir()
-	for _, name := range pg_sqlc.DeployFiles {
-		content := "-- ok\nSELECT 1;\n"
-		if name == "role.sql" {
-			content = "CREATE DATABASE foo;\n"
-		}
-		path := filepath.Join(dir2, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-			t.Fatalf("setup: %v", err)
-		}
-	}
-	err = pg_sqlc.ValidateDeployFiles(dir2)
+func TestValidateDeployFiles_rejects_create_database_statement(t *testing.T) {
+	dir := t.TempDir()
+	writeManifest(t, dir, "role.sql", "CREATE DATABASE foo;\n")
+	err := pg_sqlc.ValidateDeployFiles(dir)
 	if err == nil {
 		t.Fatal("CREATE DATABASE in a manifest file must be rejected")
 	}
