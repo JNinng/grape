@@ -81,12 +81,11 @@ CREATE INDEX agent_document_tenant_created_idx
     ON agent.agent_document USING btree (tenant_id, created_at);
 
 -- 运行角色授权（grape_u/test_u 由 role.sql 创建，故本文件排在其后）：
--- agent schema 使用权与表 DML。默认权限覆盖部署方后续在 agent schema
--- 内补建的表（与 role.sql 对 public 的处理同风格）。
+-- agent schema 使用权与向量表 DML。授权收窄到本文件自建的表，不用
+-- ALL TABLES/默认权限覆盖整个 schema——agent schema 还承载框架会话
+-- 表（agent_session.sql），其授权面由该文件单独声明，不得被顺带放宽。
 GRANT USAGE ON SCHEMA agent TO grape_u, test_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA agent TO grape_u, test_u;
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA agent
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO grape_u, test_u;
+GRANT SELECT, INSERT, UPDATE, DELETE ON agent.agent_document TO grape_u, test_u;
 
 -- ============================================================
 -- 可选加强（默认不启用，不作为验收前提）：若需数据库层兜底租户边界
