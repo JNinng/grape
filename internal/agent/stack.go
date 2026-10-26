@@ -69,11 +69,14 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // 持引用只为 Close 释放框架资源。vectors 是框架向量存储适配器（决策 6
 // 的强制应用层适配器），装配即实例化——数据侧的启动维度探针随装配
 // 生效，维度配置错误在此失败；检索工具（D2）从本字段取用，不另行构造。
+// sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
+// 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。
 type Stack struct {
 	handler  nethttp.Handler
 	runner   runner.Runner
 	basePath string
 	vectors  vectorstore.VectorStore
+	sessions *sessionList
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -188,6 +191,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		runner:   coreRunner,
 		basePath: base,
 		vectors:  vectors,
+		sessions: newSessionList(sessions, c.GetAppName()),
 	}, nil
 }
 
@@ -212,6 +216,13 @@ func (s *Stack) Vectors() vectorstore.VectorStore { return s.vectors }
 // BasePath 返回归一化后的 AG-UI 路由前缀。挂载方（service 注册路由、
 // server 路由级超时的跳过名单）都以它为准，不自行推导。
 func (s *Stack) BasePath() string { return s.basePath }
+
+// SessionsHandler 返回 agent 会话列表端点（GET {BasePath}/sessions）的
+// HTTP 形态：与 AG-UI / ack 同一 session.Service 实例、同一 app 名命名
+// 空间、同一 userKey 编码。handler 要求请求 ctx 已由认证中间件注入身份
+// （userKeyFromContext 解析，缺失 fail-closed 401）；路由注册与入链归
+// service，且必须先于 agent 前缀通配（见 server.NewHTTPServer）。
+func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
 
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的
