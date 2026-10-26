@@ -82,7 +82,7 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`，例外仅此一处）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops`；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`，例外仅此一处）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）与 `middleware` / `ops` / `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 只导入 `conf` 与 `biz`（读认证身份）及框架包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 手写端点归属
@@ -93,6 +93,9 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 | ---- | -------- | ---- | -------- | -------- |
 | 运维 / 探针 | `/metrics`（现有）；`/healthz`、`/readyz`、`/debug/pprof` 同类新增 | `ops` | `srv.Handle`（原生 `net/http.Handler`） | 链外、免认证、只读 |
 | 业务手写 | 文件上传下载、SSE、WebSocket | `service/<资源>_http.go` | `srv.Route` + handler 内 `ctx.Middleware` | 入链、认证生效 |
+| 前端静态托管 | SPA 页面壳与 assets（`/` 兜底） | `server/web.go`（挂载）＋根目录 `web/`（产物与 embed 导出） | `srv.HandlePrefix("/")` 直挂、最后注册 | 链外、免认证；保留 API 前缀（`/v1`、`/metrics`、agent 前缀）内 404 不回页面壳 |
+
+静态托管免认证的口径：页面壳与 assets 本身不含身份事实（登录页即页面壳），鉴权发生在 API 调用上，故与 `/metrics` 同类走链外直挂，不进认证中间件的免认证名单（该名单只作用于链内操作名）。
 
 Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv.Handle` 的原生 Handler 拿不到 `http.Context`；`srv.Route` 中漏调 `ctx.Middleware` 则静默绕过认证。业务手写端点必须调用它，并用「无令牌 401」的测试守住。
 
@@ -110,7 +113,7 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 - `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
 - `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
 - `agent`：`NewStack`（Agent 框架骨架，cleanup 释放 runner）与 `NewSessionService`（会话存储接口占位实现）；
-- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware`，是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由）。
+- `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`（前端静态托管 Handler，产物来自根目录 `web/` 的 `go:embed` 导出），是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由 + SPA 静态兜底）。
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。
 

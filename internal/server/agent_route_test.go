@@ -16,6 +16,7 @@ import (
 	entrymw "grape/internal/middleware"
 	"grape/internal/ops"
 	"grape/internal/service"
+	"grape/web"
 
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 	"github.com/jninng/trpc_agent_go_ack/acktest"
@@ -77,7 +78,10 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	srv := NewHTTPServer(confServer, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService)
+		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
+		// 静态托管一并挂载：守卫「agent 路由先于 SPA fallback」的注册
+		// 顺序语义（/agui/* 绝不被静态吞）。
+		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
 	closeAll := func() {
 		stack.Close()
 		closeSessions()
