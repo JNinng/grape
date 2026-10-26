@@ -262,6 +262,11 @@ func TestConfirmLive_when_approved_run_continues_and_tool_executes(t *testing.T)
 	if !hasType(types, "TOOL_CALL_RESULT") || !hasType(types, "RUN_FINISHED") {
 		t.Fatalf("run did not finish with tool result, types: %v", types)
 	}
+	// 确认卡事件本体：ack 以 tool_confirmation 自定义事件推流（前端渲染
+	// 与 track 持久化的同一载体）。
+	if !strings.Contains(body, "tool_confirmation") {
+		t.Fatalf("tool_confirmation custom event missing from stream:\n%s", body)
+	}
 	if !strings.Contains(body, "nickname updated") {
 		t.Fatalf("final assistant text missing from stream:\n%s", body)
 	}
