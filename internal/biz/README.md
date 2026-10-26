@@ -42,7 +42,8 @@
 | [identity.go](identity.go)        | 服务端身份事实 `Identity`（TenantID + UserID）与私有 ctx 键；`WithIdentity` 仅供认证中间件注入，`IdentityFromContext` 缺失时由调用方按未认证 fail-closed 处理。                                                           |
 | [maintenance.go](maintenance.go)  | 设施无关契约：诊断面 `FacilityDiagnostics` 与 `MetricSample` / `MetricType`，维护面 `FacilityMaintenance` 与 `MaintenanceAction` / `MaintenanceReport`；ops 指标出口与 task 维护循环只认契约，不读原始实现。             |
 | [vectorstore.go](vectorstore.go)   | 向量存储设施契约 `VectorStore`（框架无关形状，决策 6 的强制隔离点）：`VectorDocument` / `VectorFilter` / `ScoredVectorDocument` 与 Add/Get/Update/Delete/Search/DeleteByFilter/Count/GetMetadata；身份不进契约参数，实现必须从认证 ctx 提取并强制租户过滤；`ErrVectorStoreDisabled` / `ErrVectorDocNotFound` 类型化错误。 |
-| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`。                                                                                                                                       |
+| [audit.go](audit.go)               | Agent 业务审计（TODO E2）：工具调用/授权确认的记录入参与完整行 DO、`AuditRepo` 契约（Append/List/Get/组合批量）与 `AuditUsecase`（入参校验、身份与 trace_id 从认证 ctx 提取、参数/结果摘要按 `pkg/redact` 的 tool_param/retrieval 类别脱敏——类别未登记放行原值但保留 4096 rune 截断兜底）；`ErrAuditInvalidArgument` / `ErrAuditNotFound`。 |
+| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewRedactRegistry`（审计表与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
 
 ## 关键约束
 
@@ -57,4 +58,4 @@
 
 ## 测试
 
-现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举。
+现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发。

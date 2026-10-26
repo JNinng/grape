@@ -161,7 +161,7 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	srv, err := NewHTTPServer(confServer, tele, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService, nil, nil)
+		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

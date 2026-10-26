@@ -29,6 +29,7 @@ sql:
       - "schema/70_audit.sql"
       - "schema/80_session.sql"
       - "schema/90_config.sql"
+      - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
@@ -38,6 +39,7 @@ sql:
       - "queries/perm.sql"
       - "queries/sys_user.sql"
       - "queries/sys_session.sql"
+      - "queries/agent_audit.sql"
     gen:
       go:
         package: "gen"
@@ -59,6 +61,7 @@ sql:
       - "schema/70_audit.sql"
       - "schema/80_session.sql"
       - "schema/90_config.sql"
+      - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"
       - "expose.sql"
@@ -68,6 +71,7 @@ sql:
       - "queries/perm.sql"
       - "queries/sys_user.sql"
       - "queries/sys_session.sql"
+      - "queries/agent_audit.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

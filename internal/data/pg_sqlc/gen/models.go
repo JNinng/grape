@@ -8,6 +8,74 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// 授权确认审计表：记录 ack 工具确认的人工决定（仅终态，一确认一行），append-only 不可变更
+type AgentConfirmationLog struct {
+	// 日志 ID，自增序列
+	ID int64 `db:"id" json:"id"`
+	// 租户 ID，取写入事务的 app.tenant_id
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 确认所属会话的发起用户 ID（认证身份）
+	UserID int64 `db:"user_id" json:"user_id"`
+	// 链路 ID：决定请求经链路中间件时从 SpanContext 取，无链路事实时为 NULL
+	TraceID *string `db:"trace_id" json:"trace_id"`
+	// 确认 ID（ack Payload 的 confirmationId，与工具调用 ID 同源），租户内唯一：一确认只有一次终态决定
+	ConfirmationID string `db:"confirmation_id" json:"confirmation_id"`
+	// 确认所属的 Agent 会话 ID
+	SessionID string `db:"session_id" json:"session_id"`
+	// 关联的工具调用 ID（ack Payload 的 toolCallId），按会话回放时与工具调用审计对账
+	ToolCallID *string `db:"tool_call_id" json:"tool_call_id"`
+	// 被确认的工具名
+	ToolName string `db:"tool_name" json:"tool_name"`
+	// 决定：approved-同意、denied-拒绝（pending 是决定前状态，不入审计）
+	Decision string `db:"decision" json:"decision"`
+	// 决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（拒绝时恒为 NULL）
+	Remember *string `db:"remember" json:"remember"`
+	// 决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑
+	Path string `db:"path" json:"path"`
+	// 决定人：ack 网关的身份字符串（userKey 编码，与 B2/A1 同一编码）
+	DecidedBy string `db:"decided_by" json:"decided_by"`
+	// 决定时间
+	DecidedAt pgtype.Timestamp `db:"decided_at" json:"decided_at"`
+	// 写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方）
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 写入时间
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+}
+
+// 工具调用审计表：记录 Agent 运行面每次工具调用的终态（一次调用一行，重试记最终态次数），append-only 不可变更
+type AgentToolCallLog struct {
+	// 日志 ID，自增序列
+	ID int64 `db:"id" json:"id"`
+	// 租户 ID，取写入事务的 app.tenant_id
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 发起运行的用户 ID（认证身份）
+	UserID int64 `db:"user_id" json:"user_id"`
+	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL
+	TraceID *string `db:"trace_id" json:"trace_id"`
+	// Agent 会话 ID（框架 session 键的会话段），按会话回放用
+	SessionID *string `db:"session_id" json:"session_id"`
+	// 工具调用 ID（模型生成的 function call ID），租户内唯一
+	ToolCallID string `db:"tool_call_id" json:"tool_call_id"`
+	// 工具名
+	ToolName string `db:"tool_name" json:"tool_name"`
+	// 参数摘要：落库前经 pkg/redact 的 tool_param 类别脱敏；应用层截断上限 4096 rune（列宽不设 CHECK，见本文件头注释）
+	ArgumentsSummary *string `db:"arguments_summary" json:"arguments_summary"`
+	// 结果摘要：落库前经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断），仓储层兜底截断上限同 arguments_summary
+	ResultSummary *string `db:"result_summary" json:"result_summary"`
+	// 重试次数：框架工具重试可采集时记实际值，不可采集时记 0（TODO E3 评估回调接线）
+	RetryCount int32 `db:"retry_count" json:"retry_count"`
+	// 单次工具调用耗时（毫秒，最终一次执行的耗时），未知为 NULL
+	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
+	// 调用终态：success-成功、error-失败
+	Status string `db:"status" json:"status"`
+	// 调用发生时间
+	CalledAt pgtype.Timestamp `db:"called_at" json:"called_at"`
+	// 写入者（认证用户，与 user_id 同值：审计行由该用户的运行产生）
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 写入时间
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+}
+
 // 基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type Basic struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
