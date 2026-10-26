@@ -15,10 +15,14 @@ import (
 // 顺序与仓库根 deploy_db.md 一致，两处禁止另行维护副本：
 //
 //	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql → seed.sql
+//	              → agent_vector.sql
 //
 // role.sql 建角色与授权（口令占位符见下方占位符常量），必须先于
 // rls.sql：后续 operate/expose 的函数授权语句依赖角色先行存在；
-// seed.sql 依赖 expose.sql 的范围版本表（角色映射写入要触发 bump）。
+// seed.sql 依赖 expose.sql 的范围版本表（角色映射写入要触发 bump）；
+// agent_vector.sql（向量设施，超级用户面）追加在尾部：只依赖 role.sql
+// 的角色存在（GRANT 引用 grape_u/test_u），无任何对象依赖它，且文件内
+// 建表/建索引为裸创建，放尾部对既有清单零扰动。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
 	"schema/20_tenant.sql",
@@ -34,6 +38,7 @@ var DeployFiles = []string{
 	"operate.sql",
 	"expose.sql",
 	"seed.sql",
+	"agent_vector.sql",
 }
 
 // role.sql 中的口令占位符：部署方（dbdeploy）在执行前对文件内容做

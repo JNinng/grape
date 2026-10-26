@@ -27,6 +27,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、30 条命名查询 |
 | 15 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 16 | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表、HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强） | 否 | 1 个扩展、1 个 schema、1 张表、2 个索引 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
@@ -40,16 +41,25 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署按固定顺序执行 14 个文件：`schema/10_basic.sql` →
+- 数据库部署按固定顺序执行 15 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
   `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
-  `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql`。单一事实源是
+  `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql` →
+  `agent_vector.sql`。单一事实源是
   `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
   与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
   授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
   表 owner 连接（超级用户绕过 RLS）。执行顺序的依赖细节、幂等边界与
   一键部署见仓库根 [deploy_db.md](../../../../deploy_db.md)。
+- **向量 SQL 不进 sqlc catalog**：agent_document 的存取 SQL 以手写
+  参数化常量落在 [../vector_repo.go](../vector_repo.go)，不经 sqlc 生成
+  ——pgvector 的类型与相似度算子超出 sqlc 的类型映射支持面（gen 包
+  无法建模 vector 列），且向量存取没有动态查询协议需求。该表也不进
+  @scope/RLS 体系：租户隔离由应用层适配器强制（每条 SQL 带租户过滤、
+  缺认证身份拒绝，TODO 决策 6），RLS 语句以注释形式附在 agent_vector.sql
+  供按需启用；跨租户管理操作（在线重建索引、全量清理）走显式 super
+  管理口径，不设普通入口。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
