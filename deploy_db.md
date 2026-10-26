@@ -47,12 +47,8 @@ cd internal/data/pg_sqlc/sqlc
 set -e
 for f in schema/10_basic.sql schema/20_tenant.sql schema/30_user.sql schema/40_rbac.sql \
          schema/50_dept.sql schema/60_dict.sql schema/70_audit.sql schema/80_session.sql \
-<<<<<<< HEAD
-         schema/90_config.sql role.sql rls.sql operate.sql expose.sql seed.sql agent_vector.sql; do
-=======
          schema/90_config.sql role.sql rls.sql operate.sql expose.sql seed.sql \
-         agent_session.sql; do
->>>>>>> feat/agent-b2
+         agent_session.sql agent_vector.sql; do
   psql -v ON_ERROR_STOP=1 -d <库名> -f "$f"
 done
 # role.sql 的口令占位符需在执行前自行替换，随后补 CONNECT 授权（见下节）
