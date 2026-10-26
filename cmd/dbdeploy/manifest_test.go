@@ -96,7 +96,7 @@ func TestDeployFiles_schema_order_numbers_are_consecutive(t *testing.T) {
 	}
 }
 
-func TestDeployFiles_role_precedes_rls_and_agent_session_is_last(t *testing.T) {
+func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing.T) {
 	index := map[string]int{}
 	for i, name := range pg_sqlc.DeployFiles {
 		if _, dup := index[name]; dup {
@@ -118,8 +118,6 @@ func TestDeployFiles_role_precedes_rls_and_agent_session_is_last(t *testing.T) {
 		}
 	}
 	// agent_session.sql 只依赖 role.sql 的 grape_u 存在，与 public 业务域
-	// 零耦合：排在尾部（seed.sql 之后），不挤动既有顺序。
-	if index["agent_session.sql"] != len(pg_sqlc.DeployFiles)-1 {
-		t.Fatalf("agent_session.sql must be the last file, got pos %d of %d", index["agent_session.sql"], len(pg_sqlc.DeployFiles))
-	}
+	// 零耦合：相对 seed.sql 在后即可。不锁「绝对最后」：并行流（如向量
+	// 域）追加的清单项可落在其后，避免尾部互斥。
 }

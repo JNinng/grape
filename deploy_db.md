@@ -55,7 +55,7 @@ done
 
 ## 幂等性与全量重建
 
-role.sql（角色判存 + 授权语句）与 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql)（语句均带 `ON CONFLICT DO NOTHING`，不覆盖已有行）可重复执行；其余各文件不保证可重复执行：步骤 1–9 的 `CREATE TABLE`/`CREATE INDEX`、[rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) 的 `CREATE POLICY`、rls/expose 的 `CREATE TRIGGER`、[agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) 的 `CREATE SCHEMA` 均为裸创建，重复执行直接报错（表/索引沿用框架基线的 `IF NOT EXISTS` 文本，但 schema 已存在时文件整体仍不可重复；函数为 `CREATE OR REPLACE`，可重复，但不足以让文件整体可重复）。全量重建先 DROP DATABASE，再从步骤 1 开始。
+role.sql（角色判存 + 授权语句）与 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql)（语句均带 `ON CONFLICT DO NOTHING`，不覆盖已有行）可重复执行；其余各文件不保证可重复执行：步骤 1–9 的 `CREATE TABLE`/`CREATE INDEX`、[rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) 的 `CREATE POLICY`、rls/expose 的 `CREATE TRIGGER` 均为裸创建，重复执行直接报错；agent 域两个文件（[agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) / agent_vector.sql）的 `CREATE SCHEMA IF NOT EXISTS` 与扩展安装幂等沿用、两文件先后顺序无关，但文件内的建表/建索引仍按结构 DDL 口径不保证可重复（函数为 `CREATE OR REPLACE`，可重复，但不足以让文件整体可重复）。全量重建先 DROP DATABASE，再从步骤 1 开始。
 
 ## 部署后授权
 

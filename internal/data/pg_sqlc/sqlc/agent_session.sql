@@ -15,8 +15,12 @@
 --
 -- 执行面与隔离模型：
 --   - 超级用户执行面（CREATE SCHEMA + 建表授权），进 DeployFiles
---     单事务清单；表结构为裸创建语义（CREATE SCHEMA 重复执行报错），
---     表/索引沿用框架基线的 IF NOT EXISTS 文本以便 diff 对照。
+--     单事务清单。幂等边界与向量文件（agent_vector.sql）同口径：
+--     CREATE SCHEMA IF NOT EXISTS 幂等沿用，与本域另一建表文件谁先
+--     执行无关、不因顺序互斥；表/索引沿用框架基线的 IF NOT EXISTS
+--     文本以便 diff 对照，重复执行不报错、但也不修正已存在的结构，
+--     框架升级的结构变更须按头注义务出迁移脚本，本文件只描述全新
+--     部署的终态。
 --   - 不加入 sqlc.yaml 输入：这是框架自管表，grape 侧无仓储与命名
 --     查询（应用经 session.Service 接口读写）。
 --   - 设施面例外（TODO 决策 1）：框架表无 RLS、无租户列，租户隔离
@@ -27,7 +31,10 @@
 --     一致）。
 -- ============================================================
 
-CREATE SCHEMA agent;
+-- agent schema 是 agent 域设施的独立命名空间（向量检索表亦落此处）。
+-- IF NOT EXISTS：schema 已存在即幂等沿用，本文件与 agent_vector.sql
+-- 谁先执行无关；幂等边界仅及于此。
+CREATE SCHEMA IF NOT EXISTS agent;
 
 -- agent.agent_session_states — 会话元数据与状态
 -- ack 的未决确认指针（pending map）持久化在 state JSONB 内。
