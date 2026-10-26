@@ -161,6 +161,10 @@ func (uc *GrantUsecase) ListTenant(ctx context.Context, auth Identity) ([]*ToolG
 // 目标不可见（跨租户）等同不存在返回 ErrGrantNotFound——先取行判归属
 // 再走对应仓储原语；并发下授权恰已被吊销时仓储以 0 行落
 // ErrGrantNotFound（幂等，不报错）。
+// 存在性语义（有意取舍）：无码调用方对「存在但他人」的 id 得 403、对
+// 「不存在」的 id 得 404——同租户内授权 id 的存在性可被枚举（id 含
+// 时间戳混合随机，不可预测、无内容泄露）；如需存在性不敏感，将无码
+// 调用方收敛到 RevokeOwn 的 0 行统一 404 口径即可。
 func (uc *GrantUsecase) Revoke(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrGrantInvalidArgument

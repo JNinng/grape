@@ -82,7 +82,8 @@ func (r *fakeGrantRepo) ListActiveByUser(context.Context, Identity, int64) ([]*T
 	return nil, nil
 }
 
-func (r *fakeGrantRepo) ListActiveByTenant(context.Context, Identity) ([]*ToolGrant, error) {
+func (r *fakeGrantRepo) ListActiveByTenant(_ context.Context, _ Identity) ([]*ToolGrant, error) {
+	r.calls = append(r.calls, "list-tenant")
 	return nil, nil
 }
 

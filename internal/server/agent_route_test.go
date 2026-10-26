@@ -244,6 +244,21 @@ func TestAgentAckConfirmationsWithoutTokenReturns401(t *testing.T) {
 	}
 }
 
+// TestAgentGrantsWithoutTokenReturns401 守卫授权管理路由族的认证链：
+// grants 挂载进骨架 ServeMux，无令牌请求经完整挂载链必须被认证中间件
+// 在进入路由分发前拒绝。
+func TestAgentGrantsWithoutTokenReturns401(t *testing.T) {
+	srv, _ := newAgentTestServer(t, agentHTTPConf(), acktest.NewScriptedModel("stub"))
+	rec := agentDo(t, srv, http.MethodGet, "/agui/grants", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("grants without token: status = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+	rec = agentDo(t, srv, http.MethodDelete, "/agui/grants/42", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("grant revoke without token: status = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestAgentRouteWithoutTrailingSlashRedirectsToBase 验证无尾斜杠形式
 // 进入内层 ServeMux 后以 307（保方法）规整到前缀根（TODO §1.5 挂载形态）。
 func TestAgentRouteWithoutTrailingSlashRedirectsToBase(t *testing.T) {
