@@ -357,6 +357,61 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 	}
 }
 
+// TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected
+// 防回归（评审实证的绕过形态）：守卫的 threadId 取值源与 ackhttp 严格
+// 对齐——POST 决定只认 body。攻击者用「查询参数=自己名下会话（可通过
+// 归属校验的合法值）+ body=他人会话（真正要决定的目标）」必须在守卫处
+// 404：原确认不受影响、工具零执行；归属者后续合法决定仍走 live 路径
+//（排除 pending 指针被污染后误路由恢复路径的次生现象）。
+func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *testing.T) {
+	const (
+		ownerThread    = "thread-mismatch-owner"
+		ownerRun       = "run-mismatch-owner"
+		ownerCall      = "call-mismatch-owner"
+		strangerThread = "thread-mismatch-stranger"
+	)
+	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
+	s := newConfirmTestStack(t, nicknameCallScript(ownerCall, "mismatch-nick", "nickname updated"), repo)
+
+	chat := startChat(s.h, ownerThread, ownerRun, "rename me")
+	items := waitForPending(t, s.h, ownerThread, 1)
+
+	// 他人先在自己名下建档：让「查询参数指向自己名下会话」合法成立，
+	// 该值若被守卫误采信即放行（对老实现本用例失败）。
+	stranger := s.asUser(confirmTestStrangerID)
+	strangerChat := startChat(stranger, strangerThread, "run-mismatch-stranger", "rename me too")
+	waitForPending(t, stranger, strangerThread, 1)
+
+	attempt := postJSON(t, stranger, nethttp.MethodPost,
+		"/agui/ack/confirmation?threadId="+strangerThread,
+		fmt.Sprintf(`{"threadId":%q,"confirmationId":%q,"approved":true}`, ownerThread, items[0].ConfirmationID))
+	if attempt.Code != nethttp.StatusNotFound {
+		t.Fatalf("mismatched decide status = %d, want 404\n%s", attempt.Code, attempt.Body.String())
+	}
+
+	// 原确认不受影响，工具零执行。
+	left := listPending(t, s.h, ownerThread)
+	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
+		t.Fatalf("owner's pending disturbed: %+v", left)
+	}
+	if updates := repo.updates(); len(updates) != 0 {
+		t.Fatalf("tool executed %d times via bypassed decide, want 0", len(updates))
+	}
+
+	// 归属者合法决定照常 live：排除残留指针把决定误路由到恢复路径。
+	rec := decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
+	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"path":"live"`) {
+		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
+	}
+	chatEvents(t, chat)
+	if updates := repo.updates(); len(updates) != 1 {
+		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
+	}
+	// 他人视角的阻塞运行搁置（其确认无人决定，随测试进程终止）。
+	_ = strangerChat
+}
+
 // TestConfirmLive_when_tool_iterations_exhausted_run_terminates 验证
 // MaxToolIterations 防风暴：脚本化模型对 allow 层级的 echo 工具死循环
 // 调用（脚本耗尽重复末步），运行按上限终止（RUN_ERROR），实际执行的

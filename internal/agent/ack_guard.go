@@ -9,6 +9,10 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
+// ackGuardMaxBodyBytes 限制守卫预读的决定请求体大小：认证后的内存耗尽
+// 面收口（决定请求体合法形态远小于此；ackhttp 对超限体的解码同样失败）。
+const ackGuardMaxBodyBytes = 1 << 20 // 1MiB
+
 // ackOwnerGuard 是 ack 路由的会话归属守卫。
 //
 // 背景与必要性：ack 的等待者以（会话 ID, 确认 ID）隔离命名空间，live
@@ -19,10 +23,13 @@ import (
 // 存在于调用者名下即 404（不区分「不存在」与「非你所有」，与会话存储
 // 的跨用户读取语义一致）。
 //
-// 覆盖面：POST {prefix}/confirmation（决定）与 GET {prefix}/confirmations
-// （待确认列表）。其余 ack 子路径原样透传给内层 mux（404 语义不变）。
-// threadId 解析失败时不代答——请求形状校验（400）归 ackhttp，本守卫只
-// 在 threadId 明确存在时加锁。
+// threadId 取值源与 ackhttp 严格对齐（防绕过的关键）：POST /confirmation
+// 的 threadId 只认请求体（ackhttp decide 只解码 body），绝不采信查询
+// 参数——若查询参数也被采信，攻击者可用「查询参数=自己名下会话 +
+// body=他人会话」骗过归属校验；GET /confirmations 只认查询参数。其余
+// ack 子路径与形状非法的请求原样透传给内层 mux（404/400 语义归 ackhttp，
+// 本守卫只在 threadId 明确成立时加锁）。请求体预读上限
+// ackGuardMaxBodyBytes，读失败按 400 拒绝（不放行无归属事实的请求）。
 type ackOwnerGuard struct {
 	inner    nethttp.Handler
 	sessions session.Service
@@ -35,21 +42,26 @@ func newAckOwnerGuard(inner nethttp.Handler, sessions session.Service, appName s
 }
 
 func (g *ackOwnerGuard) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
-	threadID := r.URL.Query().Get("threadId")
-	if threadID == "" && r.Method == nethttp.MethodPost {
-		body, err := io.ReadAll(r.Body)
+	threadID := ""
+	switch r.Method {
+	case nethttp.MethodPost:
+		body, err := io.ReadAll(nethttp.MaxBytesReader(w, r.Body, ackGuardMaxBodyBytes))
 		if err != nil {
 			writeAckGuardError(w, nethttp.StatusBadRequest, "unreadable request body")
 			return
 		}
 		_ = r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewReader(body))
+		// 与 ackhttp 相同的解码器与字段标签，取值结果必然一致；
+		// 解析失败放行，形状校验（400）归 ackhttp。
 		var req struct {
 			ThreadID string `json:"threadId"`
 		}
-		// 解析失败放行：缺形状的请求由内层 ackhttp 以 400 拒绝。
-		_ = json.Unmarshal(body, &req)
-		threadID = req.ThreadID
+		if err := json.Unmarshal(body, &req); err == nil {
+			threadID = req.ThreadID
+		}
+	case nethttp.MethodGet:
+		threadID = r.URL.Query().Get("threadId")
 	}
 	if threadID != "" {
 		key, err := userKeyFromContext(r.Context())
