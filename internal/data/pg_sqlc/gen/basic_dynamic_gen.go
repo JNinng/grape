@@ -8,10 +8,10 @@
 //	table basic: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
 //	table basic: [@filter: deleted_at is_null]
 //	column basic.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column basic.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column basic.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
 //	column basic.created_by: [@dynamic: eq, neq, in, not_in]
 //	column basic.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
-//	column basic.updated_by: [@dynamic: eq, neq, in, not_in]
+//	column basic.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column basic.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
 //	column basic.deleted_at: [@internal]
 //	column basic.tenant_id: [@dynamic: eq, neq @hideable]
@@ -1208,6 +1208,176 @@ func CountBasic(ctx context.Context, db DBTX, params ListBasicParams, opts ...dy
 		return 0, err
 	}
 	return total, nil
+}
+
+// BasicTable 是本表 Update 方法族的编译期 marker:选项类型按表绑定,
+// 跨表误用(SET / WHERE 选项串表)在编译期被拒绝,而不是运行期报错。
+type BasicTable struct{}
+
+// BasicUpdate 是 Update 方法族的命名空间对象(如 BasicUpdate.SetName)。
+// 取 XxxUpdate 而非表名单数:与 sqlc-gen-go 同包时模型类型已占用单数名
+// (如 sys_user → SysUser),命名空间对象不能复用。
+var BasicUpdate BasicTable
+
+// BasicUpdateOption 是本表的更新选项别名。SET 资格面是列级 @updatable 的
+// set-capable 形态;WHERE 资格面是 where-capable 形态,有 @pk 时自动附带
+// 主键列的完整类型矩阵(定位方法)。两个能力面与 @dynamic / @scope 解耦。
+type BasicUpdateOption = dynq.UpdateOption[BasicTable]
+
+// ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
+
+// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+func (BasicTable) SetStatus(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Set("status", "status", "", v)
+	}
+}
+
+// SetUpdatedBy 设置 updatedBy（更新人）列值，无 nil。
+func (BasicTable) SetUpdatedBy(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Set("updatedBy", "updated_by", "", v)
+	}
+}
+
+// ---- @filter 绕过 ----
+
+// WithoutFilter 绕过本表的 @filter 不变量(幂等;不豁免零 where 守卫)。
+// 典型用途:恢复被软删不变量挡住的历史行;绕过是整表级开关,不做条件细化。
+func (BasicTable) WithoutFilter() BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		st.BypassFilter()
+		return nil
+	}
+}
+
+// ---- WHERE 定位方法族(@pk 自动矩阵 + where-capable @updatable)----
+
+// WhereIDEq 追加 id 列 = 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDEq(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpEq, sq.Expr("id = ?", v))
+	}
+}
+
+// WhereIDNeq 追加 id 列 <> 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDNeq(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpNeq, sq.Expr("id <> ?", v))
+	}
+}
+
+// WhereIDIn 追加 id 列 IN 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDIn(vs ...int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpIn, sq.Expr("id IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDNotIn 追加 id 列 NOT IN 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDNotIn(vs ...int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpNotIn, sq.Expr("id NOT IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDGt 追加 id 列 > 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDGt(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpGt, sq.Expr("id > ?", v))
+	}
+}
+
+// WhereIDGte 追加 id 列 >= 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDGte(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpGte, sq.Expr("id >= ?", v))
+	}
+}
+
+// WhereIDLt 追加 id 列 < 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDLt(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpLt, sq.Expr("id < ?", v))
+	}
+}
+
+// WhereIDLte 追加 id 列 <= 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDLte(v int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		return st.Where("id", dynq.OpLte, sq.Expr("id <= ?", v))
+	}
+}
+
+// WhereIDBetween 追加 id 列 between 条件;多条 WHERE 之间恒为 AND。
+func (BasicTable) WhereIDBetween(lo, hi int64) BasicUpdateOption {
+	return func(st *dynq.UpdateState[BasicTable]) error {
+		if lo > hi {
+			return dynq.ErrBetweenOrder("id")
+		}
+		if err := st.Where("id", dynq.OpGte, sq.Expr("id >= ?", lo)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpLte, sq.Expr("id <= ?", hi))
+	}
+}
+
+// UpdateBasic 按 opts 收集的 SET / WHERE 组合更新行,返回实际改写行数。
+// SET 白名单与 WHERE 定位条件均来自列级 @updatable;有 @pk 时自动附带
+// 主键列的定位方法(类型矩阵)。@scope 不参与写面,权限由读取阶段保证。
+// 零 SET 或零调用方 WHERE 条件显式拒绝(Kind=set / where),不发全表 UPDATE,
+// 也不静默 no-op。
+// @filter 不变量恒定 AND 进 WHERE;WithoutFilter() 可整体绕过,但不豁免
+// 零 where 守卫。
+//
+// 参数:
+//   - ctx: 更新上下文。
+//   - db:  数据库连接,满足 DBTX 接口即可。
+//   - opts: SET / WHERE 选项(BasicUpdate.*),跨表选项编译期不可混用。
+//
+// 返回值:
+//   - int64: 实际改写行数;0 = 未命中(条件不匹配),不隐式特判。
+//   - error: 校验或执行失败时的错误。
+func UpdateBasic(ctx context.Context, db DBTX, opts ...BasicUpdateOption) (int64, error) {
+	st := dynq.NewUpdateState[BasicTable]()
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(st); err != nil {
+			return 0, err
+		}
+	}
+	// 空 SET / 零 where 守卫:按调用方条件数计——@filter 叠加后最终 WHERE
+	// 恒非空,不得以最终 SQL 形态代替判断。
+	if err := st.Validate(); err != nil {
+		return 0, err
+	}
+	conds := make([]sq.Sqlizer, 0, 1+len(st.Wheres()))
+	// 恒定条件:@filter 服务端不变量(WithoutFilter 可绕过),与调用方条件 AND。
+	if !st.FilterBypassed() {
+		conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	}
+	conds = append(conds, st.Wheres()...)
+	b := sq.Update("basic").PlaceholderFormat(sq.Dollar).Where(sq.And(conds))
+	for _, a := range st.Sets() {
+		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
+	}
+	query, args, err := b.ToSql()
+	if err != nil {
+		return 0, err
+	}
+	tag, err := db.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // BasicQuerySchema 是前端契约出口:返回经 opts 减法投影后的有效能力全集,

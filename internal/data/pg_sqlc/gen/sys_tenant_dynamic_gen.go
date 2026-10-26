@@ -7,18 +7,18 @@
 //	table sys_tenant: [@pk: id]
 //	table sys_tenant: [@filter: deleted_at is_null]
 //	column sys_tenant.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_tenant.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_tenant.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
 //	column sys_tenant.code: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_tenant.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
+//	column sys_tenant.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_tenant.parent_id: [@dynamic: eq, neq, in, not_in]
-//	column sys_tenant.contact_name: [@dynamic: contains, prefix, suffix @hideable]
-//	column sys_tenant.contact_phone: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_tenant.expired_at: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @sortable]
-//	column sys_tenant.max_user_count: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable]
-//	column sys_tenant.default_locale: [@dynamic: eq, neq @hideable]
+//	column sys_tenant.contact_name: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
+//	column sys_tenant.contact_phone: [@dynamic: eq, neq, prefix @hideable @updatable: set]
+//	column sys_tenant.expired_at: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @sortable @updatable: set]
+//	column sys_tenant.max_user_count: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @updatable: set]
+//	column sys_tenant.default_locale: [@dynamic: eq, neq @hideable @updatable: set]
 //	column sys_tenant.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_tenant.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
-//	column sys_tenant.updated_by: [@dynamic: eq, neq, in, not_in]
+//	column sys_tenant.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_tenant.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
 //	column sys_tenant.deleted_at: [@internal]
 //	column sys_tenant.tenant_id: [@dynamic: eq, neq @hideable]
@@ -1601,6 +1601,207 @@ func CountSysTenant(ctx context.Context, db DBTX, params ListSysTenantParams, op
 		return 0, err
 	}
 	return total, nil
+}
+
+// SysTenantTable 是本表 Update 方法族的编译期 marker:选项类型按表绑定,
+// 跨表误用(SET / WHERE 选项串表)在编译期被拒绝,而不是运行期报错。
+type SysTenantTable struct{}
+
+// SysTenantUpdate 是 Update 方法族的命名空间对象(如 SysTenantUpdate.SetName)。
+// 取 XxxUpdate 而非表名单数:与 sqlc-gen-go 同包时模型类型已占用单数名
+// (如 sys_user → SysUser),命名空间对象不能复用。
+var SysTenantUpdate SysTenantTable
+
+// SysTenantUpdateOption 是本表的更新选项别名。SET 资格面是列级 @updatable 的
+// set-capable 形态;WHERE 资格面是 where-capable 形态,有 @pk 时自动附带
+// 主键列的完整类型矩阵(定位方法)。两个能力面与 @dynamic / @scope 解耦。
+type SysTenantUpdateOption = dynq.UpdateOption[SysTenantTable]
+
+// ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
+
+// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+func (SysTenantTable) SetStatus(v int64) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("status", "status", "", v)
+	}
+}
+
+// SetName 设置 name（租户名）列值，无 nil。
+func (SysTenantTable) SetName(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("name", "name", "", v)
+	}
+}
+
+// SetContactName 设置 contactName（联系人）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysTenantTable) SetContactName(v *string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("contactName", "contact_name", "", v)
+	}
+}
+
+// SetContactPhone 设置 contactPhone（联系电话）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysTenantTable) SetContactPhone(v *string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("contactPhone", "contact_phone", "", v)
+	}
+}
+
+// SetExpiredAt 设置 expiredAt（到期时间）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysTenantTable) SetExpiredAt(v *time.Time) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("expiredAt", "expired_at", "", v)
+	}
+}
+
+// SetMaxUserCount 设置 maxUserCount（最大用户数）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysTenantTable) SetMaxUserCount(v *int64) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("maxUserCount", "max_user_count", "", v)
+	}
+}
+
+// SetDefaultLocale 设置 defaultLocale（租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值）列值，无 nil。
+func (SysTenantTable) SetDefaultLocale(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("defaultLocale", "default_locale", "", v)
+	}
+}
+
+// SetUpdatedBy 设置 updatedBy（更新人）列值，无 nil。
+func (SysTenantTable) SetUpdatedBy(v int64) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Set("updatedBy", "updated_by", "", v)
+	}
+}
+
+// ---- @filter 绕过 ----
+
+// WithoutFilter 绕过本表的 @filter 不变量(幂等;不豁免零 where 守卫)。
+// 典型用途:恢复被软删不变量挡住的历史行;绕过是整表级开关,不做条件细化。
+func (SysTenantTable) WithoutFilter() SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		st.BypassFilter()
+		return nil
+	}
+}
+
+// ---- WHERE 定位方法族(@pk 自动矩阵 + where-capable @updatable)----
+
+// WhereIDEq 追加 id 列 = 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDEq(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Where("id", dynq.OpEq, sq.Expr("id = ?", v))
+	}
+}
+
+// WhereIDNeq 追加 id 列 <> 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDNeq(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		return st.Where("id", dynq.OpNeq, sq.Expr("id <> ?", v))
+	}
+}
+
+// WhereIDIn 追加 id 列 IN 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDIn(vs ...string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpIn, sq.Expr("id IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDNotIn 追加 id 列 NOT IN 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDNotIn(vs ...string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpNotIn, sq.Expr("id NOT IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDContains 追加 id 列 ILIKE 包含 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDContains(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		if v == "" {
+			return dynq.ErrEmptyPattern("id")
+		}
+		return st.Where("id", dynq.OpContains, sq.Expr("id ILIKE ? ESCAPE '\\'", dynq.ContainsPattern(v)))
+	}
+}
+
+// WhereIDPrefix 追加 id 列 ILIKE 前缀 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDPrefix(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		if v == "" {
+			return dynq.ErrEmptyPattern("id")
+		}
+		return st.Where("id", dynq.OpPrefix, sq.Expr("id ILIKE ? ESCAPE '\\'", dynq.PrefixPattern(v)))
+	}
+}
+
+// WhereIDSuffix 追加 id 列 ILIKE 后缀 条件;多条 WHERE 之间恒为 AND。
+func (SysTenantTable) WhereIDSuffix(v string) SysTenantUpdateOption {
+	return func(st *dynq.UpdateState[SysTenantTable]) error {
+		if v == "" {
+			return dynq.ErrEmptyPattern("id")
+		}
+		return st.Where("id", dynq.OpSuffix, sq.Expr("id ILIKE ? ESCAPE '\\'", dynq.SuffixPattern(v)))
+	}
+}
+
+// UpdateSysTenant 按 opts 收集的 SET / WHERE 组合更新行,返回实际改写行数。
+// SET 白名单与 WHERE 定位条件均来自列级 @updatable;有 @pk 时自动附带
+// 主键列的定位方法(类型矩阵)。@scope 不参与写面,权限由读取阶段保证。
+// 零 SET 或零调用方 WHERE 条件显式拒绝(Kind=set / where),不发全表 UPDATE,
+// 也不静默 no-op。
+// @filter 不变量恒定 AND 进 WHERE;WithoutFilter() 可整体绕过,但不豁免
+// 零 where 守卫。
+//
+// 参数:
+//   - ctx: 更新上下文。
+//   - db:  数据库连接,满足 DBTX 接口即可。
+//   - opts: SET / WHERE 选项(SysTenantUpdate.*),跨表选项编译期不可混用。
+//
+// 返回值:
+//   - int64: 实际改写行数;0 = 未命中(条件不匹配),不隐式特判。
+//   - error: 校验或执行失败时的错误。
+func UpdateSysTenant(ctx context.Context, db DBTX, opts ...SysTenantUpdateOption) (int64, error) {
+	st := dynq.NewUpdateState[SysTenantTable]()
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(st); err != nil {
+			return 0, err
+		}
+	}
+	// 空 SET / 零 where 守卫:按调用方条件数计——@filter 叠加后最终 WHERE
+	// 恒非空,不得以最终 SQL 形态代替判断。
+	if err := st.Validate(); err != nil {
+		return 0, err
+	}
+	conds := make([]sq.Sqlizer, 0, 1+len(st.Wheres()))
+	// 恒定条件:@filter 服务端不变量(WithoutFilter 可绕过),与调用方条件 AND。
+	if !st.FilterBypassed() {
+		conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	}
+	conds = append(conds, st.Wheres()...)
+	b := sq.Update("sys_tenant").PlaceholderFormat(sq.Dollar).Where(sq.And(conds))
+	for _, a := range st.Sets() {
+		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
+	}
+	query, args, err := b.ToSql()
+	if err != nil {
+		return 0, err
+	}
+	tag, err := db.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // SysTenantQuerySchema 是前端契约出口:返回经 opts 减法投影后的有效能力全集,

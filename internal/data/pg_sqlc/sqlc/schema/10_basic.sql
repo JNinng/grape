@@ -28,10 +28,10 @@ COMMENT ON TABLE public.basic IS '基础字段示例表 [@scope: owner_user_id i
 -- Column comments
 
 COMMENT ON COLUMN public.basic.id IS '主键 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.basic.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.basic.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.basic.created_by IS '创建人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
-COMMENT ON COLUMN public.basic.updated_by IS '更新人 [@dynamic: exact, in]';
+COMMENT ON COLUMN public.basic.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.basic.updated_at IS '更新时间 [@dynamic: range @sortable]';
 COMMENT ON COLUMN public.basic.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.basic.tenant_id IS '租户 ID [@dynamic: exact @hideable]';

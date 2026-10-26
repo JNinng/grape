@@ -7,14 +7,15 @@
 //	table sys_config: [@pk: id]
 //	table sys_config: [@filter: deleted_at is_null]
 //	column sys_config.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_config.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_config.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
+//	column sys_config.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_config.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_config.config_key: [@dynamic: eq, neq, prefix @hideable]
+//	column sys_config.value: [@updatable: set]
 //	column sys_config.value_type: [@dynamic: eq, neq @hideable]
-//	column sys_config.remark: [@dynamic: contains, prefix, suffix @hideable]
+//	column sys_config.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
 //	column sys_config.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_config.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
-//	column sys_config.updated_by: [@dynamic: eq, neq, in, not_in]
+//	column sys_config.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_config.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
 //	column sys_config.deleted_at: [@internal]
 //
@@ -1162,6 +1163,197 @@ func CountSysConfig(ctx context.Context, db DBTX, params ListSysConfigParams, op
 		return 0, err
 	}
 	return total, nil
+}
+
+// SysConfigTable 是本表 Update 方法族的编译期 marker:选项类型按表绑定,
+// 跨表误用(SET / WHERE 选项串表)在编译期被拒绝,而不是运行期报错。
+type SysConfigTable struct{}
+
+// SysConfigUpdate 是 Update 方法族的命名空间对象(如 SysConfigUpdate.SetName)。
+// 取 XxxUpdate 而非表名单数:与 sqlc-gen-go 同包时模型类型已占用单数名
+// (如 sys_user → SysUser),命名空间对象不能复用。
+var SysConfigUpdate SysConfigTable
+
+// SysConfigUpdateOption 是本表的更新选项别名。SET 资格面是列级 @updatable 的
+// set-capable 形态;WHERE 资格面是 where-capable 形态,有 @pk 时自动附带
+// 主键列的完整类型矩阵(定位方法)。两个能力面与 @dynamic / @scope 解耦。
+type SysConfigUpdateOption = dynq.UpdateOption[SysConfigTable]
+
+// ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
+
+// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+func (SysConfigTable) SetStatus(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Set("status", "status", "", v)
+	}
+}
+
+// SetName 设置 name（配置名称）列值，无 nil。
+func (SysConfigTable) SetName(v string) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Set("name", "name", "", v)
+	}
+}
+
+// SetValue 设置 value（配置值）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysConfigTable) SetValue(v *string) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Set("value", "value", "", v)
+	}
+}
+
+// SetRemark 设置 remark（备注）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysConfigTable) SetRemark(v *string) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Set("remark", "remark", "", v)
+	}
+}
+
+// SetUpdatedBy 设置 updatedBy（更新人）列值，无 nil。
+func (SysConfigTable) SetUpdatedBy(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Set("updatedBy", "updated_by", "", v)
+	}
+}
+
+// ---- @filter 绕过 ----
+
+// WithoutFilter 绕过本表的 @filter 不变量(幂等;不豁免零 where 守卫)。
+// 典型用途:恢复被软删不变量挡住的历史行;绕过是整表级开关,不做条件细化。
+func (SysConfigTable) WithoutFilter() SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		st.BypassFilter()
+		return nil
+	}
+}
+
+// ---- WHERE 定位方法族(@pk 自动矩阵 + where-capable @updatable)----
+
+// WhereIDEq 追加 id 列 = 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDEq(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpEq, sq.Expr("id = ?", v))
+	}
+}
+
+// WhereIDNeq 追加 id 列 <> 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDNeq(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpNeq, sq.Expr("id <> ?", v))
+	}
+}
+
+// WhereIDIn 追加 id 列 IN 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDIn(vs ...int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpIn, sq.Expr("id IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDNotIn 追加 id 列 NOT IN 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDNotIn(vs ...int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		if err := dynq.CheckInLen("id", len(vs)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpNotIn, sq.Expr("id NOT IN ("+dynq.Placeholders(len(vs))+")", dynq.Anys(vs)...))
+	}
+}
+
+// WhereIDGt 追加 id 列 > 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDGt(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpGt, sq.Expr("id > ?", v))
+	}
+}
+
+// WhereIDGte 追加 id 列 >= 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDGte(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpGte, sq.Expr("id >= ?", v))
+	}
+}
+
+// WhereIDLt 追加 id 列 < 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDLt(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpLt, sq.Expr("id < ?", v))
+	}
+}
+
+// WhereIDLte 追加 id 列 <= 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDLte(v int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		return st.Where("id", dynq.OpLte, sq.Expr("id <= ?", v))
+	}
+}
+
+// WhereIDBetween 追加 id 列 between 条件;多条 WHERE 之间恒为 AND。
+func (SysConfigTable) WhereIDBetween(lo, hi int64) SysConfigUpdateOption {
+	return func(st *dynq.UpdateState[SysConfigTable]) error {
+		if lo > hi {
+			return dynq.ErrBetweenOrder("id")
+		}
+		if err := st.Where("id", dynq.OpGte, sq.Expr("id >= ?", lo)); err != nil {
+			return err
+		}
+		return st.Where("id", dynq.OpLte, sq.Expr("id <= ?", hi))
+	}
+}
+
+// UpdateSysConfig 按 opts 收集的 SET / WHERE 组合更新行,返回实际改写行数。
+// SET 白名单与 WHERE 定位条件均来自列级 @updatable;有 @pk 时自动附带
+// 主键列的定位方法(类型矩阵)。@scope 不参与写面,权限由读取阶段保证。
+// 零 SET 或零调用方 WHERE 条件显式拒绝(Kind=set / where),不发全表 UPDATE,
+// 也不静默 no-op。
+// @filter 不变量恒定 AND 进 WHERE;WithoutFilter() 可整体绕过,但不豁免
+// 零 where 守卫。
+//
+// 参数:
+//   - ctx: 更新上下文。
+//   - db:  数据库连接,满足 DBTX 接口即可。
+//   - opts: SET / WHERE 选项(SysConfigUpdate.*),跨表选项编译期不可混用。
+//
+// 返回值:
+//   - int64: 实际改写行数;0 = 未命中(条件不匹配),不隐式特判。
+//   - error: 校验或执行失败时的错误。
+func UpdateSysConfig(ctx context.Context, db DBTX, opts ...SysConfigUpdateOption) (int64, error) {
+	st := dynq.NewUpdateState[SysConfigTable]()
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(st); err != nil {
+			return 0, err
+		}
+	}
+	// 空 SET / 零 where 守卫:按调用方条件数计——@filter 叠加后最终 WHERE
+	// 恒非空,不得以最终 SQL 形态代替判断。
+	if err := st.Validate(); err != nil {
+		return 0, err
+	}
+	conds := make([]sq.Sqlizer, 0, 1+len(st.Wheres()))
+	// 恒定条件:@filter 服务端不变量(WithoutFilter 可绕过),与调用方条件 AND。
+	if !st.FilterBypassed() {
+		conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	}
+	conds = append(conds, st.Wheres()...)
+	b := sq.Update("sys_config").PlaceholderFormat(sq.Dollar).Where(sq.And(conds))
+	for _, a := range st.Sets() {
+		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
+	}
+	query, args, err := b.ToSql()
+	if err != nil {
+		return 0, err
+	}
+	tag, err := db.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 // SysConfigQuerySchema 是前端契约出口:返回经 opts 减法投影后的有效能力全集,

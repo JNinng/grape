@@ -60,9 +60,17 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 - **@scope 只挂在有归属字段的表上**：当前为 `basic` 与 `sys_user`
   （见 schema 文件表注释）；其余表租户内所有人可见。
 - **软删过滤收敛为 @filter**：所有带 `deleted_at` 的业务表在表注释声明
-  `@filter: deleted_at is_null`，动态查询（List/Count）在解析期附加该
-  服务端固定不变量，协议不暴露 `deletedAt` 条件；固定命名查询的软删
-  条件仍写在 SQL 里。回收站类需求走专用命名查询，不占动态协议。
+  `@filter: deleted_at is_null`，动态读面（List/Count）与写面（Update）
+  都附加该服务端固定不变量，协议不暴露 `deletedAt` 条件；写面可在调用
+  点用 `WithoutFilter()` 显式绕过；固定命名查询的软删条件仍写在 SQL 里。
+  回收站类需求走专用命名查询，不占动态协议。
+- **可变业务列声明 `@updatable: set`**：动态更新面（`UpdateXxx`）的
+  SET 只收声明列，定位统一走 `@pk` 自动方法；身份列（code /
+  config_key / permission_code 等）、类型列、归属与结构列（parent_id /
+  owner 三元组）、审计列不进白名单，跨行一致性与归属变更由专项命名查
+  询保证；`updated_at` 由 `trg_touch_updated_at` 对任何 UPDATE 兜底刷
+  新，动态更新与静态更新行为一致；`@scope` 不参与写面，写前仍按
+  `LockXxxPermitted` 锁定并判定的既有纪律。
 - **权限过滤函数只收一个用户 ID**：该用户能看到什么由函数内部查角色
   算出，撤销角色下一次查询立刻生效。
 - **运行连接三条纪律**：普通数据库角色（勿用超级用户，会绕过 RLS）；
@@ -210,7 +218,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 表函数的返回列，权限查询服务层直接以参数化 SQL 调用该函数。
 
 注意：命名查询生成的是 `*Queries` 上的**方法**（`gen.New(db)` 实例化后
-调用）；动态查询生成的是顶层函数（ParseXxx/ListXxx，db 作参数显式传）。
+调用）；动态查询生成的是顶层函数（ParseXxx/ListXxx/UpdateXxx，db 作参数显式传）。
 两种风格不要混淆。
 
 ## RLS 策略（rls.sql）
