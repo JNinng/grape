@@ -59,6 +59,35 @@ agent:
     model: ${AGENT_LLM_MODEL:gpt-4o-mini}
     # 单次模型调用超时；未设置用框架默认。
     timeout: 60s
+    # failover：主 provider 故障时按优先级切换备 provider（TODO B3）。
+    # enabled=false 零包装（现行为）；启用时备选按序尝试，全部失败聚合
+    # 报错。备选 api_key 同样只经环境变量注入。
+    failover:
+      enabled: false
+      candidates: []
+      # candidates 示例（启用时放开并填值）：
+      # - provider: openai
+      #   base_url: ${AGENT_LLM_FAILOVER_BASE_URL:}
+      #   api_key: ${AGENT_LLM_FAILOVER_API_KEY:}
+      #   model: ${AGENT_LLM_FAILOVER_MODEL:gpt-4o-mini}
+      #   timeout: 60s
+    # hedge：对延迟敏感的重复请求策略（TODO B3）。原始请求 delay 后未出
+    # 结果即发副本，先出有效内容者获胜、其余取消；重复请求成倍放大上游
+    # 调用量，只对延迟抖动显著且调用幂等的场景启用。
+    hedge:
+      enabled: false
+      # 相邻启动间隔；0 取框架默认 100ms。
+      delay: 0s
+      # 并发副本总数（含原始请求），启用时必须 ≥ 2。
+      max_copies: 2
+    # logging：LLM 调用回调日志（TODO B3）。enabled=false 零包装无任何
+    # 新日志；启用后每次模型调用（含 failover 各次候选尝试）落 grape
+    # logger（ctx 带 trace_id 自动展开）。提示词/补全默认不记，内容级
+    # 脱敏的审计面归 E2/A3；api_key 在 HTTP 客户端配置面，从不入日志。
+    logging:
+      enabled: false
+      log_prompts: false
+      log_completions: false
   agui:
     # base_path：AG-UI 与 ack 的共同路由前缀；chat 在前缀根，
     # /history、/cancel 与 /ack/confirmations 同前缀。

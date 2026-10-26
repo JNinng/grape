@@ -85,7 +85,9 @@ message Agent {
   // 必须一致，否则会话定位失败。
   string app_name = 1;
 
-  // LLM 是模型 provider 配置（OpenAI 兼容直连）。
+  // LLM 是模型 provider 配置（OpenAI 兼容直连），含模型层可靠性段
+  // （failover / hedge / logging，TODO B3）。各可靠性段默认关闭：
+  // 全缺省时装配为零包装的裸 provider，与 B1 行为逐字节等价。
   message LLM {
     // provider 变体（openai / deepseek / qwen / minimax / kimi）。
     // 留空按 openai 处理；base_url 为空时由框架按变体取内置默认端点。
@@ -98,6 +100,68 @@ message Agent {
     string model = 4;
     // 单次模型调用超时；未设置用框架默认。
     google.protobuf.Duration timeout = 5;
+
+    // Failover 是主 provider 故障时按优先级切换备 provider 的配置
+    // （框架 model/failover）。框架语义：候选按序尝试，在首个非错误
+    // 响应块出现前可切换（流式已向用户吐字后不再切换）；全部候选失败
+    // 时以单个聚合错误响应上抛（各候选的失败摘要串联）。
+    message Failover {
+      // 是否启用。false（默认）时零包装——不构造 failover 包装器，
+      // 行为与无本段完全一致。
+      bool enabled = 1;
+      // 备选 provider 清单，按优先级排序（主模型之后依次尝试）。
+      // enabled=true 时至少一项，否则装配失败拒绝启动。
+      repeated Candidate candidates = 2;
+
+      // Candidate 是一台备选 provider（与主 provider 同构）。
+      message Candidate {
+        // provider 变体，语义同主 provider（留空按 openai 处理）。
+        string provider = 1;
+        // OpenAI 兼容端点；留空用框架内置默认。
+        string base_url = 2;
+        // API key，经 ${ENV:...} 占位注入，不落默认配置。
+        string api_key = 3;
+        // 模型名，必填。
+        string model = 4;
+        // 单次模型调用超时；未设置用框架默认。
+        google.protobuf.Duration timeout = 5;
+      }
+    }
+    Failover failover = 6;
+
+    // Hedge 是对延迟敏感的重复请求策略（框架 model/hedge）：先发原始
+    // 请求，delay 后仍未出结果则再发副本，谁先产出有效内容谁获胜，
+    // 落后副本取消。重复请求会成倍放大上游调用量（计费按请求计），
+    // 只应对延迟抖动显著、幂等的推理调用；跨候选去重框架不做，取消
+    // 策略即「首个有效内容出现，其余全部取消」。
+    message Hedge {
+      // 是否启用。false（默认）时零包装。
+      bool enabled = 1;
+      // 相邻两次启动的固定间隔；0 取框架默认 100ms。
+      google.protobuf.Duration delay = 2;
+      // 并发副本总数（含原始请求）。框架按 candidates 逐个错峰启动，
+      // 主模型副本即同一 provider 的重复请求；启用时必须 ≥ 2，否则
+      // 装配失败拒绝启动（副本数为 1 的 hedge 无意义，按误配拒绝）。
+      int32 max_copies = 3;
+    }
+    Hedge hedge = 7;
+
+    // Logging 是 LLM 调用回调日志的配置（TODO B3）：经框架
+    // model.Callbacks 形态注册前后回调，把每次模型调用（含 failover
+    // 的每次候选尝试）落到 grape logger；ctx 携带 SpanContext 时
+    // trace_id / span_id 由 logger extractor 自动展开（E1 桥接口径）。
+    message Logging {
+      // 是否启用。false（默认）时零包装——不注册回调、不产生任何
+      // 新日志行，调用面与无本段完全一致。
+      bool enabled = 1;
+      // 记录请求提示词文本（按 512 rune 截断）。提示词含用户输入与
+      // 工具结果回传，属内容面开关；内容级脱敏（工具敏感参数/检索
+      // 内容）的审计面归 E2/A3，本处只做开关门控与截断。
+      bool log_prompts = 2;
+      // 记录模型补全文本（跨流式分片累积后按 512 rune 截断）。
+      bool log_completions = 3;
+    }
+    Logging logging = 8;
   }
   LLM llm = 2;
 
