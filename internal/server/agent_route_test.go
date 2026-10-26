@@ -110,7 +110,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索，D2 接入真实契约。
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), agent.WithModelOverride(llm))
+		biz.NewUserUsecase(&agentStubUserRepo{}), nil, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

@@ -45,7 +45,7 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 	}
 	confServer := agentHTTPConf()
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc,
-		agent.NewVectorStore(nil), biz.NewUserUsecase(&agentStubUserRepo{}),
+		agent.NewVectorStore(nil), biz.NewUserUsecase(&agentStubUserRepo{}), nil,
 		agent.WithModelOverride(acktest.NewScriptedModel("stub")))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)

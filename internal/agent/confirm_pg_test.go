@@ -151,7 +151,7 @@ func c1SessionServiceTTL(t *testing.T, grapeUDSN string, ttl time.Duration) (ses
 func c1NewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedModel, repo *fakeUserRepo) *Stack {
 	t.Helper()
 	stack, err := NewStackWithOptions(confirmStackConf(), nil, sessionSvc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), WithModelOverride(llm))
+		biz.NewUserUsecase(repo), nil, WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}

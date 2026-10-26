@@ -149,7 +149,7 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 	}
 	t.Cleanup(closeSessions)
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), agent.WithModelOverride(acktest.NewScriptedModel("stub")))
+		biz.NewUserUsecase(&agentStubUserRepo{}), nil, agent.WithModelOverride(acktest.NewScriptedModel("stub")))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

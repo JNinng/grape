@@ -95,7 +95,10 @@ func WithModelOverride(m model.Model) StackOption {
 // Agent 骨架。装配顺序固定为 模型 → 工具 → ack 网关 → LLMAgent → core
 // runner → AG-UI runner（挂许可策略 + ack 恢复路径续跑用它）→ AG-UI
 // server → 外层 ServeMux；任一环失败即返回错误，装配失败拒绝启动。
-func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, opts ...StackOption) (*Stack, error) {
+// grants 是工具授权用例（C2 的许可存储：非 nil 时 ack 网关接入
+// agent_tool_grant 表，remember 生效、吊销后重新确认；nil 仅供不触达
+// 授权面的测试装配，维持 C1 的无许可源形态）。
+func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, opts ...StackOption) (*Stack, error) {
 	o := &stackOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -126,8 +129,12 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
 	// 工具集在构造期登记（分级决定 live 确认、工具集支撑恢复路径代执行），
-	// 许可/策略维持 no-op，C2 填充。
-	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext, tools)
+	// 许可源接授权存储（C2）、策略源维持弃权空实现（C3 填充）。
+	var grantSource ack.GrantSource
+	if grants != nil {
+		grantSource = newStoredGrants(grants)
+	}
+	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext, tools, grantSource)
 
 	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, tools)...)
 
@@ -187,7 +194,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	base := basePathOf(c)
 	return &Stack{
-		handler:  newMux(aguiServer.Handler(), gateway, sessions, c.GetAppName(), base),
+		handler:  newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base),
 		runner:   coreRunner,
 		basePath: base,
 		vectors:  vectors,
@@ -226,12 +233,18 @@ func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
 
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的
-// /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中）。ack
-// 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
+// /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中），授权
+// 管理端点（C2）以方法+路径模式挂载（GET {basePath}/grants 与
+// DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
+// ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
 // ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
-// 自己名下的会话」。
-func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, appName, basePath string) nethttp.Handler {
+// 自己名下的会话」。grants 管理端点为 nil 仅供不触达授权面的测试装配。
+func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string) nethttp.Handler {
 	mux := nethttp.NewServeMux()
+	if grants != nil {
+		mux.Handle(nethttp.MethodGet+" "+basePath+"/grants", grants)
+		mux.Handle(nethttp.MethodDelete+" "+basePath+"/grants/{id}", grants)
+	}
 	mux.Handle(basePath+"/", aguiHandler)
 	ackMux := nethttp.NewServeMux()
 	ackhttp.Mount(ackMux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
