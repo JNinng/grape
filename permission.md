@@ -18,6 +18,7 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 - 行级数据范围依赖目标行数据与用户权限关系，写侧判定必须在库内、与写入同一事务完成。
 - 功能权限码与行无关，只依赖操作本身，在入口层判定，不进入仓储方法。
 - 操作者与 Scope 只从服务端认证上下文注入（`IdentityTx.Auth()`）；请求体中的 `tenantId`、`owner*`、`scope` 一律不可信。
+- Agent 设施面（agent schema，如向量表 `agent.agent_document`）不走 RLS 与 @scope：租户边界由应用层适配器强制——所有读写从认证 ctx 提取身份、每条 SQL 带租户过滤、缺身份 fail-closed（TODO 决策 6），身份同时写入行与 metadata，调用方伪造不生效；RLS 语句以注释附在建表脚本（`agent_vector.sql`）供按需启用，属第二道防线、不作隔离前提，集成测试以无 RLS 场景断言隔离仍成立。跨租户管理操作（在线重建索引、租户级全量清理）属 super 管理口径：向量层 D1 仅留占位与本条说明，不暴露普通入口，落地时按第 10 条补审计与受限端点。
 
 ## 数据范围推导（三个推导函数）
 
