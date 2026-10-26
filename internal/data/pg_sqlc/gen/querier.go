@@ -31,12 +31,19 @@ type Querier interface {
 	CountAgentConfirmationLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
+	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（决策 6/D1 口径）
+	GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error)
+	// 全局级活跃许可：会话级未命中后的兜底；session_id IS NULL 即全局级
+	GetActiveAgentToolGrantGlobal(ctx context.Context, arg GetActiveAgentToolGrantGlobalParams) (AgentToolGrant, error)
 	// 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效
 	GetActiveSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (SysSession, error)
 	// 按确认 ID 点查（租户谓词同源兜底，见文件头）；无行即不存在或跨租户
 	GetAgentConfirmationLogByConfirmationID(ctx context.Context, confirmationID string) (AgentConfirmationLog, error)
 	// 按工具调用 ID 点查（租户谓词同源兜底，见文件头）；无行即不存在或跨租户
 	GetAgentToolCallLogByToolCallID(ctx context.Context, toolCallID string) (AgentToolCallLog, error)
+	// 按租户内 id 取授权行（含已吊销，供吊销前归属判定）；跨租户等同不存在
+	GetAgentToolGrantByID(ctx context.Context, arg GetAgentToolGrantByIDParams) (AgentToolGrant, error)
 	// 按 id 锁定并读取一行 basic（FOR UPDATE）
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
 	// 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集
@@ -69,16 +76,30 @@ type Querier interface {
 	// 指定或伪造归属。
 	// 写入一条工具调用审计；租户取会话 app.tenant_id
 	InsertAgentToolCallLog(ctx context.Context, arg InsertAgentToolCallLogParams) (AgentToolCallLog, error)
+	// 写入一条工具授权；租户与身份取认证 ctx（IdentityTx 注入），同键活跃
+	// 许可已存在时幂等跳过（部分唯一索引 agent_tool_grant_active_un，
+	// ON CONFLICT 不带目标以覆盖表达式部分索引），返回实际写入行数
+	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
 	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 租户内全部用户的活跃授权列表（管理视图，入口侧验 agent:grant:query）
+	ListActiveAgentToolGrantsByTenant(ctx context.Context, tenantID string) ([]AgentToolGrant, error)
+	// 指定用户的活跃授权列表（本人视图），新授权在前；id 为同秒 tie-break
+	ListActiveAgentToolGrantsByUser(ctx context.Context, arg ListActiveAgentToolGrantsByUserParams) ([]AgentToolGrant, error)
 	// 按会话过滤分页查询授权确认审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentConfirmationLogs(ctx context.Context, arg ListAgentConfirmationLogsParams) ([]AgentConfirmationLog, error)
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
+	// 管理吊销：调用方（GrantUsecase.Revoke）已验 agent:grant:revoke 权限
+	// 码；已吊销或不存在更新 0 行
+	RevokeAgentToolGrantManaged(ctx context.Context, arg RevokeAgentToolGrantManagedParams) (int64, error)
+	// 属主吊销：id + 归属人双定位（非本人不可经本查询触达），原子置
+	// revoked_at；已吊销、不存在或非本人更新 0 行
+	RevokeAgentToolGrantSelf(ctx context.Context, arg RevokeAgentToolGrantSelfParams) (int64, error)
 	// 撤销指定会话；已撤销时更新 0 行
 	RevokeSysSession(ctx context.Context, arg RevokeSysSessionParams) (int64, error)
 	// 登出：按访问令牌哈希撤销所属会话。令牌哈希是身份成立前的秘密凭据，

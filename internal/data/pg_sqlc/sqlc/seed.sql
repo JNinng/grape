@@ -1471,3 +1471,45 @@ INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
 VALUES (63, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+
+-- ===========================
+-- 9. Agent 工具授权管理权限码 (sys_menu / sys_role_menu, C2)
+--    授权管理 REST 的功能权限入口：agent:grant:query（全租户授权列表）、
+--    agent:grant:revoke（吊销他人授权）。本人授权列表与本人吊销不设码，
+--    认证身份即凭据。菜单挂在独立一级目录「智能助手」下，ID 段 25x。
+-- ===========================
+
+-- 一级目录：智能助手
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
+                             sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (250, 1, '智能助手', 'agent', NULL, 1, 'robot', '/agent', NULL, 6, 1, '2026-06-01 10:00:00.000', 1,
+        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 二级菜单：工具授权
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
+                             sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (251, 1, '工具授权', 'agent:grant', 250, 2, 'grant', '/agent/grant', 'agent/grant/index', 1, 1,
+        '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：工具授权-全租户查询
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (252, 1, '工具授权全租户查询', 'agent:grant:query', 251, 3, 1, 1, '2026-06-01 10:00:00.000', 1,
+        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：工具授权-吊销他人授权
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (253, 1, '工具授权吊销', 'agent:grant:revoke', 251, 3, 2, 1, '2026-06-01 10:00:00.000', 1,
+        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 超级管理员 (101) → 智能助手目录 + 工具授权查询/吊销
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 250, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 251, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 252, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 253, 't-super-01', 1) ON CONFLICT DO NOTHING;

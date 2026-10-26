@@ -9,22 +9,12 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// noopGrants 是许可源的 no-op 空实现：查询永不命中、保存恒成功。
-// ack 的 Remember（会话级/全局级许可）在 C1 阶段被静默忽略（同会话
-// 每次写操作仍会确认），C2 落地 agent_tool_grant 表后替换为存储实现。
-type noopGrants struct{}
-
-// Lookup 实现 ack.GrantSource：永不命中。
-func (noopGrants) Lookup(context.Context, ack.GrantQuery) (ack.Grant, bool) {
-	return ack.Grant{}, false
-}
-
-// Save 实现 ack.GrantSource：恒成功（C1 阶段无持久化目标）。
-func (noopGrants) Save(context.Context, ack.Grant) error { return nil }
-
 // noopPolicy 是外部策略源的 no-op 空实现：恒弃权（abstain），不介入
-// 裁决。策略源故障的 fail-safe 语义由 ack 评估侧保证（出错按 confirm
-// 升级处理）；C2/C3 接入真实策略后替换。
+// 裁决——与 ack 对 abstain 的既有语义一致（评估管线里 abstain 不改变
+// 处置，只在日志中留痕）。这是 C2 的显式决策而非占位缺陷：当前没有
+// 真实策略需求，C3 接入策略面时以实现 ack.PolicySource 的类型替换本
+// 类型（接入点即 newGateway 的 policies 参数）。策略源故障的 fail-safe
+// 语义由 ack 评估侧保证（出错按 confirm 升级处理）。
 type noopPolicy struct{}
 
 // Consult 实现 ack.PolicySource：恒弃权。
@@ -52,9 +42,12 @@ func toolTiers() map[string]ack.Tier {
 // 桥接局限声明）。WithStaticTools 把工具集登记进网关：恢复路径（重启
 // 后孤儿确认）代执行时按工具名从这里解析，缺省则同意的孤儿确认降级
 // 为"工具不可用"拒绝——工具集与 LLMAgent 注册的保持同一份。分级表
-// 见 toolTiers（读 allow/写 confirm）；许可源与策略源维持 no-op（C2 填充）。
-func newGateway(sessions session.Service, appName string, logger *slog.Logger, userKey func(ctx context.Context) (string, error), tools []tool.Tool) *ack.Gateway {
-	return ack.New(sessions,
+// 见 toolTiers（读 allow/写 confirm）；许可源是 grants 非 nil 时的存储
+// 实现（C2：agent_tool_grant 表，见 grants.go 的 storedGrants），nil
+// 时维持 C1 形态（评估永不命中、remember 被 ack 忽略并记日志）；策略
+// 源恒为弃权空实现（C3 接入点，见 noopPolicy）。
+func newGateway(sessions session.Service, appName string, logger *slog.Logger, userKey func(ctx context.Context) (string, error), tools []tool.Tool, grants ack.GrantSource) *ack.Gateway {
+	opts := []ack.Option{
 		ack.WithApp(appName),
 		ack.WithLogger(logger),
 		ack.WithUserFunc(func(ctx context.Context, _ string) string {
@@ -69,7 +62,10 @@ func newGateway(sessions session.Service, appName string, logger *slog.Logger, u
 		}),
 		ack.WithTiers(toolTiers()),
 		ack.WithStaticTools(tools...),
-		ack.WithGrants(noopGrants{}),
 		ack.WithPolicies(noopPolicy{}),
-	)
+	}
+	if grants != nil {
+		opts = append(opts, ack.WithGrants(grants))
+	}
+	return ack.New(sessions, opts...)
 }

@@ -52,7 +52,7 @@ func newRouteTimeoutForTest(t *testing.T, requestTimeout time.Duration) middlewa
 	}
 	t.Cleanup(closeSessions)
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), &agentStubEmbedder{})
+		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{})
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

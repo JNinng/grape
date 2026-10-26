@@ -69,6 +69,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
+	grantRepo := pg_sqlc.NewGrantRepo(pg_sqlcData)
+	grantUsecase := biz.NewGrantUsecase(grantRepo)
 	embedder, cleanup5, err := openaiembedder.New(vector)
 	if err != nil {
 		cleanup4()
@@ -77,7 +79,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, embedder)
+	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder)
 	if err != nil {
 		cleanup5()
 		cleanup4()

@@ -120,7 +120,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索，D2 接入真实契约。
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), &agentStubEmbedder{}, agent.WithModelOverride(llm))
+		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{}, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}
@@ -253,6 +253,21 @@ func TestAgentAckConfirmationsWithoutTokenReturns401(t *testing.T) {
 	rec := agentDo(t, srv, http.MethodGet, "/agui/ack/confirmations?threadId=thread-1", "", "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("ack confirmations without token: status = %d, want 401\n%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAgentGrantsWithoutTokenReturns401 守卫授权管理路由族的认证链：
+// grants 挂载进骨架 ServeMux，无令牌请求经完整挂载链必须被认证中间件
+// 在进入路由分发前拒绝。
+func TestAgentGrantsWithoutTokenReturns401(t *testing.T) {
+	srv, _ := newAgentTestServer(t, agentHTTPConf(), acktest.NewScriptedModel("stub"))
+	rec := agentDo(t, srv, http.MethodGet, "/agui/grants", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("grants without token: status = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+	rec = agentDo(t, srv, http.MethodDelete, "/agui/grants/42", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("grant revoke without token: status = %d, want 401: %s", rec.Code, rec.Body.String())
 	}
 }
 
