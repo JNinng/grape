@@ -14,6 +14,11 @@ init:
 config:
 	buf generate --template buf.gen.config.yaml
 
+.PHONY: config-init
+# write initial config.yaml to a directory (from cmd/configinit template)
+config-init:
+	go run ./cmd/configinit
+
 .PHONY: api
 # generate api proto
 api:
