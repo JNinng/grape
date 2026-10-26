@@ -27,8 +27,16 @@ type Querier interface {
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
 	// 删除已撤销或过期超过宽限期的会话，返回删除行数
 	CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error)
+	// 按会话过滤统计授权确认审计条数（与 List 同条件，供分页信封）
+	CountAgentConfirmationLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
+	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 按访问令牌哈希读取启用、未撤销、未过期的会话；无行即无效
 	GetActiveSysSessionByTokenHash(ctx context.Context, accessTokenHash string) (SysSession, error)
+	// 按确认 ID 点查（租户谓词同源兜底，见文件头）；无行即不存在或跨租户
+	GetAgentConfirmationLogByConfirmationID(ctx context.Context, confirmationID string) (AgentConfirmationLog, error)
+	// 按工具调用 ID 点查（租户谓词同源兜底，见文件头）；无行即不存在或跨租户
+	GetAgentToolCallLogByToolCallID(ctx context.Context, toolCallID string) (AgentToolCallLog, error)
 	// 按 id 锁定并读取一行 basic（FOR UPDATE）
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
 	// 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集
@@ -50,10 +58,25 @@ type Querier interface {
 	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
 	// 判断用户是否拥有指定角色
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
+	// 写入一条授权确认审计；租户取会话 app.tenant_id，写入者与用户同值
+	InsertAgentConfirmationLog(ctx context.Context, arg InsertAgentConfirmationLogParams) (AgentConfirmationLog, error)
+	// Agent 业务审计（TODO 流 E 的 E2）固定命名查询：两表均为追加写
+	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
+	// RLS（schema/95_agent_audit.sql 的策略）为主，读侧 WHERE 再显式带上
+	// 同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时读取
+	// 仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收口径。
+	// 写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方无法
+	// 指定或伪造归属。
+	// 写入一条工具调用审计；租户取会话 app.tenant_id
+	InsertAgentToolCallLog(ctx context.Context, arg InsertAgentToolCallLogParams) (AgentToolCallLog, error)
 	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 按会话过滤分页查询授权确认审计（时间倒序）；session_id 为 NULL 不过滤
+	ListAgentConfirmationLogs(ctx context.Context, arg ListAgentConfirmationLogsParams) ([]AgentConfirmationLog, error)
+	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
+	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
 	// 撤销指定会话；已撤销时更新 0 行

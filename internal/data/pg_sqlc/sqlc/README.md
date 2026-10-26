@@ -21,33 +21,35 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 7 | schema/70_audit.sql | 定义登录日志与操作日志表（append-only） | 是 | 2 张表 |
 | 8 | schema/80_session.sql | 定义会话/令牌表（仅存哈希），以及过期会话清理函数 | 是 | 1 张表、1 个维护函数 |
 | 9 | schema/90_config.sql | 定义全局配置、租户配置、功能开关与翻译表 | 是 | 4 张表 |
-| 10 | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
-| 11 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 24 条策略（含 sys_session 令牌维度 3 条）、4 个函数 |
-| 12 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
-| 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、30 条命名查询 |
-| 15 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
-| 16 | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
-| 17 | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表、HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、2 个索引、2 条授权 |
+| 10 | schema/95_agent_audit.sql | 定义 Agent 业务审计表：工具调用审计与授权确认审计（append-only，无动态协议），含租户 RLS（策略落本域文件，理由见文件头注释） | 是 | 2 张表、6 个索引、2 条策略 |
+| 11 | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
+| 12 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 24 条策略（含 sys_session 令牌维度 3 条）、4 个函数 |
+| 13 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
+| 14 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
+| 15 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD 与 Agent 审计读写的命名查询 | 是（queries） | 6 个文件、37 条命名查询 |
+| 16 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 17 | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
+| 18 | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表、HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、2 个索引、2 条授权 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
   [dsl.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/dsl.md)（指令总表）、
   [scope.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/scope.md)（行级数据权限）、
   [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/main/schema.md)（前端 Schema 契约）。
-  `sqlc.yaml` 的 schema 列表 = schema/ 九个文件按序 + rls/operate/expose，
-  queries 列表 = queries/ 五个文件（operate/basic/perm 与业务表固定 CRUD
-  sys_user/sys_session）。加 rls/operate/expose 是为了让
-  queries 里的查询能调用这些文件里的函数（GetScope 调三件套、判断类调
-  fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
-  执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
+  `sqlc.yaml` 的 schema 列表 = schema/ 十个文件按序 + rls/operate/expose，
+  queries 列表 = queries/ 六个文件（operate/basic/perm、业务表固定 CRUD
+  sys_user/sys_session 与 Agent 审计 agent_audit）。加 rls/operate/expose
+  是为了让 queries 里的查询能调用这些文件里的函数（GetScope 调三件套、
+  判断类调 fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于
+  库里由执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署按固定顺序执行 15 个文件：`schema/10_basic.sql` →
+- 数据库部署按固定顺序执行 17 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
   `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
   `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql` →
-  `agent_session.sql` 与 `agent_vector.sql`。单一事实源是
+  `agent_session.sql` 与 `agent_vector.sql` → `schema/95_agent_audit.sql`。
+  单一事实源是
   `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
   与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
   授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
@@ -56,7 +58,12 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   相互无顺序约束。`agent_session.sql` 不入 sqlc catalog：trpc-agent-go
   框架自管表（应用经 session.Service 接口读写，grape 侧无仓储/命名
   查询），结构须与框架建表模板逐列一致，框架升级时以新模板 diff 该文件。
-  执行顺序的依赖细节、幂等边界与一键部署见仓库根
+  `schema/95_agent_audit.sql` 是 sqlc catalog 输入（命名查询见
+  queries/agent_audit.sql），放清单尾部独立追加不改既有顺序，其
+  grape_u 的 DML 授权由 role.sql 默认权限覆盖（同角色于 public 建表
+  自动 GRANT，文件内不含授权语句）；RLS 策略落本域文件而非 rls.sql
+  （新域独立成文件、不改多流共触的 rls.sql，策略形态与 rls.sql 完全
+  一致）。执行顺序的依赖细节、幂等边界与一键部署见仓库根
   [deploy_db.md](../../../../deploy_db.md)。
 - **会话框架表无 RLS（设施面例外）**：agent_* 会话表不进 @scope/RLS
   体系，租户隔离靠 userKey（tenant_id:user_id）应用层编码；不存租户
@@ -81,7 +88,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 
 | 层 | 维度 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| PostgreSQL RLS | 租户隔离（绝对边界） | 21 张租户表策略，`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
+| PostgreSQL RLS | 租户隔离（绝对边界） | 23 张租户表策略（21 张基线表策略在 rls.sql，agent 审计两表策略在 schema/95_agent_audit.sql），`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 
@@ -243,6 +250,24 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | RotateSysSession | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，未命中时更新 0 行 |
 | CleanupExpiredSysSessions | :one | 宽限期秒数 → 删除行数 | 删除已撤销或过期超过宽限期的会话，返回删除行数 |
 
+### agent_audit.sql（Agent 业务审计读写，TODO E2）
+
+两表 append-only：只有写入与读取，没有更新/删除面；读写都要求会话已设
+置 app.tenant_id（IdentityTx 门面注入）。租户边界双重声明：RLS 为主，
+读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS 被关闭时仍不越租户，
+对齐 D1 验收口径）。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| InsertAgentToolCallLog | :one | 身份 + 工具调用字段（trace_id/session_id/摘要/耗时/重试可空）→ AgentToolCallLog | 插入一条工具调用审计；租户取会话 app.tenant_id，创建者与记录用户同值；tenant_id+tool_call_id 唯一，重复写入报唯一冲突 |
+| InsertAgentConfirmationLog | :one | 身份 + 确认字段（决定/remember/路径/操作者）→ AgentConfirmationLog | 插入一条授权确认审计（仅终态决定）；租户取会话 app.tenant_id；tenant_id+confirmation_id 唯一 |
+| ListAgentToolCallLogs | :many | 可空 session_id + limit/offset → 行集 | 按会话过滤分页查询工具调用审计（时间倒序，同秒 id tie-break）；session_id 为 NULL 不过滤 |
+| CountAgentToolCallLogs | :one | 可空 session_id → 行数 | 与 List 同条件的计数，供分页信封 |
+| ListAgentConfirmationLogs | :many | 可空 session_id + limit/offset → 行集 | 按会话过滤分页查询授权确认审计（时间倒序，同秒 id tie-break） |
+| CountAgentConfirmationLogs | :one | 可空 session_id → 行数 | 与 List 同条件的计数，供分页信封 |
+| GetAgentToolCallLogByToolCallID | :one | tool_call_id → AgentToolCallLog | 按工具调用 ID 点查；无行即不存在或跨租户（上层统一 NotFound） |
+| GetAgentConfirmationLogByConfirmationID | :one | confirmation_id → AgentConfirmationLog | 按确认 ID 点查；无行即不存在或跨租户（上层统一 NotFound） |
+
 批量过滤 fn_filter_visible_rows 没有对应命名查询：sqlc 解析不了
 表函数的返回列，权限查询服务层直接以参数化 SQL 调用该函数。
 
@@ -250,13 +275,16 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 调用）；动态查询生成的是顶层函数（ParseXxx/ListXxx/UpdateXxx，db 作参数显式传）。
 两种风格不要混淆。
 
-## RLS 策略（rls.sql）
+## RLS 策略（rls.sql 与 schema/95_agent_audit.sql）
 
-21 张租户表用同一条规则：`tenant_id = current_setting('app.tenant_id')`，
+21 张基线租户表用同一条规则：`tenant_id = current_setting('app.tenant_id')`，
 读和写都检查，表主也不豁免（FORCE）。会话没设置 app.tenant_id 时
 什么都读不到、写不进。sys_tenant 额外允许命中自身 id（子租户挂在
 父租户名下时还能读写自己的行）。sys_config 是全局配置、没有租户列，
-不设 RLS；范围版本表 sys_perm_version 的策略在 expose.sql。
+不设 RLS；范围版本表 sys_perm_version 的策略在 expose.sql。Agent 业务
+审计两表（agent_tool_call_log / agent_confirmation_log）沿用同一规则，
+策略声明在各自的域文件 schema/95_agent_audit.sql（并行冲突纪律：新域
+独立成文件，不改多流共触的 rls.sql）。
 
 sys_session 另有三条令牌维度策略（`sys_session_token_read` /
 `sys_session_token_rotate` / `sys_session_token_revoke`），服务会话
