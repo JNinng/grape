@@ -89,8 +89,10 @@ export function ChatPage() {
     let cancelled = false
     fetchHistorySnapshot(threadId)
       .then((items) => {
+        // 快照仅在对话仍为空时整体应用：用户在快照回传前已发言（本地
+        // 已有消息）则以本地为准，避免回包覆盖正在进行的输入。
         if (!cancelled) {
-          setChat((s) => ({ ...s, items }))
+          setChat((s) => (s.items.length === 0 ? { ...s, items } : s))
         }
       })
       .catch((err: unknown) => {
