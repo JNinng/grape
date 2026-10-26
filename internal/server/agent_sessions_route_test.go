@@ -62,7 +62,8 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 		NewRouteTimeoutMiddleware(confServer, agentService),
 		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
 		sessionsService,
-		// 审计查询端点本文件用例不触达，传 nil。
+		// 审计与检索留痕查询端点本文件用例不触达，传 nil。
+		nil,
 		nil,
 		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
 	if err != nil {

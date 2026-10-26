@@ -61,8 +61,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	vectorStore, cleanup4, err := pg_sqlc.NewVectorStore(vector, pg_sqlcData)
+	vectorStoreSupply, cleanup4, err := pg_sqlc.NewVectorStoreSupply(vector, pg_sqlcData)
 	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	retrievalLogRepo := pg_sqlc.NewRetrievalLogRepo(pg_sqlcData)
+	registry := biz.NewRedactRegistry()
+	vectorStore, cleanup5, err := pg_sqlc.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
+	if err != nil {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
@@ -71,16 +81,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
 	grantRepo := pg_sqlc.NewGrantRepo(pg_sqlcData)
 	grantUsecase := biz.NewGrantUsecase(grantRepo)
-	embedder, cleanup5, err := openaiembedder.New(vector)
+	embedder, cleanup6, err := openaiembedder.New(vector)
 	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
-	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder)
+	stack, cleanup7, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -95,12 +107,14 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	handler := ops.NewMetricsHandler(v)
 	agentSessionsService := service.NewAgentSessionsService(stack)
 	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
-	registry := biz.NewRedactRegistry()
 	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
+	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
+	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentAuditService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentAuditService, agentRetrievalService, webHandler)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -114,6 +128,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()

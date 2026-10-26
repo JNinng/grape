@@ -42,6 +42,44 @@ type AgentConfirmationLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
+// 检索留痕表：记录每次向量检索与摄取写入的证据链（一次操作一行，append-only 不可变更）。保留期与归档策略归 E3 维护面裁定，当前全量保留；索引重建/过滤策略调整属 super 管理面（D1 占位），该面落地时以新增 source 取值留痕于本表
+type AgentRetrievalLog struct {
+	// 日志 ID，自增序列
+	ID int64 `db:"id" json:"id"`
+	// 租户 ID，取写入事务的 app.tenant_id
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 发起操作的用户 ID（认证身份）
+	UserID int64 `db:"user_id" json:"user_id"`
+	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入，E1 口径），无链路事实时为 NULL
+	TraceID *string `db:"trace_id" json:"trace_id"`
+	// Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；摄取管线当前无会话事实，恒为 NULL
+	SessionID *string `db:"session_id" json:"session_id"`
+	// 检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
+	Source string `db:"source" json:"source"`
+	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
+	QueryText *string `db:"query_text" json:"query_text"`
+	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL
+	RequestedTopK *int32 `db:"requested_top_k" json:"requested_top_k"`
+	// 实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL
+	EffectiveTopK *int32 `db:"effective_top_k" json:"effective_top_k"`
+	// 过滤条件摘要（jsonb）：ids/metadata/min_score 形态，metadata 值经 retrieval 类别脱敏；脱敏截断破坏 JSON 结构时以 {"summary_truncated": …} 摘要形态落库（应用层兜底）；无条件为 NULL
+	FilterSummary []byte `db:"filter_summary" json:"filter_summary"`
+	// 命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按相似度降序，上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）
+	Hits []byte `db:"hits" json:"hits"`
+	// 预留：rerank 前的命中序（本仓未引入 reranker，D2 检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释
+	RerankBefore *string `db:"rerank_before" json:"rerank_before"`
+	// 预留：rerank 后的命中序（同 rerank_before，本仓未引入 reranker 恒 NULL）
+	RerankAfter *string `db:"rerank_after" json:"rerank_after"`
+	// 操作耗时（毫秒）；未知为 NULL
+	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
+	// 操作终态：success-成功、error-失败（留痕装饰器记录尝试与结果两侧，失败行不反噬业务主流程）
+	Status string `db:"status" json:"status"`
+	// 写入者（认证用户，与 user_id 同值：留痕行由该用户的操作产生）
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 写入时间
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+}
+
 // 工具调用审计表：记录 Agent 运行面每次工具调用的终态（一次调用一行，重试记最终态次数），append-only 不可变更
 type AgentToolCallLog struct {
 	// 日志 ID，自增序列

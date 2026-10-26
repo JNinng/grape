@@ -47,6 +47,7 @@ func NewHTTPServer(
 	agent *service.AgentService,
 	agentSessions *service.AgentSessionsService,
 	agentAudit *service.AgentAuditService,
+	agentRetrieval *service.AgentRetrievalService,
 	web WebHandler,
 ) (*http.Server, error) {
 	cors, err := entrymw.NewCORS(c)
@@ -104,6 +105,12 @@ func NewHTTPServer(
 	// 与 agent 通配无冲突，置于其后仅按资源排列。
 	if agentAudit != nil {
 		agentAudit.RegisterHTTP(srv)
+	}
+	// agentRetrieval 为 nil 仅出现在不触达业务路由的测试装配里；生产装配
+	// 恒非 nil。路由（/v1/agent/retrieval-logs）不在 agent 前缀内，注册
+	// 顺序与 agent 通配无冲突，置于其后仅按资源排列。
+	if agentRetrieval != nil {
+		agentRetrieval.RegisterHTTP(srv)
 	}
 	// agent 为 nil 仅出现在不触达业务路由的测试装配里；生产装配恒非 nil。
 	if agent != nil {

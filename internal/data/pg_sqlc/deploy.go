@@ -18,7 +18,8 @@ import (
 //
 //	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql →
 //	seed.sql → agent_session.sql → agent_vector.sql →
-//	schema/95_agent_audit.sql → 96_agent_grant.sql
+//	schema/95_agent_audit.sql → 96_agent_grant.sql →
+//	schema/97_agent_retrieval_log.sql
 //
 // role.sql 建角色与授权（口令占位符见下方占位符常量），必须先于
 // rls.sql：后续 operate/expose 的函数授权语句依赖角色先行存在；
@@ -31,6 +32,8 @@ import (
 // 96_agent_grant.sql 建工具授权表（public + RLS，C2）：两者均只依赖
 // role.sql 的角色存在，尾部独立追加互不扰动；public 表的 DML 授权由
 // role.sql 默认权限覆盖（同角色于 public 建表自动生效）。
+// schema/97_agent_retrieval_log.sql 建检索留痕表（public + RLS，D3）：
+// 同 95/96 口径的尾部追加域，只依赖 role.sql 的角色存在，与前列零耦合。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
 	"schema/20_tenant.sql",
@@ -63,6 +66,12 @@ var DeployFiles = []string{
 	// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
 	// sys_perm_version），只依赖 role.sql 的角色存在。
 	"96_agent_grant.sql",
+	// Agent 检索留痕（D3，TODO 流 D）：public.agent_retrieval_log 表 +
+	// 租户 RLS 策略；入 sqlc catalog（命名查询见
+	// queries/agent_retrieval_log.sql），策略随域文件走（95 同口径），
+	// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认
+	// 权限覆盖（文件内不含授权语句）。
+	"schema/97_agent_retrieval_log.sql",
 }
 
 // role.sql 中的口令占位符：部署方（dbdeploy）在执行前对文件内容做

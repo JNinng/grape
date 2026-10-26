@@ -9,7 +9,7 @@ import (
 // ProviderSet 是 biz 层的 Wire 依赖注入集合。NewRedactRegistry 提供审计
 // 表与复现视图（A3）共用的脱敏注册表（E1 单一代码点）：经 wire 装配为
 // 同一实例，消费方按类别取用、不自行构造。
-var ProviderSet = wire.NewSet(NewUserUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecase, NewGrantUsecase, NewRedactRegistry)
+var ProviderSet = wire.NewSet(NewUserUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecase, NewGrantUsecase, NewRetrievalLogUsecase, NewRedactRegistry)
 
 // NewRedactRegistry 提供标准脱敏注册表（四类骨架默认值，装配方按需
 // Register 覆盖）。独立成函数是为了让 wire 装配层有明确的提供点注释：
