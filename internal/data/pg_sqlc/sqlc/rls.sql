@@ -1,8 +1,9 @@
 -- ============================================================
--- rls.sql — 租户隔离策略 + 读侧权限过滤函数 + 演示用户授权
+-- rls.sql — 租户隔离策略 + 读侧权限过滤函数
 --
--- 在 schema/ 全部文件之后执行；同时列入 sqlc.yaml 的 schema 列表，
--- 让 queries/ 下的命名查询能解析权限过滤函数的签名（sqlc 只看签名）。
+-- 在 schema/ 全部文件与 role.sql 之后执行；同时列入 sqlc.yaml 的
+-- schema 列表，让 queries/ 下的命名查询能解析权限过滤函数的签名
+-- （sqlc 只看签名）。
 --
 -- 内容：
 --   1. fn_touch_updated_at 触发器：UPDATE 时兜底刷新 updated_at
@@ -12,7 +13,9 @@
 --      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）；
 --      sys_session 另加令牌维度策略：校验/刷新先于租户身份成立，
 --      以令牌哈希为唯一可见性凭据
---   4. test_u 演示用户与授权（GRANT CONNECT 依赖库名，由部署方执行）
+--
+-- 应用运行角色 grape_u 与演示用户 test_u 的创建及授权在 role.sql
+--（部署顺序位于本文件之前）；GRANT CONNECT 依赖库名，由部署方执行。
 --
 -- 这三个函数与模板仓库 basic_db_table（https://github.com/JNinng/basic_db_table）
 -- 的 fun.sql 同名同构：两仓共用一套命名与形态（含用户组维度）。
@@ -572,46 +575,3 @@ ALTER TABLE public.sys_translation
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_translation
     FORCE ROW LEVEL SECURITY;
-
-
--- ============================================================
--- 4. 应用运行角色与演示用户授权
---    grape_u 供 grape 应用运行连接使用，test_u 供演示/验收使用；
---    均为普通数据库角色：真实承受 RLS 与 FORCE（超级用户会绕过
---    RLS，运行必须走这类连接）。重复执行安全。
---    GRANT CONNECT ON DATABASE <库名> 依赖库名，由部署方执行——
---    应用 DSN 与验收连接各需一次。
--- ============================================================
-
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'grape_u') THEN
-        CREATE USER grape_u WITH PASSWORD 'grape_u_pwd';
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'test_u') THEN
-        CREATE USER test_u WITH PASSWORD 'test_u_pwd';
-    END IF;
-END
-$$;
-
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO grape_u, test_u;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO grape_u, test_u;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO grape_u, test_u;
-
--- 功能入口表对运行用户只读：写入走管理端
-REVOKE INSERT, UPDATE, DELETE ON public.sys_menu, public.sys_config FROM grape_u, test_u;
-
--- 其他角色所建表不自动放行，需要时另行显式 GRANT
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO grape_u, test_u;
-ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
-    GRANT USAGE, SELECT ON SEQUENCES TO grape_u, test_u;
-
--- RLS 会话变量写入权（PG15+）：运行连接每事务 set_config(...) 的前提。
--- app.tenant_id 用于租户边界；app.session_* 仅供会话校验/刷新事务
--- 声明令牌哈希（见 sys_session_token_* 策略）
-GRANT SET ON PARAMETER app.tenant_id TO grape_u, test_u;
-GRANT SET ON PARAMETER app.session_token_hash TO grape_u, test_u;
-GRANT SET ON PARAMETER app.session_refresh_token_hash TO grape_u, test_u;
-GRANT SET ON PARAMETER app.session_new_refresh_token_hash TO grape_u, test_u;
