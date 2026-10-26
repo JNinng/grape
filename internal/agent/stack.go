@@ -106,7 +106,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// ack 网关骨架：app 名与 AG-UI runner 一致（会话定位的前提），
 	// 分级/许可/策略在 B1 走默认与空实现，C1/C2 填充。
-	gateway := newGateway(sessions, c.GetAppName(), userKeyFromContext)
+	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext)
 
 	runTimeout := runTimeoutOf(c)
 	aguiRunner := aguirunner.New(coreRunner,
@@ -126,8 +126,14 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		agui.WithCancelEnabled(true),
 		agui.WithHeartbeatInterval(heartbeatOf(c)),
 		agui.WithTimeout(runTimeout),
-		// 复用上面带完整选项的 AG-UI runner：网关 Bind 的实例与
-		// 实际服务请求的实例必须是同一个，恢复路径才能续跑。
+		// 复用上面带完整选项的 AG-UI runner。硬要求：网关 Bind 的实例
+		// 与实际服务请求的实例必须是同一个，恢复路径才能续跑，不要改
+		// 成工厂内每次新建。
+		// 陷阱声明：本工厂会收到 agui.New 依自身选项（WithAppName/
+		// WithSessionService/WithTimeout 等）聚合出的 aguirunner
+		// Option 并在此静默丢弃——预构建 runner 的选项必须与传给
+		// agui.New 的保持一致才自洽（当前三者一致）；给 agui.New
+		// 追加 runner 级选项时必须同步到上面的 aguirunner.New。
 		agui.WithRunnerFactory(func(runner.Runner, ...aguirunner.Option) (aguirunner.Runner, error) {
 			return aguiRunner, nil
 		}),
