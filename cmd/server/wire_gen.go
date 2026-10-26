@@ -81,7 +81,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	facilityDiagnostics := pg_sqlc.NewDiagnostics(pg_sqlcData)
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := ops.NewMetricsHandler(v)
-	agentSessionsService := service.NewAgentSessionsService(service2, confAgent, agentService)
+	agentSessionsService := service.NewAgentSessionsService(stack)
 	webHandler := server.NewWebHandler(agentService)
 	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, webHandler)
 	if err != nil {

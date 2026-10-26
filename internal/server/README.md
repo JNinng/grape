@@ -62,7 +62,7 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 - 中间件链只在本目录装配（当前 `recovery → CORS（可选）→ 路由级超时 → trace → otel（可选）→ auth`）；新增中间件在此插入，不在 `service` 内另行包装。otel 中间件必须排在链路中间件之内（信任模型），认证之外（401 也应有 span）。
 - 运维 / 探针 Handler 由 `ops` 构造后经 `srv.Handle` 直挂：原生 `net/http.Handler`，位于业务链外、免认证；不要用它挂业务端点。
 - 前端静态托管是链外直挂的另一既有实例（`NewWebHandler`）：构建产物更新走 `make web` 后重新编译，路由与缓存语义改在 [web.go](web.go)；新增保留前缀（如未来非 `/v1` 的契约前缀）加进 `ReservedAPIPrefixes`。
-- 业务手写端点（上传下载、SSE、WebSocket 等）归 `service/<资源>_http.go`，须用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware` 入链；归属、注册方式与中间件链要求见 [../README.md](../README.md) 的「手写端点归属」，此处不复述。Agent 手写路由（AG-UI / ack）由 [../service/agent_http.go](../service/agent_http.go) 提供注册方法，agent 会话列表由 [../service/agent_sessions.go](../service/agent_sessions.go) 提供（须先于前者注册），[http.go](http.go) 只调用。
+- 业务手写端点（上传下载、SSE、WebSocket 等）归 `service/<资源>_http.go`，须用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware` 入链；归属、注册方式与中间件链要求见 [../README.md](../README.md) 的「手写端点归属」，此处不复述。Agent 手写路由（AG-UI / ack）由 [../service/agent_http.go](../service/agent_http.go) 提供注册方法，agent 会话列表由 [../service/agent_sessions.go](../service/agent_sessions.go) 提供注册（装配面在 [../agent/](../agent/) 的 `Stack.SessionsHandler`；须先于前者注册），[http.go](http.go) 只调用。
 
 ## 测试
 

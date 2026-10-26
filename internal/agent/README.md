@@ -10,7 +10,7 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 - 身份与租户：AG-UI 的 UserIDResolver、ack 的 WithUserFunc 与业务工具的执行身份都从认证 ctx（`biz.IdentityFromContext`）取，userKey 编码（`tenant_id:user_id`）共用 `EncodeUserKey` 单一代码点；身份缺失一律 fail-closed，禁止回落框架默认用户 `"user"`。
 - 工具授权（C1，TODO §1.3）：ack 网关持有工具分级静态表（见下）与全量工具集（`WithStaticTools`，恢复路径代执行按名解析）；每次 AG-UI 运行（含恢复路径续跑）经 `gateway.RunOptionResolver()` 挂许可策略，Confirm 工具阻塞等待人工决定。许可源与策略源为 no-op 空实现（C2 接 `agent_tool_grant` 存储与策略），分级表 conf 化亦留 C2/E3。防风暴：LLMAgent 恒设 `WithMaxToolIterations`（单次运行工具调用轮数上限，拒绝后模型无视「不得重试」循环重试时按上限以 RUN_ERROR 终止）；未决确认由 AG-UI 运行超时（conf `agent.agui.timeout`，缺省 30m）结算为拒绝。
 - ack 路由归属守卫：ack 的 live 决定路径不校验决定者与会话归属（等待者按会话+确认 ID 键控；仅恢复路径经 userKey 会话定位天然隔离），ackhttp 自身不做鉴权——grape 在唯一挂载点以 `ackOwnerGuard` 强制归属：threadId 取值源与 ackhttp 严格对齐（POST 决定只认请求体、GET 列表只认查询参数），目标会话不在调用者 userKey 名下即 404（不区分不存在与非你所有）。上游缺陷备案（升级 ack 或排查历史数据时需知）：若 live 路径被跨用户触达（守卫缺失或绕过），`settleLive` 的 savePending 以调用者 uid 定位会话失败仅记日志（ack confirm.go），工具执行不受阻，而属主会话状态里的待确认指针无人清理——归属者后续的合法决定会因等待者已消失被误路由到恢复路径（代执行重放，二次执行风险）；E3 部署文档写运维口径时应引用本条做故障诊断。
-- 会话能力（B2）：/history 快照与 tail follow 开启（AG-UI track 事件持久化进 `agent.agent_session_track_events`）、cancel 生效；TTL 经 conf `agent.session_storage` 注入框架（0 值语义见 conf.proto 注释；track TTL 仅在正值时传入——框架对显式 0 的解释是禁用过期而非沿用 session TTL）。grape 不用 app 级 state 存租户业务数据（ack 的待确认指针存 Session.State，属框架会话设施内的授权状态而非租户业务数据，随会话生命周期管理）。
+- 会话能力（B2）：/history 快照与 tail follow 开启（AG-UI track 事件持久化进 `agent.agent_session_track_events`）、cancel 生效；TTL 经 conf `agent.session_storage` 注入框架（0 值语义见 conf.proto 注释；track TTL 仅在正值时传入——框架对显式 0 的解释是禁用过期而非沿用 session TTL）。grape 不用 app 级 state 存租户业务数据（ack 的待确认指针存 Session.State，属框架会话设施内的授权状态而非租户业务数据，随会话生命周期管理）。agent 会话列表端点（A2）同在本层装配（[sessions.go](sessions.go)）：GET `{basePath}/sessions` 按认证身份 userKey 列出会话元数据（仅元数据 + offset 分页），HTTP 形态经 `Stack.SessionsHandler` 交 service 注册。
 - 上下文压缩（B2）：conf `agent.compression` 翻译为 LLMAgent 同名选项（总开关关闭时不改写任何工具结果）；压缩只作用于请求投影副本，session 事件流保留原文，占位符携带 event_id 恢复引用。LLMAgent 恒开 `WithEnableOnDemandSession`，session_load 经框架 WindowService（session/postgres 已实现）取回原文片段。会话摘要仅留配置位 `agent.summarization`（当前恒关闭，未实现）。
 - 观测面：ack 网关经 `ack.WithLogger` 桥 grape logger（本层装配）；trpc-agent-go 全框架日志门面与 LLM/工具 span 的 Tracer 桥接归 [../telemetry/](../telemetry/)（进程级全局桥接 + trace_id 注入与局限声明），不在本层重复装配。
 
@@ -34,6 +34,7 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型 provider、LLMAgen
 | [tool_user.go](tool_user.go) | 业务工具首批（上表）：框架 function 工具注册 → biz 用户用例调用；入参服务端校验与用户摘要投影（口令/审计列/归属不出工具层）。 |
 | [tool_echo.go](tool_echo.go) | echo 最小只读工具，走框架 function 工具注册。 |
 | [ack_guard.go](ack_guard.go) | ack 路由会话归属守卫：解析 threadId（决定体/查询参数），会话不在调用者 userKey 名下即 404；形状错误放行给 ackhttp（400 语义不变）。 |
+| [sessions.go](sessions.go) | agent 会话列表端点（A2）装配：`sessionList` 消费骨架既有的 session.Service 与 app 名（与 AG-UI / ack 同源），`listSessions` 程序化取用点（仅元数据 + offset 分页）与 HTTP 形态（分页非法 400、身份缺失 fail-closed 401、存储故障 500 固定文案、空会话返回空数组）；经 `Stack.SessionsHandler` 交 service 注册。 |
 | [gateway.go](gateway.go) | ack 许可网关：app 名与 AG-UI runner 一致，身份经 WithUserFunc 取同一编码；分级静态表 + WithStaticTools 登记；grants/policy 为 no-op 空实现（C2 填充许可存储与策略源）。 |
 | [vectorstore.go](vectorstore.go) | biz 向量契约 → 框架 `knowledge/vectorstore.VectorStore` 适配器（决策 6）：Add/Get/Update/Delete/Search 向量模式/DeleteByFilter/Count/GetMetadata 直映；keyword/hybrid 与 searchfilter DSL 归 D2、DeleteAll 归 super 管理口径、UpdateByFilter 无消费方，均显式 unsupported 并注明理由。 |
 | [userkey.go](userkey.go) | userKey（`tenant_id:user_id`）编解码单一代码点：会话归属、许可归属与后续审计共用；缺租户/非正数用户拒绝。 |
@@ -55,7 +56,7 @@ server ──► service ──► agent（本层）──► trpc-agent-go / ac
 
 ## 测试
 
-测试与被测代码同目录：userKey 编解码边界、echo 工具行为、业务工具入参/身份面（[tool_user_test.go](tool_user_test.go)，经框架 CallableTool 转换面直调）、provider/配置缺省值、压缩选项接线与会话服务装配期校验；live 确认流（同意继续且工具真实执行、拒绝 denied 且不重试、跨用户决定 404、MaxToolIterations 上限终止）在 [confirm_live_test.go](confirm_live_test.go)（进程内会话存储 + acktest 脚本化模型 + 内存用户仓储）；完整挂载链（无令牌 401、SSE 流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)，经 `NewStackWithOptions` 的 `WithModelOverride` 注入替身模型，不发真实网络请求。
+测试与被测代码同目录：userKey 编解码边界、echo 工具行为、业务工具入参/身份面（[tool_user_test.go](tool_user_test.go)，经框架 CallableTool 转换面直调）、provider/配置缺省值、压缩选项接线与会话服务装配期校验；live 确认流（同意继续且工具真实执行、拒绝 denied 且不重试、跨用户决定 404、MaxToolIterations 上限终止）在 [confirm_live_test.go](confirm_live_test.go)（进程内会话存储 + acktest 脚本化模型 + 内存用户仓储）；完整挂载链（无令牌 401、SSE 流、trace-id）守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)，经 `NewStackWithOptions` 的 `WithModelOverride` 注入替身模型，不发真实网络请求；会话列表端点直测（分页缺省与边界、身份缺失与编码失败 fail-closed、userKey 归属过滤、存储故障 500 固定文案）在 [sessions_test.go](sessions_test.go)。
 
 会话存储集成测试在 [session_pg_test.go](session_pg_test.go)（`GRAPE_B2_TEST_ADMIN_DSN` 门控跳过）：专属库 grape_agent_b2_test 上按 DeployFiles 全清单装载后，以真实 PostgreSQL 验证跨请求持久、跨用户 userKey 隔离、TTL 落库、压缩投影与事件原文分野、按 event_id 取回原文、/history 快照回放与重启持久、cancel 终止。
 

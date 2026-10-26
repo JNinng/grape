@@ -51,7 +51,7 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 		t.Fatalf("build agent stack: %v", err)
 	}
 	agentService := service.NewAgentService(stack)
-	sessionsService := service.NewAgentSessionsService(svc, agentConf(), agentService)
+	sessionsService := service.NewAgentSessionsService(stack)
 	traceMiddleware, err := entrymw.NewTraceMiddleware(confServer)
 	if err != nil {
 		t.Fatalf("build trace middleware: %v", err)
