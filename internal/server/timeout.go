@@ -20,8 +20,8 @@ type RouteTimeoutMiddleware middleware.Middleware
 // server.http.timeout 归零后，普通 HTTP 路由由本中间件按
 // server.http.request_timeout 恢复请求限时；agent 前缀（AG-UI / ack，
 // SSE 长流）在跳过名单内不施加。跳过判定按操作名（手写路由即路径
-// 模板）前缀匹配，名单取 agent 服务暴露的挂载前缀。request_timeout
-// 未设置或非正时中间件退化为直通。
+// 模板）做边界匹配：等于前缀或以其子路径形式开头，防止 /aguiX 类
+// 相邻操作名被误跳过。request_timeout 未设置或非正时中间件退化为直通。
 func NewRouteTimeoutMiddleware(c *conf.Server, agent *service.AgentService) RouteTimeoutMiddleware {
 	d := c.GetHttp().GetRequestTimeout().AsDuration()
 	basePath := ""
@@ -34,7 +34,7 @@ func NewRouteTimeoutMiddleware(c *conf.Server, agent *service.AgentService) Rout
 				return handler(ctx, req)
 			}
 			if tr, ok := transport.FromServerContext(ctx); ok && basePath != "" {
-				if strings.HasPrefix(tr.Operation(), basePath) {
+				if op := tr.Operation(); op == basePath || strings.HasPrefix(op, basePath+"/") {
 					return handler(ctx, req)
 				}
 			}

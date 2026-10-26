@@ -82,10 +82,12 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	return srv, closeAll
 }
 
-// agentConf 提供骨架装配的 agent 配置。
+// agentConf 提供骨架装配的 agent 配置（model 仅满足装配校验，
+// 替身模型经 WithModelOverride 注入时不会被调用）。
 func agentConf() *conf.Agent {
 	return &conf.Agent{
 		AppName: "grape-agent",
+		Llm:     &conf.Agent_LLM{Model: "stub"},
 		Agui: &conf.Agent_AGUI{
 			BasePath:          "/agui",
 			Timeout:           durationpb.New(agentTestTimeout),
