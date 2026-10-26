@@ -19,6 +19,11 @@ import (
 // （recovery、链路、认证）只作用于生成代码端点内的 ctx.Middleware，直挂的
 // 原始 handler 天然在其链外——/metrics 免认证即可访问。手写业务端点
 // 不走 srv.Handle，归属与入链要求见 internal/README.md「手写端点归属」。
+// 前端静态托管（web fs）经 srv.HandlePrefix 直挂在全部业务路由之后：
+// gorilla/mux 按注册顺序匹配，API / AG-UI / metrics 未命中的 GET 才会
+// 落入 SPA fallback；与 /metrics 同类，静态内容免身份（登录页本身即静态
+// 壳，鉴权发生在 API 调用），且 handler 内部对保留 API 前缀返回 404，
+// 不受方法失配（如 GET 打在 POST 路由上）影响的路径绝不返回页面壳。
 // SSE 治理：server.http.timeout 归零后传输层不再统一限时，普通路由的
 // 请求超时由路由级超时中间件（recovery 之后入链）按 request_timeout
 // 恢复；agent 前缀路由（AG-UI / ack 的 SSE 长流）被其跳过，运行时长
@@ -32,6 +37,7 @@ func NewHTTPServer(
 	user *service.UserService,
 	session *service.SessionService,
 	agent *service.AgentService,
+	web WebHandler,
 ) *http.Server {
 	var opts = []http.ServerOption{
 		http.Middleware(
@@ -63,6 +69,11 @@ func NewHTTPServer(
 	// agent 为 nil 仅出现在不触达业务路由的测试装配里；生产装配恒非 nil。
 	if agent != nil {
 		agent.RegisterHTTP(srv)
+	}
+	// web 为 nil 仅出现在不触达静态路由的测试装配里；生产装配恒非 nil。
+	// 必须最后注册：SPA fallback 的语义就是「其余路由全部未命中」。
+	if web != nil {
+		srv.HandlePrefix("/", nethttp.Handler(web))
 	}
 	return srv
 }
