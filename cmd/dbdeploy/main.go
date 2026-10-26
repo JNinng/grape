@@ -30,6 +30,6 @@ func main() {
 	if err := Deploy(context.Background(), opts, func(format string, args ...any) {
 		log.Printf("[dbdeploy] "+format, args...)
 	}); err != nil {
-		log.Fatalf("[dbdeploy] 部署失败：%v", err)
+		log.Fatalf("[dbdeploy] deployment failed: %v", err)
 	}
 }

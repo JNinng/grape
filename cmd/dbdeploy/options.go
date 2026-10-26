@@ -40,12 +40,12 @@ var databaseNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_$]*$`)
 // getenv 抽象便于单测注入。必填项缺失或库名非法时返回明确文案。
 func ParseOptions(args []string, getenv func(string) string) (*Options, error) {
 	fs := flag.NewFlagSet("dbdeploy", flag.ContinueOnError)
-	adminDSN := fs.String("admin-dsn", "", "超级用户管理连接 DSN（默认读环境变量 "+envAdminDSN+"；DSN 中库名被忽略）")
-	database := fs.String("database", "", "目标库名，不存在时创建（默认 "+defaultDatabase+"）")
-	grapeUPwd := fs.String("grape-u-password", "", "运行角色 grape_u 口令（默认读环境变量 "+envGrapeUPassword+"；推荐走环境变量）")
-	testUPwd := fs.String("test-u-password", "", "演示用户 test_u 口令（默认读环境变量 "+envTestUPassword+"；推荐走环境变量）")
+	adminDSN := fs.String("admin-dsn", "", "superuser admin DSN (default "+envAdminDSN+"; database part is ignored)")
+	database := fs.String("database", "", "target database, created when missing (default "+defaultDatabase+")")
+	grapeUPwd := fs.String("grape-u-password", "", "grape_u password (default "+envGrapeUPassword+"; prefer the env var)")
+	testUPwd := fs.String("test-u-password", "", "test_u password (default "+envTestUPassword+"; prefer the env var)")
 	if err := fs.Parse(args); err != nil {
-		return nil, fmt.Errorf("解析命令行参数失败: %w", err)
+		return nil, fmt.Errorf("parse flags: %w", err)
 	}
 
 	opts := &Options{
@@ -62,16 +62,16 @@ func ParseOptions(args []string, getenv func(string) string) (*Options, error) {
 
 func (o *Options) validate() error {
 	if strings.TrimSpace(o.AdminDSN) == "" {
-		return fmt.Errorf("缺少管理连接 DSN：请以 --admin-dsn 或环境变量 %s 提供（超级用户，如 postgres://user:pass@host:5432/postgres）", envAdminDSN)
+		return fmt.Errorf("missing admin DSN: provide it via --admin-dsn or %s (superuser, e.g. postgres://user:pass@host:5432/postgres)", envAdminDSN)
 	}
 	if !databaseNamePattern.MatchString(o.Database) {
-		return fmt.Errorf("目标库名 %q 不合法：只能包含字母、数字、下划线与 $，且以字母或下划线开头", o.Database)
+		return fmt.Errorf("invalid database name %q: only letters, digits, underscore and $ are allowed, and it must start with a letter or underscore", o.Database)
 	}
 	if o.GrapeUPassword == "" {
-		return fmt.Errorf("缺少 grape_u 口令：请以 --grape-u-password 或环境变量 %s 提供", envGrapeUPassword)
+		return fmt.Errorf("missing grape_u password: provide it via --grape-u-password or %s", envGrapeUPassword)
 	}
 	if o.TestUPassword == "" {
-		return fmt.Errorf("缺少 test_u 口令：请以 --test-u-password 或环境变量 %s 提供", envTestUPassword)
+		return fmt.Errorf("missing test_u password: provide it via --test-u-password or %s", envTestUPassword)
 	}
 	return nil
 }
