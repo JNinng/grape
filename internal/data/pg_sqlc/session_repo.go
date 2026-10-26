@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/撤销经身份
-// 事务门面 IdentityTx 执行（RLS 限租户）；校验/刷新在租户身份成立之前
-// 执行，经 TokenTx 凭哈希由 RLS 放行命中的那一行。令牌哈希由 biz 计
-// 算，仓储只存取哈希。
+// sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/按 id 撤销经
+// 身份事务门面 IdentityTx 执行（RLS 限租户）；校验/登出/刷新在租户身份
+// 成立之前执行，经 TokenTx 凭哈希由 RLS 放行命中的那一行。令牌哈希由
+// biz 计算，仓储只存取哈希。
 type sessionRepo struct {
 	data *Data
 }
@@ -108,6 +108,18 @@ func (r *sessionRepo) Revoke(ctx context.Context, auth biz.Identity, id int64) e
 			UpdatedBy: auth.UserID,
 			ID:        id,
 		})
+		return err
+	})
+}
+
+// RevokeByAccessTokenHash 按访问令牌哈希撤销所属会话（登出）。租户
+// 身份尚未成立，与校验/刷新同走令牌维度事务：RLS 的
+// sys_session_token_revoke 策略只放行哈希命中的单行。令牌不匹配、
+// 会话已撤销或已删除时更新 0 行，按幂等返回 nil——登出重放与未知
+// 令牌都不报错，也不泄露会话是否存在。
+func (r *sessionRepo) RevokeByAccessTokenHash(ctx context.Context, accessTokenHash string) error {
+	return r.data.TokenTx(ctx, TokenLookup{AccessTokenHash: accessTokenHash}, func(s *TokenTx) error {
+		_, err := s.Q().RevokeSysSessionByTokenHash(ctx, accessTokenHash)
 		return err
 	})
 }

@@ -5,7 +5,7 @@
 ## 分层角色
 
 - 第一类业务入口，与 [task](../task/) 平级；上游是 `api/` 中声明的 HTTP / gRPC 契约，下游是 [biz](../biz/)。
-- 只导入 `api/...` 与 `biz`；手写端点可额外导入 `transport/http`。完整 import 方向见 [internal/README.md](../README.md) 的「分层与数据流向」。
+- 只导入 `api/...` 与 `biz`；手写端点可额外导入 `transport/http`；`Logout` 因免认证幂等语义自取 `Authorization` 头，额外导入 `transport`（例外仅此一处）。完整 import 方向见 [internal/README.md](../README.md) 的「分层与数据流向」。
 - 服务由 [server](../server/) 按生成代码路由挂载；本层不构建传输层、不装配中间件链。
 - 受保护端点的身份事实只从 context 取（`authOf`），缺失按未认证 fail-closed；令牌校验由中间件完成，不在本层重复实现。
 
@@ -38,7 +38,7 @@
 | ---- | ---- |
 | [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService`，由 cmd 的 Wire 统一装配。 |
 | [query.go](query.go) | 跨资源查询转换：`convertQuery` 把 `queryv1.Query` 转 `dynq.Query`；`normalizeEnumValue` 归一化枚举过滤值（仅 `eq` / `neq` / `in` / `not_in` 且字段已登记别名时生效）；`invalidQueryError` 包装转换错误；`pageOf` 计算分页信封页码。 |
-| [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
+| [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`Logout` 免认证（幂等语义，见认证中间件白名单），自取 `Authorization: Bearer` 头交用例按哈希撤销；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
 | [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`、`TransferUserOwner`；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
 
 ## 接入要点

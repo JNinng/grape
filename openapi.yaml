@@ -28,6 +28,30 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/session.v1.LoginReply'
+    /v1/auth/logout:
+        post:
+            tags:
+                - SessionService
+            description: |-
+                Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+                 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+                 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+                 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+                 也不泄露会话状态），重放登出不报错。
+            operationId: SessionService_Logout
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/session.v1.LogoutRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/session.v1.LogoutReply'
     /v1/auth/refresh:
         post:
             tags:
@@ -346,6 +370,18 @@ components:
                     type: string
                     description: 登录来源 IP。过渡期由客户端声明，审计采集切面落地后改为服务端收集。
             description: LoginRequest 是 SessionService.Login 的输入。
+        session.v1.LogoutReply:
+            type: object
+            properties: {}
+            description: |-
+                LogoutReply 是 SessionService.Logout 的输出：无字段。幂等语义下
+                 令牌已撤销或无对应会话时同样返回空响应。
+        session.v1.LogoutRequest:
+            type: object
+            properties: {}
+            description: |-
+                LogoutRequest 是 SessionService.Logout 的输入：无请求体字段，访问
+                 令牌经 Authorization: Bearer 头携带，不经请求体。
         session.v1.RefreshRequest:
             required:
                 - refreshToken

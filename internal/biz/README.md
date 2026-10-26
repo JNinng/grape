@@ -37,7 +37,7 @@
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [user.go](user.go)                | 用户 DO `User`、分页信封 `UserList`、归属三元组 `OwnerTriple`；`UserRepo`（CRUD、角色分配、归属转移、登录凭据点查）与 `UserUsecase`；name/nickname 必填与 status 校验、创建缺省值、角色 ID 去重排序。                     |
 | [auth.go](auth.go)                | 登录用例：`LoginInput` / `LoginResult`、`UserCredential` 与账号摘要 `UserSummary`；租户回落、防枚举（不存在与口令错同因）、口令校验通过后判禁用、透明重哈希、委托 `SessionUsecase` 签发会话。                          |
-| [session.go](session.go)          | 会话 DO `Session` 与状态/TTL/元数据列宽常量；`SessionRepo` 的 Issue / Validate / Revoke / Refresh 四动作及入参出参；`SessionUsecase` 负责令牌生成、sha256 哈希、元数据截断；会话与登录相关类型化错误也定义于此。          |
+| [session.go](session.go)          | 会话 DO `Session` 与状态/TTL/元数据列宽常量；`SessionRepo` 的 Issue / Validate / Revoke / RevokeByAccessTokenHash（登出）/ Refresh 动作及入参出参；`SessionUsecase` 负责令牌生成、sha256 哈希、元数据截断；会话与登录相关类型化错误也定义于此。          |
 | [password.go](password.go)        | 口令哈希单点：`HashPassword`（argon2id PHC）与 `VerifyPassword`（按行内算法标识分发 argon2id/argon2i、bcrypt、种子 scrypt），返回是否需重哈希；`ErrPasswordHashUnsupported` 表示库内哈希格式异常。                      |
 | [identity.go](identity.go)        | 服务端身份事实 `Identity`（TenantID + UserID）与私有 ctx 键；`WithIdentity` 仅供认证中间件注入，`IdentityFromContext` 缺失时由调用方按未认证 fail-closed 处理。                                                           |
 | [maintenance.go](maintenance.go)  | 设施无关契约：诊断面 `FacilityDiagnostics` 与 `MetricSample` / `MetricType`，维护面 `FacilityMaintenance` 与 `MaintenanceAction` / `MaintenanceReport`；ops 指标出口与 task 维护循环只认契约，不读原始实现。             |

@@ -7,7 +7,15 @@ import (
 	sessionv1 "grape/api/session/v1"
 	"grape/internal/biz"
 
+	"github.com/go-kratos/kratos/v3/transport"
 	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+// authorizationHeader / bearerScheme 是令牌携带方式，与认证中间件同
+// 一约定（Authorization: Bearer <token>）。Logout 免认证后由本层自取。
+const (
+	authorizationHeader = "Authorization"
+	bearerScheme        = "Bearer"
 )
 
 // SessionService 是登录/刷新的传输层适配器：DTO ↔ DO 转换，委托给
@@ -48,6 +56,26 @@ func (s *SessionService) Refresh(ctx context.Context, req *sessionv1.RefreshRequ
 		return nil, err
 	}
 	return toLoginReply(out, nil), nil
+}
+
+// Logout 撤销当前请求所持访问令牌所属的登录会话。端点免认证（见认证
+// 中间件白名单）：重复登出幂等，严格的活跃会话校验会把已撤销令牌拦
+// 在 401，破坏幂等语义，故本方法自行提取 Bearer 令牌交用例按哈希撤销。
+// 缺传输上下文、缺头或格式非法按未认证拒绝，与令牌校验失败同因同码；
+// 令牌无对应会话或会话已撤销时幂等成功。
+func (s *SessionService) Logout(ctx context.Context, _ *sessionv1.LogoutRequest) (*sessionv1.LogoutReply, error) {
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return nil, biz.ErrSessionInvalid
+	}
+	scheme, token, _ := strings.Cut(tr.RequestHeader().Get(authorizationHeader), " ")
+	if !strings.EqualFold(scheme, bearerScheme) || token == "" {
+		return nil, biz.ErrSessionInvalid
+	}
+	if err := s.sessions.Logout(ctx, token); err != nil {
+		return nil, err
+	}
+	return &sessionv1.LogoutReply{}, nil
 }
 
 // toLoginReply 渲染登录/刷新响应：令牌类型固定 Bearer，经

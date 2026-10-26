@@ -454,8 +454,9 @@ func TestUserRepo(t *testing.T) {
 func ptrInt64(v int64) *int64 { return &v }
 
 // TestSessionRepo 以真实 PostgreSQL 验证会话仓储：令牌只以哈希出入、
-// 校验只看有效行、撤销幂等且受租户边界约束、刷新轮换后旧令牌立即
-// 失效，以及令牌维度事务只放行哈希命中的那一行。
+// 校验只看有效行、撤销幂等且受租户边界约束、登出按令牌哈希撤销并使
+// 刷新令牌一并失效、刷新轮换后旧令牌立即失效，以及令牌维度事务只放
+// 行哈希命中的那一行。
 func TestSessionRepo(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
@@ -546,6 +547,70 @@ func TestSessionRepo(t *testing.T) {
 		}
 		if _, err := repo.Validate(ctx, testTokenHash("access-cross")); err != nil {
 			t.Fatalf("cross-tenant revoke must not take effect: %v", err)
+		}
+	})
+
+	// 登出按访问令牌哈希撤销：访问令牌与刷新令牌一并失效（会话级撤销）。
+	t.Run("logout by access token kills session and refresh", func(t *testing.T) {
+		issue(t, owner, "access-logout", "refresh-logout", time.Hour, 24*time.Hour)
+		if err := repo.RevokeByAccessTokenHash(ctx, testTokenHash("access-logout")); err != nil {
+			t.Fatalf("logout: %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-logout")); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("logged-out access token: want ErrSessionInvalid, got %v", err)
+		}
+		if _, err := repo.Refresh(ctx, &biz.RefreshSessionInput{
+			CurrentRefreshTokenHash: testTokenHash("refresh-logout"),
+			NewAccessTokenHash:      testTokenHash("access-logout-2"),
+			NewRefreshTokenHash:     testTokenHash("refresh-logout-2"),
+			AccessTTL:               time.Hour,
+			RefreshTTL:              24 * time.Hour,
+		}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("refresh after logout: want ErrSessionInvalid, got %v", err)
+		}
+	})
+
+	// 重复登出幂等：重放不报错，审计归属记会话用户（令牌维度事务无
+	// 调用者身份，updated_by = user_id）。
+	t.Run("logout is idempotent and attributes audit to owner", func(t *testing.T) {
+		issue(t, owner, "access-logout-replay", "refresh-logout-replay", time.Hour, 24*time.Hour)
+		hash := testTokenHash("access-logout-replay")
+		readRow := func(t *testing.T) (revoked bool, updatedBy int64) {
+			t.Helper()
+			err := d.IdentityTx(ctx, Identity{TenantID: owner.TenantID, UserID: owner.UserID}, func(s *IdentityTx) error {
+				return s.Tx().QueryRow(ctx,
+					"SELECT is_revoked, updated_by FROM public.sys_session WHERE token_hash = $1", hash,
+				).Scan(&revoked, &updatedBy)
+			})
+			if err != nil {
+				t.Fatalf("read session row: %v", err)
+			}
+			return revoked, updatedBy
+		}
+
+		if err := repo.RevokeByAccessTokenHash(ctx, hash); err != nil {
+			t.Fatalf("logout: %v", err)
+		}
+		if err := repo.RevokeByAccessTokenHash(ctx, hash); err != nil {
+			t.Fatalf("replayed logout must be idempotent: %v", err)
+		}
+		revoked, updatedBy := readRow(t)
+		if !revoked {
+			t.Fatal("session must stay revoked after replayed logout")
+		}
+		if updatedBy != owner.UserID {
+			t.Fatalf("updated_by = %d, want session owner %d", updatedBy, owner.UserID)
+		}
+	})
+
+	// 未知令牌无可撤销行：幂等成功，且不影响其他会话。
+	t.Run("logout with unknown token is a no-op", func(t *testing.T) {
+		issue(t, owner, "access-keep", "refresh-keep", time.Hour, 24*time.Hour)
+		if err := repo.RevokeByAccessTokenHash(ctx, testTokenHash("access-unknown")); err != nil {
+			t.Fatalf("unknown token logout: %v", err)
+		}
+		if _, err := repo.Validate(ctx, testTokenHash("access-keep")); err != nil {
+			t.Fatalf("unrelated session must stay valid: %v", err)
 		}
 	})
 
@@ -744,6 +809,28 @@ func TestSessionRepo(t *testing.T) {
 		}
 		if got.TenantID != otherTenant.TenantID || got.UserID != otherTenant.UserID {
 			t.Fatalf("cross-tenant identity = %+v, want %+v", got.Identity(), otherTenant)
+		}
+	})
+
+	// 登出全链路（用例路径）：明文令牌哈希后撤销，访问/刷新令牌一并
+	// 失效，重放登出幂等成功。
+	t.Run("usecase logout works end to end", func(t *testing.T) {
+		uc := biz.NewSessionUsecase(repo)
+		issued, err := uc.Issue(ctx, owner, biz.SessionOptions{}, ptrString("logout-e2e"), ptrString("127.0.0.1"))
+		if err != nil {
+			t.Fatalf("issue via usecase: %v", err)
+		}
+		if err := uc.Logout(ctx, issued.AccessToken); err != nil {
+			t.Fatalf("logout via usecase: %v", err)
+		}
+		if _, err := uc.Validate(ctx, issued.AccessToken); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("logged-out access token: want ErrSessionInvalid, got %v", err)
+		}
+		if _, err := uc.Refresh(ctx, issued.RefreshToken, biz.SessionOptions{}); !errors.Is(err, biz.ErrSessionInvalid) {
+			t.Fatalf("refresh after logout: want ErrSessionInvalid, got %v", err)
+		}
+		if err := uc.Logout(ctx, issued.AccessToken); err != nil {
+			t.Fatalf("replayed logout must be idempotent: %v", err)
 		}
 	})
 

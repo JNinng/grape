@@ -26,14 +26,14 @@ handler / service（生成代码路由；业务数据流从 service 开始）
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [auth.go](auth.go) | 认证中间件。按 `tr.Operation()` 查 `publicOperations` 白名单（登录、刷新）；其余端点要求 `Authorization: Bearer <token>`，缺头、格式非法与令牌无效统一返回 `biz.ErrSessionInvalid`（401，不向调用方区分原因），校验通过把 `biz.Identity` 注入 ctx；取不到传输上下文直接拒绝（fail-closed）。 |
+| [auth.go](auth.go) | 认证中间件。按 `tr.Operation()` 查 `publicOperations` 白名单（登录、刷新、登出）；其余端点要求 `Authorization: Bearer <token>`，缺头、格式非法与令牌无效统一返回 `biz.ErrSessionInvalid`（401，不向调用方区分原因），校验通过把 `biz.Identity` 注入 ctx；取不到传输上下文直接拒绝（fail-closed）。 |
 | [trace.go](trace.go) | 链路中间件。仅当 `traceparent` 为合法 W3C 格式且对端 IP 落在 `server.trace.trusted_networks` 内才继承 trace-id，否则剥头并新建根；注入 otel SpanContext 供日志自动携带 trace_id / span_id，回写 `x-trace-id`，`x-request-id` 上游有则原样回传、无则以 trace-id 兜底；配置含非法 CIDR 时构造函数报错、拒绝启动。`TraceMiddleware` 为命名类型（底层 `middleware.Middleware`），与认证中间件同型不同参时供 Wire 区分。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：导出 `NewAuthMiddleware` / `NewTraceMiddleware`。 |
 
 ## 接入要点
 
 - 新中间件：在 [provider.go](provider.go) 增加构造函数并注册进 `ProviderSet`，再到 [server](../server/) 的 HTTP / gRPC 装配处按序加入链；同型多实例须用命名类型承载，否则 Wire 无法按类型装配。
-- 免认证条目只加有明确依据的端点：当前仅登录与刷新（身份成立前调用，凭据分别为用户名口令与刷新令牌）；新增条目须说明凭据形态与校验方式，默认拒绝。
+- 免认证条目只加有明确依据的端点：登录与刷新（身份成立前调用，凭据分别为用户名口令与刷新令牌）、登出（凭据是访问令牌本身，且重复登出幂等——严格活跃会话校验会把已撤销令牌拦在 401，故由 service 自取令牌处理）；新增条目须说明凭据形态与校验方式，默认拒绝。
 - 依赖边界：只允许 `api/...` 操作名、`biz`、`conf` 与 `pkg/utils`；不导入 `service`、`data`，不在本层实现业务规则。
 - 需要免认证的业务回调（验签替代令牌）仍归 `service`，只把路由模板加入白名单，不得靠漏调入链实现。
 

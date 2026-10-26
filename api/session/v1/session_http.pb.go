@@ -18,6 +18,7 @@ var _ = new(context.Context)
 const _ = http.SupportPackageIsVersion3
 
 const OperationSessionServiceLogin = "/session.v1.SessionService/Login"
+const OperationSessionServiceLogout = "/session.v1.SessionService/Logout"
 const OperationSessionServiceRefresh = "/session.v1.SessionService/Refresh"
 
 type SessionServiceHTTPServer interface {
@@ -25,6 +26,12 @@ type SessionServiceHTTPServer interface {
 	// 且非当前首选算法时透明重哈希（算法平滑升级）。失败统一返回
 	// INVALID_CREDENTIALS（防枚举）；账号禁用返回 USER_DISABLED。
 	Login(context.Context, *LoginRequest) (*LoginReply, error)
+	// Logout Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+	// 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+	// 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+	// 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+	// 也不泄露会话状态），重放登出不报错。
+	Logout(context.Context, *LogoutRequest) (*LogoutReply, error)
 	// Refresh Refresh 以刷新令牌轮换一对新令牌：访问令牌与刷新令牌都是独立
 	// 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
 	// SESSION_INVALID。
@@ -35,6 +42,7 @@ func RegisterSessionServiceHTTPServer(s *http.Server, srv SessionServiceHTTPServ
 	r := s.Route("/")
 	r.Handle("POST", "/v1/auth/login", _SessionService_Login0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/auth/refresh", _SessionService_Refresh0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/auth/logout", _SessionService_Logout0_HTTP_Handler(srv))
 }
 
 func _SessionService_Login0_HTTP_Handler(srv SessionServiceHTTPServer) func(ctx http.Context) error {
@@ -75,11 +83,36 @@ func _SessionService_Refresh0_HTTP_Handler(srv SessionServiceHTTPServer) func(ct
 	}
 }
 
+func _SessionService_Logout0_HTTP_Handler(srv SessionServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in LogoutRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationSessionServiceLogout)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.Logout(ctx, req.(*LogoutRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*LogoutReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type SessionServiceHTTPClient interface {
 	// Login Login 校验用户名与口令并签发会话：口令按库内算法标识校验，通过
 	// 且非当前首选算法时透明重哈希（算法平滑升级）。失败统一返回
 	// INVALID_CREDENTIALS（防枚举）；账号禁用返回 USER_DISABLED。
 	Login(ctx context.Context, req *LoginRequest, opts ...http.CallOption) (rsp *LoginReply, err error)
+	// Logout Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+	// 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+	// 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+	// 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+	// 也不泄露会话状态），重放登出不报错。
+	Logout(ctx context.Context, req *LogoutRequest, opts ...http.CallOption) (rsp *LogoutReply, err error)
 	// Refresh Refresh 以刷新令牌轮换一对新令牌：访问令牌与刷新令牌都是独立
 	// 随机值，旧刷新令牌随即失效。刷新令牌无效/过期/已轮换返回
 	// SESSION_INVALID。
@@ -105,6 +138,28 @@ func (c *SessionServiceHTTPClientImpl) Login(ctx context.Context, in *LoginReque
 		http.Accept("application/protojson"),
 		http.ContentType("application/protojson"),
 		http.Operation(OperationSessionServiceLogin),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Logout Logout 撤销当前请求所持访问令牌所属的登录会话，会话级撤销同时使
+// 该会话的刷新令牌失效。端点免认证（凭据就是令牌本身，且重复登出
+// 必须幂等）：缺 Authorization 头或格式非法返回 SESSION_INVALID；
+// 令牌对应会话已撤销、不存在或不匹配时同样成功返回（无内容可撤销，
+// 也不泄露会话状态），重放登出不报错。
+func (c *SessionServiceHTTPClientImpl) Logout(ctx context.Context, in *LogoutRequest, opts ...http.CallOption) (*LogoutReply, error) {
+	var out LogoutReply
+	pattern := "/v1/auth/logout"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationSessionServiceLogout),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
