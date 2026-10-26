@@ -12,4 +12,4 @@
 
 ## 测试
 
-现有覆盖：驱动错误映射、debug 参数脱敏、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定、向量存储租户隔离与检索语义；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`（会话等关系面）与 `GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN`（向量面，专属库 grape_vector_d1_test）门控，未设置时自动跳过。
+现有覆盖：驱动错误映射、debug 参数脱敏（经 [pkg/redact](../../pkg/redact/) 注册表：会话令牌哈希注入脱敏 + 凭据哈希语句按值形态脱敏）、会话门面与 RLS/@scope 纪律、诊断面采集、介质维护清理与索引膨胀判定、向量存储租户隔离与检索语义；集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`（会话等关系面）与 `GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN`（向量面，专属库 grape_vector_d1_test）门控，未设置时自动跳过。
