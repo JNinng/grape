@@ -362,7 +362,7 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 // 对齐——POST 决定只认 body。攻击者用「查询参数=自己名下会话（可通过
 // 归属校验的合法值）+ body=他人会话（真正要决定的目标）」必须在守卫处
 // 404：原确认不受影响、工具零执行；归属者后续合法决定仍走 live 路径
-//（排除 pending 指针被污染后误路由恢复路径的次生现象）。
+// （排除 pending 指针被污染后误路由恢复路径的次生现象）。
 func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *testing.T) {
 	const (
 		ownerThread    = "thread-mismatch-owner"
@@ -415,7 +415,7 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 // TestConfirmLive_when_decide_body_trailing_data_rejected 防回归（复评
 // 实证的解码分歧形态）：body 为「合法 JSON + 尾随数据」时 ackhttp 的
 // json.Decoder 能正常解码并照常决定，守卫必须以完全同一的解码方式取值
-//——若退化为 json.Unmarshal 会误判形状非法而放行，跨用户决定直达
+// ——若退化为 json.Unmarshal 会误判形状非法而放行，跨用户决定直达
 // ackhttp。该形态不依赖查询参数（旧取值源缺陷与解码分歧两条路都封死）。
 func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 	const (

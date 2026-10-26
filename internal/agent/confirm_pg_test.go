@@ -238,7 +238,7 @@ func c1WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains stri
 
 // TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes 验证
 // 同意侧恢复：重启后的孤儿确认经决定路由走恢复路径，工具被网关代执行
-//（biz 用例真实收到写入），续跑运行在会话中产出终答并可经 /history 回放。
+// （biz 用例真实收到写入），续跑运行在会话中产出终答并可经 /history 回放。
 func TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes(t *testing.T) {
 	dsn := c1SetupDatabase(t)
 	const (

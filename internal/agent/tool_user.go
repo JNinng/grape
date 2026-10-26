@@ -28,7 +28,7 @@ const (
 
 // 工具入参边界：昵称上限与 sys_user.nickname 列宽（varchar(256)）对齐；
 // 查询名限短（模糊匹配无必要过长）；单页条数上限防御模型发起超大分页
-//（存储层 @page 上限 400 仍是最终防线，这里是更早的拒绝点）。
+// （存储层 @page 上限 400 仍是最终防线，这里是更早的拒绝点）。
 const (
 	maxNicknameChars     = 256
 	maxUserNameChars     = 64
