@@ -20,7 +20,10 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- agent schema 是 agent 域设施的独立命名空间（框架会话表 B2 亦落此处）。
--- IF NOT EXISTS 与并行流共存：任一侧先到先建。
+-- 本文件的 CREATE SCHEMA IF NOT EXISTS 与会话流建表文件谁先执行无关：
+-- schema 已存在即幂等沿用，两文件不因顺序互斥；幂等边界仅及于此——
+-- agent_document 的建表/建索引仍是非幂等结构 DDL，重复执行按结构 DDL
+-- 口径报错（全量重建先重建库）。
 CREATE SCHEMA IF NOT EXISTS agent;
 
 COMMENT ON SCHEMA agent IS 'Agent 域设施 schema：框架会话存储与向量检索表，无租户 RLS，租户隔离由应用层强制（TODO 决策 6）';

@@ -60,6 +60,11 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   缺认证身份拒绝，TODO 决策 6），RLS 语句以注释形式附在 agent_vector.sql
   供按需启用；跨租户管理操作（在线重建索引、全量清理）走显式 super
   管理口径，不设普通入口。
+- **HNSW 建索引参数不进 conf（决策说明）**：度量（vector_cosine_ops）与
+  m / ef_construction 属物理 DDL，固化于 [agent_vector.sql](agent_vector.sql)
+  ——索引结构是部署面资产，改参数即改 DDL 重建索引，不是运行期可调项；
+  conf.vector 只持检索面参数（enabled / dimension / table_name），
+  ef_search 等检索期调参归 D2 检索配置另议（会话级 SET，不落表定义）。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
