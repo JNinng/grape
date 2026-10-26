@@ -4,7 +4,7 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
 
 ## 挂载与流向
 
-入参：`conf`（`http` / `grpc` 监听网络、地址与超时）、`service`（生成契约的服务实现与 Agent 手写端点）、`middleware`（链路与认证）、`ops`（`/metrics` 原始 Handler）、`web`（前端静态托管 Handler，由 [web](../../../web/) 的嵌入产物构造）。出参：`*http.Server` / `*grpc.Server`（Kratos `transport.Server`），由 `cmd/server` 交给 `kratos.App` 随应用启停。
+入参：`conf`（`http` / `grpc` 监听网络、地址与超时）、`service`（生成契约的服务实现与 Agent 手写端点）、`middleware`（链路与认证）、`ops`（`/metrics` 原始 Handler）、`web`（前端静态托管 Handler，由 [web](../../web/) 的嵌入产物构造）。出参：`*http.Server` / `*grpc.Server`（Kratos `transport.Server`），由 `cmd/server` 交给 `kratos.App` 随应用启停。
 
 ```
 client
