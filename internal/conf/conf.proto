@@ -52,11 +52,30 @@ message Vector {
   // 未启用时向量仓储按设施缺失拒绝所有调用，不触库。
   bool enabled = 1;
   // embedding 维度，必须与 DDL 列类型 vector(维度) 一致（默认部署为
-  // 1024）。启用时必填。
+  // 1024），同时必须与 embedding 模型的产出维度一致（embedding 段）；
+  // 两处不一致分别在装配期失败。启用时必填。
   int32 dimension = 2;
   // 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   // 留空取默认 agent_document。
   string table_name = 3;
+  // Embedding 是 embedding 服务的配置（OpenAI 兼容 embeddings 端点，
+  // 决策 5 同口径），由 internal/data/openaiembedder 消费。
+  message Embedding {
+    // provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空或
+    // 其他取值一律按兼容端点处理。
+    string provider = 1;
+    // OpenAI 兼容端点根地址（如 https://api.openai.com/v1），请求落在
+    // 其 /embeddings 路径。启用时必填。
+    string base_url = 2;
+    // API key，经 ${ENV:...} 占位注入，不落默认配置。
+    string api_key = 3;
+    // embedding 模型名。启用时必填；模型产出维度必须与上层 dimension
+    // 一致，运行期每次响应按 dimension 校验，漂移即报错。
+    string model = 4;
+    // 单次 embedding 调用超时；未设置取 30s。
+    google.protobuf.Duration timeout = 5;
+  }
+  Embedding embedding = 4;
 }
 
 // Agent 是 Agent 服务（AG-UI + ack）的配置：应用名、LLM provider 与
