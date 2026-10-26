@@ -4,6 +4,7 @@ import (
 	context "context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	nethttp "net/http"
 	"strconv"
 	"time"
@@ -122,7 +123,10 @@ func (s *AgentSessionsService) list(r *nethttp.Request, w nethttp.ResponseWriter
 		session.WithListSessionPage(offset, limit),
 	)
 	if err != nil {
-		writeAgentSessionsError(w, nethttp.StatusInternalServerError, err)
+		// 500 固定文案：内部错误细节（驱动/SQL 文本）只进服务端日志，
+		// 不透传给已认证客户端（与生成端点的 reason 枚举语义对齐）。
+		slog.ErrorContext(r.Context(), "list agent sessions failed", "error", err)
+		writeAgentSessionsJSON(w, nethttp.StatusInternalServerError, map[string]string{"message": "internal error"})
 		return
 	}
 	reply := agentSessionsReply{Sessions: make([]agentSessionItem, 0, len(sessions))}
