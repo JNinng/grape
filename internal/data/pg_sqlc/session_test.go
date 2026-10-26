@@ -117,6 +117,12 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("connect deploy: %v", err)
 	}
 	defer deployConn.Close(ctx)
+	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
+	release, err := AcquireDeployLock(ctx)
+	if err != nil {
+		t.Fatalf("acquire deploy lock: %v", err)
+	}
+	defer release()
 	for _, f := range DeployFiles {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {

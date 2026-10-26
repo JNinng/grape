@@ -98,6 +98,12 @@ func b2SetupDatabase(t *testing.T) string {
 		t.Fatalf("connect deploy: %v", err)
 	}
 	defer deployConn.Close(ctx)
+	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
+	release, err := pg_sqlc.AcquireDeployLock(ctx)
+	if err != nil {
+		t.Fatalf("acquire deploy lock: %v", err)
+	}
+	defer release()
 	for _, name := range pg_sqlc.DeployFiles {
 		sql, err := os.ReadFile(deployDir + "/" + name)
 		if err != nil {

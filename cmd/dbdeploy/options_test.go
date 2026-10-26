@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	testAdminDSN      = "postgres://postgresql:root@127.0.0.1:5432/postgres"
-	envKeyAdminDSN    = "GRAPE_DEPLOY_ADMIN_DSN"
-	envKeyGrapeUPwd   = "GRAPE_DEPLOY_GRAPE_U_PASSWORD"
-	envKeyTestUPwd    = "GRAPE_DEPLOY_TEST_U_PASSWORD"
-	envKeyDatabase    = "GRAPE_DEPLOY_DATABASE"
+	testAdminDSN       = "postgres://postgresql:root@127.0.0.1:5432/postgres"
+	envKeyAdminDSN     = "GRAPE_DEPLOY_ADMIN_DSN"
+	envKeyGrapeUPwd    = "GRAPE_DEPLOY_GRAPE_U_PASSWORD"
+	envKeyTestUPwd     = "GRAPE_DEPLOY_TEST_U_PASSWORD"
+	envKeyDatabase     = "GRAPE_DEPLOY_DATABASE"
 	envFullPasswordSet = "env set"
 )
 

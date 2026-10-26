@@ -1,6 +1,7 @@
 package pg_sqlc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // DeployFiles 是数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
@@ -78,6 +80,37 @@ func replacePlaceholder(sql, placeholder, password string) string {
 // HasResidualPlaceholder 报告 SQL 文本是否残留未替换的占位符。
 func HasResidualPlaceholder(sql string) bool {
 	return residualPlaceholder.MatchString(sql)
+}
+
+// AcquireDeployLock 串行化跨包、跨进程的清单部署：role.sql 的角色与参数
+// 授权是集群级目录操作，多个测试包（pg_sqlc / dbdeploy / agent 会话面）
+// 或多个 dbdeploy 进程并发执行时会在共享目录上触发 tuple concurrently
+// updated（SQLSTATE XX000）。锁文件落在系统临时目录；持锁超过 staleLimit
+// 视为持有者已崩溃，允许接管，避免测试崩溃残留死锁。
+func AcquireDeployLock(ctx context.Context) (func(), error) {
+	const staleLimit = 10 * time.Minute
+	path := filepath.Join(os.TempDir(), "grape-sqlc-deploy.lock")
+	deadline := time.Now().Add(time.Minute)
+	for {
+		if fi, err := os.Stat(path); err == nil && time.Since(fi.ModTime()) > staleLimit {
+			_ = os.Remove(path)
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		if err == nil {
+			return func() { _ = f.Close(); _ = os.Remove(path) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, fmt.Errorf("deploy: create lock: %w", err)
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("deploy: acquire lock timeout waiting for %s", path)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("deploy: acquire lock: %w", ctx.Err())
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
 }
 
 // DeployDir 返回 sqlc/ 目录在当前文件系统中的路径，以本文件源码位置

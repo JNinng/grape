@@ -88,6 +88,14 @@ func deployInTransaction(ctx context.Context, opts *Options, dir string, logf fu
 	}
 	defer conn.Close(ctx)
 
+	// role.sql 的角色目录操作是集群级的，与其他 dbdeploy 进程及集成
+	// 测试包的并发部署互斥。
+	release, err := pg_sqlc.AcquireDeployLock(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire deploy lock: %w", err)
+	}
+	defer release()
+
 	tx, err := conn.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin deploy transaction: %w", err)
