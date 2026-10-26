@@ -1,5 +1,10 @@
 package main
 
+// 集成测试运行约束：本套件与 internal/data/pg_sqlc 的集成套件都会在
+// 目标集群上创建 grape_u / test_u 角色。角色是集群级共享对象，两个
+// 套件在干净集群上并发运行时会在 CREATE USER 上相互踩踏，因此二者
+// 不应并行（go test 默认按包串行；显式指定 -p 1 或分次运行）。
+
 import (
 	"context"
 	"fmt"
@@ -20,6 +25,11 @@ import (
 //
 //	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./cmd/dbdeploy -count=1 -v
+//
+// 局限说明：本机 pg_hba.conf 配置为 trust 认证，口令等值不经过服务端
+// 校验，「grape_u 以部署口令可连接」在本环境属于弱断言；口令未被改写
+// 的验证以 pg_authid.rolpassword 哈希前后的等值断言兜底（见
+// TestDeploy_repeated_role_and_seed_apply_on_deployed_database）。
 
 const itDatabase = "grape_dbdeploy_test"
 
@@ -67,6 +77,10 @@ func TestDeploy_grape_u_password_with_quotes_deploys(t *testing.T) {
 	assertNoPassword(t, logs, nil, opts.GrapeUPassword, opts.TestUPassword)
 }
 
+// TestDeploy_repeated_role_and_seed_apply_on_deployed_database 验证幂等
+// 边界中的可重放部分：角色段重放成功且不改写已有口令（pg_authid.rolpassword
+// 哈希前后等值；trust 认证下这是「口令未被改写」唯一可验手段），
+// 种子重放成功且不覆盖已有行。
 func TestDeploy_repeated_role_and_seed_apply_on_deployed_database(t *testing.T) {
 	adminDSN := requireAdminDSN(t)
 	resetTestDatabase(t, adminDSN)
@@ -83,6 +97,7 @@ func TestDeploy_repeated_role_and_seed_apply_on_deployed_database(t *testing.T) 
 	if err := conn.QueryRow(ctx, "SELECT count(*) FROM public.sys_tenant").Scan(&before); err != nil {
 		t.Fatalf("count tenants before replay: %v", err)
 	}
+	hashesBefore := rolePasswordHashes(ctx, t, conn)
 
 	// 角色段重放成功（DO 块判存，不改写已有口令）
 	if err := applyFile(ctx, t, conn, "role.sql"); err != nil {
@@ -95,6 +110,15 @@ func TestDeploy_repeated_role_and_seed_apply_on_deployed_database(t *testing.T) 
 	}
 	if roles != 2 {
 		t.Fatalf("roles after replay = %d, want 2", roles)
+	}
+	hashesAfter := rolePasswordHashes(ctx, t, conn)
+	for _, role := range []string{"grape_u", "test_u"} {
+		if hashesBefore[role] == "" {
+			t.Fatalf("role %s has no rolpassword entry before replay", role)
+		}
+		if hashesBefore[role] != hashesAfter[role] {
+			t.Fatalf("rolpassword hash of %s changed after replay, want unchanged", role)
+		}
 	}
 
 	// 种子重放成功且不覆盖已有行（ON CONFLICT DO NOTHING）
@@ -140,7 +164,7 @@ func requireAdminDSN(t *testing.T) string {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_TEST_ADMIN_DSN")
 	if adminDSN == "" {
-		t.Skip("GRAPE_TEST_ADMIN_DSN 未设置，跳过 dbdeploy 集成测试")
+		t.Skip("GRAPE_TEST_ADMIN_DSN not set, skipping dbdeploy integration tests")
 	}
 	return adminDSN
 }
@@ -169,6 +193,30 @@ func connectAdmin(t *testing.T, adminDSN, database string) *pgx.Conn {
 		t.Fatalf("connect %s: %v", database, err)
 	}
 	return conn
+}
+
+// rolePasswordHashes 读取角色的 pg_authid.rolpassword 哈希（部署管理员
+// 为超级用户，可查该目录）。
+func rolePasswordHashes(ctx context.Context, t *testing.T, conn *pgx.Conn) map[string]string {
+	t.Helper()
+	rows, err := conn.Query(ctx,
+		"SELECT rolname, rolpassword FROM pg_authid WHERE rolname IN ('grape_u', 'test_u')")
+	if err != nil {
+		t.Fatalf("query pg_authid: %v", err)
+	}
+	defer rows.Close()
+	hashes := map[string]string{}
+	for rows.Next() {
+		var name, hash string
+		if err := rows.Scan(&name, &hash); err != nil {
+			t.Fatalf("scan pg_authid row: %v", err)
+		}
+		hashes[name] = hash
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate pg_authid rows: %v", err)
+	}
+	return hashes
 }
 
 // connectGrapeU 以部署后的运行角色连接目标库（模拟应用 DSN）。
