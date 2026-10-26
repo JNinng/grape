@@ -209,6 +209,33 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 	}
 }
 
+func TestVectorStoreAdapter_search_topk_clamped_to_adapter_cap(t *testing.T) {
+	// TODO D2：top_k 上限由适配器强制（决策 6 口径），工具层与其他框架
+	// 侧消费方都无法绕过；Limit 非正的缺省语义在契约实现内保持不变。
+	fake := &fakeVectorStore{}
+	adapter := NewVectorStore(fake)
+	ctx := context.Background()
+
+	_, err := adapter.Search(ctx, &vectorstore.SearchQuery{
+		Vector: []float64{1}, SearchMode: vectorstore.SearchModeVector, Limit: 1000,
+	})
+	if err != nil {
+		t.Fatalf("Search(oversized limit) = %v", err)
+	}
+	if fake.searchF == nil || fake.searchF.Limit != maxSearchTopK {
+		t.Fatalf("limit = %+v, want clamped to %d", fake.searchF, maxSearchTopK)
+	}
+
+	if _, err := adapter.Search(ctx, &vectorstore.SearchQuery{
+		Vector: []float64{1}, SearchMode: vectorstore.SearchModeVector, Limit: 0,
+	}); err != nil {
+		t.Fatalf("Search(zero limit) = %v", err)
+	}
+	if fake.searchF == nil || fake.searchF.Limit != 0 {
+		t.Fatalf("zero limit must pass through for the store default, got %+v", fake.searchF)
+	}
+}
+
 func TestVectorStoreAdapter_delete_and_delete_by_filter_mapping(t *testing.T) {
 	fake := &fakeVectorStore{}
 	adapter := NewVectorStore(fake)

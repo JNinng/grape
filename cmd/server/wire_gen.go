@@ -12,6 +12,7 @@ import (
 	"grape/internal/biz"
 	"grape/internal/conf"
 	"grape/internal/data"
+	"grape/internal/data/openaiembedder"
 	"grape/internal/data/pg_sqlc"
 	"grape/internal/middleware"
 	"grape/internal/ops"
@@ -68,8 +69,17 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
-	stack, cleanup5, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase)
+	embedder, cleanup5, err := openaiembedder.New(vector)
 	if err != nil {
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	stack, cleanup6, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, embedder)
+	if err != nil {
+		cleanup5()
 		cleanup4()
 		cleanup3()
 		cleanup2()
@@ -85,6 +95,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	webHandler := server.NewWebHandler(agentService)
 	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, webHandler)
 	if err != nil {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -97,6 +108,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()

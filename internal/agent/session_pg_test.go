@@ -549,7 +549,7 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 	stack, err := NewStackWithOptions(b2StackConf(&conf.Agent_Compression{
 		Enabled:             true,
 		ToolResultMaxTokens: 1, // 阈值调到最小：任何非空结果都命中 Pass 1
-	}), nil, svc, NewVectorStore(nil), biz.NewUserUsecase(newFakeUserRepo()), WithModelOverride(llm))
+	}), nil, svc, NewVectorStore(nil), biz.NewUserUsecase(newFakeUserRepo()), &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
@@ -673,7 +673,7 @@ func TestPGSession_when_history_requested_snapshot_replays_and_survives_restart(
 
 	newStack := func(s session.Service) *Stack {
 		st, err := NewStackWithOptions(b2StackConf(nil), nil, s, NewVectorStore(nil),
-			biz.NewUserUsecase(newFakeUserRepo()), WithModelOverride(acktest.NewScriptedModel("stub", acktest.Step{Text: reply})))
+			biz.NewUserUsecase(newFakeUserRepo()), &searchTestEmbedder{dims: 4}, WithModelOverride(acktest.NewScriptedModel("stub", acktest.Step{Text: reply})))
 		if err != nil {
 			t.Fatalf("build stack: %v", err)
 		}
@@ -713,7 +713,7 @@ func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
 	defer cleanupSvc()
 	blocking := newBlockingModel(time.Minute)
 	stack, err := NewStackWithOptions(b2StackConf(nil), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(newFakeUserRepo()), WithModelOverride(blocking))
+		biz.NewUserUsecase(newFakeUserRepo()), &searchTestEmbedder{dims: 4}, WithModelOverride(blocking))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
