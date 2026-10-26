@@ -70,6 +70,17 @@ func TestNewVectorStore_valid_table_name_defaults_and_passes_pattern(t *testing.
 	}
 }
 
+func TestNewVectorStore_table_name_without_agent_prefix_fails(t *testing.T) {
+	// agent_ 前缀强制（TODO 决策 3）：合法标识符但缺前缀同样在构造期
+	// 拒绝，且发生在启动探针之前（本用例传空 Data 即可安全返回错误）。
+	for _, name := range []string{"document", "vec_documents", "agentdocument"} {
+		_, _, err := NewVectorStore(vectorTestConf(true, 4, name), &Data{})
+		if err == nil || !strings.Contains(err.Error(), "must have the agent_ prefix") {
+			t.Fatalf("NewVectorStore(table=%q) = %v, want agent_ prefix rejection", name, err)
+		}
+	}
+}
+
 func TestVectorDeclaredDimension_parses_format_type_output(t *testing.T) {
 	cases := []struct {
 		declared string

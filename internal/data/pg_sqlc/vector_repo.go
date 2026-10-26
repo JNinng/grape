@@ -33,6 +33,9 @@ const (
 	// vectorDefaultTable 是 conf.vector.table_name 留空时的默认表名，
 	// 与 agent_vector.sql 的建表一致。
 	vectorDefaultTable = "agent_document"
+	// vectorTablePrefix 是 agent 域对象的统一表名前缀（TODO 决策 3），
+	// conf.vector.table_name 在构造期强制。
+	vectorTablePrefix = "agent_"
 	// vectorDefaultLimit 是 Search 未指定 Limit 时的默认结果数，与框架
 	// pgvector 实现的默认一致（适配层语义不漂移）。
 	vectorDefaultLimit = 10
@@ -109,6 +112,11 @@ func NewVectorStore(c *conf.Vector, d *Data) (biz.VectorStore, func(), error) {
 	}
 	if !vectorTableNamePattern.MatchString(table) {
 		return nil, nil, fmt.Errorf("pg_sqlc: vector table name %q must match %s", table, vectorTableNamePattern)
+	}
+	// agent_ 前缀强制（TODO 决策 3：agent 域对象统一前缀，与 conf.proto
+	// 注释承诺一致），前缀缺失在构造期拒绝。
+	if !strings.HasPrefix(table, vectorTablePrefix) {
+		return nil, nil, fmt.Errorf("pg_sqlc: vector table name %q must have the %s prefix", table, vectorTablePrefix)
 	}
 	r := &vectorStore{data: d, table: table, dimension: dimension}
 	if err := r.probeDimension(context.Background()); err != nil {
