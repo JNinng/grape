@@ -9,7 +9,7 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 - `make generate`（含 wire + tidy）— 改依赖注入后必须重跑以刷新 `cmd/server/wire_gen.go`
 - `make all` — 上述全部
 - `go test ./...` — 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控，未设置时自动跳过
-- 运行（仓库根）：`go run ./cmd/server -conf configs`，DSN 走 `DATABASE_SOURCE` 环境变量
+- 运行（仓库根）：`go run ./cmd/server -conf configs`，DSN 走 `KRATOS_DATABASE_SOURCE` 环境变量（env source 仅识别 `KRATOS_` 前缀，未设置时回落配置占位内的默认 DSN）
 
 ## 生成物禁止手改
 
