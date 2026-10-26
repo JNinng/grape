@@ -34,6 +34,27 @@ func TestEncodeUserKeyRejectsNonPositiveUser(t *testing.T) {
 	}
 }
 
+func TestEncodeUserKeyRejectsTenantContainingSeparator(t *testing.T) {
+	// 租户即使其余形态合法，只要含分隔符就拒绝：编码放行会让解码侧
+	// 无法定位用户段边界。
+	if _, err := EncodeUserKey("t:1", 7); !errors.Is(err, userKeyDecodeErr) {
+		t.Fatalf("tenant with separator: want userKeyDecodeErr, got %v", err)
+	}
+	if _, err := EncodeUserKey("a:b:c", 7); !errors.Is(err, userKeyDecodeErr) {
+		t.Fatalf("tenant with multiple separators: want userKeyDecodeErr, got %v", err)
+	}
+}
+
+func TestEncodeUserKeyStillAcceptsWellFormedTenant(t *testing.T) {
+	key, err := EncodeUserKey("t-1", 7)
+	if err != nil {
+		t.Fatalf("well-formed tenant: want no error, got %v", err)
+	}
+	if key != "t-1:7" {
+		t.Fatalf("key = %q, want t-1:7", key)
+	}
+}
+
 func TestDecodeUserKeyRejectsMissingSeparator(t *testing.T) {
 	if _, _, err := DecodeUserKey("t-1-7"); !errors.Is(err, userKeyDecodeErr) {
 		t.Fatalf("missing separator: want userKeyDecodeErr, got %v", err)
