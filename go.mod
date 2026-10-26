@@ -8,7 +8,7 @@ require (
 	github.com/go-kratos/kratos/v3 v3.0.0
 	github.com/google/wire v0.7.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/jninng/sqlc_gen_dynamic v0.2.0
+	github.com/jninng/sqlc_gen_dynamic v0.3.0
 	github.com/prometheus/client_golang v1.25.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/automaxprocs v1.6.0
