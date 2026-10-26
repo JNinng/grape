@@ -29,6 +29,11 @@ api:
 sqlc:
 	cd internal/data/pg_sqlc/sqlc && sqlc generate -f sqlc.yaml
 
+.PHONY: dbdeploy
+# deploy database from scratch (admin DSN via --admin-dsn or GRAPE_DEPLOY_ADMIN_DSN)
+dbdeploy:
+	go run ./cmd/dbdeploy $(ARGS)
+
 .PHONY: build
 # build
 build:

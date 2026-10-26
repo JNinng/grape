@@ -21,11 +21,12 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 7 | schema/70_audit.sql | 定义登录日志与操作日志表（append-only） | 是 | 2 张表 |
 | 8 | schema/80_session.sql | 定义会话/令牌表（仅存哈希），以及过期会话清理函数 | 是 | 1 张表、1 个维护函数 |
 | 9 | schema/90_config.sql | 定义全局配置、租户配置、功能开关与翻译表 | 是 | 4 张表 |
-| 10 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器、会话令牌维度策略与运行角色授权 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
-| 11 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
-| 12 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 13 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、29 条命名查询 |
-| 14 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 10 | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
+| 11 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 23 条策略（含 sys_session 令牌维度 2 条）、4 个函数 |
+| 12 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
+| 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
+| 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、29 条命名查询 |
+| 15 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
@@ -39,13 +40,16 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署按固定顺序执行 13 个文件：`schema/10_basic.sql` →
+- 数据库部署按固定顺序执行 14 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
-  `schema/80_session.sql` → `schema/90_config.sql` → `rls.sql` →
-  `operate.sql` → `expose.sql` → `seed.sql`。`seed.sql` 必须在 RLS 启用后
-  执行，且以超级用户/表 owner 连接（超级用户绕过 RLS）。执行顺序的依赖
-  细节与升级注意事项见仓库根 [deploy_db.md](../../../../deploy_db.md)。
+  `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
+  `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql`。单一事实源是
+  `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
+  与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
+  授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
+  表 owner 连接（超级用户绕过 RLS）。执行顺序的依赖细节、幂等边界与
+  一键部署见仓库根 [deploy_db.md](../../../../deploy_db.md)。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 

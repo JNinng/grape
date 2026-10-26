@@ -181,6 +181,7 @@ WHERE id = sqlc.arg('id')
 
 | 内容 | 位置 |
 |---|---|
+| 运行角色授权、RLS 会话变量写入权（`GRANT SET ON PARAMETER`） | [role.sql](internal/data/pg_sqlc/sqlc/role.sql) |
 | 租户 RLS、`fn_accessible_*` 三件套 | [rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) |
 | 写前判断函数 `fn_can_*` | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) |
 | 只读判定、功能权限码、范围版本 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) |
