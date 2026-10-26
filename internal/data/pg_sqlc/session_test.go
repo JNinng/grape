@@ -60,6 +60,13 @@ func TestTokenLookupValidate(t *testing.T) {
 
 const testDatabase = "grape_pgsqlc_test"
 
+// 测试环境角色口令：与上方 GRAPE_TEST_DSN 示例一致。role.sql 的口令
+// 占位符装载前按此替换（干净集群上角色不存在时按真实口令创建）。
+const (
+	testGrapeUPassword = "grape_u_pwd"
+	testTestUPassword  = "test_u_pwd"
+)
+
 // setupTestDB 重建测试库、按序装载部署文件并返回门面所属的连接池。
 func setupTestDB(t *testing.T) *Data {
 	t.Helper()
@@ -115,7 +122,8 @@ func setupTestDB(t *testing.T) *Data {
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		if _, err := deployConn.Exec(ctx, string(sql)); err != nil {
+		deployed := ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
+		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", f, err)
 		}
 	}
