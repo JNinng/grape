@@ -1,0 +1,35 @@
+# 服务启动配置模板，由 cmd/configinit 经 go:embed 输出（make config-init）。
+# 本文件是配置模板的单一事实源，与 internal/conf/conf.proto 对应；
+# conf 结构变更时须同批更新本模板。勿移入 configs/：该目录会被
+# Kratos file source 整体加载，模板与运行配置必须分离。
+# 密钥项保持 ${ENV:default} 占位，由 Kratos 加载时展开，本模板不做替换。
+server:
+  http:
+    addr: 0.0.0.0:8000
+    timeout: 1s
+  grpc:
+    addr: 0.0.0.0:9000
+    timeout: 1s
+  # trace：可信上游网段。仅这些来源的合法 traceparent 被继承，否则剥头新建根。
+  trace:
+    trusted_networks:
+      - 127.0.0.1/32
+      - ::1/128
+data:
+  database:
+    # 槽位按用途分层：master 业务主库、system 系统库。过渡期各槽指向
+    # 同一实例，DSN 收敛到 data.database.<用途>.source。
+    master:
+      # 运行角色 grape_u（非超级用户，真实承受 RLS；授权见 sqlc/rls.sql）。
+      # 指向已按仓库根 deploy_db.md 完成部署的库。
+      source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
+      # Log every executed statement. Development only.
+      debug: true
+    system:
+      # 过渡期与 master 同实例；拆分时只改此处。
+      source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
+      debug: true
+auth:
+  # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
+  # 登录形态确定后由服务端解析替代）。指向种子数据里的全租户管理员。
+  default_tenant_id: t-super-01
