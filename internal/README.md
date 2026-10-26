@@ -106,15 +106,15 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 
 各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` / `middleware` / `ops` / `agent` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
-- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
-- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；
+- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`，另有文本向量化设施 `openaiembedder`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
+- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；能力目录 `openaiembedder`：biz `Embedder` 契约的 OpenAI 兼容端点实现（conf.vector.embedding，`vector.enabled=false` 返回禁用占位）；
 - `biz`：用例构造函数（依赖仓储接口）；
 - `service`：服务构造函数（依赖用例）；
 - `task`：任务构造函数（依赖用例）；
 - `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
 - `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
 - `telemetry`：`NewSetup`（OTel SDK 生命周期与框架观测面桥接，返回 `*Setup` 依赖锚点——server 持它保证全局注入先于 otel 中间件构造，cleanup 随应用停机 Shutdown）；
-- `agent`：`NewStack`（Agent 框架骨架，依赖会话存储、向量存储与业务用例——业务工具经其访问数据；agent 会话列表端点随骨架装配，service 经 `Stack.SessionsHandler` 取其 HTTP 形态注册路由；cleanup 释放 runner）、`NewSessionService`（Agent 会话存储，框架 session/postgres：schema agent + agent_ 表前缀，部署面预建表，运行期不做 DDL；TTL 与压缩经 conf Agent 段注入。会话表无 RLS、不存租户业务数据，属文档化「设施面」例外，userKey = tenant_id:user_id 应用层隔离）与 `NewVectorStore`（biz 向量契约的框架适配器，经 Stack 进入骨架）；
+- `agent`：`NewStack`（Agent 框架骨架，依赖会话存储、向量存储、业务用例与 embedder——业务工具经用例访问数据、检索工具经向量适配器与 embedder 访问向量；agent 会话列表端点随骨架装配，service 经 `Stack.SessionsHandler` 取其 HTTP 形态注册路由；cleanup 释放 runner）、`NewSessionService`（Agent 会话存储，框架 session/postgres：schema agent + agent_ 表前缀，部署面预建表，运行期不做 DDL；TTL 与压缩经 conf Agent 段注入。会话表无 RLS、不存租户业务数据，属文档化「设施面」例外，userKey = tenant_id:user_id 应用层隔离）与 `NewVectorStore`（biz 向量契约的框架适配器，经 Stack 进入骨架）；
 - `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`（前端静态托管 Handler，产物来自根目录 `web/` 的 `go:embed` 导出），是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由 + SPA 静态兜底）；HTTP 链为 `recovery → CORS（可选）→ 路由级超时 → trace → otel（telemetry.enabled 时）→ auth`，gRPC 为 `recovery → trace → otel（同上）→ auth`。
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。

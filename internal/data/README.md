@@ -5,6 +5,7 @@
 ## 现有能力
 
 - [pg_sqlc](pg_sqlc/)：关系存储（PostgreSQL，pgx/v5）。装配与仓储实现在 `pg_sqlc/`，声明资产在 [pg_sqlc/sqlc](pg_sqlc/sqlc/)（schema 按业务域拆分于 `sqlc/schema/`，另有 role/rls/operate/expose/queries/seed 与 sqlc.yaml），生成产物在 `pg_sqlc/gen/`（禁止手改）；SQL 对象索引、权限模型与生成命令见 [sqlc/README.md](pg_sqlc/sqlc/README.md)。 pg_sqlc 内另有向量存储设施（biz.VectorStore 契约的 pgvector 介质，[vector_repo.go](pg_sqlc/vector_repo.go)）：DDL 是超级用户面 [pg_sqlc/sqlc/agent_vector.sql](pg_sqlc/sqlc/agent_vector.sql)（不进 sqlc catalog，存取 SQL 手写参数化），租户隔离由应用层强制（每条 SQL 带租户过滤、缺认证身份拒绝），装配期探针校验 conf.vector.dimension 与部署列一致。
+- [openaiembedder](openaiembedder/)：文本向量化设施（biz.Embedder 契约的 OpenAI 兼容端点实现，[openaiembedder.go](openaiembedder/openaiembedder.go)）：POST `{base_url}/embeddings`，base_url/api_key/model/timeout 取 conf.vector.embedding（决策 5 同口径，密钥经 ${ENV:...} 占位注入）；`vector.enabled=false` 返回禁用占位（调用按设施缺失拒绝）；维度在构造期取 conf.vector.dimension 并在每次响应复核，端点漂移调用点显式报错（维度链路三道校验：embedder 响应复核 / 摄取管线装配期与 conf 对账 / D1 探针 conf vs DDL）。
 
 ## 诊断面
 
