@@ -27,6 +27,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | queries/ | 定义写侧判定、basic 操作、权限查询与业务表固定 CRUD 的命名查询 | 是（queries） | 5 个文件、30 条命名查询 |
 | 15 | seed.sql | 填充种子数据（含多租户权限样例） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 16 | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
@@ -40,16 +41,21 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   fn_can_* / fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由
   执行顺序保证。业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
   随纵切补入清单。
-- 数据库部署按固定顺序执行 14 个文件：`schema/10_basic.sql` →
+- 数据库部署按固定顺序执行 15 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
   `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
-  `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql`。单一事实源是
+  `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql` →
+  `agent_session.sql`。单一事实源是
   `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
   与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
   授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
-  表 owner 连接（超级用户绕过 RLS）。执行顺序的依赖细节、幂等边界与
-  一键部署见仓库根 [deploy_db.md](../../../../deploy_db.md)。
+  表 owner 连接（超级用户绕过 RLS），`agent_session.sql` 只依赖
+  `role.sql` 的 grape_u 存在（授权对象），与 public 业务域零耦合。
+  `agent_session.sql` 不入 sqlc catalog：trpc-agent-go 框架自管表
+  （应用经 session.Service 接口读写，grape 侧无仓储/命名查询），结构
+  须与框架建表模板逐列一致，框架升级时以新模板 diff 该文件。执行顺序
+  的依赖细节、幂等边界与一键部署见仓库根 [deploy_db.md](../../../../deploy_db.md)。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
