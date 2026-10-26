@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"log/slog"
+	"time"
 
 	"grape/internal/conf"
 
@@ -52,7 +53,7 @@ func NewSessionService(c *conf.Agent, d *conf.Data) (session.Service, func(), er
 		postgres.WithAppStateTTL(ss.GetAppStateTtl().AsDuration()),
 		postgres.WithUserStateTTL(ss.GetUserStateTtl().AsDuration()),
 	}
-	if ttl := ss.GetTrackEventTtl().AsDuration(); ttl > 0 {
+	if ttl, ok := trackEventTTLOf(ss); ok {
 		opts = append(opts, postgres.WithTrackEventTTL(ttl))
 	}
 	svc, err := postgres.NewService(opts...)
@@ -63,6 +64,15 @@ func NewSessionService(c *conf.Agent, d *conf.Data) (session.Service, func(), er
 		slog.Info("closing the agent session service")
 		_ = svc.Close()
 	}, nil
+}
+
+// trackEventTTLOf 翻译 track 事件 TTL 配置：0 值（未设置）不传选项，
+// 沿用框架缺省——跟随 session_ttl；正值原样传入。框架里显式传入 0 的
+// 语义是「禁用过期」（指针非 nil 即生效），与「未设置」不同，故不以
+// 0 值接线。
+func trackEventTTLOf(ss *conf.Agent_SessionStorage) (time.Duration, bool) {
+	ttl := ss.GetTrackEventTtl().AsDuration()
+	return ttl, ttl > 0
 }
 
 // NewMemorySessionService 提供进程内会话存储，仅供单测装配与本地体验：

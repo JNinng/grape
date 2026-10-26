@@ -96,22 +96,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// B1 骨架只挂 echo 只读工具；C1 起业务工具经 biz 用例接入。
 	echoTools := []tool.Tool{newEchoTool()}
-	agOptions := []llmagent.Option{
-		llmagent.WithModel(llm),
-		llmagent.WithTools(echoTools),
-		llmagent.WithInstruction(defaultInstruction),
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream:      true,
-			MaxTokens:   ptr(defaultMaxTokens),
-			Temperature: ptr(defaultTemperature),
-		}),
-		// 暴露 session_load / session_search 给模型（TODO §1.1）：压缩
-		// 占位符携带的 event_id 恢复引用要经 session_load 取回原文，
-		// 前提是会话存储实现 WindowService（session/postgres 已实现）。
-		llmagent.WithEnableOnDemandSession(true),
-	}
-	agOptions = append(agOptions, compressionOptions(c)...)
-	ag := llmagent.New(c.GetAppName(), agOptions...)
+	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, echoTools)...)
 
 	coreRunner := runner.NewRunner(c.GetAppName(), ag, runner.WithSessionService(sessions))
 
@@ -233,6 +218,27 @@ func heartbeatOf(c *conf.Agent) time.Duration {
 		return d
 	}
 	return defaultHeartbeat
+}
+
+// llmAgentOptions 组装 LLMAgent 选项：基础骨架（模型/工具/指令/生成
+// 参数）+ OnDemandSession + 压缩段翻译。单独成函数以便单测断言传入
+// 框架的选项值。
+func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmagent.Option {
+	opts := []llmagent.Option{
+		llmagent.WithModel(llm),
+		llmagent.WithTools(tools),
+		llmagent.WithInstruction(defaultInstruction),
+		llmagent.WithGenerationConfig(model.GenerationConfig{
+			Stream:      true,
+			MaxTokens:   ptr(defaultMaxTokens),
+			Temperature: ptr(defaultTemperature),
+		}),
+		// 暴露 session_load / session_search 给模型（TODO §1.1）：压缩
+		// 占位符携带的 event_id 恢复引用要经 session_load 取回原文，
+		// 前提是会话存储实现 WindowService（session/postgres 已实现）。
+		llmagent.WithEnableOnDemandSession(true),
+	}
+	return append(opts, compressionOptions(c)...)
 }
 
 // compressionOptions 把 conf 压缩段翻译为 LLMAgent 选项（TODO §1.1，
