@@ -15,6 +15,23 @@ message Bootstrap {
   Auth auth = 3;
   // Agent 服务配置（LLM provider 与 AG-UI 暴露形态）。
   Agent agent = 4;
+  // 向量检索设施配置。
+  Vector vector = 5;
+}
+
+// Vector 是向量检索设施（pgvector）的配置：表结构与维度由部署 DDL
+// （sqlc/agent_vector.sql）定，本段必须与之保持一致，装配期探针校验
+// 不一致即拒绝启动。由 internal/data/pg_sqlc 的向量仓储构造函数消费。
+message Vector {
+  // 是否启用向量存储设施。启用前须先完成 agent_vector.sql 部署；
+  // 未启用时向量仓储按设施缺失拒绝所有调用，不触库。
+  bool enabled = 1;
+  // embedding 维度，必须与 DDL 列类型 vector(维度) 一致（默认部署为
+  // 1024）。启用时必填。
+  int32 dimension = 2;
+  // 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
+  // 留空取默认 agent_document。
+  string table_name = 3;
 }
 
 // Agent 是 Agent 服务（AG-UI + ack）的配置：应用名、LLM provider 与

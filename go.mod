@@ -10,6 +10,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jninng/sqlc_gen_dynamic v0.3.0
 	github.com/jninng/trpc_agent_go_ack v0.0.0-20261016110510-e0d22765772c
+	github.com/pgvector/pgvector-go v0.4.1
 	github.com/prometheus/client_golang v1.25.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/automaxprocs v1.6.0

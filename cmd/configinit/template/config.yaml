@@ -61,3 +61,14 @@ agent:
     timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s
+vector:
+  # 向量检索设施（pgvector）。启用前须先按 deploy_db.md 完成
+  # agent_vector.sql 部署；enabled=false 时向量仓储按设施缺失拒绝调用，
+  # 不触库。
+  enabled: false
+  # embedding 维度：必须与 agent_vector.sql 的列类型 vector(维度) 一致
+  # （默认部署为 1024），装配期探针校验不一致即拒绝启动。
+  dimension: 1024
+  # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
+  # 留空取默认 agent_document。
+  table_name: agent_document

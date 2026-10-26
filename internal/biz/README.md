@@ -41,6 +41,7 @@
 | [password.go](password.go)        | 口令哈希单点：`HashPassword`（argon2id PHC）与 `VerifyPassword`（按行内算法标识分发 argon2id/argon2i、bcrypt、种子 scrypt），返回是否需重哈希；`ErrPasswordHashUnsupported` 表示库内哈希格式异常。                      |
 | [identity.go](identity.go)        | 服务端身份事实 `Identity`（TenantID + UserID）与私有 ctx 键；`WithIdentity` 仅供认证中间件注入，`IdentityFromContext` 缺失时由调用方按未认证 fail-closed 处理。                                                           |
 | [maintenance.go](maintenance.go)  | 设施无关契约：诊断面 `FacilityDiagnostics` 与 `MetricSample` / `MetricType`，维护面 `FacilityMaintenance` 与 `MaintenanceAction` / `MaintenanceReport`；ops 指标出口与 task 维护循环只认契约，不读原始实现。             |
+| [vectorstore.go](vectorstore.go)   | 向量存储设施契约 `VectorStore`（框架无关形状，决策 6 的强制隔离点）：`VectorDocument` / `VectorFilter` / `ScoredVectorDocument` 与 Add/Get/Update/Delete/Search/DeleteByFilter/Count/GetMetadata；身份不进契约参数，实现必须从认证 ctx 提取并强制租户过滤；`ErrVectorStoreDisabled` / `ErrVectorDocNotFound` 类型化错误。 |
 | [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`。                                                                                                                                       |
 
 ## 关键约束

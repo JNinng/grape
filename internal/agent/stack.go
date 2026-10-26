@@ -18,6 +18,7 @@ import (
 	"github.com/jninng/trpc_agent_go_ack"
 	"github.com/jninng/trpc_agent_go_ack/ackhttp"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	"trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui"
@@ -46,11 +47,14 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 
 // Stack 是 Agent 服务骨架的装配物。handler 是外层 ServeMux（AG-UI 路由
 // + ackhttp 路由），server 层经 service 把它挂进 Kratos 中间件链；runner
-// 持引用只为 Close 释放框架资源。
+// 持引用只为 Close 释放框架资源。vectors 是框架向量存储适配器（决策 6
+// 的强制应用层适配器），装配即实例化——数据侧的启动维度探针随装配
+// 生效，维度配置错误在此失败；检索工具（D2）从本字段取用，不另行构造。
 type Stack struct {
 	handler  nethttp.Handler
 	runner   runner.Runner
 	basePath string
+	vectors  vectorstore.VectorStore
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -65,11 +69,11 @@ func WithModelOverride(m model.Model) StackOption {
 	return func(o *stackOptions) { o.modelOverride = m }
 }
 
-// NewStack 按 conf 与注入的会话服务装配 Agent 骨架。装配顺序固定为
-// 模型 → 工具 → LLMAgent → core runner → ack 网关 → AG-UI runner
-// （ack 恢复路径续跑用它）→ AG-UI server → 外层 ServeMux；任一环失败
-// 即返回错误，装配失败拒绝启动。
-func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, opts ...StackOption) (*Stack, error) {
+// NewStackWithOptions 按 conf 与注入的会话服务、向量存储装配 Agent 骨架。
+// 装配顺序固定为 模型 → 工具 → LLMAgent → core runner → ack 网关 →
+// AG-UI runner（ack 恢复路径续跑用它）→ AG-UI server → 外层 ServeMux；
+// 任一环失败即返回错误，装配失败拒绝启动。
+func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, opts ...StackOption) (*Stack, error) {
 	o := &stackOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -79,6 +83,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}
 	if sessions == nil {
 		return nil, fmt.Errorf("agent: session service is required")
+	}
+	if vectors == nil {
+		return nil, fmt.Errorf("agent: vector store is required")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -147,6 +154,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		handler:  newMux(aguiServer.Handler(), gateway, base),
 		runner:   coreRunner,
 		basePath: base,
+		vectors:  vectors,
 	}, nil
 }
 
@@ -161,6 +169,10 @@ func (s *Stack) Close() {
 // ackhttp（confirmation 决定与待确认查询）共用一个前缀空间。子路径
 // 的方法分发在 mux 内完成，外层只需前缀整体入 Kratos 链。
 func (s *Stack) Handler() nethttp.Handler { return s.handler }
+
+// Vectors 返回框架向量存储适配器：检索工具（D2）的唯一取用点。适配器
+// 在数据侧装配期已过维度探针；设施未启用时其方法按设施缺失拒绝。
+func (s *Stack) Vectors() vectorstore.VectorStore { return s.vectors }
 
 // BasePath 返回归一化后的 AG-UI 路由前缀。挂载方（service 注册路由、
 // server 路由级超时的跳过名单）都以它为准，不自行推导。

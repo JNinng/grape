@@ -28,7 +28,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, logger *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, vector *conf.Vector, logger *slog.Logger) (*kratos.App, func(), error) {
 	traceMiddleware, err := middleware.NewTraceMiddleware(confServer)
 	if err != nil {
 		return nil, nil, err
@@ -52,8 +52,16 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	stack, cleanup3, err := agent.NewStack(confAgent, logger, service2)
+	vectorStore, cleanup3, err := pg_sqlc.NewVectorStore(vector, pg_sqlcData)
 	if err != nil {
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
+	stack, cleanup4, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore)
+	if err != nil {
+		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
@@ -69,6 +77,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup4()
 		cleanup3()
 		cleanup2()
 		cleanup()
