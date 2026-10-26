@@ -43,7 +43,13 @@ export async function logout(): Promise<void> {
     if (getAccessToken() !== null) {
       // 经 authFetch：令牌恰已过期时先续期再撤销，服务端尽量不残留
       // 活跃会话；401 且续期失败时 authFetch 已清态并通知跳转。
-      await authFetch(logoutPath, { method: 'POST' })
+      // 契约的 LogoutRequest 无字段，但生成端点仍按 JSON 解码请求体，
+      // 必须显式携带 Content-Type 与空对象体，否则 400 CODEC。
+      await authFetch(logoutPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      })
     }
   } catch {
     // 后端不可达等异常：按本地登出语义吞掉，保证调用方总能继续跳转。

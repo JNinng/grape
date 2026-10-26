@@ -77,7 +77,11 @@ describe('logout', () => {
     await logout()
 
     expect(mockAuthFetch).toHaveBeenCalledTimes(1)
-    expect(mockAuthFetch).toHaveBeenCalledWith('/v1/auth/logout', { method: 'POST' })
+    expect(mockAuthFetch).toHaveBeenCalledWith('/v1/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    })
   })
 
   it('clears the local session even when the backend fails', async () => {
