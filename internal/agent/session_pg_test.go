@@ -369,13 +369,21 @@ func (m *callScriptModel) GenerateContent(_ context.Context, _ *model.Request) (
 }
 
 // blockingModel 阻塞直到运行 ctx 被取消：cancel 生效验证的替身模型。
+// started 在 GenerateContent 被调用时关闭，供用例确认运行真正进入
+// 模型调用后再发取消，不靠固定延时竞速。
 type blockingModel struct {
-	block time.Duration
+	block   time.Duration
+	started chan struct{}
+}
+
+func newBlockingModel(block time.Duration) *blockingModel {
+	return &blockingModel{block: block, started: make(chan struct{})}
 }
 
 func (*blockingModel) Info() model.Info { return model.Info{Name: "blocking"} }
 
 func (m *blockingModel) GenerateContent(ctx context.Context, _ *model.Request) (<-chan *model.Response, error) {
+	close(m.started)
 	ch := make(chan *model.Response, 1)
 	go func() {
 		defer close(ch)
@@ -697,8 +705,9 @@ func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
 
 	svc, cleanupSvc := b2SessionService(t, dsn, 0)
 	defer cleanupSvc()
+	blocking := newBlockingModel(time.Minute)
 	stack, err := NewStackWithOptions(b2StackConf(nil), nil, svc,
-		WithModelOverride(&blockingModel{block: time.Minute}))
+		WithModelOverride(blocking))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
@@ -714,8 +723,13 @@ func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		done <- rec
 	}()
-	// 等运行真正起来再取消。
-	time.Sleep(300 * time.Millisecond)
+	// 等模型真正开始阻塞（运行已注册可取消）再发取消请求，不靠固定
+	// 延时与调度器竞速。
+	select {
+	case <-blocking.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocked run never reached the model within 5s")
+	}
 	rec := b2Post(t, h, "/agui/cancel", `{"threadId":"`+threadID+`","runId":"run-1","messages":[]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, want 200\n%s", rec.Code, rec.Body.String())

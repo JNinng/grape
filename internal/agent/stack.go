@@ -154,7 +154,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}, nil
 }
 
-// Close 释放骨架持有的框架资源（core runner 及其随建会话存储）。
+// Close 释放骨架持有的框架资源（core runner；runner 只关自建的
+// ownedSessionService，注入的会话存储不在此释放，由 wire 装配层为其
+// 生成的独立 cleanup 释放）。
 func (s *Stack) Close() {
 	if s.runner != nil {
 		_ = s.runner.Close()
