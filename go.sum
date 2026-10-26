@@ -1,5 +1,7 @@
 cel.dev/expr v0.25.2 h1:K6j46C81hXtZQfuX60cVWQFBJahKSE2gfRbNuvr5bFs=
 cel.dev/expr v0.25.2/go.mod h1:hrXvqGP6G6gyx8UAHSHJ5RGk//1Oj5nXQ2NI02Nrsg4=
+github.com/DATA-DOG/go-sqlmock v1.5.2 h1:OcvFkGmslmlZibjAjaHm3L//6LiuBgolP7OputlJIzU=
+github.com/DATA-DOG/go-sqlmock v1.5.2/go.mod h1:88MAG/4G7SMwSE3CeA0ZKzrT5CiOU3OJ+JlNzwDqpNU=
 github.com/Masterminds/squirrel v1.5.4 h1:uUcX/aBc8O7Fg9kaISIUsHXdKuqehiXAMQTYX8afzqM=
 github.com/Masterminds/squirrel v1.5.4/go.mod h1:NNaOrjSoIDfDA40n7sr2tPNZRfjzjA400rg+riTZj10=
 github.com/ag-ui-protocol/ag-ui/sdks/community/go v0.0.0-20260514093510-e9e910b230b9 h1:DQFhA6IAPabs7cQ/Ryv1DfhfnGQ5cZLCBtf8YRqx2FY=
@@ -198,3 +200,7 @@ trpc.group/trpc-go/trpc-agent-go v1.11.2 h1:qBgrX48JXvgf+k6cq1BSWR4oPfFXxp8/boYy
 trpc.group/trpc-go/trpc-agent-go v1.11.2/go.mod h1:bIZcN4N9sGpA42sWfE98XCPl9ZgMi6fMDLGYOaXNe9A=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0 h1:ZPAAPDYcbirj0NjFffNzv9q0kRcH9QyUedr0L95imvQ=
 trpc.group/trpc-go/trpc-agent-go/server/agui v1.11.0/go.mod h1:g+PJqsyPyctAZ3dnoaVp4bx4q1R/524RiBAEgbE0Uso=
+trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0 h1:k6a6Sa9i2mjlLVZVmRnYwEFLdQeOsbIXb2aRFCVHxlg=
+trpc.group/trpc-go/trpc-agent-go/session/postgres v1.11.0/go.mod h1:f8iE70qCVVnXE/ECpMzSbtYwLcwE7oFGrXK37wit/M4=
+trpc.group/trpc-go/trpc-agent-go/storage/postgres v0.8.0 h1:8phxJucSgwhdhS0UP6uyaVtWyNL3z1RW7OfLHYUtzco=
+trpc.group/trpc-go/trpc-agent-go/storage/postgres v0.8.0/go.mod h1:q1/qPdLQ8hgyGhvq2t0lmfhRcekm0chBc5+ZI32pBv0=

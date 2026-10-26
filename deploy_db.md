@@ -36,7 +36,8 @@ make dbdeploy ARGS="--database <库名>"
 | 12 | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) | 写前判断函数（fn_can_* 四件） | 依赖步骤 11 的 fn_accessible_* |
 | 13 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) | 权限查询判定函数、范围版本表与 bump 触发器 | 必须先于步骤 14：种子的角色映射写入要 bump 版本表 |
 | 14 | [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) | 种子数据（含权限演示数据，覆盖多个租户） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS） |
-| 15 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 表、HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制（TODO 决策 6） |
+| 15 | [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) | Agent 会话存储：`CREATE SCHEMA agent` + 框架 session/postgres 六张 `agent_*` 表与索引 + grape_u 授权（trpc-agent-go 框架自管表，不入 sqlc catalog） | 只依赖步骤 10 的 grape_u 存在（授权对象）；与 public 业务域零耦合，放尾部不动既有顺序；schema 幂等建立 |
+| 16 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 表、HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制（TODO 决策 6）；授权收窄到 agent_document，不覆盖 agent schema 全表 |
 
 手工按序执行时用 psql：
 
@@ -46,7 +47,12 @@ cd internal/data/pg_sqlc/sqlc
 set -e
 for f in schema/10_basic.sql schema/20_tenant.sql schema/30_user.sql schema/40_rbac.sql \
          schema/50_dept.sql schema/60_dict.sql schema/70_audit.sql schema/80_session.sql \
+<<<<<<< HEAD
          schema/90_config.sql role.sql rls.sql operate.sql expose.sql seed.sql agent_vector.sql; do
+=======
+         schema/90_config.sql role.sql rls.sql operate.sql expose.sql seed.sql \
+         agent_session.sql; do
+>>>>>>> feat/agent-b2
   psql -v ON_ERROR_STOP=1 -d <库名> -f "$f"
 done
 # role.sql 的口令占位符需在执行前自行替换，随后补 CONNECT 授权（见下节）
@@ -54,7 +60,7 @@ done
 
 ## 幂等性与全量重建
 
-role.sql（角色判存 + 授权语句）与 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql)（语句均带 `ON CONFLICT DO NOTHING`，不覆盖已有行）可重复执行；其余各文件不保证可重复执行：步骤 1–9 的 `CREATE TABLE`/`CREATE INDEX`、[rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) 的 `CREATE POLICY`、rls/expose 的 `CREATE TRIGGER` 均为裸创建，重复执行直接报错（函数为 `CREATE OR REPLACE`，可重复，但不足以让文件整体可重复）。全量重建先 DROP DATABASE，再从步骤 1 开始。
+role.sql（角色判存 + 授权语句）与 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql)（语句均带 `ON CONFLICT DO NOTHING`，不覆盖已有行）可重复执行；其余各文件不保证可重复执行：步骤 1–9 的 `CREATE TABLE`/`CREATE INDEX`、[rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) 的 `CREATE POLICY`、rls/expose 的 `CREATE TRIGGER` 均为裸创建，重复执行直接报错；agent 域两个文件（[agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) / agent_vector.sql）的 `CREATE SCHEMA IF NOT EXISTS` 与扩展安装幂等沿用、两文件先后顺序无关，但文件内的建表/建索引仍按结构 DDL 口径不保证可重复（函数为 `CREATE OR REPLACE`，可重复，但不足以让文件整体可重复）。全量重建先 DROP DATABASE，再从步骤 1 开始。
 
 ## 部署后授权
 

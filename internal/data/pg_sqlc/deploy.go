@@ -14,15 +14,16 @@ import (
 // 这是 dbdeploy 命令与集成测试（setupTestDB）共用的单一事实源，
 // 顺序与仓库根 deploy_db.md 一致，两处禁止另行维护副本：
 //
-//	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql → seed.sql
-//	              → agent_vector.sql
+//	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql →
+//	seed.sql → agent_session.sql → agent_vector.sql
 //
 // role.sql 建角色与授权（口令占位符见下方占位符常量），必须先于
 // rls.sql：后续 operate/expose 的函数授权语句依赖角色先行存在；
 // seed.sql 依赖 expose.sql 的范围版本表（角色映射写入要触发 bump）；
-// agent_vector.sql（向量设施，超级用户面）追加在尾部：只依赖 role.sql
-// 的角色存在（GRANT 引用 grape_u/test_u），无任何对象依赖它，且文件内
-// 建表/建索引为裸创建，放尾部对既有清单零扰动。
+// agent_session.sql 建 Agent 会话存储（trpc-agent-go 框架表，独立
+// schema agent），只依赖 role.sql 的 grape_u 存在（GRANT 授权对象），
+// 与 public 业务域零耦合；agent_vector.sql（向量设施，同超级用户面）
+// 与其互不依赖，两文件均幂等建 schema、尾部追加互不扰动。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
 	"schema/20_tenant.sql",
@@ -38,6 +39,12 @@ var DeployFiles = []string{
 	"operate.sql",
 	"expose.sql",
 	"seed.sql",
+	// Agent 会话存储（B2，TODO 决策 1）：CREATE SCHEMA agent + 框架
+	// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户
+	// 执行面，不入 sqlc catalog，升级以框架建表模板 diff 该文件。
+	"agent_session.sql",
+	// 向量设施（D1，TODO 决策 6）：pgvector 扩展 + agent.agent_document
+	// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
 	"agent_vector.sql",
 }
 

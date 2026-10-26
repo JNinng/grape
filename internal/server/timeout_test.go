@@ -45,7 +45,7 @@ func (timeoutFakeHeader) Values(string) []string { return nil }
 // 前缀，request_timeout 由用例给定（取小值避免慢测试）。
 func newRouteTimeoutForTest(t *testing.T, requestTimeout time.Duration) middleware.Middleware {
 	t.Helper()
-	svc, closeSessions, err := agent.NewSessionService()
+	svc, closeSessions, err := agent.NewMemorySessionService()
 	if err != nil {
 		t.Fatalf("build session service: %v", err)
 	}

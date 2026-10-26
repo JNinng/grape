@@ -62,7 +62,7 @@ func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) 
 // 与资源释放函数。
 func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) (*kratoshttp.Server, func()) {
 	t.Helper()
-	svc, closeSessions, err := agent.NewSessionService()
+	svc, closeSessions, err := agent.NewMemorySessionService()
 	if err != nil {
 		t.Fatalf("build session service: %v", err)
 	}

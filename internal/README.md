@@ -112,7 +112,7 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 - `task`：任务构造函数（依赖用例）；
 - `middleware`：`NewAuthMiddleware` / `NewTraceMiddleware`；
 - `ops`：`NewMetricsHandler`（设施压力指标的 Prometheus 出口）；
-- `agent`：`NewStack`（Agent 框架骨架，cleanup 释放 runner）与 `NewSessionService`（会话存储接口占位实现）与 `NewVectorStore`（biz 向量契约的框架适配器，经 Stack 进入骨架）；
+- `agent`：`NewStack`（Agent 框架骨架，cleanup 释放 runner）、`NewSessionService`（Agent 会话存储，框架 session/postgres：schema agent + agent_ 表前缀，部署面预建表，运行期不做 DDL；TTL 与压缩经 conf Agent 段注入。会话表无 RLS、不存租户业务数据，属文档化「设施面」例外，userKey = tenant_id:user_id 应用层隔离）与 `NewVectorStore`（biz 向量契约的框架适配器，经 Stack 进入骨架）；
 - `server`：`NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`（前端静态托管 Handler，产物来自根目录 `web/` 的 `go:embed` 导出），是唯一挂载点（生成代码路由 + 运维原始 Handler + Agent 手写路由 + SPA 静态兜底）。
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：biz 声明 `FacilityDiagnostics` / `FacilityMaintenance` 设施无关契约，data 各能力目录实现原始采集与维护判定，ops 的 `NewMetricsHandler` 把样本经 `/metrics` 统一出口、由 server 直挂（免认证、不在业务中间件链内），task 只认契约消费维护面、不读原始指标。

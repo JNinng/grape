@@ -61,6 +61,33 @@ agent:
     timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s
+  # session_storage：会话存储（框架 session/postgres，schema agent +
+  # agent_ 表前缀）保留策略。0 值语义见 conf.proto 注释：session/app/user
+  # state 的 0 = 永不过期；track 事件的 0 = 沿用 session_ttl。
+  # grape 不用 app 级 state 存租户业务数据（设施面例外，见
+  # internal/README.md agent 层说明）。
+  session_storage:
+    session_ttl: 0s
+    track_event_ttl: 0s
+    app_state_ttl: 0s
+    user_state_ttl: 0s
+  # compression：请求侧上下文压缩（TODO §1.1）。压缩只作用于请求投影
+  # 副本，session 事件流始终保留原文；占位符带 event_id，模型可经
+  # session_load 取回片段。0 值语义：tool_result_max_tokens 与
+  # keep_recent_requests 取框架默认（1024 / 1），
+  # oversized_tool_result_max_tokens 为关闭（框架推荐 8192 仅是参考）。
+  compression:
+    enabled: false
+    tool_result_max_tokens: 0
+    keep_recent_requests: 0
+    oversized_tool_result_max_tokens: 0
+    force_clean_tool_names: []
+    keep_tool_names: []
+  # summarization：会话摘要配置位，当前恒关闭（启用需 summarizer 模型
+  # 与注入模式选型，B2 未实现）。
+  summarization:
+    enabled: false
+
 vector:
   # 向量检索设施（pgvector）。启用前须先按 deploy_db.md 完成
   # agent_vector.sql 部署；enabled=false 时向量仓储按设施缺失拒绝调用，
@@ -72,3 +99,4 @@ vector:
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
+

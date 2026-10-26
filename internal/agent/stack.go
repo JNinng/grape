@@ -30,6 +30,8 @@ import (
 
 // agentDefault* 是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
 // 对将来未决确认的结算过宽；心跳不开则空闲长流可能被中间设备掐断。
+// 压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
+// conf 0 值回落到这里，而非框架零值语义（0 会关掉对应 Pass）。
 const (
 	defaultBasePath       = "/agui"
 	defaultRunTimeout     = 30 * time.Minute
@@ -38,6 +40,9 @@ const (
 	defaultInstruction    = "You are the grape assistant. Use the echo tool when the user asks you to repeat text."
 	defaultMaxTokens      = 512
 	defaultTemperature    = 0.7
+	defaultCompactionMax  = 1024
+	defaultKeepRecentReqs = 1
+
 	errMissingIdentityMsg = "agent: missing identity in context"
 )
 
@@ -98,16 +103,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// B1 骨架只挂 echo 只读工具；C1 起业务工具经 biz 用例接入。
 	echoTools := []tool.Tool{newEchoTool()}
-	ag := llmagent.New(c.GetAppName(),
-		llmagent.WithModel(llm),
-		llmagent.WithTools(echoTools),
-		llmagent.WithInstruction(defaultInstruction),
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream:      true,
-			MaxTokens:   ptr(defaultMaxTokens),
-			Temperature: ptr(defaultTemperature),
-		}),
-	)
+	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, echoTools)...)
 
 	coreRunner := runner.NewRunner(c.GetAppName(), ag, runner.WithSessionService(sessions))
 
@@ -121,6 +117,10 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		aguirunner.WithSessionService(sessions),
 		aguirunner.WithUserIDResolver(resolveUserID),
 		aguirunner.WithTimeout(runTimeout),
+		// /history tail follow（B2 会话能力）：快照响应尾部持续输出新
+		// 持久化的 track 事件。agui.New 的同名选项只进 aguiRunnerOptions，
+		// 会被下方 runner 工厂丢弃，必须在此同步一份。
+		aguirunner.WithMessagesSnapshotFollowEnabled(true),
 	)
 	if err := gateway.Bind(aguiRunner); err != nil {
 		return nil, fmt.Errorf("agent: bind ack resume runner: %w", err)
@@ -133,14 +133,18 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		agui.WithCancelEnabled(true),
 		agui.WithHeartbeatInterval(heartbeatOf(c)),
 		agui.WithTimeout(runTimeout),
+		// /history 快照回放（B2 会话能力）：要求会话存储实现
+		// TrackService，track 事件持久化进 agent_session_track_events。
+		agui.WithMessagesSnapshotEnabled(true),
+		agui.WithMessagesSnapshotFollowEnabled(true),
 		// 复用上面带完整选项的 AG-UI runner。硬要求：网关 Bind 的实例
 		// 与实际服务请求的实例必须是同一个，恢复路径才能续跑，不要改
 		// 成工厂内每次新建。
 		// 陷阱声明：本工厂会收到 agui.New 依自身选项（WithAppName/
-		// WithSessionService/WithTimeout 等）聚合出的 aguirunner
-		// Option 并在此静默丢弃——预构建 runner 的选项必须与传给
-		// agui.New 的保持一致才自洽（当前三者一致）；给 agui.New
-		// 追加 runner 级选项时必须同步到上面的 aguirunner.New。
+		// WithSessionService/WithTimeout/WithMessagesSnapshotFollowEnabled
+		// 等）聚合出的 aguirunner Option 并在此静默丢弃——预构建 runner
+		// 的选项必须与传给 agui.New 的保持一致才自洽（当前一致）；给
+		// agui.New 追加 runner 级选项时必须同步到上面的 aguirunner.New。
 		agui.WithRunnerFactory(func(runner.Runner, ...aguirunner.Option) (aguirunner.Runner, error) {
 			return aguiRunner, nil
 		}),
@@ -158,7 +162,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}, nil
 }
 
-// Close 释放骨架持有的框架资源（core runner 及其随建会话存储）。
+// Close 释放骨架持有的框架资源（core runner；runner 只关自建的
+// ownedSessionService，注入的会话存储不在此释放，由 wire 装配层为其
+// 生成的独立 cleanup 释放）。
 func (s *Stack) Close() {
 	if s.runner != nil {
 		_ = s.runner.Close()
@@ -226,6 +232,62 @@ func heartbeatOf(c *conf.Agent) time.Duration {
 		return d
 	}
 	return defaultHeartbeat
+}
+
+// llmAgentOptions 组装 LLMAgent 选项：基础骨架（模型/工具/指令/生成
+// 参数）+ OnDemandSession + 压缩段翻译。单独成函数以便单测断言传入
+// 框架的选项值。
+func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmagent.Option {
+	opts := []llmagent.Option{
+		llmagent.WithModel(llm),
+		llmagent.WithTools(tools),
+		llmagent.WithInstruction(defaultInstruction),
+		llmagent.WithGenerationConfig(model.GenerationConfig{
+			Stream:      true,
+			MaxTokens:   ptr(defaultMaxTokens),
+			Temperature: ptr(defaultTemperature),
+		}),
+		// 暴露 session_load / session_search 给模型（TODO §1.1）：压缩
+		// 占位符携带的 event_id 恢复引用要经 session_load 取回原文，
+		// 前提是会话存储实现 WindowService（session/postgres 已实现）。
+		llmagent.WithEnableOnDemandSession(true),
+	}
+	return append(opts, compressionOptions(c)...)
+}
+
+// compressionOptions 把 conf 压缩段翻译为 LLMAgent 选项（TODO §1.1，
+// 选项名与框架 llmagent 一致）。总开关关闭或未配置时返回空：框架在
+// EnableContextCompaction=false 时不改写任何工具结果。阈值 0 值回落
+// 框架缺省（Pass 1 需要正阈值才激活）；Pass 2 只在配置正值时接线
+// （框架默认 0 = 关闭）。
+func compressionOptions(c *conf.Agent) []llmagent.Option {
+	comp := c.GetCompression()
+	if comp == nil || !comp.GetEnabled() {
+		return nil
+	}
+	maxTokens := int(comp.GetToolResultMaxTokens())
+	if maxTokens <= 0 {
+		maxTokens = defaultCompactionMax
+	}
+	keepRecent := int(comp.GetKeepRecentRequests())
+	if keepRecent <= 0 {
+		keepRecent = defaultKeepRecentReqs
+	}
+	opts := []llmagent.Option{
+		llmagent.WithEnableContextCompaction(true),
+		llmagent.WithContextCompactionToolResultMaxTokens(maxTokens),
+		llmagent.WithContextCompactionKeepRecentRequests(keepRecent),
+	}
+	if oversized := int(comp.GetOversizedToolResultMaxTokens()); oversized > 0 {
+		opts = append(opts, llmagent.WithContextCompactionOversizedToolResultMaxTokens(oversized))
+	}
+	if len(comp.GetKeepToolNames()) > 0 || len(comp.GetForceCleanToolNames()) > 0 {
+		opts = append(opts, llmagent.WithToolResultCompactionConfig(&llmagent.ToolResultCompactionConfig{
+			KeepToolNames:       comp.GetKeepToolNames(),
+			ForceCleanToolNames: comp.GetForceCleanToolNames(),
+		}))
+	}
+	return opts
 }
 
 // resolveUserID 是 AG-UI 的 UserIDResolver：从认证 ctx 取身份并编码为
