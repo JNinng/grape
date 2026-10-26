@@ -18,6 +18,7 @@ import (
 	"github.com/jninng/trpc_agent_go_ack"
 	"github.com/jninng/trpc_agent_go_ack/ackhttp"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	"trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/server/agui"
@@ -25,7 +26,6 @@ import (
 	aguirunner "trpc.group/trpc-go/trpc-agent-go/server/agui/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-	"trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore"
 )
 
 // agentDefault* 是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
