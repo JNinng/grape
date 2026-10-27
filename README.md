@@ -9,7 +9,9 @@ RLS 租户隔离、@scope 数据范围守卫、写前判断函数、权限查询
 数据）。权限约束的落点（租户边界 / 行级数据范围 / 功能权限码）、读写形态
 与错误语义见 [permission.md](permission.md)；SQL 对象索引与三层权限模型见
 [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)，
-部署执行顺序见 [deploy_db.md](deploy_db.md)。
+部署执行顺序见 [deploy_db.md](deploy_db.md)；生产部署与运维口径（多实例
+粘性、SSE 超时、优雅停机、保留期归档、框架升级检查单）见
+[operations.md](operations.md)。
 
 查询代码由 sqlc 依据 `internal/data/pg_sqlc/sqlc/`（schema/ 九个域文件 +
 rls/operate/expose/queries/seed）生成，该目录是单一事实源；`internal/data/pg_sqlc/gen/`

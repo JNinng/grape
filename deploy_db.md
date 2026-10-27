@@ -1,6 +1,6 @@
 # 数据库部署
 
-grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 19 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令与集成测试共用），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。
+grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 19 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令与集成测试共用），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。生产部署的其余口径（多实例粘性、优雅停机、密钥管理、框架升级检查单）见 [operations.md](operations.md)。
 
 ## 一键部署（推荐）
 
@@ -39,8 +39,8 @@ make dbdeploy ARGS="--database <库名>"
 | 15 | [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) | Agent 会话存储：`CREATE SCHEMA agent` + 框架 session/postgres 六张 `agent_*` 表与索引 + grape_u 授权（trpc-agent-go 框架自管表，不入 sqlc catalog） | 只依赖步骤 10 的 grape_u 存在（授权对象）；与 public 业务域零耦合，放尾部不动既有顺序；schema 幂等建立 |
 | 16 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 表、HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制（TODO 决策 6）；授权收窄到 agent_document，不覆盖 agent schema 全表 |
 | 17 | [schema/95_agent_audit.sql](internal/data/pg_sqlc/sqlc/schema/95_agent_audit.sql) | Agent 业务审计（TODO E2）：`agent_tool_call_log` 与 `agent_confirmation_log` 两表、索引与租户 RLS（sqlc catalog 输入，命名查询见 queries/agent_audit.sql） | 步骤 1–9 的同型追加（append-only 审计表 + 租户 RLS），放清单尾部独立追加不改既有顺序；依赖步骤 10 的角色存在——grape_u 的 DML 授权由 role.sql 默认权限覆盖（部署角色于 public 建表自动 GRANT），文件内不含授权语句；RLS 策略落本域文件而非 rls.sql（并行冲突纪律，见文件头注释） |
-| 18 | [96_agent_grant.sql](internal/data/pg_sqlc/sqlc/96_agent_grant.sql) | Agent 工具授权（C2）：public.agent_tool_grant 表、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权；入 sqlc catalog，命名查询见 queries/agent_grant.sql | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；策略随域文件走（口径同 expose.sql 的 sys_perm_version，不进 rls.sql）；吊销置 revoked_at 不删行，TTL/清理归 E3 |
-| 19 | [schema/97_agent_retrieval_log.sql](internal/data/pg_sqlc/sqlc/schema/97_agent_retrieval_log.sql) | Agent 检索留痕（TODO D3）：public.agent_retrieval_log 表（append-only）、租户+时间/会话/来源三类索引与租户 RLS；入 sqlc catalog，命名查询见 queries/agent_retrieval_log.sql | 步骤 17 的同型追加（95 同口径），放清单尾部独立追加不改既有顺序；只依赖步骤 10 的角色存在——grape_u 的 DML 授权由 role.sql 默认权限覆盖，文件内不含授权语句；RLS 策略落本域文件而非 rls.sql（并行冲突纪律，见文件头注释） |
+| 18 | [96_agent_grant.sql](internal/data/pg_sqlc/sqlc/96_agent_grant.sql) | Agent 工具授权（C2）：public.agent_tool_grant 表、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权；入 sqlc catalog，命名查询见 queries/agent_grant.sql | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；策略随域文件走（口径同 expose.sql 的 sys_perm_version，不进 rls.sql）；吊销置 revoked_at 不删行，保留与清理口径见根目录 [operations.md](operations.md)「保留期与归档统一口径」 |
+| 19 | [schema/97_agent_retrieval_log.sql](internal/data/pg_sqlc/sqlc/schema/97_agent_retrieval_log.sql) | Agent 检索留痕（TODO D3）：public.agent_retrieval_log 表（append-only）、租户+时间/会话/来源三类索引与租户 RLS；入 sqlc catalog，命名查询见 queries/agent_retrieval_log.sql | 步骤 17 的同型追加（95 同口径），放清单尾部独立追加不改既有顺序；只依赖步骤 10 的角色存在——grape_u 的 DML 授权由 role.sql 默认权限覆盖，文件内不含授权语句；RLS 策略落本域文件而非 rls.sql（并行冲突纪律，见文件头注释）；保留与归档口径见根目录 [operations.md](operations.md)「保留期与归档统一口径」 |
 
 手工按序执行时用 psql：
 
