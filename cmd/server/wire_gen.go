@@ -108,11 +108,12 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	v := data.NewFacilityDiagnostics(facilityDiagnostics)
 	handler := ops.NewMetricsHandler(v)
 	agentSessionsService := service.NewAgentSessionsService(stack)
+	agentEventWindowService := service.NewAgentEventWindowService(stack)
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentAuditService, agentRetrievalService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
 	if err != nil {
 		cleanup7()
 		cleanup6()
