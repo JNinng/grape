@@ -91,6 +91,10 @@ agent:
     timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s
+    # 单身份（租户+用户）同时在途运行数上限（E3 限流）。chat 运行请求
+    # 超限即 429；/history、/cancel 与 ack 确认路由不受限。0 = 关闭
+    # （默认）。计数为进程内内存态，多实例部署时是每实例上限。
+    max_concurrent_runs: 0
   # session_storage：会话存储（框架 session/postgres，schema agent +
   # agent_ 表前缀）保留策略。0 值语义见 conf.proto 注释：session/app/user
   # state 的 0 = 永不过期；track 事件的 0 = 沿用 session_ttl。

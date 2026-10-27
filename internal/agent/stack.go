@@ -77,7 +77,9 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
 // 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
 // 审计写入挂点（E2/C1 接线）：nil 即不审计——工具清单不包终态 wrapper、
-// ack 决定路由不装审计面，装配形态与接线前完全一致。
+// ack 决定路由不装审计面，装配形态与接线前完全一致。gate 是运行入口
+// 并发门控（E3 限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
+// handler 原样透传。
 type Stack struct {
 	handler     nethttp.Handler
 	runner      runner.Runner
@@ -86,6 +88,7 @@ type Stack struct {
 	sessions    *sessionList
 	eventWindow *eventWindow
 	audit       AuditHook
+	gate        *runGate
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -223,14 +226,16 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}
 
 	base := basePathOf(c)
+	gate := newRunGate(c.GetAgui().GetMaxConcurrentRuns())
 	return &Stack{
-		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, logger),
+		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, gate, logger),
 		runner:      coreRunner,
 		basePath:    base,
 		vectors:     vectors,
 		sessions:    newSessionList(sessions, c.GetAppName()),
 		eventWindow: newEventWindow(sessions, c.GetAppName()),
 		audit:       o.audit,
+		gate:        gate,
 	}, nil
 }
 
@@ -275,17 +280,18 @@ func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
 // /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中），授权
 // 管理端点（C2）以方法+路径模式挂载（GET {basePath}/grants 与
 // DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
+// gate 是运行入口并发门控（E3 限流）：nil 即关闭，AG-UI 子树原样挂载。
 // ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
 // ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
 // 自己名下的会话」。audit 非 nil 时归属守卫内层再套决定路由审计面
 // （见 ack_audit.go）。grants 管理端点为 nil 仅供不触达授权面的测试装配。
-func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string, audit AuditHook, logger *slog.Logger) nethttp.Handler {
+func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string, audit AuditHook, gate *runGate, logger *slog.Logger) nethttp.Handler {
 	mux := nethttp.NewServeMux()
 	if grants != nil {
 		mux.Handle(nethttp.MethodGet+" "+basePath+"/grants", grants)
 		mux.Handle(nethttp.MethodDelete+" "+basePath+"/grants/{id}", grants)
 	}
-	mux.Handle(basePath+"/", aguiHandler)
+	mux.Handle(basePath+"/", gate.wrap(basePath, aguiHandler))
 	ackMux := nethttp.NewServeMux()
 	ackhttp.Mount(ackMux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
 	var ackHandler nethttp.Handler = ackMux

@@ -735,6 +735,12 @@ type Agent_AGUI struct {
 	Timeout *durationpb.Duration `protobuf:"bytes,2,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// SSE 心跳间隔，保持中间设备不掐空闲流。
 	HeartbeatInterval *durationpb.Duration `protobuf:"bytes,3,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
+	// 单身份（租户+用户）同时在途运行数上限（TODO E3 限流）。chat 运行
+	// 请求按认证身份计数，超限以 429 拒绝；/history、/cancel 与 ack 的
+	// 确认路由不受限。0 = 关闭（默认，行为与无本项完全一致）。计数为
+	// 进程内内存态，多实例部署时是每实例上限而非全局上限；请求速率
+	// 维度不做（取舍声明见 internal/agent/concurrency.go）。
+	MaxConcurrentRuns int32 `protobuf:"varint,4,opt,name=max_concurrent_runs,json=maxConcurrentRuns,proto3" json:"max_concurrent_runs,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -788,6 +794,13 @@ func (x *Agent_AGUI) GetHeartbeatInterval() *durationpb.Duration {
 		return x.HeartbeatInterval
 	}
 	return nil
+}
+
+func (x *Agent_AGUI) GetMaxConcurrentRuns() int32 {
+	if x != nil {
+		return x.MaxConcurrentRuns
+	}
+	return 0
 }
 
 // SessionStorage 是会话存储（框架 session/postgres，独立 schema agent
@@ -1701,7 +1714,7 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
 	"\aapi_key\x18\x03 \x01(\tR\x06apiKey\x12\x14\n" +
 	"\x05model\x18\x04 \x01(\tR\x05model\x123\n" +
-	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xa9\x0f\n" +
+	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xd9\x0f\n" +
 	"\x05Agent\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12'\n" +
 	"\x03llm\x18\x02 \x01(\v2\x15.kratos.api.Agent.LLMR\x03llm\x12*\n" +
@@ -1738,11 +1751,12 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1f\n" +
 	"\vlog_prompts\x18\x02 \x01(\bR\n" +
 	"logPrompts\x12'\n" +
-	"\x0flog_completions\x18\x03 \x01(\bR\x0elogCompletions\x1a\xa2\x01\n" +
+	"\x0flog_completions\x18\x03 \x01(\bR\x0elogCompletions\x1a\xd2\x01\n" +
 	"\x04AGUI\x12\x1b\n" +
 	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x123\n" +
 	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12H\n" +
-	"\x12heartbeat_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x1a\x8f\x02\n" +
+	"\x12heartbeat_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12.\n" +
+	"\x13max_concurrent_runs\x18\x04 \x01(\x05R\x11maxConcurrentRuns\x1a\x8f\x02\n" +
 	"\x0eSessionStorage\x12:\n" +
 	"\vsession_ttl\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\n" +
 	"sessionTtl\x12A\n" +

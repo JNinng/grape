@@ -173,6 +173,12 @@ message Agent {
     google.protobuf.Duration timeout = 2;
     // SSE 心跳间隔，保持中间设备不掐空闲流。
     google.protobuf.Duration heartbeat_interval = 3;
+    // 单身份（租户+用户）同时在途运行数上限（TODO E3 限流）。chat 运行
+    // 请求按认证身份计数，超限以 429 拒绝；/history、/cancel 与 ack 的
+    // 确认路由不受限。0 = 关闭（默认，行为与无本项完全一致）。计数为
+    // 进程内内存态，多实例部署时是每实例上限而非全局上限；请求速率
+    // 维度不做（取舍声明见 internal/agent/concurrency.go）。
+    int32 max_concurrent_runs = 4;
   }
   AGUI agui = 3;
 
