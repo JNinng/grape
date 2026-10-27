@@ -26,7 +26,7 @@ type GetActiveAgentToolGrantForSessionParams struct {
 }
 
 // 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
-// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（决策 6/D1 口径）
+// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
 func (q *Queries) GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error) {
 	row := q.db.QueryRow(ctx, getActiveAgentToolGrantForSession,
 		arg.TenantID,

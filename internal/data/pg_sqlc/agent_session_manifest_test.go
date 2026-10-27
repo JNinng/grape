@@ -83,13 +83,13 @@ func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *t
 			t.Errorf("agent_session.sql missing grant %q", grant)
 		}
 	}
-	b2AssertKeyColumns(t, sql)
+	sessionAssertKeyColumns(t, sql)
 }
 
-// b2AssertKeyColumns 断言关键列的型与可空性同框架 expectedSchema 一致：
+// sessionAssertKeyColumns 断言关键列的型与可空性同框架 expectedSchema 一致：
 // 只挑运行路径最敏感的几处做静态锚点，全量逐列校验仍以框架升级 diff
 // 为准。
-func b2AssertKeyColumns(t *testing.T, sql string) {
+func sessionAssertKeyColumns(t *testing.T, sql string) {
 	t.Helper()
 	for _, a := range []struct {
 		name string

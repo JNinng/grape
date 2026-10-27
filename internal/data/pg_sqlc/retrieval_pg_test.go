@@ -19,22 +19,22 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// 检索留痕集成测试（TODO 流 D 的 D3）：以真实 PostgreSQL 验证检索留痕
+// 检索留痕集成测试：以真实 PostgreSQL 验证检索留痕
 // 行落库（query/top_k/命中与实际一致）、租户 RLS、RLS 关闭时读侧兜底、
 // 留痕失败不中断检索、管线摄取留痕来源与分页边界。测试自建专属库并
 // 重建（DROP+CREATE+按 DeployFiles 部署清单全量装载，含
 // schema/97_agent_retrieval_log.sql 与 agent_vector.sql），不触碰其他
 // 数据库。设置以下环境变量后运行，未设置时跳过：
 //
-//	GRAPE_D3_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_D3_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_retrieval_d3_test \
+//	GRAPE_RETRIEVAL_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
+//	GRAPE_RETRIEVAL_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_retrieval_test \
 //	go test ./internal/data/pg_sqlc -run "TestRetrievalLog" -count=1 -v
 //
 // 隔离口径：本表启用租户 RLS（部署默认），租户边界由 RLS 强制、读侧
-// WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见（对齐
-// D1「隔离正确性不押在 RLS 是否存在上」的验收口径）。
+// WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见（对齐「隔离正确性不押在 RLS
+// 是否存在上」的口径）。
 
-const retrievalTestDatabase = "grape_retrieval_d3_test"
+const retrievalTestDatabase = "grape_retrieval_test"
 
 // retrievalTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -50,10 +50,10 @@ var retrievalTestTraceID = [16]byte{0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 // schema/97_agent_retrieval_log.sql）并返回以 grape_u 连接的存储门面。
 func setupRetrievalTestDB(t *testing.T) *Data {
 	t.Helper()
-	adminDSN := os.Getenv("GRAPE_D3_TEST_ADMIN_DSN")
-	testDSN := os.Getenv("GRAPE_D3_TEST_DSN")
+	adminDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_ADMIN_DSN")
+	testDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_D3_TEST_ADMIN_DSN / GRAPE_D3_TEST_DSN 未设置，跳过检索留痕集成测试")
+		t.Skip("GRAPE_RETRIEVAL_TEST_ADMIN_DSN / GRAPE_RETRIEVAL_TEST_DSN 未设置，跳过检索留痕集成测试")
 	}
 	ctx := context.Background()
 
@@ -307,7 +307,7 @@ func TestRetrievalLog_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 
 	// 关闭 RLS（模拟误操作/降级部署）：读侧同源租户谓词必须独立兜住
 	// 隔离，属主语义不变。
-	adminCfg, err := pgx.ParseConfig(os.Getenv("GRAPE_D3_TEST_ADMIN_DSN"))
+	adminCfg, err := pgx.ParseConfig(os.Getenv("GRAPE_RETRIEVAL_TEST_ADMIN_DSN"))
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}

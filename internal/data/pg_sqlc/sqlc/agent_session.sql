@@ -23,7 +23,7 @@
 --     部署的终态。
 --   - 不加入 sqlc.yaml 输入：这是框架自管表，grape 侧无仓储与命名
 --     查询（应用经 session.Service 接口读写）。
---   - 设施面例外（TODO 决策 1）：框架表无 RLS、无租户列，租户隔离
+--   - 设施面例外：框架表无 RLS、无租户列，租户隔离
 --     靠 userKey = tenant_id:user_id 的应用层编码实现；该 schema 不
 --     存放 grape 租户业务数据，业务数据仍走 public + RLS。
 --   - 授权只放 grape_u（应用运行角色）；test_u 与其他角色不自动放行，

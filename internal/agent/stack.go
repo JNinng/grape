@@ -30,10 +30,10 @@ import (
 
 // agentDefault* 是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
 // 对将来未决确认的结算过宽；心跳不开则空闲长流可能被中间设备掐断。
-// MaxToolIterations 是单次运行的工具调用轮数上限（TODO C1 防风暴）：
+// MaxToolIterations 是单次运行的工具调用轮数上限：
 // 被拒绝的确认会把「不得重试」的工具结果返回给模型，模型仍无视而循环
 // 重试时由该上限终止运行（框架默认 0 = 不限，必须显式设置）；conf 化
-// 留 C2/E3。压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
+// 暂缓。压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
 // conf 0 值回落到这里，而非框架零值语义（0 会关掉对应 Pass）。
 const (
 	defaultBasePath       = "/agui"
@@ -71,12 +71,12 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 
 // Stack 是 Agent 服务骨架的装配物。handler 是外层 ServeMux（AG-UI 路由
 // + ackhttp 路由），server 层经 service 把它挂进 Kratos 中间件链；runner
-// 持引用只为 Close 释放框架资源。vectors 是框架向量存储适配器（决策 6
-// 的强制应用层适配器），装配即实例化——数据侧的启动维度探针随装配
-// 生效，维度配置错误在此失败；检索工具（D2）从本字段取用，不另行构造。
+// 持引用只为 Close 释放框架资源。vectors 是框架向量存储适配器（向量层
+// 租户隔离的强制应用层适配器），装配即实例化——数据侧的启动维度探针随装配
+// 生效，维度配置错误在此失败；检索工具从本字段取用，不另行构造。
 // sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
 // 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
-// 审计写入挂点（E2/C1 接线）：nil 即不审计——工具清单不包终态 wrapper、
+// 审计写入挂点：nil 即不审计——工具清单不包终态 wrapper、
 // ack 决定路由不装审计面，装配形态与接线前完全一致。gate 是运行入口
 // 并发门控（E3 限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
 // handler 原样透传。
@@ -158,11 +158,11 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		return nil, err
 	}
 
-	// echo 打通框架链路；业务工具经 biz 用户用例访问数据（TODO 决策 4）；
-	// 检索工具经向量适配器访问向量（TODO 决策 6，D2）。
+	// echo 打通框架链路；业务工具经 biz 用户用例访问数据；
+	// 检索工具经向量适配器访问向量。
 	tools := append([]tool.Tool{newEchoTool()}, newUserTools(users)...)
 	tools = append(tools, newSearchTool(embedder, vectors))
-	// 审计接线（E2/C1）与运行观测（E3）：挂点非 nil 时给全量工具清单包上
+	// 审计接线与运行观测：挂点非 nil 时给全量工具清单包上
 	// 终态审计 wrapper（echo 是链路验证工具，同样留痕保持全量），包装后的
 	// 清单同时进 LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper
 	// 被审计；观测契约非 nil 时同层包装顺带推送工具计数/耗时（单一包装点
@@ -173,7 +173,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
 	// 工具集在构造期登记（分级决定 live 确认、工具集支撑恢复路径代执行），
-	// 许可源接授权存储（C2）、策略源维持弃权空实现（C3 填充）。
+	// 许可源接授权存储、策略源维持弃权空实现（接入点预留）。
 	var grantSource ack.GrantSource
 	if grants != nil {
 		grantSource = newStoredGrants(grants)
@@ -264,7 +264,7 @@ func (s *Stack) Close() {
 // 的方法分发在 mux 内完成，外层只需前缀整体入 Kratos 链。
 func (s *Stack) Handler() nethttp.Handler { return s.handler }
 
-// Vectors 返回框架向量存储适配器：检索工具（D2）的唯一取用点。适配器
+// Vectors 返回框架向量存储适配器：检索工具的唯一取用点。适配器
 // 在数据侧装配期已过维度探针；设施未启用时其方法按设施缺失拒绝。
 func (s *Stack) Vectors() vectorstore.VectorStore { return s.vectors }
 
@@ -289,7 +289,7 @@ func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的
 // /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中），授权
-// 管理端点（C2）以方法+路径模式挂载（GET {basePath}/grants 与
+// 管理端点以方法+路径模式挂载（GET {basePath}/grants 与
 // DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
 // gate 是运行入口并发门控（E3 限流）：nil 即关闭，AG-UI 子树原样挂载。
 // ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
@@ -368,10 +368,10 @@ func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmage
 			MaxTokens:   ptr(defaultMaxTokens),
 			Temperature: ptr(defaultTemperature),
 		}),
-		// 防风暴（TODO C1）：单次运行内模型发起工具调用的轮数上限；
+		// 防风暴：单次运行内模型发起工具调用的轮数上限；
 		// 拒绝后模型若无视「不得重试」约束循环重试，由它终止运行。
 		llmagent.WithMaxToolIterations(defaultMaxToolIter),
-		// 暴露 session_load / session_search 给模型（TODO §1.1）：压缩
+		// 暴露 session_load / session_search 给模型：压缩
 		// 占位符携带的 event_id 恢复引用要经 session_load 取回原文，
 		// 前提是会话存储实现 WindowService（session/postgres 已实现）。
 		llmagent.WithEnableOnDemandSession(true),
@@ -379,7 +379,7 @@ func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmage
 	return append(opts, compressionOptions(c)...)
 }
 
-// compressionOptions 把 conf 压缩段翻译为 LLMAgent 选项（TODO §1.1，
+// compressionOptions 把 conf 压缩段翻译为 LLMAgent 选项（
 // 选项名与框架 llmagent 一致）。总开关关闭或未配置时返回空：框架在
 // EnableContextCompaction=false 时不改写任何工具结果。阈值 0 值回落
 // 框架缺省（Pass 1 需要正阈值才激活）；Pass 2 只在配置正值时接线

@@ -274,7 +274,7 @@ func TestAgentGrantsWithoutTokenReturns401(t *testing.T) {
 }
 
 // TestAgentRouteWithoutTrailingSlashRedirectsToBase 验证无尾斜杠形式
-// 进入内层 ServeMux 后以 307（保方法）规整到前缀根（TODO §1.5 挂载形态）。
+// 进入内层 ServeMux 后以 307（保方法）规整到前缀根。
 func TestAgentRouteWithoutTrailingSlashRedirectsToBase(t *testing.T) {
 	srv, _ := newAgentTestServer(t, agentHTTPConf(), acktest.NewScriptedModel("stub"))
 	rec := agentDo(t, srv, http.MethodPost, "/agui", "token-1", agentChatRequest("thread-1"))

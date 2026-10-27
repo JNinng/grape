@@ -14,7 +14,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// ack 决定路径审计（TODO E2 接口预留、C1 接线）：ackhttp.Mount 收具体
+// ack 决定路径审计：ackhttp.Mount 收具体
 // *ack.Gateway，无法以装饰器包网关，故在唯一挂载点对决定路由
 // （POST {basePath}{ackSuffix}/confirmation）做 HTTP 面拦截——请求体与
 // 响应体就是决定契约（threadId/confirmationId/approved/remember 与生效

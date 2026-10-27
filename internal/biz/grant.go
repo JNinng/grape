@@ -7,7 +7,7 @@ import (
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
 
-// Agent 工具授权（TODO 流 C / C2）的错误语义：
+// Agent 工具授权的错误语义：
 //   - ErrGrantNotFound：授权不存在、不可见（跨租户）或已吊销——三者统一
 //     NotFound，不泄露存在性；
 //   - ErrGrantInvalidArgument：授权写入/查询的入参非法；
@@ -53,7 +53,7 @@ type ToolGrant struct {
 
 // GrantRepo 是工具授权仓储接口。全部实现必须经存储层会话门面在租户
 // 事务内执行（RLS），且每条查询显式携带认证租户过滤（RLS 关闭场景的
-// 应用层兜底，决策 6/D1 口径）。
+// 应用层兜底，与向量层隔离口径一致）。
 //
 // 许可评估原语（FindActive*）的未命中是正常控制流而非错误：miss 以
 // (nil, nil) 表达——ack 的许可评估本就以布尔命中为语义，评估路径上

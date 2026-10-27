@@ -15,7 +15,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// 工具执行终态审计（TODO E2 接口预留、C1 接线）：自建 wrapper tool 包住
+// 工具执行终态审计：自建 wrapper tool 包住
 // 装配层工具清单，在 Call 返回（终态：成功或失败）后记一条工具调用审计。
 //
 // 挂点选型：框架的 AfterTool 回调虽是运行内执行的终态点，但恢复路径的

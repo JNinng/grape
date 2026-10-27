@@ -110,7 +110,7 @@ func parseSlot(slot *conf.Data_Database_Slot) (*pgxpool.Config, error) {
 
 // queryTracer 逐条记录执行的语句与参数。仅开发便利，
 // 经 data.database.<槽位>.debug 开启；参数脱敏经 pkg/redact 注册表
-// （TODO E1：与审计表、复现视图共用同一脱敏器）。
+// （与审计表、复现视图共用同一脱敏器）。
 type queryTracer struct {
 	logger   *slog.Logger
 	registry *redact.Registry

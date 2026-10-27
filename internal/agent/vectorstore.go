@@ -16,15 +16,15 @@ import (
 // 显式拒绝优于静默降级或猜测。
 var errVectorUnsupported = errors.New("agent: vector store operation not supported")
 
-// maxSearchTopK 是向量检索的 top_k 适配器上限（TODO D2）：模型侧可指定
+// maxSearchTopK 是向量检索的 top_k 适配器上限：模型侧可指定
 // 的返回条数在适配器统一收敛，检索工具（tool_search.go）只经本适配器
 // 访问向量、无法绕过；存储层语义（Limit 非正取默认页大小）在其下保持
 // 不变。默认页大小与上限不进 conf：上限是防滥用的代码级约束，conf 化
-// 反而给了绕过面（E3 按需要再评估）。
+// 反而给了绕过面。
 const maxSearchTopK = 20
 
 // vectorStoreAdapter 把 biz.VectorStore 契约适配为框架
-// knowledge/vectorstore.VectorStore。这是 TODO 决策 6 的强制应用层适配
+// knowledge/vectorstore.VectorStore。这是向量层租户隔离的强制应用层适配
 // 器：框架 pgvector store 自建连接池、启动建表建索引且无法接 grape 的
 // pgx 池与身份事务，不引入；租户隔离由 biz 契约的 data 实现从认证 ctx
 // 强制，本适配器只做形状映射，不自行取用身份（避免第二套隔离逻辑）。
@@ -129,7 +129,7 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 	if len(query.Vector) == 0 {
 		return nil, errors.New("agent: query vector is required")
 	}
-	// top_k 上限在适配器强制（TODO D2）：超限请求钳到 maxSearchTopK，
+	// top_k 上限在适配器强制：超限请求钳到 maxSearchTopK，
 	// 不报错也不放行——工具层与未来其他框架侧消费方都无法绕过该上限。
 	limit := query.Limit
 	if limit > maxSearchTopK {

@@ -1,8 +1,8 @@
 import { HttpAgent } from '@ag-ui/client'
 import { authFetch } from '../api/http'
 
-// A2 对话页接入点：AG-UI 是 POST SSE；EventSource 无法携带 Authorization
-// 头，而 @ag-ui/client 的 HttpAgent 支持注入 fetch（TODO 决策 2）。
+// 对话页接入点：AG-UI 是 POST SSE；EventSource 无法携带 Authorization
+// 头，而 @ag-ui/client 的 HttpAgent 支持注入 fetch。
 //
 // 这里把 authFetch 作为 HttpAgent 的 fetch 注入：每次运行发起时从
 // auth/store 读取当前 access token（无令牌陈旧化问题），401 时走

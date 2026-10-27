@@ -16,11 +16,11 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/model/openai"
 )
 
-// newLLMModel 按配置构造模型链（决策 5：OpenAI 兼容直连；TODO B3 模型层
+// newLLMModel 按配置构造模型链（OpenAI 兼容直连；模型层
 // 可靠性）。装配层次从内到外固定为：裸 provider（主 + failover 备选）→
 // hedge（只包主模型）→ failover（包全部候选）→ logging（每台候选内层，
 // 见 llmCandidates）。各可靠性段 enabled=false（默认）时跳过对应包装，
-// 全部缺省即返回裸 provider——与 B1 行为逐字节等价。
+// 全部缺省即返回裸 provider——与未引入可靠性段时逐字节等价。
 //
 // 层次取舍说明：hedge 只包主模型——备选路径本身是故障路径，再叠加重复
 // 请求只会放大故障面的调用量；failover 不与 hedge 叠加语义（备选不做
@@ -114,7 +114,7 @@ func composeModel(c *conf.Agent_LLM, candidates []model.Model) (model.Model, err
 	return composed[0], nil
 }
 
-// newHedgeModel 把主模型包装为 hedge 模型（TODO B3，语义见 conf.proto
+// newHedgeModel 把主模型包装为 hedge 模型（语义见 conf.proto
 // Hedge 段注释）：原始请求先发，delay 后未出有效内容即发副本（同一
 // provider 的重复请求），首个有效内容获胜、其余全部取消。delay 0 取框
 // 架默认 100ms；副本数启用时必须 ≥ 2（单副本 hedge 无意义，按误配拒绝
@@ -153,7 +153,7 @@ const promptLogLimit = 512
 
 // llmContentRedactor 是入日志提示词/补全的截断器：沿用 pkg/redact 检索
 // 内容的截断形态（单一脱敏代码点）。本处只做开关门控与截断；内容级脱
-// 敏（工具敏感参数/检索内容等）的审计面归 E2/A3。
+// 敏（工具敏感参数/检索内容等）的脱敏归审计与复现视图面。
 var llmContentRedactor = redact.NewTruncate(promptLogLimit, "...(truncated)")
 
 // llmLoggerOf 返回 LLM 日志落点：生产为进程默认 logger（main.go 经
@@ -168,7 +168,7 @@ var llmLoggerOf = func() *slog.Logger { return slog.Default() }
 // 调用结束一并记录；ctx 不改任何既有值，对下层调用无副作用。
 type callCompletionsKey struct{}
 
-// loggingModel 是 LLM 调用的观测包装（TODO B3 回调面）：经框架
+// loggingModel 是 LLM 调用的观测包装：经框架
 // model.Callbacks 注册前后回调（model/callbacks.go 形态），把每次模型
 // 调用落 grape logger。与 llmagent.WithModelCallbacks 的完整回调语义
 // （可改写请求、短路返回 CustomResponse）不同，本包装的回调是纯观测：

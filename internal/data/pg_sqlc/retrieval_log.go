@@ -13,7 +13,7 @@ import (
 	"grape/pkg/redact"
 )
 
-// biz.VectorStore 的检索留痕装饰器（TODO 流 D 的 D3）与它的 wire 供给
+// biz.VectorStore 的检索留痕装饰器与它的 wire 供给
 // 类型。装配位置：向量仓储（vector_repo.go 的 pgvector 实现）之上、框架
 // 适配器（internal/agent/vectorstore.go）之下——检索工具与摄取管线两条
 // 链路都经契约访问向量，装饰器因此同时覆盖两侧：

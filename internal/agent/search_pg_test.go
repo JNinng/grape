@@ -1,14 +1,14 @@
 package agent
 
-// D2 摄取管线与检索工具集成测试：以真实 PostgreSQL（本套件专属库
-// grape_vector_d2_test）验证 摄取 → 检索 闭环、RLS 关闭时的跨租户隔离、
+// 摄取管线与检索工具集成测试：以真实 PostgreSQL（本套件专属库
+// grape_search_test）验证 摄取 → 检索 闭环、RLS 关闭时的跨租户隔离、
 // 引用可追溯、幂等覆盖与 top_k 上限。embedding 一律用确定性替身（关键词
 // → 正交基向量），不发起真实网络请求；向量访问走真实 VectorStore 契约
 // 实现与框架适配器（生产装配路径）。
 //
 // 环境变量门控（未设置时跳过）：
 //
-//	GRAPE_D2_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
+//	GRAPE_SEARCH_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent -run TestPGDocumentSearch -count=1 -v
 //
 // 装载取舍与会话/确认集成测试一致：DeployFiles 全清单部署 + 跨包部署
@@ -31,19 +31,19 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// d2TestDatabase 是本套件专属测试库；其余测试库绝不触碰。
-const d2TestDatabase = "grape_vector_d2_test"
+// searchTestDatabase 是本套件专属测试库；其余测试库绝不触碰。
+const searchTestDatabase = "grape_search_test"
 
-// d2GrapeUPassword 与 role.sql 占位符替换值：grape_u 的既定测试口令。
-const d2GrapeUPassword = "grape_u_pwd"
+// searchGrapeUPassword 与 role.sql 占位符替换值：grape_u 的既定测试口令。
+const searchGrapeUPassword = "grape_u_pwd"
 
-// d2Dimension 与部署 DDL 的 embedding 列维度一致（vector(1024)）。
-const d2Dimension = 1024
+// searchDimension 与部署 DDL 的 embedding 列维度一致（vector(1024)）。
+const searchDimension = 1024
 
 // d2 租户身份：tenant_id 列宽 varchar(16)，取值保持在列宽内。
 var (
-	d2TenantA = biz.Identity{TenantID: "t-d2-a", UserID: 31}
-	d2TenantB = biz.Identity{TenantID: "t-d2-b", UserID: 32}
+	searchTenantA = biz.Identity{TenantID: "t-search-a", UserID: 31}
+	searchTenantB = biz.Identity{TenantID: "t-search-b", UserID: 32}
 )
 
 // keywordEmbedder 是确定性替身 embedder：按关键词映射到正交基向量
@@ -71,14 +71,14 @@ func (k *keywordEmbedder) Embed(_ context.Context, text string) ([]float32, erro
 
 func (k *keywordEmbedder) Dimensions() int { return k.dims }
 
-func d2IdentityContext(id biz.Identity) context.Context {
+func searchIdentityContext(id biz.Identity) context.Context {
 	return biz.WithIdentity(context.Background(), id)
 }
 
-// d2Fixture 装配生产路径的检索面：真实向量存储（含启动维度探针）→
+// searchFixture 装配生产路径的检索面：真实向量存储（含启动维度探针）→
 // 框架适配器 → 检索工具，外加同一替身 embedder 驱动的摄取管线与库句柄
 // （RLS 场景断言直查 pg_catalog 用）。
-type d2Fixture struct {
+type searchFixture struct {
 	data      *pg_sqlc.Data
 	grapeUDSN string
 	store     biz.VectorStore
@@ -89,23 +89,23 @@ type d2Fixture struct {
 	embedder *keywordEmbedder
 }
 
-func d2NewFixture(t *testing.T) *d2Fixture {
+func searchNewFixture(t *testing.T) *searchFixture {
 	t.Helper()
-	data, grapeUDSN := d2SetupDatabase(t)
+	data, grapeUDSN := searchSetupDatabase(t)
 	store, cleanup, err := pg_sqlc.NewVectorStore(&conf.Vector{
 		Enabled:   true,
-		Dimension: d2Dimension,
+		Dimension: searchDimension,
 	}, data)
 	if err != nil {
 		t.Fatalf("NewVectorStore = %v, want probe pass", err)
 	}
 	t.Cleanup(cleanup)
-	embedder := &keywordEmbedder{dims: d2Dimension}
-	pipeline, err := biz.NewDocumentUsecase(store, embedder, d2Dimension)
+	embedder := &keywordEmbedder{dims: searchDimension}
+	pipeline, err := biz.NewDocumentUsecase(store, embedder, searchDimension)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
-	return &d2Fixture{
+	return &searchFixture{
 		data:      data,
 		grapeUDSN: grapeUDSN,
 		store:     store,
@@ -117,13 +117,13 @@ func d2NewFixture(t *testing.T) *d2Fixture {
 	}
 }
 
-// d2SetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// searchSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
 // grape_u 连接的存储门面与 DSN（pg_catalog 断言用）。
-func d2SetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
+func searchSetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 	t.Helper()
-	adminDSN := os.Getenv("GRAPE_D2_TEST_ADMIN_DSN")
+	adminDSN := os.Getenv("GRAPE_SEARCH_TEST_ADMIN_DSN")
 	if adminDSN == "" {
-		t.Skip("GRAPE_D2_TEST_ADMIN_DSN not set, skip document search integration tests")
+		t.Skip("GRAPE_SEARCH_TEST_ADMIN_DSN not set, skip document search integration tests")
 	}
 	ctx := context.Background()
 
@@ -137,10 +137,10 @@ func d2SetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 		t.Fatalf("connect admin: %v", err)
 	}
 	defer admin.Close(ctx)
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+d2TestDatabase+" WITH (FORCE)"); err != nil {
+	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+searchTestDatabase+" WITH (FORCE)"); err != nil {
 		t.Fatalf("drop test database: %v", err)
 	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+d2TestDatabase); err != nil {
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+searchTestDatabase); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 
@@ -152,7 +152,7 @@ func d2SetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg := *cfg
-	deployCfg.Database = d2TestDatabase
+	deployCfg.Database = searchTestDatabase
 	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	deployConn, err := pgx.ConnectConfig(ctx, &deployCfg)
 	if err != nil {
@@ -170,17 +170,17 @@ func d2SetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), d2GrapeUPassword, "test_u_pwd")
+		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), searchGrapeUPassword, "test_u_pwd")
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", name, err)
 		}
 	}
 	if _, err := deployConn.Exec(ctx,
-		"GRANT CONNECT ON DATABASE "+d2TestDatabase+" TO grape_u, test_u"); err != nil {
+		"GRANT CONNECT ON DATABASE "+searchTestDatabase+" TO grape_u, test_u"); err != nil {
 		t.Fatalf("grant connect: %v", err)
 	}
 
-	dsn, err := d2GrapeUDSN(adminDSN)
+	dsn, err := searchGrapeUDSN(adminDSN)
 	if err != nil {
 		t.Fatalf("build grape_u dsn: %v", err)
 	}
@@ -196,20 +196,20 @@ func d2SetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 	return data, dsn
 }
 
-// d2GrapeUDSN 把管理员 DSN 改写为 grape_u 连接专属测试库的 DSN。
-func d2GrapeUDSN(adminDSN string) (string, error) {
+// searchGrapeUDSN 把管理员 DSN 改写为 grape_u 连接专属测试库的 DSN。
+func searchGrapeUDSN(adminDSN string) (string, error) {
 	u, err := url.Parse(adminDSN)
 	if err != nil {
 		return "", err
 	}
-	u.User = url.UserPassword("grape_u", d2GrapeUPassword)
-	u.Path = "/" + d2TestDatabase
+	u.User = url.UserPassword("grape_u", searchGrapeUPassword)
+	u.Path = "/" + searchTestDatabase
 	return u.String(), nil
 }
 
-// d2CallTool 以 JSON 入参直调检索工具（框架 CallableTool 面，与模型侧
+// searchCallTool 以 JSON 入参直调检索工具（框架 CallableTool 面，与模型侧
 // 相同的 schema 反序列化路径），返回结构化出参。
-func d2CallTool(t *testing.T, f *d2Fixture, ctx context.Context, args string) searchDocsOutput {
+func searchCallTool(t *testing.T, f *searchFixture, ctx context.Context, args string) searchDocsOutput {
 	t.Helper()
 	raw, err := f.tool.Call(ctx, []byte(args))
 	if err != nil {
@@ -227,8 +227,8 @@ func d2CallTool(t *testing.T, f *d2Fixture, ctx context.Context, args string) se
 }
 
 func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testing.T) {
-	f := d2NewFixture(t)
-	ctx := d2IdentityContext(d2TenantA)
+	f := searchNewFixture(t)
+	ctx := searchIdentityContext(searchTenantA)
 
 	result, err := f.pipeline.Ingest(ctx, &biz.Document{
 		ID:      "kb-alpha-1",
@@ -242,7 +242,7 @@ func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testi
 		t.Fatalf("ingest result = %+v, want 1 chunk first pass", result)
 	}
 
-	out := d2CallTool(t, f, ctx, `{"query":"alpha","top_k":3}`)
+	out := searchCallTool(t, f, ctx, `{"query":"alpha","top_k":3}`)
 	if out.Count != 1 || len(out.Hits) != 1 {
 		t.Fatalf("hits = %d, want exactly 1", out.Count)
 	}
@@ -279,11 +279,11 @@ func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testi
 }
 
 func TestPGDocumentSearch_cross_tenant_not_recallable_while_rls_disabled(t *testing.T) {
-	f := d2NewFixture(t)
-	ctxA := d2IdentityContext(d2TenantA)
-	ctxB := d2IdentityContext(d2TenantB)
+	f := searchNewFixture(t)
+	ctxA := searchIdentityContext(searchTenantA)
+	ctxB := searchIdentityContext(searchTenantB)
 
-	// 固定场景前提：表无 RLS——隔离必须来自应用层过滤（决策 6），
+	// 固定场景前提：表无 RLS——隔离必须来自应用层过滤，
 	// 数据库策略缺失不构成隔离缺口。
 	conn, err := pgx.Connect(context.Background(), f.grapeUDSN)
 	if err != nil {
@@ -309,7 +309,7 @@ func TestPGDocumentSearch_cross_tenant_not_recallable_while_rls_disabled(t *test
 	}
 
 	// 工具路径：租户 B 检索 0 命中。
-	out := d2CallTool(t, f, ctxB, `{"query":"alpha","top_k":5}`)
+	out := searchCallTool(t, f, ctxB, `{"query":"alpha","top_k":5}`)
 	if out.Count != 0 || len(out.Hits) != 0 {
 		t.Fatalf("cross-tenant tool hits = %+v, want none", out.Hits)
 	}
@@ -326,16 +326,16 @@ func TestPGDocumentSearch_cross_tenant_not_recallable_while_rls_disabled(t *test
 		t.Fatalf("cross-tenant biz hits = %d, want 0 (isolation must hold without RLS)", len(hits))
 	}
 	// 租户 A 自身不受影响。
-	if out := d2CallTool(t, f, ctxA, `{"query":"alpha"}`); out.Count != 1 {
+	if out := searchCallTool(t, f, ctxA, `{"query":"alpha"}`); out.Count != 1 {
 		t.Fatalf("owner tool hits = %d, want 1", out.Count)
 	}
 }
 
 func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
-	f := d2NewFixture(t)
-	ctx := d2IdentityContext(d2TenantA)
+	f := searchNewFixture(t)
+	ctx := searchIdentityContext(searchTenantA)
 	// 小块切分制造多块场景（默认切块下单文档单块）。
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, d2Dimension, biz.WithChunking(4, 1))
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, searchDimension, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
@@ -367,19 +367,19 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 }
 
 func TestPGDocumentSearch_dimension_mismatch_rejects_at_assembly(t *testing.T) {
-	f := d2NewFixture(t)
+	f := searchNewFixture(t)
 	// 替身 embedder 声明维度与 conf（部署列）不一致：装配期失败（启动
 	// 即失败，与 D1 conf vs DDL 探针共同封住维度链路两端）。
-	_, err := biz.NewDocumentUsecase(f.store, &keywordEmbedder{dims: 8}, d2Dimension)
+	_, err := biz.NewDocumentUsecase(f.store, &keywordEmbedder{dims: 8}, searchDimension)
 	if err == nil || !strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("NewDocumentUsecase(dimension mismatch) = %v, want rejection", err)
 	}
 }
 
 func TestPGDocumentSearch_oversized_top_k_bounded_by_adapter_cap(t *testing.T) {
-	f := d2NewFixture(t)
-	ctx := d2IdentityContext(d2TenantA)
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, d2Dimension, biz.WithChunking(4, 1))
+	f := searchNewFixture(t)
+	ctx := searchIdentityContext(searchTenantA)
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, searchDimension, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
@@ -391,7 +391,7 @@ func TestPGDocumentSearch_oversized_top_k_bounded_by_adapter_cap(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ingest: %v", err)
 	}
-	out := d2CallTool(t, f, ctx, `{"query":"gamma","top_k":1000}`)
+	out := searchCallTool(t, f, ctx, `{"query":"gamma","top_k":1000}`)
 	if out.Count != maxSearchTopK {
 		t.Fatalf("hits = %d, want exactly %d (30 recallable chunks, adapter cap binds)",
 			out.Count, maxSearchTopK)

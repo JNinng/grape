@@ -29,10 +29,10 @@ import (
 // 与 public 业务域零耦合；agent_vector.sql（向量设施，同超级用户面）
 // 与其互不依赖，两文件均幂等建 schema、尾部追加互不扰动；
 // schema/95_agent_audit.sql 建 Agent 业务审计两表（public + RLS），
-// 96_agent_grant.sql 建工具授权表（public + RLS，C2）：两者均只依赖
+// 96_agent_grant.sql 建工具授权表（public + RLS）：两者均只依赖
 // role.sql 的角色存在，尾部独立追加互不扰动；public 表的 DML 授权由
 // role.sql 默认权限覆盖（同角色于 public 建表自动生效）。
-// schema/97_agent_retrieval_log.sql 建检索留痕表（public + RLS，D3）：
+// schema/97_agent_retrieval_log.sql 建检索留痕表（public + RLS）：
 // 同 95/96 口径的尾部追加域，只依赖 role.sql 的角色存在，与前列零耦合。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
@@ -49,24 +49,24 @@ var DeployFiles = []string{
 	"operate.sql",
 	"expose.sql",
 	"seed.sql",
-	// Agent 会话存储（B2，TODO 决策 1）：CREATE SCHEMA agent + 框架
+	// Agent 会话存储：CREATE SCHEMA agent + 框架
 	// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户
 	// 执行面，不入 sqlc catalog，升级以框架建表模板 diff 该文件。
 	"agent_session.sql",
-	// 向量设施（D1，TODO 决策 6）：pgvector 扩展 + agent.agent_document
+	// 向量设施：pgvector 扩展 + agent.agent_document
 	// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
 	"agent_vector.sql",
-	// Agent 业务审计（E2，TODO 流 E）：public.agent_tool_call_log 与
+	// Agent 业务审计：public.agent_tool_call_log 与
 	// public.agent_confirmation_log 两表、索引与租户 RLS；sqlc catalog
 	// 输入（命名查询见 queries/agent_audit.sql），尾部独立追加不改
 	// 既有顺序，grape_u 的 DML 授权由 role.sql 默认权限覆盖。
 	"schema/95_agent_audit.sql",
-	// Agent 工具授权（C2，TODO 流 C）：public.agent_tool_grant 表 + 租户
+	// Agent 工具授权：public.agent_tool_grant 表 + 租户
 	// RLS 策略 + 运行角色授权；入 sqlc catalog（命名查询见
 	// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
 	// sys_perm_version），只依赖 role.sql 的角色存在。
 	"96_agent_grant.sql",
-	// Agent 检索留痕（D3，TODO 流 D）：public.agent_retrieval_log 表 +
+	// Agent 检索留痕：public.agent_retrieval_log 表 +
 	// 租户 RLS 策略；入 sqlc catalog（命名查询见
 	// queries/agent_retrieval_log.sql），策略随域文件走（95 同口径），
 	// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认

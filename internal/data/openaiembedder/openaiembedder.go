@@ -1,5 +1,4 @@
-// Package openaiembedder 是 biz.Embedder 的 OpenAI 兼容端点实现（TODO
-// 决策 5 同口径：base_url/api_key/model 进 conf，密钥经 ${ENV:...} 占位
+// Package openaiembedder 是 biz.Embedder 的 OpenAI 兼容端点实现（与 LLM provider 同口径：base_url/api_key/model 进 conf，密钥经 ${ENV:...} 占位
 // 注入）。只实现单文本 embeddings 调用的最小面，不引入框架 embedder 与
 // 其 SDK 依赖；维度在构造期取 conf.vector.dimension 并在每次响应复核，
 // 端点维度漂移在调用点显式报错。测试一律以 httptest 替身服务进行，

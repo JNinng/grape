@@ -191,7 +191,7 @@ func Test_new_setup_enabled_injects_global_provider_and_cleans_up(t *testing.T) 
 }
 
 // Test_new_tracer_provider_exports_spans_to_memory_exporter 以内存导出器
-// 断言 span 真实产生与导出（TODO E1 验收口径）：全局 provider 注入后，
+// 断言 span 真实产生与导出：全局 provider 注入后，
 // grape 侧与框架桥接侧的 span 都进导出器，资源属性与 scope 身份正确。
 func Test_new_tracer_provider_exports_spans_to_memory_exporter(t *testing.T) {
 	restoreFramework(t)

@@ -29,7 +29,7 @@ function formatTime(iso: string): string {
   return Number.isNaN(t.getTime()) ? iso : t.toLocaleString()
 }
 
-// ChatPage 对话页（A2）：流式问答（AG-UI POST SSE）、工具调用事件、
+// ChatPage 对话页：流式问答（AG-UI POST SSE）、工具调用事件、
 // tool_confirmation 确认卡、取消与会话（thread）切换。所有模型/工具
 // 内容经 events reducer 折叠后以纯文本渲染（sanitize 口径见 MessageList）。
 export function ChatPage() {

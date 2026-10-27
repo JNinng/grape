@@ -178,7 +178,7 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 		t.Fatalf("filter not mapped: %+v", fake.searchF)
 	}
 
-	// keyword/hybrid/filter-only 模式需要 tsvector 与 embedder 管线（D2），
+	// keyword/hybrid/filter-only 模式需要 tsvector 与 embedder 管线，
 	// 现阶段必须显式拒绝而非静默降级为纯向量检索。
 	for _, mode := range []int{vectorstore.SearchModeHybrid, vectorstore.SearchModeKeyword, vectorstore.SearchModeFilter} {
 		if _, err := adapter.Search(context.Background(), &vectorstore.SearchQuery{
@@ -188,7 +188,7 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 			t.Fatalf("Search(mode=%d) = %v, want errVectorUnsupported", mode, err)
 		}
 	}
-	// searchfilter 条件 DSL 的翻译归 D2 检索工具，现阶段显式拒绝。
+	// searchfilter 条件 DSL 的翻译归检索工具，现阶段显式拒绝。
 	if _, err := adapter.Search(context.Background(), &vectorstore.SearchQuery{
 		Vector:     []float64{1},
 		SearchMode: vectorstore.SearchModeVector,
@@ -210,7 +210,7 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 }
 
 func TestVectorStoreAdapter_search_topk_clamped_to_adapter_cap(t *testing.T) {
-	// TODO D2：top_k 上限由适配器强制（决策 6 口径），工具层与其他框架
+	// top_k 上限由适配器强制（租户过滤同口径），工具层与其他框架
 	// 侧消费方都无法绕过；Limit 非正的缺省语义在契约实现内保持不变。
 	fake := &fakeVectorStore{}
 	adapter := NewVectorStore(fake)

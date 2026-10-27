@@ -10,8 +10,8 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// AgentEventWindowService 承载 agent 会话事件窗口手写端点（非 proto 生成，
-// A3）的路由注册面：GET {basePath}/event-window 按 threadId + eventId 取
+// AgentEventWindowService 承载 agent 会话事件窗口手写端点（非 proto 生成）
+// 的路由注册面：GET {basePath}/event-window 按 threadId + eventId 取
 // 锚点事件窗口（before/after 可选），供运维复现视图做压缩占位符的原文
 // 对照与执行轨迹回查。窗口装配与 HTTP 形态收在 internal/agent
 // （Stack.EventWindowHandler：与 AG-UI / ack 同一框架 session.Service 实

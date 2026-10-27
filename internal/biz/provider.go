@@ -7,7 +7,7 @@ import (
 )
 
 // ProviderSet 是 biz 层的 Wire 依赖注入集合。NewRedactRegistry 提供审计
-// 表与复现视图（A3）共用的脱敏注册表（E1 单一代码点）：经 wire 装配为
+// 表与复现视图共用的脱敏注册表（单一代码点）：经 wire 装配为
 // 同一实例，消费方按类别取用、不自行构造。
 var ProviderSet = wire.NewSet(NewUserUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecase, NewGrantUsecase, NewRetrievalLogUsecase, NewRedactRegistry)
 

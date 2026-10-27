@@ -1,10 +1,10 @@
 package agent
 
-// B2 会话存储集成测试：以真实 PostgreSQL 验证框架 session/postgres 接入
-// 的存储边界与 AG-UI 会话能力。使用本套件专属库 grape_agent_b2_test，
+// Agent 会话存储集成测试：以真实 PostgreSQL 验证框架 session/postgres 接入
+// 的存储边界与 AG-UI 会话能力。使用本套件专属库 grape_agent_session_test，
 // 不触碰其他套件的测试库。设置以下环境变量后运行，未设置时跳过：
 //
-//	GRAPE_B2_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
+//	GRAPE_SESSION_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent -run TestPGSession -count=1 -v
 //
 // 装载取舍：按 DeployFiles 全清单部署（清单已尾随 agent_session.sql），
@@ -42,26 +42,26 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// b2TestDatabase 是本套件专属测试库；其余测试库绝不触碰。
-const b2TestDatabase = "grape_agent_b2_test"
+// sessionTestDatabase 是本套件专属测试库；其余测试库绝不触碰。
+const sessionTestDatabase = "grape_agent_session_test"
 
-// b2GrapeUPassword 与 role.sql 占位符替换值：grape_u 的既定测试口令。
-const b2GrapeUPassword = "grape_u_pwd"
+// sessionGrapeUPassword 与 role.sql 占位符替换值：grape_u 的既定测试口令。
+const sessionGrapeUPassword = "grape_u_pwd"
 
 // 全栈测试共用的会话键要素：app 名、租户与用户（userKey = t-1:7）。
 const (
-	b2AppName = "grape-agent"
-	b2Tenant  = "t-1"
-	b2UserID  = int64(7)
+	sessionAppName = "grape-agent"
+	sessionTenant  = "t-1"
+	sessionUserID  = int64(7)
 )
 
-// b2SetupDatabase 重建专属测试库并按 DeployFiles 全清单部署（清单尾部
+// sessionSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署（清单尾部
 // 即 agent_session.sql），返回 grape_u DSN。
-func b2SetupDatabase(t *testing.T) string {
+func sessionSetupDatabase(t *testing.T) string {
 	t.Helper()
-	adminDSN := os.Getenv("GRAPE_B2_TEST_ADMIN_DSN")
+	adminDSN := os.Getenv("GRAPE_SESSION_TEST_ADMIN_DSN")
 	if adminDSN == "" {
-		t.Skip("GRAPE_B2_TEST_ADMIN_DSN not set, skip agent session storage integration tests")
+		t.Skip("GRAPE_SESSION_TEST_ADMIN_DSN not set, skip agent session storage integration tests")
 	}
 	ctx := context.Background()
 
@@ -74,10 +74,10 @@ func b2SetupDatabase(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
 	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+b2TestDatabase+" WITH (FORCE)"); err != nil {
+	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+sessionTestDatabase+" WITH (FORCE)"); err != nil {
 		t.Fatalf("drop test database: %v", err)
 	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+b2TestDatabase); err != nil {
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+sessionTestDatabase); err != nil {
 		t.Fatalf("create test database: %v", err)
 	}
 
@@ -91,7 +91,7 @@ func b2SetupDatabase(t *testing.T) string {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg := *cfg
-	deployCfg.Database = b2TestDatabase
+	deployCfg.Database = sessionTestDatabase
 	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	deployConn, err := pgx.ConnectConfig(ctx, &deployCfg)
 	if err != nil {
@@ -109,39 +109,39 @@ func b2SetupDatabase(t *testing.T) string {
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), b2GrapeUPassword, "test_u_pwd")
+		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), sessionGrapeUPassword, "test_u_pwd")
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", name, err)
 		}
 	}
 	// CONNECT 授权依赖库名，由部署方执行（与 deploy_db.md 口径一致）。
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+b2TestDatabase+" TO grape_u, test_u"); err != nil {
+	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+sessionTestDatabase+" TO grape_u, test_u"); err != nil {
 		t.Fatalf("grant connect: %v", err)
 	}
 
-	dsn, err := b2GrapeUDSN(adminDSN)
+	dsn, err := sessionGrapeUDSN(adminDSN)
 	if err != nil {
 		t.Fatalf("build grape_u dsn: %v", err)
 	}
 	return dsn
 }
 
-// b2GrapeUDSN 把管理员 DSN 改写为 grape_u 连接专属测试库的 DSN。
-func b2GrapeUDSN(adminDSN string) (string, error) {
+// sessionGrapeUDSN 把管理员 DSN 改写为 grape_u 连接专属测试库的 DSN。
+func sessionGrapeUDSN(adminDSN string) (string, error) {
 	u, err := url.Parse(adminDSN)
 	if err != nil {
 		return "", err
 	}
-	u.User = url.UserPassword("grape_u", b2GrapeUPassword)
-	u.Path = "/" + b2TestDatabase
+	u.User = url.UserPassword("grape_u", sessionGrapeUPassword)
+	u.Path = "/" + sessionTestDatabase
 	return u.String(), nil
 }
 
-// b2SessionService 经生产装配函数构造会话服务（postgres 后端）。
-func b2SessionService(t *testing.T, grapeUDSN string, sessionTTL time.Duration) (session.Service, func()) {
+// sessionSvcUnderTest 经生产装配函数构造会话服务（postgres 后端）。
+func sessionSvcUnderTest(t *testing.T, grapeUDSN string, sessionTTL time.Duration) (session.Service, func()) {
 	t.Helper()
 	c := &conf.Agent{
-		AppName: b2AppName,
+		AppName: sessionAppName,
 		SessionStorage: &conf.Agent_SessionStorage{
 			SessionTtl: durationpb.New(sessionTTL),
 		},
@@ -154,13 +154,13 @@ func b2SessionService(t *testing.T, grapeUDSN string, sessionTTL time.Duration) 
 	return svc, cleanup
 }
 
-// b2Key 构造 userKey = tenant_id:user_id 的会话键。
-func b2Key(sessionID string) session.Key {
-	return session.Key{AppName: b2AppName, UserID: "t-1:7", SessionID: sessionID}
+// sessionKey 构造 userKey = tenant_id:user_id 的会话键。
+func sessionKey(sessionID string) session.Key {
+	return session.Key{AppName: sessionAppName, UserID: "t-1:7", SessionID: sessionID}
 }
 
-// b2UserTextEvent 构造带原文的用户消息事件（会话事件流的原料）。
-func b2UserTextEvent(content string) *event.Event {
+// sessionUserTextEvent 构造带原文的用户消息事件（会话事件流的原料）。
+func sessionUserTextEvent(content string) *event.Event {
 	evt := event.New("b2-invocation", "user")
 	evt.Response = &model.Response{
 		Object: model.ObjectTypeChatCompletion,
@@ -177,25 +177,25 @@ func b2UserTextEvent(content string) *event.Event {
 // 验证跨请求持久与重启语义：同一 userKey 下写入的会话与事件，在服务
 // 关闭、连接池重建（模拟进程重启）后仍完整可读，事件原文逐字保留。
 func TestPGSession_when_service_rebuilt_same_userkey_sees_persisted_events(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	ctx := context.Background()
 	const rawText = "b2-raw-payload-persistent-marker"
 	const sessID = "sess-persist"
 
-	svc, cleanup := b2SessionService(t, dsn, 0)
-	sess, err := svc.CreateSession(ctx, b2Key(sessID), nil)
+	svc, cleanup := sessionSvcUnderTest(t, dsn, 0)
+	sess, err := svc.CreateSession(ctx, sessionKey(sessID), nil)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	if err := svc.AppendEvent(ctx, sess, b2UserTextEvent(rawText)); err != nil {
+	if err := svc.AppendEvent(ctx, sess, sessionUserTextEvent(rawText)); err != nil {
 		t.Fatalf("append event: %v", err)
 	}
 	cleanup()
 
 	// 重建服务（新连接池）：等价于进程重启后的首查。
-	svc2, cleanup2 := b2SessionService(t, dsn, 0)
+	svc2, cleanup2 := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanup2()
-	got, err := svc2.GetSession(ctx, b2Key(sessID))
+	got, err := svc2.GetSession(ctx, sessionKey(sessID))
 	if err != nil {
 		t.Fatalf("get session after rebuild: %v", err)
 	}
@@ -217,19 +217,19 @@ func TestPGSession_when_service_rebuilt_same_userkey_sees_persisted_events(t *te
 // userKey 隔离：会话归属锚定在 userKey 编码上，同租户其他用户与跨
 // 租户用户都读不到该会话。
 func TestPGSession_when_other_userkey_reads_finds_nothing(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	ctx := context.Background()
 	const sessID = "sess-isolated"
 
-	svc, cleanup := b2SessionService(t, dsn, 0)
+	svc, cleanup := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanup()
-	if _, err := svc.CreateSession(ctx, b2Key(sessID), nil); err != nil {
+	if _, err := svc.CreateSession(ctx, sessionKey(sessID), nil); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
 	for _, other := range []session.Key{
-		{AppName: b2AppName, UserID: "t-1:8", SessionID: sessID}, // 同租户其他用户
-		{AppName: b2AppName, UserID: "t-2:7", SessionID: sessID}, // 跨租户同编号用户
+		{AppName: sessionAppName, UserID: "t-1:8", SessionID: sessID}, // 同租户其他用户
+		{AppName: sessionAppName, UserID: "t-2:7", SessionID: sessID}, // 跨租户同编号用户
 	} {
 		got, err := svc.GetSession(ctx, other)
 		if err != nil {
@@ -238,7 +238,7 @@ func TestPGSession_when_other_userkey_reads_finds_nothing(t *testing.T) {
 		if got != nil {
 			t.Fatalf("user %s must not read user t-1:7 session", other.UserID)
 		}
-		list, err := svc.ListSessions(ctx, session.UserKey{AppName: b2AppName, UserID: other.UserID})
+		list, err := svc.ListSessions(ctx, session.UserKey{AppName: sessionAppName, UserID: other.UserID})
 		if err != nil {
 			t.Fatalf("list sessions as %s: %v", other.UserID, err)
 		}
@@ -252,19 +252,19 @@ func TestPGSession_when_other_userkey_reads_finds_nothing(t *testing.T) {
 // 面：session_ttl 配置后写入行的 expires_at 落库（能设进框架即算，
 // 不等过期），未配置时保持 NULL（永不过期）。
 func TestPGSession_when_ttl_configured_sets_expires_at(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	ctx := context.Background()
 
-	svc, cleanup := b2SessionService(t, dsn, time.Hour)
+	svc, cleanup := sessionSvcUnderTest(t, dsn, time.Hour)
 	defer cleanup()
-	if _, err := svc.CreateSession(ctx, b2Key("sess-ttl"), nil); err != nil {
+	if _, err := svc.CreateSession(ctx, sessionKey("sess-ttl"), nil); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
 	// 对照组：未配置 TTL（0 = 永不过期）时 expires_at 保持 NULL。
-	svc0, cleanup0 := b2SessionService(t, dsn, 0)
+	svc0, cleanup0 := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanup0()
-	if _, err := svc0.CreateSession(ctx, b2Key("sess-ttl-zero"), nil); err != nil {
+	if _, err := svc0.CreateSession(ctx, sessionKey("sess-ttl-zero"), nil); err != nil {
 		t.Fatalf("create zero-ttl session: %v", err)
 	}
 
@@ -401,10 +401,10 @@ func (m *blockingModel) GenerateContent(ctx context.Context, _ *model.Request) (
 	return ch, nil
 }
 
-// b2StackConf 组装全栈测试的骨架配置。
-func b2StackConf(comp *conf.Agent_Compression) *conf.Agent {
+// sessionStackConf 组装全栈测试的骨架配置。
+func sessionStackConf(comp *conf.Agent_Compression) *conf.Agent {
 	return &conf.Agent{
-		AppName:     b2AppName,
+		AppName:     sessionAppName,
 		Llm:         &conf.Agent_LLM{Model: "stub"},
 		Compression: comp,
 		Agui: &conf.Agent_AGUI{
@@ -415,18 +415,18 @@ func b2StackConf(comp *conf.Agent_Compression) *conf.Agent {
 	}
 }
 
-// b2IdentityHandler 用注入身份的 ctx 包装 Stack handler：等价认证
+// sessionIdentityHandler 用注入身份的 ctx 包装 Stack handler：等价认证
 // 中间件命中后的形态（agent 层测试不经过 Kratos 挂载，链上治理由
 // internal/server 套件守卫）。
-func b2IdentityHandler(next http.Handler) http.Handler {
+func sessionIdentityHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := biz.WithIdentity(r.Context(), biz.Identity{TenantID: b2Tenant, UserID: b2UserID})
+		ctx := biz.WithIdentity(r.Context(), biz.Identity{TenantID: sessionTenant, UserID: sessionUserID})
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// b2Post 执行一次带身份的 POST 并返回响应记录。
-func b2Post(t *testing.T, h http.Handler, target, body string) *httptest.ResponseRecorder {
+// sessionPost 执行一次带身份的 POST 并返回响应记录。
+func sessionPost(t *testing.T, h http.Handler, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -435,8 +435,8 @@ func b2Post(t *testing.T, h http.Handler, target, body string) *httptest.Respons
 	return rec
 }
 
-// b2EventTypes 解析 SSE 响应体中的事件类型序列。
-func b2EventTypes(t *testing.T, body string) []string {
+// sessionEventTypes 解析 SSE 响应体中的事件类型序列。
+func sessionEventTypes(t *testing.T, body string) []string {
 	t.Helper()
 	var types []string
 	for _, line := range strings.Split(body, "\n") {
@@ -454,8 +454,8 @@ func b2EventTypes(t *testing.T, body string) []string {
 	return types
 }
 
-// b2HasEvent 断言事件序列包含指定类型。
-func b2HasEvent(t *testing.T, types []string, want string) {
+// sessionHasEvent 断言事件序列包含指定类型。
+func sessionHasEvent(t *testing.T, types []string, want string) {
 	t.Helper()
 	for _, typ := range types {
 		if typ == want {
@@ -465,8 +465,8 @@ func b2HasEvent(t *testing.T, types []string, want string) {
 	t.Fatalf("event types %v do not contain %q", types, want)
 }
 
-// b2HasAnyEvent 断言事件序列包含任一给定类型。
-func b2HasAnyEvent(t *testing.T, types []string, want ...string) {
+// sessionHasAnyEvent 断言事件序列包含任一给定类型。
+func sessionHasAnyEvent(t *testing.T, types []string, want ...string) {
 	t.Helper()
 	for _, typ := range types {
 		for _, w := range want {
@@ -478,35 +478,35 @@ func b2HasAnyEvent(t *testing.T, types []string, want ...string) {
 	t.Fatalf("event types %v contain none of %v", types, want)
 }
 
-// b2RunChat 走一次完整 AG-UI chat 并返回 SSE 响应体。
-func b2RunChat(t *testing.T, h http.Handler, threadID, runID, message string) string {
+// sessionRunChat 走一次完整 AG-UI chat 并返回 SSE 响应体。
+func sessionRunChat(t *testing.T, h http.Handler, threadID, runID, message string) string {
 	t.Helper()
 	body := `{"threadId":"` + threadID + `","runId":"` + runID + `","messages":[{"id":"m-` + runID + `","role":"user","content":"` + message + `"}]}`
-	rec := b2Post(t, h, "/agui/", body)
+	rec := sessionPost(t, h, "/agui/", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("chat status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
 	return rec.Body.String()
 }
 
-// b2RunHistory 请求 /history 快照并返回 SSE 响应体。
-func b2RunHistory(t *testing.T, h http.Handler, threadID string) string {
+// sessionRunHistory 请求 /history 快照并返回 SSE 响应体。
+func sessionRunHistory(t *testing.T, h http.Handler, threadID string) string {
 	t.Helper()
-	rec := b2Post(t, h, "/agui/history", `{"threadId":"`+threadID+`","runId":"snap-1","messages":[]}`)
+	rec := sessionPost(t, h, "/agui/history", `{"threadId":"`+threadID+`","runId":"snap-1","messages":[]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("history status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
 	return rec.Body.String()
 }
 
-// b2WaitHistoryPoll 轮询 /history 直到快照包含期望文本：track 事件在
+// sessionWaitHistoryPoll 轮询 /history 直到快照包含期望文本：track 事件在
 // 运行收尾期持久化，chat 流关闭与其落库之间存在窄窗口，轮询消除竞态
-// （同毫秒 follow 缺口见 TODO §1.2，此处只做快照形态验证）。
-func b2WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains string) string {
+// （上游 track follow 的同毫秒事件缺口，此处只做快照形态验证）。
+func sessionWaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains string) string {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
-		body := b2RunHistory(t, h, threadID)
+		body := sessionRunHistory(t, h, threadID)
 		if strings.Contains(body, wantContains) {
 			return body
 		}
@@ -525,7 +525,7 @@ func b2WaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains stri
 // 注意压缩单元按运行（请求）归属，单次运行内的历史属于当前单元受
 // 保护，故必须跨运行构造历史。
 func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_raw(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	ctx := context.Background()
 	const (
 		sessID    = "sess-compact"
@@ -533,7 +533,7 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 		markerTwo = "B2-MARKER-TWO-second-tool-result"
 	)
 
-	svc, cleanupSvc := b2SessionService(t, dsn, 0)
+	svc, cleanupSvc := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanupSvc()
 
 	scripted := newCallScriptModel(
@@ -546,7 +546,7 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 		acktest.Step{Text: "third done"},
 	)
 	llm := &capturingModel{inner: scripted}
-	stack, err := NewStackWithOptions(b2StackConf(&conf.Agent_Compression{
+	stack, err := NewStackWithOptions(sessionStackConf(&conf.Agent_Compression{
 		Enabled:             true,
 		ToolResultMaxTokens: 1, // 阈值调到最小：任何非空结果都命中 Pass 1
 	}), nil, svc, NewVectorStore(nil), biz.NewUserUsecase(newFakeUserRepo()), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
@@ -554,17 +554,17 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 		t.Fatalf("build stack: %v", err)
 	}
 	defer stack.Close()
-	h := b2IdentityHandler(stack.Handler())
+	h := sessionIdentityHandler(stack.Handler())
 
 	// 三次运行同会话：run-1 产出 markerOne、run-2 产出 markerTwo、
 	// run-3 纯文本。投影断言取 run-3 的模型请求。
-	b2HasEvent(t, b2EventTypes(t, b2RunChat(t, h, sessID, "run-1", "hi-one")), "RUN_FINISHED")
-	b2HasEvent(t, b2EventTypes(t, b2RunChat(t, h, sessID, "run-2", "hi-two")), "RUN_FINISHED")
-	b2HasEvent(t, b2EventTypes(t, b2RunChat(t, h, sessID, "run-3", "hi-three")), "RUN_FINISHED")
+	sessionHasEvent(t, sessionEventTypes(t, sessionRunChat(t, h, sessID, "run-1", "hi-one")), "RUN_FINISHED")
+	sessionHasEvent(t, sessionEventTypes(t, sessionRunChat(t, h, sessID, "run-2", "hi-two")), "RUN_FINISHED")
+	sessionHasEvent(t, sessionEventTypes(t, sessionRunChat(t, h, sessID, "run-3", "hi-three")), "RUN_FINISHED")
 
 	// 事件流原文完整：两次工具结果都在 session 事件里（压缩只作用于
 	// 请求投影副本）。
-	got, err := svc.GetSession(ctx, b2Key(sessID))
+	got, err := svc.GetSession(ctx, sessionKey(sessID))
 	if err != nil {
 		t.Fatalf("get session: %v", err)
 	}
@@ -639,7 +639,7 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 		t.Fatalf("cannot parse event_id from projection:\n%s", projected.String())
 	}
 	window, err := svc.(session.WindowService).GetEventWindow(ctx, session.EventWindowRequest{
-		Key:           b2Key(sessID),
+		Key:           sessionKey(sessID),
 		AnchorEventID: ref[1],
 		Before:        0,
 		After:         0,
@@ -665,14 +665,14 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 // 验证 /history 快照回放与重启持久：chat 运行结束后按 threadId 取快照
 // 含完整对话；关闭服务并重建（模拟重启）后快照仍在。
 func TestPGSession_when_history_requested_snapshot_replays_and_survives_restart(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	const (
 		threadID = "thread-history"
 		reply    = "history-replay-reply"
 	)
 
 	newStack := func(s session.Service) *Stack {
-		st, err := NewStackWithOptions(b2StackConf(nil), nil, s, NewVectorStore(nil),
+		st, err := NewStackWithOptions(sessionStackConf(nil), nil, s, NewVectorStore(nil),
 			biz.NewUserUsecase(newFakeUserRepo()), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(acktest.NewScriptedModel("stub", acktest.Step{Text: reply})))
 		if err != nil {
 			t.Fatalf("build stack: %v", err)
@@ -680,22 +680,22 @@ func TestPGSession_when_history_requested_snapshot_replays_and_survives_restart(
 		return st
 	}
 
-	svc, cleanupSvc := b2SessionService(t, dsn, 0)
+	svc, cleanupSvc := sessionSvcUnderTest(t, dsn, 0)
 	stack := newStack(svc)
-	h := b2IdentityHandler(stack.Handler())
-	b2RunChat(t, h, threadID, "run-hist", "hi")
-	snapshot := b2WaitHistoryPoll(t, h, threadID, reply)
-	b2HasEvent(t, b2EventTypes(t, snapshot), "MESSAGES_SNAPSHOT")
+	h := sessionIdentityHandler(stack.Handler())
+	sessionRunChat(t, h, threadID, "run-hist", "hi")
+	snapshot := sessionWaitHistoryPoll(t, h, threadID, reply)
+	sessionHasEvent(t, sessionEventTypes(t, snapshot), "MESSAGES_SNAPSHOT")
 	stack.Close()
 	cleanupSvc()
 
 	// 重启：重建池与服务后，快照仍可回放且对话完整。
-	svc2, cleanupSvc2 := b2SessionService(t, dsn, 0)
+	svc2, cleanupSvc2 := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanupSvc2()
 	stack2 := newStack(svc2)
 	defer stack2.Close()
-	history2 := b2WaitHistoryPoll(t, b2IdentityHandler(stack2.Handler()), threadID, reply)
-	b2HasEvent(t, b2EventTypes(t, history2), "MESSAGES_SNAPSHOT")
+	history2 := sessionWaitHistoryPoll(t, sessionIdentityHandler(stack2.Handler()), threadID, reply)
+	sessionHasEvent(t, sessionEventTypes(t, history2), "MESSAGES_SNAPSHOT")
 	if !strings.Contains(history2, "hi") {
 		t.Fatalf("history snapshot lost user message after restart:\n%s", history2)
 	}
@@ -706,19 +706,19 @@ func TestPGSession_when_history_requested_snapshot_replays_and_survives_restart(
 // 到模型超时（框架对显式取消以 RUN_FINISHED 结算，异常路径为
 // RUN_ERROR，二者都证明运行已终止）。
 func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
-	dsn := b2SetupDatabase(t)
+	dsn := sessionSetupDatabase(t)
 	const threadID = "thread-cancel"
 
-	svc, cleanupSvc := b2SessionService(t, dsn, 0)
+	svc, cleanupSvc := sessionSvcUnderTest(t, dsn, 0)
 	defer cleanupSvc()
 	blocking := newBlockingModel(time.Minute)
-	stack, err := NewStackWithOptions(b2StackConf(nil), nil, svc, NewVectorStore(nil),
+	stack, err := NewStackWithOptions(sessionStackConf(nil), nil, svc, NewVectorStore(nil),
 		biz.NewUserUsecase(newFakeUserRepo()), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(blocking))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
 	defer stack.Close()
-	h := b2IdentityHandler(stack.Handler())
+	h := sessionIdentityHandler(stack.Handler())
 
 	done := make(chan *httptest.ResponseRecorder, 1)
 	go func() {
@@ -736,7 +736,7 @@ func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("blocked run never reached the model within 5s")
 	}
-	rec := b2Post(t, h, "/agui/cancel", `{"threadId":"`+threadID+`","runId":"run-1","messages":[]}`)
+	rec := sessionPost(t, h, "/agui/cancel", `{"threadId":"`+threadID+`","runId":"run-1","messages":[]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
@@ -746,7 +746,7 @@ func TestPGSession_when_cancel_requested_blocked_run_terminates(t *testing.T) {
 		if chatRec.Code != http.StatusOK {
 			t.Fatalf("chat status = %d, want 200\n%s", chatRec.Code, chatRec.Body.String())
 		}
-		b2HasAnyEvent(t, b2EventTypes(t, chatRec.Body.String()), "RUN_FINISHED", "RUN_ERROR")
+		sessionHasAnyEvent(t, sessionEventTypes(t, chatRec.Body.String()), "RUN_FINISHED", "RUN_ERROR")
 	case <-time.After(10 * time.Second):
 		t.Fatal("cancelled run did not terminate within 10s")
 	}

@@ -19,13 +19,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// 向量存储介质集成测试：以真实 PostgreSQL 验证应用层租户隔离（决策 6）
+// 向量存储介质集成测试：以真实 PostgreSQL 验证应用层租户隔离
 // 与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 DeployFiles 部署
 // 清单全量装载，含 agent_vector.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
 //	GRAPE_VECTOR_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_d1_test \
+//	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_test \
 //	go test ./internal/data/pg_sqlc -run "TestVectorStore|TestNewVectorStore" -count=1 -v
 //
 // 隔离口径：agent_document 不启用 RLS，租户边界由 vector_repo 的应用层
@@ -33,7 +33,7 @@ import (
 // 不可召回，证明隔离不依赖数据库策略存在。
 
 const (
-	vectorTestDatabase = "grape_vector_d1_test"
+	vectorTestDatabase = "grape_vector_test"
 	vectorDimension    = int32(1024)
 	scoreEpsilon       = 1e-6
 )

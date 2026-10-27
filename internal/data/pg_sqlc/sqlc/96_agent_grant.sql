@@ -1,5 +1,5 @@
 -- ============================================================
--- 96_agent_grant.sql — Agent 工具授权存储（TODO 流 C / C2）
+-- 96_agent_grant.sql — Agent 工具授权存储
 --
 -- agent_tool_grant 表、租户 RLS 策略与运行角色授权。本文件进 sqlc
 -- catalog（表为标准关系形态，命名查询见 queries/agent_grant.sql），
@@ -14,7 +14,7 @@
 -- app.tenant_id 时 current_setting(...,true) 为 NULL，比较恒为假，
 -- 默认全拒。
 --
--- 应用层兜底口径（TODO 决策 6 / D1 同源）：仓储每条查询显式携带
+-- 应用层兜底口径（与向量层隔离同源）：仓储每条查询显式携带
 -- tenant_id 参数（取自认证身份，不取请求侧输入），RLS 被关闭时跨租户
 -- 仍不可见，隔离正确性不押在数据库策略是否存在上（集成测试以无 RLS
 -- 场景断言）。
@@ -22,8 +22,8 @@
 -- 行生命周期：仅「写入」与「吊销（置 revoked_at）」两种形态，无
 -- updated_at/updated_by——吊销事实由 revoked_by/revoked_at 承载，行
 -- 内容创建后不再变更；rls.sql 的 updated_at 兜底触发器按列扫描挂载，
--- 本表无该列，天然不在挂载清单内。TTL/过期清理（E3）待保留期策略
--- 明确后另立维护函数，不在本文件预置。
+-- 本表无该列，天然不在挂载清单内。TTL/过期清理的保留与执行口径见根目录
+-- operations.md「保留期与归档统一口径」，不在本文件预置维护函数。
 -- ============================================================
 
 -- agent_tool_grant — Agent 工具授权（ack 许可存储）。查询键
@@ -60,7 +60,7 @@ CREATE UNIQUE INDEX agent_tool_grant_active_un
 CREATE INDEX idx_agent_tool_grant_tenant_user
     ON public.agent_tool_grant USING btree (tenant_id, user_id, created_at);
 
-COMMENT ON TABLE public.agent_tool_grant IS 'Agent 工具授权（ack 许可存储，C2）：用户对工具的预先授权，满足 confirm 层级的确认要求；查询键 (tenant_id, user_id, tool_name, session_id)，session_id 为 NULL 即全局级；未撤销行每键至多一条（部分唯一表达式索引）；吊销置 revoked_at 不删行。租户隔离 RLS + 应用层 tenant_id 参数双保险（决策 6/D1 口径）';
+COMMENT ON TABLE public.agent_tool_grant IS 'Agent 工具授权（ack 许可存储）：用户对工具的预先授权，满足 confirm 层级的确认要求；查询键 (tenant_id, user_id, tool_name, session_id)，session_id 为 NULL 即全局级；未撤销行每键至多一条（部分唯一表达式索引）；吊销置 revoked_at 不删行。租户隔离 RLS + 应用层 tenant_id 参数双保险（与向量层隔离口径一致）';
 
 COMMENT ON COLUMN public.agent_tool_grant.id IS '授权 ID（应用层发号）';
 COMMENT ON COLUMN public.agent_tool_grant.tenant_id IS '租户 ID：仓储从认证 ctx 提取并显式过滤，不来自请求侧输入';

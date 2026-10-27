@@ -12,8 +12,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// sessionListDefaultLimit / sessionListMaxLimit 是 agent 会话列表端点
-// （A2）的默认与上限分页参数：条数上限防止单请求拖回全量会话；
+// sessionListDefaultLimit / sessionListMaxLimit 是 agent 会话列表端点的
+// 默认与上限分页参数：条数上限防止单请求拖回全量会话；
 // offset/limit 语义对齐框架 ListSessions 的 offset 分页。
 const (
 	sessionListDefaultLimit = 20

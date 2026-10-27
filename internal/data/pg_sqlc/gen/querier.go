@@ -34,7 +34,7 @@ type Querier interface {
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
-	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（决策 6/D1 口径）
+	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
 	GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error)
 	// 全局级活跃许可：会话级未命中后的兜底；session_id IS NULL 即全局级
 	GetActiveAgentToolGrantGlobal(ctx context.Context, arg GetActiveAgentToolGrantGlobalParams) (AgentToolGrant, error)
@@ -69,20 +69,20 @@ type Querier interface {
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
 	// 写入一条授权确认审计；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentConfirmationLog(ctx context.Context, arg InsertAgentConfirmationLogParams) (AgentConfirmationLog, error)
-	// Agent 检索留痕（TODO 流 D 的 D3）固定命名查询：表为追加写
+	// Agent 检索留痕固定命名查询：表为追加写
 	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
 	// RLS（schema/97_agent_retrieval_log.sql 的策略）为主，读侧 WHERE 再
 	// 显式带同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时
-	// 读取仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收
+	// 读取仍不越租户，对齐向量层「隔离正确性不押在 RLS 是否存在上」的
 	// 口径。写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方
 	// 无法指定或伪造归属。
 	// 写入一条检索留痕；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRetrievalLogParams) (AgentRetrievalLog, error)
-	// Agent 业务审计（TODO 流 E 的 E2）固定命名查询：两表均为追加写
+	// Agent 业务审计固定命名查询：两表均为追加写
 	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
 	// RLS（schema/95_agent_audit.sql 的策略）为主，读侧 WHERE 再显式带上
 	// 同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时读取
-	// 仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收口径。
+	// 仍不越租户，对齐向量层「隔离正确性不押在 RLS 是否存在上」的口径。
 	// 写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方无法
 	// 指定或伪造归属。
 	// 写入一条工具调用审计；租户取会话 app.tenant_id

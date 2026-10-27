@@ -8,12 +8,12 @@ import (
 	"grape/internal/biz"
 )
 
-// AG-UI 运行入口的并发治理（TODO E3 限流）：对 chat 运行请求按租户/用户
+// AG-UI 运行入口的并发治理：对 chat 运行请求按租户/用户
 // （userKey）限制同时在途的运行数，超限以 429 拒绝——单个失控客户端不
 // 能占满框架运行面与 LLM 配额。身份解析失败 fail-closed 401（与 sessions
 // / ack 守卫同一口径）。
 //
-// 取舍声明（TODO E3 允许简化）：限流只做「并发上限」单一维度，不做请求
+// 取舍声明：限流只做「并发上限」单一维度，不做请求
 // 速率（token bucket 之类）——运行请求的破坏面集中在长驻 SSE 流的并发
 // 占用，速率突刺由运行超时（agent.agui.timeout）与 MaxToolIterations 收
 // 敛；速率窗口的误拒复杂度在当前暴露面下不成比例，运维有实测需要再加。
@@ -28,7 +28,7 @@ import (
 const runLimitExceededMsg = "concurrent run limit exceeded"
 
 // runGate 是按 userKey 的在途运行计数器与门控。observer 可为 nil（不观测，
-// 行为不变）；非 nil 时占槽/释放配对推送活跃数、拒绝推送拒绝计数（E3）。
+// 行为不变）；非 nil 时占槽/释放配对推送活跃数、拒绝推送拒绝计数。
 type runGate struct {
 	limit    int
 	observer biz.AgentRunObserver

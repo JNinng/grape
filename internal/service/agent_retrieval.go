@@ -15,7 +15,7 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// 检索留痕查询端点（TODO 流 D 的 D3，供 A3 运维复现视图）的默认与上限
+// 检索留痕查询端点（供运维复现视图）的默认与上限
 // 分页参数：口径与 biz 留痕用例一致（默认 20、单页上限 200）。
 const (
 	agentRetrievalDefaultLimit = 20

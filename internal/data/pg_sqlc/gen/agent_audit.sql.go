@@ -183,11 +183,11 @@ type InsertAgentToolCallLogParams struct {
 	Status           string  `db:"status" json:"status"`
 }
 
-// Agent 业务审计（TODO 流 E 的 E2）固定命名查询：两表均为追加写
+// Agent 业务审计固定命名查询：两表均为追加写
 // （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
 // RLS（schema/95_agent_audit.sql 的策略）为主，读侧 WHERE 再显式带上
 // 同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时读取
-// 仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收口径。
+// 仍不越租户，对齐向量层「隔离正确性不押在 RLS 是否存在上」的口径。
 // 写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方无法
 // 指定或伪造归属。
 // 写入一条工具调用审计；租户取会话 app.tenant_id

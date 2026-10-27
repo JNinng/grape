@@ -15,7 +15,7 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// 审计查询端点（TODO 流 E 的 E2，供 A3 运维复现视图）的默认与上限分页
+// 审计查询端点（供运维复现视图）的默认与上限分页
 // 参数：口径与 biz 审计用例一致（默认 20、单页上限 200）。
 const (
 	agentAuditDefaultLimit = 20

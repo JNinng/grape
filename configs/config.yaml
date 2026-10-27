@@ -54,7 +54,7 @@ agent:
     model: ${AGENT_LLM_MODEL:gpt-4o-mini}
     # 单次模型调用超时；未设置用框架默认。
     timeout: 60s
-    # failover：主 provider 故障时按优先级切换备 provider（TODO B3）。
+    # failover：主 provider 故障时按优先级切换备 provider。
     # enabled=false 零包装（现行为）；启用时备选按序尝试，全部失败聚合
     # 报错。备选 api_key 同样只经环境变量注入。
     failover:
@@ -66,7 +66,7 @@ agent:
       #   api_key: ${AGENT_LLM_FAILOVER_API_KEY:}
       #   model: ${AGENT_LLM_FAILOVER_MODEL:gpt-4o-mini}
       #   timeout: 60s
-    # hedge：对延迟敏感的重复请求策略（TODO B3）。原始请求 delay 后未出
+    # hedge：对延迟敏感的重复请求策略。原始请求 delay 后未出
     # 结果即发副本，先出有效内容者获胜、其余取消；重复请求成倍放大上游
     # 调用量，只对延迟抖动显著且调用幂等的场景启用。
     hedge:
@@ -75,10 +75,10 @@ agent:
       delay: 0s
       # 并发副本总数（含原始请求），启用时必须 ≥ 2。
       max_copies: 2
-    # logging：LLM 调用回调日志（TODO B3）。enabled=false 零包装无任何
+    # logging：LLM 调用回调日志。enabled=false 零包装无任何
     # 新日志；启用后每次模型调用（含 failover 各次候选尝试）落 grape
     # logger（ctx 带 trace_id 自动展开）。提示词/补全默认不记，内容级
-    # 脱敏的审计面归 E2/A3；api_key 在 HTTP 客户端配置面，从不入日志。
+    # 脱敏归审计与复现视图面；api_key 在 HTTP 客户端配置面，从不入日志。
     logging:
       enabled: false
       log_prompts: false
@@ -91,7 +91,7 @@ agent:
     timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s
-    # 单身份（租户+用户）同时在途运行数上限（E3 限流）。chat 运行请求
+    # 单身份（租户+用户）同时在途运行数上限。chat 运行请求
     # 超限即 429；/history、/cancel 与 ack 确认路由不受限。0 = 关闭
     # （默认）。计数为进程内内存态，多实例部署时是每实例上限。
     max_concurrent_runs: 0
@@ -105,7 +105,7 @@ agent:
     track_event_ttl: 0s
     app_state_ttl: 0s
     user_state_ttl: 0s
-  # compression：请求侧上下文压缩（TODO §1.1）。压缩只作用于请求投影
+  # compression：请求侧上下文压缩。压缩只作用于请求投影
   # 副本，session 事件流始终保留原文；占位符带 event_id，模型可经
   # session_load 取回片段。0 值语义：tool_result_max_tokens 与
   # keep_recent_requests 取框架默认（1024 / 1），
@@ -118,7 +118,7 @@ agent:
     force_clean_tool_names: []
     keep_tool_names: []
   # summarization：会话摘要配置位，当前恒关闭（启用需 summarizer 模型
-  # 与注入模式选型，B2 未实现）。
+  # 与注入模式选型，当前未实现）。
   summarization:
     enabled: false
 
@@ -134,7 +134,7 @@ vector:
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
-  # embedding：OpenAI 兼容 embeddings 端点（决策 5 同口径）。启用向量
+  # embedding：OpenAI 兼容 embeddings 端点（与 LLM provider 同口径）。启用向量
   # 设施时必填 base_url 与 model；api_key 只经环境变量注入。
   embedding:
     # provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空即可。
@@ -145,7 +145,7 @@ vector:
     # 单次 embedding 调用超时；未设置取 30s。
     timeout: 30s
 telemetry:
-  # OpenTelemetry 链路遥测（E1）。enabled=false 完全 noop：不构造
+  # OpenTelemetry 链路遥测。enabled=false 完全 noop：不构造
   # exporter、不发起任何连接；开启后 server span 经 OTLP gRPC 导出。
   enabled: false
   # OTLP gRPC exporter 地址。

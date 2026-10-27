@@ -10,8 +10,7 @@ import (
 	"grape/internal/data/pg_sqlc/gen"
 )
 
-// retrievalLogRepo 是 biz.RetrievalLogRepo 的 PostgreSQL 实现（TODO 流 D
-// 的 D3）。写入与查询全部经身份事务门面 IdentityTx 执行（每事务
+// retrievalLogRepo 是 biz.RetrievalLogRepo 的 PostgreSQL 实现。写入与查询全部经身份事务门面 IdentityTx 执行（每事务
 // set_config('app.tenant_id', ..., true)）：写入侧租户由门面注入、查询
 // 侧租户由 RLS 兜底（schema/97_agent_retrieval_log.sql 的策略），读侧
 // WHERE 再显式带同源租户谓词（queries/agent_retrieval_log.sql 文件头

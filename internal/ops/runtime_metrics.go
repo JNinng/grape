@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// RuntimeMetrics 是 agent 运行面的 Prometheus 指标集（TODO E3）：实现
+// RuntimeMetrics 是 agent 运行面的 Prometheus 指标集：实现
 // biz.AgentRunObserver，事实由 agent 框架适配层在运行起止、限流拒绝与
 // 工具终态推送，经 /metrics 与设施诊断同一出口输出（NewMetricsHandler
 // 注册本采集器）。标签基数有界：tool 取装配层工具清单（个位数）、
@@ -30,11 +30,11 @@ import (
 //   - 检索耗时/召回命中率：事实在 data 层留痕装饰器（retrieval_log.go
 //     已有耗时与命中数），接线需扩充 biz 观测契约（如
 //     RetrievalObserved）或把装饰器改为可注入 observer 的构造参数；
-//   - LLM 调用计数与 token 用量：事实在 B3 的 model.Callbacks 前后
+//   - LLM 调用计数与 token 用量：事实在模型层 logging 包装的 model.Callbacks 前后
 //     回调（llm.go 的 logging 包装已逐候选尝试记日志），同一位置可推
 //     observer；token 用量需框架 usage 字段随回调透出后接线；
 //   - 压缩指标：框架 ContextCompactionStats 仅在 processor 内部 debug
-//     日志（TODO §1.1），无结构化回调，接入需上游先暴露。
+//     日志，无结构化回调，接入需上游先暴露。
 
 // RuntimeMetrics 构造即自持全部采集器；零值不可用，一律经 NewRuntimeMetrics。
 type RuntimeMetrics struct {

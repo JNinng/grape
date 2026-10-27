@@ -13,13 +13,12 @@ import (
 	"grape/pkg/redact"
 )
 
-// Agent 业务审计（TODO 流 E 的 E2）：工具调用审计与授权确认审计的领域
+// Agent 业务审计：工具调用审计与授权确认审计的领域
 // 契约。写入侧（RecordToolCall / RecordConfirmation / 组合批量）供 Agent
-// 运行面（internal/agent 的工具执行与 ack 决定路径，接线归 C1 合并后的
-// 小修，接口预留见 agent.AuditHook）调用；查询侧供运维复现视图（A3）
+// 运行面（internal/agent 的工具执行与 ack 决定路径，挂点见 agent.AuditHook）调用；查询侧供运维复现视图
 // 的手写端点消费。摘要脱敏在用例内完成：参数摘要走 pkg/redact 的
 // tool_param 类别、结果摘要走 retrieval 类别，与日志、复现视图共用同一
-// 注册表（E1 单一代码点）。
+// 注册表（单一代码点）。
 
 // 审计记录的领域取值。与 ack / 框架语义一一对应：
 //   - 工具调用终态：成功 / 失败（一次调用一行，重试只记最终态与次数）；
@@ -89,7 +88,7 @@ type ToolCallRecordInput struct {
 	// ResultSummary 是结果摘要原文（写入前脱敏 + 截断）。
 	ResultSummary string
 	// RetryCount 是重试次数：框架可采集时记实际值，不可采集时记 0
-	//（TODO E3 评估回调接线后补真实采集）。
+	//（框架不暴露重试计数，最终口径见根目录 operations.md）。
 	RetryCount int32
 	// DurationMS 是最终一次执行的耗时（毫秒）；未知留 0，落库为 NULL。
 	DurationMS int64

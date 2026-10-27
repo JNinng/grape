@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// auditRepo 是 biz.AuditRepo 的 PostgreSQL 实现（TODO 流 E 的 E2）。
+// auditRepo 是 biz.AuditRepo 的 PostgreSQL 实现。
 // 写入与查询全部经身份事务门面 IdentityTx 执行（每事务
 // set_config('app.tenant_id', ..., true)）：写入侧租户由门面注入、
 // 查询侧租户由 RLS 兜底（schema/95_agent_audit.sql 的策略），读侧

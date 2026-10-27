@@ -12,7 +12,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-// 业务工具首批（TODO 决策 4 的最小全链路组）：两个只读 + 一个 Confirm 写，
+// 业务工具首批（最小全链路组）：两个只读 + 一个 Confirm 写，
 // 全部走既有 biz 用户用例完成数据访问，RLS 与 @scope 由存储层会话门面
 // 强制执行——工具层不感知租户过滤，也绝不直连 SQL。执行身份来自认证
 // ctx（live 路径是运行请求 ctx，恢复路径是 ackhttp 决定请求 ctx，二者

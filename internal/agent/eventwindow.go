@@ -13,12 +13,12 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// eventWindowSpanMax 是事件窗口端点（A3）before/after 各自的上限：窗口
+// eventWindowSpanMax 是事件窗口端点 before/after 各自的上限：窗口
 // 形态本身限定了返回量（before+after+1 条事件），上限防单请求拖回大会话
 // 全量事件。0 值窗口（只取锚点事件）是占位符原文对照的最小用法。
 const eventWindowSpanMax = 50
 
-// eventWindow 是会话事件窗口端点的装配物（TODO A3 的受权后端端点）：
+// eventWindow 是会话事件窗口端点的装配物：
 // 消费骨架既有的框架 session.Service（与 AG-UI / ack 同一实例、同一 app
 // 名、同一 userKey 编码）经 WindowService 取锚点事件窗口。窗口以认证
 // 身份编码的 userKey 定位会话——跨用户会话在存储层不可见，锚点查找
@@ -27,8 +27,8 @@ const eventWindowSpanMax = 50
 // （NewStackWithOptions），HTTP 形态经 Stack.EventWindowHandler 交
 // service 注册进 Kratos 链。
 //
-// 压缩对照口径（TODO A3）：压缩只作用于请求投影副本，session 事件流
-// 保留全部原文（B2 保证）；压缩占位符携带 event_id / tool_call_id /
+// 压缩对照口径：压缩只作用于请求投影副本，session 事件流
+// 保留全部原文（会话存储保证）；压缩占位符携带 event_id / tool_call_id /
 // tool_name / reason 恢复引用。运维复现视图对响应文本中出现占位符形状
 // 的片段以本端点按 event_id 取回原文对照。本端点返回的是会话事件原文
 // （非脱敏产物）——它与对话回放同源同权（/history 快照同样承载原文），

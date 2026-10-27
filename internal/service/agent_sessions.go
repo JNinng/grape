@@ -10,7 +10,7 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// AgentSessionsService 承载 agent 会话列表手写端点（非 proto 生成，A2）
+// AgentSessionsService 承载 agent 会话列表手写端点（非 proto 生成）
 // 的路由注册面：GET {basePath}/sessions 列出当前认证用户的 agent 会话
 // 元数据，供前端对话页的会话切换使用。列表装配与 HTTP 形态收在
 // internal/agent（Stack.SessionsHandler：与 AG-UI / ack 同一框架

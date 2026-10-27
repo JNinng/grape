@@ -22,7 +22,7 @@ import (
 // 度算子超出 sqlc catalog 的支持面，SQL 以手写参数化常量维护于此，
 // 不进 sqlc 生成（治理口径见 sqlc/README.md）。
 //
-// 租户隔离（决策 6 的强制执行点）：全部方法从认证 ctx 提取身份，缺身份
+// 租户隔离（应用层强制执行点）：全部方法从认证 ctx 提取身份，缺身份
 // 直接拒绝；写入侧身份落租户列并冗余进 metadata，读侧每条 SQL 强制
 // tenant_id 过滤（表无 RLS，隔离不依赖数据库策略存在）。过滤值一律走
 // 占位符参数，唯一进入 SQL 文本的配置值是表名（构造期按标识符白名单
@@ -33,7 +33,7 @@ const (
 	// vectorDefaultTable 是 conf.vector.table_name 留空时的默认表名，
 	// 与 agent_vector.sql 的建表一致。
 	vectorDefaultTable = "agent_document"
-	// vectorTablePrefix 是 agent 域对象的统一表名前缀（TODO 决策 3），
+	// vectorTablePrefix 是 agent 域对象的统一表名前缀，
 	// conf.vector.table_name 在构造期强制。
 	vectorTablePrefix = "agent_"
 	// vectorDefaultLimit 是 Search 未指定 Limit 时的默认结果数，与框架
@@ -113,7 +113,7 @@ func NewVectorStore(c *conf.Vector, d *Data) (biz.VectorStore, func(), error) {
 	if !vectorTableNamePattern.MatchString(table) {
 		return nil, nil, fmt.Errorf("pg_sqlc: vector table name %q must match %s", table, vectorTableNamePattern)
 	}
-	// agent_ 前缀强制（TODO 决策 3：agent 域对象统一前缀，与 conf.proto
+	// agent_ 前缀强制（agent 域对象统一前缀，与 conf.proto
 	// 注释承诺一致），前缀缺失在构造期拒绝。
 	if !strings.HasPrefix(table, vectorTablePrefix) {
 		return nil, nil, fmt.Errorf("pg_sqlc: vector table name %q must have the %s prefix", table, vectorTablePrefix)

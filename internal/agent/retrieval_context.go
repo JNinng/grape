@@ -8,7 +8,7 @@ import (
 	frameagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-// D3 检索留痕的 ctx 事实接线（TODO 流 D 的 D3）：data 层留痕装饰器
+// 检索留痕的 ctx 事实接线：data 层留痕装饰器
 // （pg_sqlc.retrieval_log.go）写 agent_retrieval_log 需要会话 ID 与查询
 // 文本两项事实，它们只在本层可见——会话 ID 在框架执行 ctx 携带的
 // Invocation 里（biz/data 禁止导入框架包），查询文本只在检索工具的入参

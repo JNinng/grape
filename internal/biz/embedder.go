@@ -10,7 +10,7 @@ import (
 // 故障（与 ErrVectorStoreDisabled 同语义）。
 var ErrEmbedderDisabled = errors.New("biz: embedding facility disabled")
 
-// Embedder 是文本向量化设施的框架无关契约（TODO D2）：摄取管线把文档
+// Embedder 是文本向量化设施的框架无关契约：摄取管线把文档
 // 切块后逐块向量化，检索侧把查询文本向量化后送 VectorStore.Search。
 // 接口只声明 grape 需要的最小面；具体实现（OpenAI 兼容端点客户端，见
 // internal/data/openaiembedder）由 data 层按依赖反转提供，biz 不感知

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { fetchEventWindow, type EventWindow } from '../../api/agentEventWindow'
 import type { CompactionRef } from './compaction'
 
-// CompactionRefPanel 是压缩占位符的「已压缩」徽标与原文对照展开（A3）：
+// CompactionRefPanel 是压缩占位符的「已压缩」徽标与原文对照展开：
 // 占位符携带 event_id 恢复引用时，展开经事件窗口端点取回会话事件原文
 // 与占位文本并排对照；不可恢复占位符（无引用）只标注说明、不提供展开。
 // 原文按需懒加载（首次展开才请求），失败显式报错且可重试。

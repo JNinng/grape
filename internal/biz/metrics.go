@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Agent 运行面的观测契约（TODO E3 metrics）：由 agent 框架适配层在运行
+// Agent 运行面的观测契约：由 agent 框架适配层在运行
 // 起止、限流拒绝与工具调用终态处调用，实现方（internal/ops 的
 // RuntimeMetrics）落 Prometheus 指标，与设施诊断同一 /metrics 出口输出。
 // 依赖反转接缝与 FacilityDiagnostics 同型：biz 声明契约、事实产生方调用、

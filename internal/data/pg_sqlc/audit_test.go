@@ -18,21 +18,21 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// 审计仓储集成测试（TODO 流 E 的 E2）：以真实 PostgreSQL 验证租户 RLS、
+// 审计仓储集成测试：以真实 PostgreSQL 验证租户 RLS、
 // 写入-查询往返（含脱敏后内容）、组合批量与分页边界。测试自建专属库
-// grape_audit_e2_test 并重建（DROP+CREATE+按 DeployFiles 部署清单全量
+// grape_audit_test 并重建（DROP+CREATE+按 DeployFiles 部署清单全量
 // 装载，含 schema/95_agent_audit.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
-//	GRAPE_E2_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_E2_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_audit_e2_test \
+//	GRAPE_AUDIT_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
+//	GRAPE_AUDIT_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_audit_test \
 //	go test ./internal/data/pg_sqlc -run TestAuditRepo -count=1 -v
 //
 // 隔离口径：两表启用租户 RLS（部署默认），租户边界由 RLS 强制、读侧
 // WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见
-//（对齐 D1 的「隔离正确性不押在 RLS 是否存在上」验收口径）。
+//（对齐「隔离正确性不押在 RLS 是否存在上」验收口径）。
 
-const auditTestDatabase = "grape_audit_e2_test"
+const auditTestDatabase = "grape_audit_test"
 
 // auditTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -64,10 +64,10 @@ func auditIdentityContext(id biz.Identity, withTrace bool) context.Context {
 // schema/95_agent_audit.sql）并返回以 grape_u 连接的存储门面。
 func setupAuditTestDB(t *testing.T) *Data {
 	t.Helper()
-	adminDSN := os.Getenv("GRAPE_E2_TEST_ADMIN_DSN")
-	testDSN := os.Getenv("GRAPE_E2_TEST_DSN")
+	adminDSN := os.Getenv("GRAPE_AUDIT_TEST_ADMIN_DSN")
+	testDSN := os.Getenv("GRAPE_AUDIT_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_E2_TEST_ADMIN_DSN / GRAPE_E2_TEST_DSN 未设置，跳过审计集成测试")
+		t.Skip("GRAPE_AUDIT_TEST_ADMIN_DSN / GRAPE_AUDIT_TEST_DSN 未设置，跳过审计集成测试")
 	}
 	ctx := context.Background()
 
@@ -274,7 +274,7 @@ func TestAuditRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 
 	// 关闭 RLS（模拟误操作/降级部署）：应用层兜底（读侧同源租户谓词）
 	// 必须独立兜住隔离。
-	adminCfg, err := pgx.ParseConfig(os.Getenv("GRAPE_E2_TEST_ADMIN_DSN"))
+	adminCfg, err := pgx.ParseConfig(os.Getenv("GRAPE_AUDIT_TEST_ADMIN_DSN"))
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}

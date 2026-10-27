@@ -1,7 +1,7 @@
 -- grape 数据权限体系 schema（sqlc 输入，单一事实源；按序号分域拆分，
 -- sqlc.yaml 全量按序加载，部署执行顺序见 ../README.md）。
 --
--- Agent 业务审计域（TODO 流 E 的 E2）：agent_tool_call_log 与
+-- Agent 业务审计域：agent_tool_call_log 与
 -- agent_confirmation_log。与 70_audit.sql 的系统日志同一形态——追加写入
 -- （append-only），永不更新，因此省略 updated_by/updated_at/deleted_at，
 -- 也不声明 @dynamic/@updatable 动态协议（动态更新面与追加写语义冲突，
@@ -14,13 +14,13 @@
 -- 注册表脱敏（tool_param / retrieval 类别）并按应用层上限截断，长度
 -- 约束在列注释声明（应用层保证，不设数据库 CHECK——上限调整不该伴随
 -- 存量行迁移）。RLS 策略在本域文件内声明而非 rls.sql：rls.sql 是多任务
--- 流共触的共享文件（TODO §五冲突表），新域一律独立成文件、不改他人域
+-- 流共触的共享文件，新域一律独立成文件、不改他人域
 -- 文件；策略形态与 rls.sql 的租户隔离完全一致。
 -- ============================================================================
 -- Agent 业务审计
 --    工具调用审计（谁、哪个租户、traceId、参数/结果摘要、重试、耗时、
 --    状态）与授权确认审计（confirmation_id、决定、remember、路径
---    live|recovery、操作者），供 A3 运维复现视图按租户/时间/会话查询。
+--    live|recovery、操作者），供运维复现视图按租户/时间/会话查询。
 -- ============================================================================
 
 -- agent_tool_call_log — 工具调用审计
@@ -54,7 +54,7 @@ COMMENT ON COLUMN public.agent_tool_call_log.tool_call_id IS '工具调用 ID（
 COMMENT ON COLUMN public.agent_tool_call_log.tool_name IS '工具名';
 COMMENT ON COLUMN public.agent_tool_call_log.arguments_summary IS '参数摘要：落库前经 pkg/redact 的 tool_param 类别脱敏；应用层截断上限 4096 rune（列宽不设 CHECK，见本文件头注释）';
 COMMENT ON COLUMN public.agent_tool_call_log.result_summary IS '结果摘要：落库前经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断），仓储层兜底截断上限同 arguments_summary';
-COMMENT ON COLUMN public.agent_tool_call_log.retry_count IS '重试次数：框架工具重试可采集时记实际值，不可采集时记 0（TODO E3 评估回调接线）';
+COMMENT ON COLUMN public.agent_tool_call_log.retry_count IS '重试次数：框架工具重试可采集时记实际值，不可采集时记 0（框架不暴露重试计数，最终口径见根目录 operations.md）';
 COMMENT ON COLUMN public.agent_tool_call_log.duration_ms IS '单次工具调用耗时（毫秒，最终一次执行的耗时），未知为 NULL';
 COMMENT ON COLUMN public.agent_tool_call_log.status IS '调用终态：success-成功、error-失败';
 COMMENT ON COLUMN public.agent_tool_call_log.called_at IS '调用发生时间';

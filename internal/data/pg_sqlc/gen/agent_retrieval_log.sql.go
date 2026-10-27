@@ -61,11 +61,11 @@ type InsertAgentRetrievalLogParams struct {
 	Status        string  `db:"status" json:"status"`
 }
 
-// Agent 检索留痕（TODO 流 D 的 D3）固定命名查询：表为追加写
+// Agent 检索留痕固定命名查询：表为追加写
 // （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
 // RLS（schema/97_agent_retrieval_log.sql 的策略）为主，读侧 WHERE 再
 // 显式带同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时
-// 读取仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收
+// 读取仍不越租户，对齐向量层「隔离正确性不押在 RLS 是否存在上」的
 // 口径。写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方
 // 无法指定或伪造归属。
 // 写入一条检索留痕；租户取会话 app.tenant_id，写入者与用户同值

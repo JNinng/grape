@@ -49,10 +49,10 @@ type ScoredVectorDocument struct {
 	Score    float64
 }
 
-// VectorStore 是向量检索设施的框架无关契约（决策 6 的强制隔离点）：
+// VectorStore 是向量检索设施的框架无关契约（租户隔离的强制点）：
 // 声明在 biz、由 data 以参数化 SQL 实现（pgvector 算子不进 sqlc catalog，
 // 见 sqlc/README.md）、由 agent 适配层包装成框架 knowledge/vectorstore
-// 接口供 D2 检索工具消费。框架 pgvector store 自建连接且启动建表，不
+// 接口供检索工具消费。框架 pgvector store 自建连接且启动建表，不
 // 引入。
 //
 // 租户隔离由实现强制，契约不接收身份参数：所有方法从认证 ctx

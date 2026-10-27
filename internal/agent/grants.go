@@ -84,7 +84,7 @@ const (
 	grantScopeTenant = "tenant"
 )
 
-// grantAdmin 是授权管理 REST 端点（C2）的装配物：列出与吊销当前认证
+// grantAdmin 是授权管理 REST 端点的装配物：列出与吊销当前认证
 // 身份相关的工具授权。装配期随 Stack 构造并挂进外层 ServeMux
 // （GET {basePath}/grants 与 DELETE {basePath}/grants/{id}，Go ServeMux
 // 按模式特异性命中，先于 AG-UI 前缀子树），认证链路由 AgentService 的

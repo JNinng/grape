@@ -17,7 +17,7 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// corsExposeHeaders 是跨域暴露头清单：TODO E1 明文要求——配 CORS 时
+// corsExposeHeaders 是跨域暴露头清单：配 CORS 时
 // x-trace-id 必须对浏览器脚本可读；x-request-id 与 trace-id 同源回传，
 // 一并暴露。
 const corsExposeHeaders = "x-trace-id, x-request-id"

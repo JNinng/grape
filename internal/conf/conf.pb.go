@@ -532,7 +532,7 @@ func (x *Data) GetDatabase() *Data_Database {
 }
 
 // Embedding 是 embedding 服务的配置（OpenAI 兼容 embeddings 端点，
-// 决策 5 同口径），由 internal/data/openaiembedder 消费。
+// 与 LLM provider 同口径），由 internal/data/openaiembedder 消费。
 type Vector_Embedding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空或
@@ -618,8 +618,8 @@ func (x *Vector_Embedding) GetTimeout() *durationpb.Duration {
 }
 
 // LLM 是模型 provider 配置（OpenAI 兼容直连），含模型层可靠性段
-// （failover / hedge / logging，TODO B3）。各可靠性段默认关闭：
-// 全缺省时装配为零包装的裸 provider，与 B1 行为逐字节等价。
+// （failover / hedge / logging）。各可靠性段默认关闭：
+// 全缺省时装配为零包装的裸 provider，与未引入可靠性段时逐字节等价。
 type Agent_LLM struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// provider 变体（openai / deepseek / qwen / minimax / kimi）。
@@ -735,7 +735,7 @@ type Agent_AGUI struct {
 	Timeout *durationpb.Duration `protobuf:"bytes,2,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	// SSE 心跳间隔，保持中间设备不掐空闲流。
 	HeartbeatInterval *durationpb.Duration `protobuf:"bytes,3,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
-	// 单身份（租户+用户）同时在途运行数上限（TODO E3 限流）。chat 运行
+	// 单身份（租户+用户）同时在途运行数上限。chat 运行
 	// 请求按认证身份计数，超限以 429 拒绝；/history、/cancel 与 ack 的
 	// 确认路由不受限。0 = 关闭（默认，行为与无本项完全一致）。计数为
 	// 进程内内存态，多实例部署时是每实例上限而非全局上限；请求速率
@@ -880,7 +880,7 @@ func (x *Agent_SessionStorage) GetUserStateTtl() *durationpb.Duration {
 	return nil
 }
 
-// Compression 是请求侧上下文压缩配置（框架三个 Pass，TODO §1.1）。
+// Compression 是请求侧上下文压缩配置（框架三个 Pass）。
 // 压缩只作用于请求投影副本，session 事件流始终保留原文；占位符携带
 // event_id 恢复引用，配合 session_load 可按需取回原文。
 type Agent_Compression struct {
@@ -1154,10 +1154,10 @@ func (x *Agent_LLM_Hedge) GetMaxCopies() int32 {
 	return 0
 }
 
-// Logging 是 LLM 调用回调日志的配置（TODO B3）：经框架
+// Logging 是 LLM 调用回调日志的配置：经框架
 // model.Callbacks 形态注册前后回调，把每次模型调用（含 failover
 // 的每次候选尝试）落到 grape logger；ctx 携带 SpanContext 时
-// trace_id / span_id 由 logger extractor 自动展开（E1 桥接口径）。
+// trace_id / span_id 由 logger extractor 自动展开（telemetry 桥接）。
 type Agent_LLM_Logging struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 是否启用。false（默认）时零包装——不注册回调、不产生任何
@@ -1165,7 +1165,7 @@ type Agent_LLM_Logging struct {
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// 记录请求提示词文本（按 512 rune 截断）。提示词含用户输入与
 	// 工具结果回传，属内容面开关；内容级脱敏（工具敏感参数/检索
-	// 内容）的审计面归 E2/A3，本处只做开关门控与截断。
+	// 内容）归审计表与复现视图面，本处只做开关门控与截断。
 	LogPrompts bool `protobuf:"varint,2,opt,name=log_prompts,json=logPrompts,proto3" json:"log_prompts,omitempty"`
 	// 记录模型补全文本（跨流式分片累积后按 512 rune 截断）。
 	LogCompletions bool `protobuf:"varint,3,opt,name=log_completions,json=logCompletions,proto3" json:"log_completions,omitempty"`

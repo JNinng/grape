@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// 文档摄取管线（TODO D2）的错误语义：
+// 文档摄取管线的错误语义：
 //   - ErrDocumentSourceTooLong：来源文档 ID 超长，切片 ID 无法落在向量表
 //     的 id 列宽（varchar(128)）内；
 //   - 其余入参问题（ID/正文为空等）以普通错误返回；设施侧错误
@@ -30,7 +30,7 @@ const (
 
 // Document 是摄取管线的领域文档来源。文档来源先限内部（运维导入、
 // 后续受权端点等可信生产方），ID 由调用方生成且租户内唯一；对外部
-// 网页抓取等不可信来源开放前，需先补来源校验与脱敏切面（TODO E1 对齐）。
+// 网页抓取等不可信来源开放前，需先补来源校验与脱敏切面（对齐 pkg/redact 注册表）。
 type Document struct {
 	ID       string
 	Name     string
@@ -69,7 +69,7 @@ func WithChunking(size, overlap int) DocumentOption {
 }
 
 // DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约
-// 落库。租户过滤由 VectorStore 实现强制（决策 6），管线不接触身份以外
+// 落库。租户过滤由 VectorStore 实现强制，管线不接触身份以外
 // 的存储细节、绝不直连 SQL；身份从认证 ctx 提取（管线由受权入口驱动，
 // 身份缺失 fail-closed）。
 type DocumentUsecase struct {

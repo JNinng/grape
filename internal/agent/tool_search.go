@@ -19,13 +19,13 @@ const searchInternalDocsToolName = "search_internal_docs"
 // 检索工具入参边界：查询限短（embedding 输入无必要过长）；top_k 缺省
 // 与范围校验在本层，硬上限（maxSearchTopK）由向量适配器强制——工具与
 // 其他框架侧消费方都无法绕过（见 vectorstore.go）。默认值不进 conf：
-// 检索质量参数属代码级默认，conf 化留 E3 按真实调优需求评估。
+// 检索质量参数属代码级默认，conf 化留待真实调优需求再评估。
 const (
 	defaultSearchTopK   = 5
 	maxSearchQueryChars = 512
 )
 
-// 不可信内容围栏（TODO D2 验收项：检索内容视为不可信输入）。文档正文
+// 不可信内容围栏（检索内容视为不可信输入）。文档正文
 // 是外部注入模型的不可信数据，可能与用户提示同权进入上下文——围栏标
 // 记 + 出参 notice + 工具描述三处共同声明「引用而非指令」；文档内容
 // 中若本身出现围栏标记则被打散（防伪造围栏逃逸），见 wrapUntrusted。
@@ -65,10 +65,10 @@ type searchDocsOutput struct {
 	Notice string          `json:"notice"`
 }
 
-// newSearchTool 构造 D2 检索工具（只读，Tier=allow——分级表未列入的
+// newSearchTool 构造检索工具（只读，Tier=allow——分级表未列入的
 // 工具走 ack 默认 allow，与首批只读工具同规）。向量访问只经框架适配
 // 器（NewStackWithOptions 注入的 vectorstore.VectorStore，与 Stack.Vectors()
-// 同一实例，决策 6 的强制应用层适配器）：租户过滤由契约实现从认证 ctx
+// 同一实例）：租户过滤由契约实现从认证 ctx
 // 强制，top_k 上限由适配器钳制，本工具不感知也不得绕过。embedder 供
 // 查询向量化；向量设施未启用时两者均为禁用占位实现，调用按设施缺失
 // 报错而非系统故障。

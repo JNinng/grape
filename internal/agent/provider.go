@@ -15,7 +15,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session/postgres"
 )
 
-// sessionSchema / sessionTablePrefix 是会话存储的库内定位（TODO 决策 1/3）：
+// sessionSchema / sessionTablePrefix 是会话存储的库内定位：
 // 独立 schema agent + agent_ 表前缀，得到 agent.agent_session_states 等
 // 六张框架表，与 public 业务表、登录会话 sys_session 严格区分。
 const (
@@ -26,8 +26,7 @@ const (
 // ProviderSet 是 agent 框架适配层的 Wire 依赖注入集合。
 var ProviderSet = wire.NewSet(NewStack, NewSessionService, NewVectorStore)
 
-// NewSessionService 提供 Agent 会话存储：框架 session/postgres（TODO
-// 决策 1），schema agent + agent_ 表前缀，表由部署面（sqlc/
+// NewSessionService 提供 Agent 会话存储：框架 session/postgres，schema agent + agent_ 表前缀，表由部署面（sqlc/
 // agent_session.sql）以超级用户预建并授权 grape_u，运行期
 // WithSkipDBInit 跳过 DDL。
 //
@@ -84,20 +83,20 @@ func NewMemorySessionService() (session.Service, func(), error) {
 	return svc, func() { _ = svc.Close() }, nil
 }
 
-// NewVectorStore 把 biz.VectorStore 契约适配为框架向量存储（决策 6 的
+// NewVectorStore 把 biz.VectorStore 契约适配为框架向量存储（向量层租户隔离的
 // 强制应用层适配器）：契约实现与启动维度探针在 data 层装配，本提供器
-// 只做形状转换，经 NewStack 进入骨架，供检索工具（D2）消费。
+// 只做形状转换，经 NewStack 进入骨架，供检索工具消费。
 func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 	return &vectorStoreAdapter{store: store}
 }
 
 // NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler
 // 唯一挂载；cleanup 释放 core runner 等框架资源。业务工具经注入的
-// 用户用例访问数据（TODO 决策 4），许可源经授权用例落 agent_tool_grant
-// 表（C2），检索工具经向量适配器与 embedder 访问向量（TODO 决策 6/D2）；
-// 运行面观测经注入的 observer 接 /metrics（E3：ops 的 RuntimeMetrics 经
+// 用户用例访问数据，许可源经授权用例落 agent_tool_grant
+// 表，检索工具经向量适配器与 embedder 访问向量；
+// 运行面观测经注入的 observer 接 /metrics（ops 的 RuntimeMetrics 经
 // wire.Bind 以 biz.AgentRunObserver 提供）；审计经注入的审计用例接
-// AuditHook（E2/C1：工具执行终态与 ack 决定两个写入点，与 A3 查询端点
+// AuditHook（工具执行终态与 ack 决定两个写入点，与复现视图查询端点
 // 共用同一用例实例）；测试经 NewStackWithOptions 注入替身。
 func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
 	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, WithAuditHook(audit), WithRunObserver(observer))

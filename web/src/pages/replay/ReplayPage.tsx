@@ -49,10 +49,10 @@ function CompactibleText({ text, threadId }: { text: string; threadId: string })
   )
 }
 
-// ReplayPage 运维复现视图（A3）：会话选择 → 四联证据视图（对话流回放 /
+// ReplayPage 运维复现视图：会话选择 → 四联证据视图（对话流回放 /
 // 工具调用审计 / 授权确认记录 / 检索留痕），以 trace_id 关联过滤串联同
 // 一次交互的全链路证据。回放走 /history 快照（上游 follow 存在同毫秒事
-// 件缺陷，ack D4——快照即回放，刷新按钮手动兜底）；审计与留痕为落库
+// 件缺陷——快照即回放，刷新按钮手动兜底）；审计与留痕为落库
 // 已脱敏形态，直接渲染；压缩占位符经事件窗口端点取原文对照。
 export function ReplayPage() {
   const navigate = useNavigate()
@@ -79,7 +79,7 @@ export function ReplayPage() {
     try {
       // /history 快照独立降级：无 track 事件的会话（仅存 ack 待确认指针、
       // 或 track 事件已过保留期的会话）上游快照运行会 500（RunStartedEvent
-      // validation failed，与 ack D4 同族的框架快照缺陷）。回放只是四联
+      // validation failed，同族的上游快照缺陷）。回放只是四联
       // 证据之一，缺失按空态提示降级，其余证据面照常装载。
       const [history, auditToolCalls, auditConfirmations, retrievalLogs] = await Promise.all([
         fetchHistorySnapshot(tid).catch(() => null),
@@ -209,7 +209,7 @@ export function ReplayPage() {
           <>
             <section aria-label="对话流回放">
               <h2>对话流回放</h2>
-              <p>快照即回放：上游 follow 存在同毫秒事件可能被跳过的缺陷（ack D4），以快照刷新兜底。</p>
+              <p>快照即回放：上游 follow 存在同毫秒事件可能被跳过的缺陷（上游已知缺陷），以快照刷新兜底。</p>
               {items.length === 0 &&
                 (historyUnavailable ? (
                   <p>该会话无可回放快照（可能没有持久化的事件），其余证据面不受影响。</p>

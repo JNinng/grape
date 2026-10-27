@@ -100,7 +100,7 @@ type AgentToolCallLog struct {
 	ArgumentsSummary *string `db:"arguments_summary" json:"arguments_summary"`
 	// 结果摘要：落库前经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断），仓储层兜底截断上限同 arguments_summary
 	ResultSummary *string `db:"result_summary" json:"result_summary"`
-	// 重试次数：框架工具重试可采集时记实际值，不可采集时记 0（TODO E3 评估回调接线）
+	// 重试次数：框架工具重试可采集时记实际值，不可采集时记 0（框架不暴露重试计数，最终口径见根目录 operations.md）
 	RetryCount int32 `db:"retry_count" json:"retry_count"`
 	// 单次工具调用耗时（毫秒，最终一次执行的耗时），未知为 NULL
 	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
@@ -114,7 +114,7 @@ type AgentToolCallLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// Agent 工具授权（ack 许可存储，C2）：用户对工具的预先授权，满足 confirm 层级的确认要求；查询键 (tenant_id, user_id, tool_name, session_id)，session_id 为 NULL 即全局级；未撤销行每键至多一条（部分唯一表达式索引）；吊销置 revoked_at 不删行。租户隔离 RLS + 应用层 tenant_id 参数双保险（决策 6/D1 口径）
+// Agent 工具授权（ack 许可存储）：用户对工具的预先授权，满足 confirm 层级的确认要求；查询键 (tenant_id, user_id, tool_name, session_id)，session_id 为 NULL 即全局级；未撤销行每键至多一条（部分唯一表达式索引）；吊销置 revoked_at 不删行。租户隔离 RLS + 应用层 tenant_id 参数双保险（与向量层隔离口径一致）
 type AgentToolGrant struct {
 	// 授权 ID（应用层发号）
 	ID int64 `db:"id" json:"id"`

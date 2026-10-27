@@ -5,7 +5,7 @@ import { newId } from './ids'
 
 // /agui/history 是 POST SSE（框架 messages snapshot）：以 RunAgentInput
 // 形状的请求体拉取会话快照，流内 MESSAGES_SNAPSHOT 事件携带全量消息。
-// 上游 track follow 存在同毫秒事件可能被跳过的缺陷（TODO §1.5 / ack D4），
+// 上游 track follow 存在同毫秒事件可能被跳过的缺陷（上游已知缺陷），
 // 前端不做 follow 跟流，加载会话时拉一次快照即为回放；新消息由运行
 // 事件实时折叠。
 const historyPath = '/agui/history'

@@ -22,9 +22,9 @@ func (noopPolicy) Consult(context.Context, ack.ToolCall) (ack.Verdict, error) {
 	return ack.VerdictAbstain, nil
 }
 
-// toolTiers 是工具分级静态表（TODO C1）：echo 与只读业务工具放行，
+// toolTiers 是工具分级静态表：echo 与只读业务工具放行，
 // 写工具需人工确认。未列入表中的工具走 ack 默认层级 TierAllow。
-// 先静态声明，conf 化（分级可配置）留 C2/E3。
+// 先静态声明，conf 化（分级可配置）暂缓。
 func toolTiers() map[string]ack.Tier {
 	return map[string]ack.Tier{
 		echoToolName:             ack.TierAllow,

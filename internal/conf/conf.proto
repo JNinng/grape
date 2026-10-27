@@ -59,7 +59,7 @@ message Vector {
   // 留空取默认 agent_document。
   string table_name = 3;
   // Embedding 是 embedding 服务的配置（OpenAI 兼容 embeddings 端点，
-  // 决策 5 同口径），由 internal/data/openaiembedder 消费。
+  // 与 LLM provider 同口径），由 internal/data/openaiembedder 消费。
   message Embedding {
     // provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空或
     // 其他取值一律按兼容端点处理。
@@ -86,8 +86,8 @@ message Agent {
   string app_name = 1;
 
   // LLM 是模型 provider 配置（OpenAI 兼容直连），含模型层可靠性段
-  // （failover / hedge / logging，TODO B3）。各可靠性段默认关闭：
-  // 全缺省时装配为零包装的裸 provider，与 B1 行为逐字节等价。
+  // （failover / hedge / logging）。各可靠性段默认关闭：
+  // 全缺省时装配为零包装的裸 provider，与未引入可靠性段时逐字节等价。
   message LLM {
     // provider 变体（openai / deepseek / qwen / minimax / kimi）。
     // 留空按 openai 处理；base_url 为空时由框架按变体取内置默认端点。
@@ -146,17 +146,17 @@ message Agent {
     }
     Hedge hedge = 7;
 
-    // Logging 是 LLM 调用回调日志的配置（TODO B3）：经框架
+    // Logging 是 LLM 调用回调日志的配置：经框架
     // model.Callbacks 形态注册前后回调，把每次模型调用（含 failover
     // 的每次候选尝试）落到 grape logger；ctx 携带 SpanContext 时
-    // trace_id / span_id 由 logger extractor 自动展开（E1 桥接口径）。
+    // trace_id / span_id 由 logger extractor 自动展开（telemetry 桥接）。
     message Logging {
       // 是否启用。false（默认）时零包装——不注册回调、不产生任何
       // 新日志行，调用面与无本段完全一致。
       bool enabled = 1;
       // 记录请求提示词文本（按 512 rune 截断）。提示词含用户输入与
       // 工具结果回传，属内容面开关；内容级脱敏（工具敏感参数/检索
-      // 内容）的审计面归 E2/A3，本处只做开关门控与截断。
+      // 内容）归审计表与复现视图面，本处只做开关门控与截断。
       bool log_prompts = 2;
       // 记录模型补全文本（跨流式分片累积后按 512 rune 截断）。
       bool log_completions = 3;
@@ -173,7 +173,7 @@ message Agent {
     google.protobuf.Duration timeout = 2;
     // SSE 心跳间隔，保持中间设备不掐空闲流。
     google.protobuf.Duration heartbeat_interval = 3;
-    // 单身份（租户+用户）同时在途运行数上限（TODO E3 限流）。chat 运行
+    // 单身份（租户+用户）同时在途运行数上限。chat 运行
     // 请求按认证身份计数，超限以 429 拒绝；/history、/cancel 与 ack 的
     // 确认路由不受限。0 = 关闭（默认，行为与无本项完全一致）。计数为
     // 进程内内存态，多实例部署时是每实例上限而非全局上限；请求速率
@@ -199,7 +199,7 @@ message Agent {
   }
   SessionStorage session_storage = 4;
 
-  // Compression 是请求侧上下文压缩配置（框架三个 Pass，TODO §1.1）。
+  // Compression 是请求侧上下文压缩配置（框架三个 Pass）。
   // 压缩只作用于请求投影副本，session 事件流始终保留原文；占位符携带
   // event_id 恢复引用，配合 session_load 可按需取回原文。
   message Compression {

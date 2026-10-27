@@ -10,10 +10,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// grantRepo 是 biz.GrantRepo 的 PostgreSQL 实现（agent_tool_grant，
-// TODO C2）。全部操作经会话门面在租户事务内执行（RLS）；每条查询显式
+// grantRepo 是 biz.GrantRepo 的 PostgreSQL 实现（agent_tool_grant）。
+// 全部操作经会话门面在租户事务内执行（RLS）；每条查询显式
 // 携带认证租户过滤——tenant_id 参数取自认证身份而非请求侧输入，RLS
-// 被关闭时跨租户仍不可见（应用层兜底，决策 6/D1 口径）。
+// 被关闭时跨租户仍不可见（应用层兜底，与向量层隔离口径一致）。
 type grantRepo struct {
 	data *Data
 }

@@ -131,7 +131,7 @@ func (e *snapshotExporter) snapshot() []tracetest.SpanStub {
 }
 
 // Test_server_span_exported_for_agent_route_when_telemetry_enabled 验证
-// OTel 开启后 server span 真实产生并导出（TODO E1 验收口径）：AG-UI 路由
+// OTel 开启后 server span 真实产生并导出：AG-UI 路由
 // 经 tracing.Server() 入链，401 快速路径即产生 span，telemetry cleanup
 // 的 Shutdown 冲刷批量缓冲后进快照。
 func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing.T) {
