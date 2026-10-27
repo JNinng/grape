@@ -182,4 +182,3 @@ func retrievalLogToBiz(po *gen.AgentRetrievalLog) *biz.RetrievalLog {
 		CreatedAt:     tsToTime(po.CreatedAt),
 	}
 }
-

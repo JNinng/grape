@@ -58,11 +58,19 @@ type auditTool struct {
 }
 
 // Call 执行内部工具并在终态后记审计：审计写入不改变工具结果与错误。
-func (t *auditTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+// 工具自身 panic 同样是执行终态：recover 后先落一条 status=error 的审计
+// 行（结果摘要记 panic 值），再原样 re-panic——不改框架对 panic 的处理
+// 语义，只补齐审计面（框架执行边界吞掉 panic 时工具行不再缺失）。
+func (t *auditTool) Call(ctx context.Context, jsonArgs []byte) (result any, err error) {
 	start := time.Now()
-	result, err := t.CallableTool.Call(ctx, jsonArgs)
-	t.record(ctx, jsonArgs, result, err, time.Since(start))
-	return result, err
+	defer func() {
+		if r := recover(); r != nil {
+			t.record(ctx, jsonArgs, nil, fmt.Errorf("tool panicked: %v", r), time.Since(start))
+			panic(r)
+		}
+		t.record(ctx, jsonArgs, result, err, time.Since(start))
+	}()
+	return t.CallableTool.Call(ctx, jsonArgs)
 }
 
 // record 组装一条工具调用审计并写入。无调用 ID 的执行无法构造合法审计行
@@ -96,8 +104,8 @@ func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err
 		c.add(in)
 		return
 	}
-	writeAudit(t.logger, "record tool call", func() error {
-		return t.hook.RecordToolCall(ctx, in)
+	writeAudit(ctx, t.logger, "record tool call", func(wctx context.Context) error {
+		return t.hook.RecordToolCall(wctx, in)
 	})
 }
 
@@ -131,22 +139,35 @@ func (c *recoveryCapture) add(in *biz.ToolCallRecordInput) {
 	}
 }
 
-// take 取走归集的代执行行；无代执行（拒绝或降级拒绝）返回 nil。
+// take 取走归集的代执行行；无代执行（拒绝或降级拒绝）返回 nil。nil 接收
+// 者安全：record 的回退单边写不假设捕获器必然存在。
 func (c *recoveryCapture) take() *biz.ToolCallRecordInput {
+	if c == nil {
+		return nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.tool
 }
 
-// writeAudit 安全执行一次审计写入：hook 错误与 panic 都只记日志、不向上
-// 传播——审计是旁路观察面，不得反噬业务主流程（E2 纪律）。
-func writeAudit(logger *slog.Logger, action string, write func() error) {
+// auditWriteTimeout 是单次审计写入的短超时预算：审计是旁路观察面，存储
+// 悬挂不得反噬业务主流程——超时后放弃该行并记日志。变量形态供测试注入
+// 极短预算（生产恒为 5s，无热路径取用）。
+var auditWriteTimeout = 5 * time.Second
+
+// writeAudit 安全执行一次审计写入：写入走脱离请求生命周期的独立短超时
+// ctx（WithoutCancel 保留身份与链路事实——IdentityTx 取身份、审计行取
+// trace_id 都依赖 ctx 值；超时与取消不再跟随请求），hook 错误与 panic 都
+// 只记日志、不向上传播——审计不得反噬业务主流程（E2 纪律）。
+func writeAudit(ctx context.Context, logger *slog.Logger, action string, write func(ctx context.Context) error) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("audit hook panicked", "action", action, "panic", r)
 		}
 	}()
-	if err := write(); err != nil {
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
+	defer cancel()
+	if err := write(wctx); err != nil {
 		logger.Error("audit write failed", "action", action, "error", err)
 	}
 }
