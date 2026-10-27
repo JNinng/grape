@@ -60,7 +60,7 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 	// telemetry 位传 nil：本测试不涉 OTel（nil 接收者按未启用处理）。
 	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, agentService,
+		authMiddleware, ops.NewMetricsHandler(nil, nil), nil, nil, agentService,
 		sessionsService,
 		// 事件窗口、审计与检索留痕查询端点本文件用例不触达，传 nil。
 		nil,

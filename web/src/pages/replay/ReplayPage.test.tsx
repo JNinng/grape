@@ -120,6 +120,21 @@ function renderReplay() {
 }
 
 describe('ReplayPage four-facet evidence view', () => {
+  it('degrades_history_failure_to_empty_state_and_keeps_other_facets', async () => {
+    // 无 track 事件会话：/history 快照上游 500（RunStartedEvent validation
+    // failed）。回放面降级为空态提示而非整页错误横幅，审计与留痕照常装载。
+    mockFetchHistory.mockRejectedValue(new Error('history failed: HTTP 500'))
+    renderReplay()
+    await waitFor(() => {
+      expect(mockFetchHistory).toHaveBeenCalledWith('thread-1')
+    })
+    expect(await screen.findByText('该会话无可回放快照（可能没有持久化的事件），其余证据面不受影响。')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
+    expect(within(auditRegion).getByText('search_internal_docs')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '检索留痕' })).toBeInTheDocument()
+  })
+
   it('renders_all_four_sections_for_the_default_thread', async () => {
     renderReplay()
     await waitFor(() => {

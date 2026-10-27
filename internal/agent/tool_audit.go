@@ -31,10 +31,11 @@ import (
 // 落库前完成（E1 注册表的 tool_param / retrieval 两类别，与日志、复现
 // 视图共用）。
 
-// auditedTools 给工具清单包上审计 wrapper：仅包装 CallableTool 形状的
-// 工具（当前全量），其余形状原样透传。hook 为 nil 时不应调用本函数
-// （装配侧判空后整段不装配，保证缺省零行为变化）。
-func auditedTools(tools []tool.Tool, hook AuditHook, logger *slog.Logger) []tool.Tool {
+// auditedTools 给工具清单包上审计/观测 wrapper：仅包装 CallableTool 形状
+// 的工具（当前全量），其余形状原样透传。hook 与 observer 都可为 nil
+// （各自缺省零行为），两者全 nil 时不应调用本函数（装配侧判空后整段不
+// 装配，保证缺省零行为变化）。
+func auditedTools(tools []tool.Tool, hook AuditHook, observer biz.AgentRunObserver, logger *slog.Logger) []tool.Tool {
 	wrapped := make([]tool.Tool, 0, len(tools))
 	for _, t := range tools {
 		ct, ok := t.(tool.CallableTool)
@@ -42,39 +43,56 @@ func auditedTools(tools []tool.Tool, hook AuditHook, logger *slog.Logger) []tool
 			wrapped = append(wrapped, t)
 			continue
 		}
-		wrapped = append(wrapped, &auditTool{CallableTool: ct, hook: hook, logger: logger})
+		wrapped = append(wrapped, &auditTool{CallableTool: ct, hook: hook, observer: observer, logger: logger})
 	}
 	return wrapped
 }
 
-// auditTool 是工具执行终态的审计 wrapper：嵌入内部工具透传声明，Call
-// 计时并记终态。调用 ID 从执行 ctx 取——运行内执行由框架处理器注入模型
-// 生成的 tool call ID（tool.ContextKeyToolCallID），恢复路径代执行由 ack
-// 决定审计面注入确认 ID（ack Payload 中确认 ID 与工具调用 ID 同源）。
+// auditTool 是工具执行终态的审计与观测 wrapper：嵌入内部工具透传声明，
+// Call 计时并记终态（hook 写审计行，observer 推送计数/耗时，两个旁路面
+// 共用单一包装点）。调用 ID 从执行 ctx 取——运行内执行由框架处理器注入
+// 模型生成的 tool call ID（tool.ContextKeyToolCallID），恢复路径代执行由
+// ack 决定审计面注入确认 ID（ack Payload 中确认 ID 与工具调用 ID 同源）。
 type auditTool struct {
 	tool.CallableTool
-	hook   AuditHook
-	logger *slog.Logger
+	hook     AuditHook
+	observer biz.AgentRunObserver
+	logger   *slog.Logger
 }
 
 // Call 执行内部工具并在终态后记审计：审计写入不改变工具结果与错误。
-func (t *auditTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
+// 工具自身 panic 同样是执行终态：recover 后先落一条 status=error 的审计
+// 行（结果摘要记 panic 值），再原样 re-panic——不改框架对 panic 的处理
+// 语义，只补齐审计面（框架执行边界吞掉 panic 时工具行不再缺失）。
+func (t *auditTool) Call(ctx context.Context, jsonArgs []byte) (result any, err error) {
 	start := time.Now()
-	result, err := t.CallableTool.Call(ctx, jsonArgs)
-	t.record(ctx, jsonArgs, result, err, time.Since(start))
-	return result, err
+	defer func() {
+		if r := recover(); r != nil {
+			t.record(ctx, jsonArgs, nil, fmt.Errorf("tool panicked: %v", r), time.Since(start))
+			panic(r)
+		}
+		t.record(ctx, jsonArgs, result, err, time.Since(start))
+	}()
+	return t.CallableTool.Call(ctx, jsonArgs)
 }
 
 // record 组装一条工具调用审计并写入。无调用 ID 的执行无法构造合法审计行
 // （biz 侧 ToolCallID 必填），只记日志跳过；命中恢复路径捕获器（目标调用
 // ID 一致）时只归集不落库，由 ack 决定审计面在决定结算后与确认行组合
-// 批量写入。
+// 批量写入。观测推送在归集分支之前：代执行同样是一次工具调用终态。
 func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err error, d time.Duration) {
 	name := toolNameOf(t.CallableTool)
 	callID, _ := tool.ToolCallIDFromContext(ctx)
 	if strings.TrimSpace(callID) == "" {
 		t.logger.Warn("tool call id missing in context, skip tool call audit", "tool", name)
 		return
+	}
+	status := biz.ToolCallStatusSuccess
+	if err != nil {
+		status = biz.ToolCallStatusError
+	}
+	if t.observer != nil {
+		t.observer.ToolCallObserved(name, status, d)
 	}
 	in := &biz.ToolCallRecordInput{
 		SessionID:        sessionIDOf(ctx),
@@ -86,18 +104,21 @@ func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err
 		// 一次调用），按 biz 契约记 0；真实采集留 E3 评估回调接线。
 		RetryCount: 0,
 		DurationMS: d.Milliseconds(),
-		Status:     biz.ToolCallStatusSuccess,
+		Status:     status,
 	}
 	if err != nil {
-		in.Status = biz.ToolCallStatusError
 		in.ResultSummary = err.Error()
+	}
+	if t.hook == nil {
+		// 仅观测形态（审计挂点缺省）：工具行不写，观测推送已完成。
+		return
 	}
 	if c := captureFromContext(ctx); c != nil && c.toolCallID == callID {
 		c.add(in)
 		return
 	}
-	writeAudit(t.logger, "record tool call", func() error {
-		return t.hook.RecordToolCall(ctx, in)
+	writeAudit(ctx, t.logger, "record tool call", func(wctx context.Context) error {
+		return t.hook.RecordToolCall(wctx, in)
 	})
 }
 
@@ -131,22 +152,35 @@ func (c *recoveryCapture) add(in *biz.ToolCallRecordInput) {
 	}
 }
 
-// take 取走归集的代执行行；无代执行（拒绝或降级拒绝）返回 nil。
+// take 取走归集的代执行行；无代执行（拒绝或降级拒绝）返回 nil。nil 接收
+// 者安全：record 的回退单边写不假设捕获器必然存在。
 func (c *recoveryCapture) take() *biz.ToolCallRecordInput {
+	if c == nil {
+		return nil
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.tool
 }
 
-// writeAudit 安全执行一次审计写入：hook 错误与 panic 都只记日志、不向上
-// 传播——审计是旁路观察面，不得反噬业务主流程（E2 纪律）。
-func writeAudit(logger *slog.Logger, action string, write func() error) {
+// auditWriteTimeout 是单次审计写入的短超时预算：审计是旁路观察面，存储
+// 悬挂不得反噬业务主流程——超时后放弃该行并记日志。变量形态供测试注入
+// 极短预算（生产恒为 5s，无热路径取用）。
+var auditWriteTimeout = 5 * time.Second
+
+// writeAudit 安全执行一次审计写入：写入走脱离请求生命周期的独立短超时
+// ctx（WithoutCancel 保留身份与链路事实——IdentityTx 取身份、审计行取
+// trace_id 都依赖 ctx 值；超时与取消不再跟随请求），hook 错误与 panic 都
+// 只记日志、不向上传播——审计不得反噬业务主流程（E2 纪律）。
+func writeAudit(ctx context.Context, logger *slog.Logger, action string, write func(ctx context.Context) error) {
 	defer func() {
 		if r := recover(); r != nil {
 			logger.Error("audit hook panicked", "action", action, "panic", r)
 		}
 	}()
-	if err := write(); err != nil {
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
+	defer cancel()
+	if err := write(wctx); err != nil {
 		logger.Error("audit write failed", "action", action, "error", err)
 	}
 }

@@ -92,7 +92,10 @@ go build ./cmd/server
 
 - 对话回放：复用 A2 的 `/agui/history` 快照（`agui/history.ts`），快照即
   回放；上游 track follow 的同毫秒事件缺陷（TODO §1.5 / ack D4）以「刷新
-  快照」按钮手动兜底，不跟 follow 流。
+  快照」按钮手动兜底，不跟 follow 流。无 track 事件的会话（仅存 ack 待
+  确认指针、或 track 事件已过保留期）快照运行上游 500，回放面按空态提示
+  降级（`historyUnavailable` 分支），审计/授权/检索三面照常装载——回放
+  只是四联证据之一，不以它的失败盖掉整页。
 - 工具调用审计 / 授权确认记录：GET `/v1/agent/audit/tool-calls` 与
   `/confirmations`（`api/agentAudit.ts`）；检索留痕：GET
   `/v1/agent/retrieval-logs`（`api/agentRetrievalLogs.ts`）。按会话过滤

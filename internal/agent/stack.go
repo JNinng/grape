@@ -77,7 +77,9 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
 // 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
 // 审计写入挂点（E2/C1 接线）：nil 即不审计——工具清单不包终态 wrapper、
-// ack 决定路由不装审计面，装配形态与接线前完全一致。
+// ack 决定路由不装审计面，装配形态与接线前完全一致。gate 是运行入口
+// 并发门控（E3 限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
+// handler 原样透传。
 type Stack struct {
 	handler     nethttp.Handler
 	runner      runner.Runner
@@ -86,6 +88,7 @@ type Stack struct {
 	sessions    *sessionList
 	eventWindow *eventWindow
 	audit       AuditHook
+	gate        *runGate
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -94,6 +97,7 @@ type StackOption func(*stackOptions)
 type stackOptions struct {
 	modelOverride model.Model
 	audit         AuditHook
+	observer      biz.AgentRunObserver
 }
 
 // WithModelOverride 用给定模型替换按配置构造的 LLM provider。
@@ -106,6 +110,14 @@ func WithModelOverride(m model.Model) StackOption {
 // nil = 不审计（测试装配不受影响）；挂点写入失败只记日志、不中断运行。
 func WithAuditHook(hook AuditHook) StackOption {
 	return func(o *stackOptions) { o.audit = hook }
+}
+
+// WithRunObserver 注入运行面观测契约（E3 metrics）：wire 生产装配传
+// biz.AgentRunObserver（ops 的 RuntimeMetrics，经 wire.Bind 提供）。缺省
+// nil = 不观测；观测为旁路推送，不影响任何请求语义。非 nil 时工具清单
+// 同样包上 wrapper（与审计共用单层包装，计数/耗时在终态处顺带观测）。
+func WithRunObserver(observer biz.AgentRunObserver) StackOption {
+	return func(o *stackOptions) { o.observer = observer }
 }
 
 // NewStackWithOptions 按 conf 与注入的会话服务、向量存储、业务用例装配
@@ -150,11 +162,13 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	// 检索工具经向量适配器访问向量（TODO 决策 6，D2）。
 	tools := append([]tool.Tool{newEchoTool()}, newUserTools(users)...)
 	tools = append(tools, newSearchTool(embedder, vectors))
-	// 审计接线（E2/C1）：挂点非 nil 时给全量工具清单包上终态审计 wrapper
-	//（echo 是链路验证工具，同样留痕保持全量），包装后的清单同时进
-	// LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper 被审计。
-	if o.audit != nil {
-		tools = auditedTools(tools, o.audit, logger)
+	// 审计接线（E2/C1）与运行观测（E3）：挂点非 nil 时给全量工具清单包上
+	// 终态审计 wrapper（echo 是链路验证工具，同样留痕保持全量），包装后的
+	// 清单同时进 LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper
+	// 被审计；观测契约非 nil 时同层包装顺带推送工具计数/耗时（单一包装点
+	// 同时服务两个旁路面）。
+	if o.audit != nil || o.observer != nil {
+		tools = auditedTools(tools, o.audit, o.observer, logger)
 	}
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
@@ -223,14 +237,16 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}
 
 	base := basePathOf(c)
+	gate := newRunGate(c.GetAgui().GetMaxConcurrentRuns(), o.observer)
 	return &Stack{
-		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, logger),
+		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, gate, logger),
 		runner:      coreRunner,
 		basePath:    base,
 		vectors:     vectors,
 		sessions:    newSessionList(sessions, c.GetAppName()),
 		eventWindow: newEventWindow(sessions, c.GetAppName()),
 		audit:       o.audit,
+		gate:        gate,
 	}, nil
 }
 
@@ -275,17 +291,18 @@ func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
 // /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中），授权
 // 管理端点（C2）以方法+路径模式挂载（GET {basePath}/grants 与
 // DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
+// gate 是运行入口并发门控（E3 限流）：nil 即关闭，AG-UI 子树原样挂载。
 // ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
 // ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
 // 自己名下的会话」。audit 非 nil 时归属守卫内层再套决定路由审计面
 // （见 ack_audit.go）。grants 管理端点为 nil 仅供不触达授权面的测试装配。
-func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string, audit AuditHook, logger *slog.Logger) nethttp.Handler {
+func newMux(aguiHandler nethttp.Handler, gateway *ack.Gateway, sessions session.Service, grants *grantAdmin, appName, basePath string, audit AuditHook, gate *runGate, logger *slog.Logger) nethttp.Handler {
 	mux := nethttp.NewServeMux()
 	if grants != nil {
 		mux.Handle(nethttp.MethodGet+" "+basePath+"/grants", grants)
 		mux.Handle(nethttp.MethodDelete+" "+basePath+"/grants/{id}", grants)
 	}
-	mux.Handle(basePath+"/", aguiHandler)
+	mux.Handle(basePath+"/", gate.wrap(basePath, aguiHandler))
 	ackMux := nethttp.NewServeMux()
 	ackhttp.Mount(ackMux, gateway, ackhttp.WithPrefix(basePath+defaultAckSuffix))
 	var ackHandler nethttp.Handler = ackMux

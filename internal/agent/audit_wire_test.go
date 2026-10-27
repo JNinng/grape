@@ -13,12 +13,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	nethttp "net/http"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"grape/internal/biz"
 
+	"github.com/jninng/trpc_agent_go_ack"
 	"github.com/jninng/trpc_agent_go_ack/acktest"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
@@ -495,7 +498,7 @@ func newAuditEchoTool() []tool.Tool {
 func TestAuditTool_when_context_has_no_call_id_skips_record(t *testing.T) {
 	rec := newAuditRecorder()
 	logger := slog.New(slog.DiscardHandler)
-	tools := auditedTools(newAuditEchoTool(), rec, logger)
+	tools := auditedTools(newAuditEchoTool(), rec, nil, logger)
 	ct, ok := tools[0].(tool.CallableTool)
 	if !ok {
 		t.Fatalf("wrapped tool must stay callable")
@@ -531,7 +534,7 @@ func TestAuditTool_when_inner_tool_fails_records_error_status(t *testing.T) {
 		function.WithDescription("echo"),
 	)
 	rec := newAuditRecorder()
-	wrapped := auditedTools([]tool.Tool{inner}, rec, slog.New(slog.DiscardHandler))
+	wrapped := auditedTools([]tool.Tool{inner}, rec, nil, slog.New(slog.DiscardHandler))
 	ct := wrapped[0].(tool.CallableTool)
 	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-err-1")
 	if _, err := ct.Call(ctx, []byte(`{"text":""}`)); err == nil {
@@ -557,7 +560,7 @@ func TestAuditTool_when_inner_tool_fails_records_error_status(t *testing.T) {
 // 返回结果。
 func TestAuditTool_when_hook_panics_error_does_not_propagate(t *testing.T) {
 	rec := &auditRecorder{panicOn: "tool"}
-	tools := auditedTools(newAuditEchoTool(), rec, slog.New(slog.DiscardHandler))
+	tools := auditedTools(newAuditEchoTool(), rec, nil, slog.New(slog.DiscardHandler))
 	ct := tools[0].(tool.CallableTool)
 	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-panic-1")
 	res, err := ct.Call(ctx, []byte(`{"text":"hi"}`))
@@ -571,7 +574,7 @@ func TestAuditTool_when_hook_panics_error_does_not_propagate(t *testing.T) {
 // 由捕获器补齐；目标不一致（续跑运行的新调用）仍走直写。
 func TestAuditTool_when_capture_target_matches_records_into_capture(t *testing.T) {
 	rec := newAuditRecorder()
-	tools := auditedTools(newAuditEchoTool(), rec, slog.New(slog.DiscardHandler))
+	tools := auditedTools(newAuditEchoTool(), rec, nil, slog.New(slog.DiscardHandler))
 	ct := tools[0].(tool.CallableTool)
 
 	capture := &recoveryCapture{toolCallID: "call-recovery-1", sessionID: "thread-recovery"}
@@ -601,5 +604,222 @@ func TestAuditTool_when_capture_target_matches_records_into_capture(t *testing.T
 	toolsRows, _, _ = rec.snapshot()
 	if len(toolsRows) != 1 || toolsRows[0].ToolCallID != "call-resumed-1" {
 		t.Fatalf("mismatched capture target must direct-write, got %+v", toolsRows)
+	}
+}
+
+// TestAuditTool_when_inner_tool_panics_records_error_row_and_repanics 验证
+// 工具自身 panic 的审计面：defer recover 先落一条 status=error 审计行
+// （结果摘要含 panic 值），再原样 re-panic——框架对 panic 的处理语义
+// 不变，工具行不再因 panic 被执行边界吞掉而缺失。
+func TestAuditTool_when_inner_tool_panics_records_error_row_and_repanics(t *testing.T) {
+	inner := function.NewFunctionTool(
+		func(context.Context, echoInput) (echoOutput, error) {
+			panic("boom in tool")
+		},
+		function.WithName(echoToolName),
+		function.WithDescription("echo"),
+	)
+	rec := newAuditRecorder()
+	wrapped := auditedTools([]tool.Tool{inner}, rec, nil, slog.New(slog.DiscardHandler))
+	ct := wrapped[0].(tool.CallableTool)
+	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-panic-tool-1")
+
+	panicked := func() (r any) {
+		defer func() { r = recover() }()
+		_, _ = ct.Call(ctx, []byte(`{"text":"hi"}`))
+		return
+	}()
+	if panicked == nil {
+		t.Fatal("tool panic must propagate unchanged")
+	}
+	tools, confs, batches := rec.snapshot()
+	if len(tools) != 1 || len(confs) != 0 || len(batches) != 0 {
+		t.Fatalf("panic audit rows = %d/%d/%d, want 1/0/0", len(tools), len(confs), len(batches))
+	}
+	row := tools[0]
+	if row.ToolCallID != "call-panic-tool-1" || row.ToolName != echoToolName {
+		t.Fatalf("panic row id/name = %s/%s, want call-panic-tool-1/%s", row.ToolCallID, row.ToolName, echoToolName)
+	}
+	if row.Status != biz.ToolCallStatusError {
+		t.Fatalf("panic row status = %s, want error", row.Status)
+	}
+	if !strings.Contains(row.ResultSummary, "tool panicked") || !strings.Contains(row.ResultSummary, "boom in tool") {
+		t.Fatalf("panic row result summary = %q, want panic value", row.ResultSummary)
+	}
+}
+
+// TestAuditWire_when_decide_not_settled_records_no_audit 验证「无结算不
+// 审计」：对不存在的确认 ID 提交决定返回 404，三个写入面（工具行/确认行/
+// 组合批量）都无行；随后同一会话以真实 ID 结算成功并出审计行——证明
+// 空快照源于无结算而非接线断裂。
+func TestAuditWire_when_decide_not_settled_records_no_audit(t *testing.T) {
+	const (
+		threadID = "thread-audit-nosettle"
+		runID    = "run-audit-nosettle"
+		callID   = "call-audit-nosettle"
+		nickname = "audit-nosettle-nick"
+	)
+	rec := newAuditRecorder()
+	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
+	s := newConfirmTestStack(t, nicknameCallScript(callID, nickname, "nickname updated"), repo, WithAuditHook(rec))
+
+	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
+	items := waitForPending(t, s.h, threadID, 1)
+	bogus := decide(t, s.h, threadID, "confirmation-missing", true)
+	if bogus.Code != nethttp.StatusNotFound {
+		t.Fatalf("decide on missing confirmation status = %d, want 404\n%s", bogus.Code, bogus.Body.String())
+	}
+	tools, confs, batches := rec.snapshot()
+	if len(tools)+len(confs)+len(batches) != 0 {
+		t.Fatalf("no-settle decide must not record, got %d/%d/%d", len(tools), len(confs), len(batches))
+	}
+
+	decideRec := decide(t, s.h, threadID, items[0].ConfirmationID, true)
+	if decideRec.Code != nethttp.StatusOK {
+		t.Fatalf("real decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
+	}
+	chatEvents(t, chat)
+	tools, confs, batches = rec.snapshot()
+	if len(tools) != 1 || len(confs) != 1 || len(batches) != 0 {
+		t.Fatalf("settled decide rows = %d/%d/%d, want 1/1/0", len(tools), len(confs), len(batches))
+	}
+}
+
+// TestAuditGuard_when_pending_preread_fails_captured_tool_row_written_alone
+// 验证预读失败的回退单边写：Pending 预读不可得（payload nil）但捕获器
+// 已归集恢复路径代执行行时，工具行以单边批量落库（不因预读失败连坐
+// 丢失），确认行不伪造。
+func TestAuditGuard_when_pending_preread_fails_captured_tool_row_written_alone(t *testing.T) {
+	rec := newAuditRecorder()
+	g := &ackAuditGuard{hook: rec, logger: slog.New(slog.DiscardHandler)}
+	capture := &recoveryCapture{toolCallID: "call-recover-orphan", sessionID: "thread-recover-orphan"}
+	capture.add(&biz.ToolCallRecordInput{
+		SessionID:  "thread-recover-orphan",
+		ToolCallID: "call-recover-orphan",
+		ToolName:   updateMyNicknameToolName,
+		Status:     biz.ToolCallStatusSuccess,
+	})
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: confirmTestTenant, UserID: confirmTestOwnerID})
+	decided := &ackDecisionBody{ThreadID: "thread-recover-orphan", ConfirmationID: "call-recover-orphan", Approved: true}
+
+	g.record(ctx, decided, nil, ack.PathRecovery, capture)
+
+	_, confs, batches := rec.snapshot()
+	if len(confs) != 0 {
+		t.Fatalf("confirmation rows = %d, want 0 (facts unavailable)", len(confs))
+	}
+	if len(batches) != 1 {
+		t.Fatalf("batches = %d, want 1 (single-side tool row)", len(batches))
+	}
+	if batches[0].tool == nil || batches[0].conf != nil {
+		t.Fatalf("batch = %+v, want tool row only", batches[0])
+	}
+	if batches[0].tool.ToolCallID != "call-recover-orphan" || batches[0].tool.SessionID != "thread-recover-orphan" {
+		t.Fatalf("batch tool row = %+v, want orphan proxy execution", batches[0].tool)
+	}
+}
+
+// TestAuditGuard_when_pending_unavailable_without_capture_skips_audit 验证
+// 回退的边界：预读不可得且捕获器无代执行行（live 路径或纯降级拒绝）时，
+// 无任何写入——既不丢行也不伪造行。
+func TestAuditGuard_when_pending_unavailable_without_capture_skips_audit(t *testing.T) {
+	rec := newAuditRecorder()
+	g := &ackAuditGuard{hook: rec, logger: slog.New(slog.DiscardHandler)}
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: confirmTestTenant, UserID: confirmTestOwnerID})
+	decided := &ackDecisionBody{ThreadID: "thread-live", ConfirmationID: "conf-live", Approved: false}
+
+	g.record(ctx, decided, nil, ack.PathLive, nil)
+
+	tools, confs, batches := rec.snapshot()
+	if len(tools)+len(confs)+len(batches) != 0 {
+		t.Fatalf("unavailable payload without capture must not record, got %d/%d/%d", len(tools), len(confs), len(batches))
+	}
+}
+
+// TestWriteAudit_when_hook_blocks_write_abandoned_after_budget 验证审计
+// 写入的短超时预算：挂点悬挂时写入在预算内放弃并返回，调用方不阻塞
+// （审计旁路面不得反噬业务主流程）。
+func TestWriteAudit_when_hook_blocks_write_abandoned_after_budget(t *testing.T) {
+	prev := auditWriteTimeout
+	auditWriteTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { auditWriteTimeout = prev })
+
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		writeAudit(context.Background(), slog.New(slog.DiscardHandler), "blocked write",
+			func(ctx context.Context) error {
+				close(started)
+				<-ctx.Done()
+				return ctx.Err()
+			})
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("write never started")
+	}
+	select {
+	case <-finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("blocked write must be abandoned after the budget")
+	}
+}
+
+// TestAuditTool_when_observer_present_counts_terminal_states 验证仅观测
+// 形态（hook 缺省、observer 非 nil）：成功/失败/panic 三种终态都推送
+// 工具计数（panic 记 error），无审计行写入；观测先于捕获器归集分支，
+// 恢复路径代执行同样被计数。
+func TestAuditTool_when_observer_present_counts_terminal_states(t *testing.T) {
+	obs := newFakeObserver()
+	tools := auditedTools(newAuditEchoTool(), nil, obs, slog.New(slog.DiscardHandler))
+	ct := tools[0].(tool.CallableTool)
+
+	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-obs-1")
+	if _, err := ct.Call(ctx, []byte(`{"text":"hi"}`)); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusSuccess); got != 1 {
+		t.Fatalf("echo success count = %d, want 1", got)
+	}
+
+	// panic 终态同样计数（error），panic 本身照常传播。
+	boom := function.NewFunctionTool(
+		func(context.Context, echoInput) (echoOutput, error) {
+			panic("boom")
+		},
+		function.WithName(echoToolName),
+		function.WithDescription("echo"),
+	)
+	wrapped := auditedTools([]tool.Tool{boom}, nil, obs, slog.New(slog.DiscardHandler))[0].(tool.CallableTool)
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = wrapped.Call(ctx, []byte(`{"text":"hi"}`))
+	}()
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusError); got != 1 {
+		t.Fatalf("echo error count (panic terminal) = %d, want 1", got)
+	}
+}
+
+// TestAuditTool_when_hook_and_observer_both_present_both_fired 验证组合
+// 形态：审计挂点与观测契约同时注入时，单一包装点两路都生效——审计行
+// 照写、观测计数照推。
+func TestAuditTool_when_hook_and_observer_both_present_both_fired(t *testing.T) {
+	rec := newAuditRecorder()
+	obs := newFakeObserver()
+	tools := auditedTools(newAuditEchoTool(), rec, obs, slog.New(slog.DiscardHandler))
+	ct := tools[0].(tool.CallableTool)
+	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-both-1")
+	if _, err := ct.Call(ctx, []byte(`{"text":"hi"}`)); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	toolsRows, _, _ := rec.snapshot()
+	if len(toolsRows) != 1 {
+		t.Fatalf("audit rows = %d, want 1", len(toolsRows))
+	}
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusSuccess); got != 1 {
+		t.Fatalf("observed count = %d, want 1", got)
 	}
 }

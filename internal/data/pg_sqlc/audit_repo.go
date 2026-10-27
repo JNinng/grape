@@ -60,7 +60,7 @@ func (r *auditRepo) AppendToolCall(ctx context.Context, rec *biz.ToolCallAudit) 
 			ArgumentsSummary: textPtr(rec.ArgumentsSummary),
 			ResultSummary:    textPtr(rec.ResultSummary),
 			RetryCount:       rec.RetryCount,
-			DurationMs:       int32Ptr(int32(rec.DurationMS)),
+			DurationMs:       int32Ptr(int(rec.DurationMS)),
 			Status:           rec.Status,
 		})
 		return err
@@ -116,7 +116,7 @@ func (r *auditRepo) AppendBatch(ctx context.Context, tool *biz.ToolCallAudit, co
 				ArgumentsSummary: textPtr(tool.ArgumentsSummary),
 				ResultSummary:    textPtr(tool.ResultSummary),
 				RetryCount:       tool.RetryCount,
-				DurationMs:       int32Ptr(int32(tool.DurationMS)),
+				DurationMs:       int32Ptr(int(tool.DurationMS)),
 				Status:           tool.Status,
 			}); err != nil {
 				return err
@@ -316,12 +316,14 @@ func textValue(s *string) string {
 	return *s
 }
 
-// int32Ptr 是 0 → NULL 的可空整数渲染：耗时/未记录语义落 NULL。
-func int32Ptr(v int32) *int32 {
+// int32Ptr 是 0 → NULL 的可空整数渲染：耗时、top_k 等可空整数共用的
+// 单一渲染点（0 语义统一为「未记录 / 未指定」，落 NULL）。
+func int32Ptr(v int) *int32 {
 	if v == 0 {
 		return nil
 	}
-	return &v
+	out := int32(v)
+	return &out
 }
 
 // int32Value 是 NULL → 0 的读侧渲染（与 int32Ptr 互逆）。
