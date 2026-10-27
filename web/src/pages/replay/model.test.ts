@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatItem, ToolCallItem } from '../../agui/events'
+import type { ToolCallItem } from '../../agui/events'
 import type { ConfirmationAudit, ToolCallAudit } from '../../api/agentAudit'
 import type { RetrievalLog } from '../../api/agentRetrievalLogs'
 import {
@@ -167,10 +167,7 @@ describe('trace evidence assembly', () => {
     expect(highlightedToolCallIds(toolCalls, 'trace-answer')).toEqual(new Set(['call-search']))
   })
 
-  it('keeps_chat_items_untouched_by_trace_filtering', () => {
-    // 对话回放本身不带 trace_id（框架 track 事件无链路事实），它靠
-    // toolCallId 桥接高亮，不被 trace 过滤改写。
-    const items: ChatItem[] = [toolItem('call-1', 'ok')]
-    expect(items).toHaveLength(1)
-  })
+  // 对话回放本身不带 trace_id（框架 track 事件无链路事实），它靠
+  // toolCallId 桥接高亮；过滤函数只作用于三证据面（上行断言），结构上
+  // 不存在触碰回放 items 的路径，故无「过滤改写回放」的可测行为。
 })

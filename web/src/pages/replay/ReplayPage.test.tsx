@@ -175,4 +175,41 @@ describe('ReplayPage four-facet evidence view', () => {
       expect(mockFetchHistory).toHaveBeenCalledWith('thread-2')
     })
   })
+
+  it('discards_stale_history_response_when_a_newer_load_finished_first', async () => {
+    // loadSeq 守卫：两次重叠装载，thread-1 的慢响应在 thread-2 的快响应
+    // 之后才到达——过期响应必须整体丢弃（不落 items、不落错误、不关
+    // loading 之外的任何状态回写）。
+    mockFetchSessions.mockResolvedValue([
+      { id: 'thread-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T02:00:00Z' },
+      { id: 'thread-2', createdAt: '2026-01-02T00:00:00Z', updatedAt: '2026-01-02T02:00:00Z' },
+    ])
+    let releaseSlow: (items: ChatItem[]) => void = () => {}
+    mockFetchHistory.mockImplementation((tid: string) => {
+      if (tid === 'thread-1') {
+        return new Promise<ChatItem[]>((resolve) => {
+          releaseSlow = resolve
+        })
+      }
+      return Promise.resolve([
+        { kind: 'message', id: 'm-2', role: 'assistant', content: 'thread-2 answer' },
+      ])
+    })
+    const user = userEvent.setup()
+    renderReplay()
+    // 初始装载选中 thread-1，其 history 挂起：页面处于 loading，无内容。
+    await screen.findByRole('button', { name: '会话 thread-1' })
+    expect(screen.queryByText('thread-2 answer')).toBeNull()
+    await user.click(screen.getByRole('button', { name: '会话 thread-2' }))
+    await screen.findByText('thread-2 answer')
+    // 释放 thread-1 的慢响应：守卫应丢弃，页面仍显示 thread-2 内容。
+    releaseSlow([
+      { kind: 'message', id: 'm-stale', role: 'assistant', content: 'stale content' },
+    ])
+    await waitFor(() => {
+      expect(mockFetchHistory).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.queryByText('stale content')).toBeNull()
+    expect(screen.getByText('thread-2 answer')).toBeInTheDocument()
+  })
 })

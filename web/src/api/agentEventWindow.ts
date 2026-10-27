@@ -2,8 +2,9 @@ import { authFetch } from './http'
 import { toApiError } from './toApiError'
 
 // 会话事件窗口端点（A3，供运维复现视图做压缩占位符原文对照）的 DTO：
-// 字段与后端 service/agent_event_window.go 的 JSON 形状对齐，时间为 UTC
-// RFC3339。content 是会话事件流中的原文（压缩只作用于请求投影副本）。
+// 字段与后端 internal/agent/eventwindow.go 的 eventWindowReply JSON 形状
+// 对齐，时间为 UTC RFC3339。content 是会话事件流中的原文（压缩只作用于
+// 请求投影副本）。
 
 export interface EventWindowToolCall {
   id: string
