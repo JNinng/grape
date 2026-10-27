@@ -217,6 +217,9 @@ export function ChatPage() {
         <header>
           <h1>Grape AI 对话</h1>
           <span>欢迎，{user?.nickname || user?.name || '用户'}</span>
+          <button type="button" onClick={() => navigate('/replay')}>
+            运维复现
+          </button>
           <button type="button" onClick={handleLogout}>
             登出
           </button>
