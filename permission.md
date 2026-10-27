@@ -18,7 +18,7 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 - 行级数据范围依赖目标行数据与用户权限关系，写侧判定必须在库内、与写入同一事务完成。
 - 功能权限码与行无关，只依赖操作本身，在入口层判定，不进入仓储方法。
 - 操作者与 Scope 只从服务端认证上下文注入（`IdentityTx.Auth()`）；请求体中的 `tenantId`、`owner*`、`scope` 一律不可信。
-- Agent 设施面（agent schema，如向量表 `agent.agent_document`）不走 RLS 与 @scope：租户边界由应用层适配器强制——所有读写从认证 ctx 提取身份、每条 SQL 带租户过滤、缺身份 fail-closed（TODO 决策 6），身份同时写入行与 metadata，调用方伪造不生效；RLS 语句以注释附在建表脚本（`agent_vector.sql`）供按需启用，属第二道防线、不作隔离前提，集成测试以无 RLS 场景断言隔离仍成立。跨租户管理操作（在线重建索引、租户级全量清理）属 super 管理口径：向量层 D1 仅留占位与本条说明，不暴露普通入口，落地时按第 10 条补审计与受限端点。
+- Agent 设施面（agent schema，如向量表 `agent.agent_document`）不走 RLS 与 @scope：租户边界由应用层适配器强制——所有读写从认证 ctx 提取身份、每条 SQL 带租户过滤、缺身份 fail-closed，身份同时写入行与 metadata，调用方伪造不生效；RLS 语句以注释附在建表脚本（`agent_vector.sql`）供按需启用，属第二道防线、不作隔离前提，集成测试以无 RLS 场景断言隔离仍成立。跨租户管理操作（在线重建索引、租户级全量清理）属 super 管理口径：向量层仅留占位与本条说明，不暴露普通入口，落地时按第 10 条补审计与受限端点。
 
 ## 数据范围推导（三个推导函数）
 
@@ -155,7 +155,7 @@ WHERE id = sqlc.arg('id')
 
 落点：入口层（service 或 auth 中间件）按 `tr.Operation()` 映射权限码，再透传给 `GetXxxPermitted` / `LockXxxPermitted`，在库内随行判定一起校验；需要 403 的入口在透传前单独判 `fn_has_permission`。
 
-已落地的入口（C2）：Agent 工具授权管理（手写端点，无 proto 操作名，码在 `biz` 常量声明）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据）。判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
+已落地的入口：Agent 工具授权管理（手写端点，无 proto 操作名，码在 `biz` 常量声明）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据）。判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。

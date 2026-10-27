@@ -49,7 +49,7 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 | [metrics_route_test.go](metrics_route_test.go) | 守卫 `/metrics` 直挂路由的链外语义：原始 Handler 不经业务中间件。 |
 | [agent_route_test.go](agent_route_test.go) | 守卫 Agent 手写路由的挂载语义：无令牌 401（fail-closed）、无尾斜杠 307 规整、echo 工具端到端、跨超时点 SSE 不断流、`x-trace-id` 回传。 |
 | [agent_sessions_route_test.go](agent_sessions_route_test.go) | 守卫 agent 会话列表端点：无令牌 401、只返回调用者 userKey 名下会话（跨用户不可见）、分页边界与非法参数 400、精确路径先于 agent 前缀通配的注册顺序。 |
-| [agent_event_window_route_test.go](agent_event_window_route_test.go) | 守卫会话事件窗口端点（A3）：无令牌 401、跨用户锚点统一 404 且不泄露他方事件、参数缺失/非法与窗口跨度上限 400、精确路径先于 agent 前缀通配的注册顺序（JSON 直出而非被通配吞成 SSE）。 |
+| [agent_event_window_route_test.go](agent_event_window_route_test.go) | 守卫会话事件窗口端点：无令牌 401、跨用户锚点统一 404 且不泄露他方事件、参数缺失/非法与窗口跨度上限 400、精确路径先于 agent 前缀通配的注册顺序（JSON 直出而非被通配吞成 SSE）。 |
 | [agent_audit_route_test.go](agent_audit_route_test.go) | 守卫 Agent 业务审计查询端点：无令牌 401、带令牌空页信封（items 空数组而非 null）。 |
 | [agent_retrieval_route_test.go](agent_retrieval_route_test.go) | 守卫检索留痕查询端点：无令牌 401（端点在册且经 ctx.Middleware 入链的语义不因手写路由放宽）。 |
 | [web_route_test.go](web_route_test.go) | 守卫静态托管语义：SPA 路由刷新不 404、未知 API 路径（含方法失配）不回页面壳、`/metrics` 与 `/agui/*` 不被静态吞、无令牌 API 仍 401、assets 缓存头、占位产物可服务。 |

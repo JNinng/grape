@@ -16,7 +16,7 @@ biz 设施只读契约：[]MetricSample（Name / Help / Type / Labels / Value）
   │  Wire 注入 []biz.FacilityDiagnostics
   ▼
 ops.NewMetricsHandler（独立 registry）      agent 适配层推事实（运行起止 /
-  │ facilityCollector：逐设施并发采集        限流拒绝 / 工具终态，E3）
+  │ facilityCollector：逐设施并发采集        限流拒绝 / 工具终态）
   │  MetricSample → Prometheus const metric  │
   │                                          ▼
   │                          RuntimeMetrics（实现 biz.AgentRunObserver，
@@ -41,7 +41,7 @@ server：srv.Handle("/metrics", metrics)   链外、免认证、只读
 | 文件 | 职责 |
 | ---- | ---- |
 | [metrics.go](metrics.go) | `NewMetricsHandler` 以独立 registry 承载设施诊断指标与 agent 运行面指标并经 `promhttp` 输出；`facilityCollector.Collect` 每次抓取并发调用各设施 `Pressure`（单设施 `diagnosticsTimeout` 5s），把 `biz.MetricSample` 经 `constMetric` 映射为 Prometheus const metric（标签按字典序固定，`MetricCounter` → Counter、其余 → Gauge），采集失败按设施累计为 `grape_diagnostics_scrape_errors_total`。 |
-| [runtime_metrics.go](runtime_metrics.go) | `RuntimeMetrics` 是 agent 运行面指标集（E3）：实现 `biz.AgentRunObserver`，四族指标——`grape_agent_sse_active_connections`（gauge）、`grape_agent_run_limit_rejections_total`（counter）、`grape_agent_tool_calls_total`（counter，tool/status 分列）、`grape_agent_tool_call_duration_seconds`（histogram，tool 分列）；nil 接收者 no-op；检索耗时/LLM 计数/token/压缩等扩展点在头注备案接线落点。 |
+| [runtime_metrics.go](runtime_metrics.go) | `RuntimeMetrics` 是 agent 运行面指标集：实现 `biz.AgentRunObserver`，四族指标——`grape_agent_sse_active_connections`（gauge）、`grape_agent_run_limit_rejections_total`（counter）、`grape_agent_tool_calls_total`（counter，tool/status 分列）、`grape_agent_tool_call_duration_seconds`（histogram，tool 分列）；nil 接收者 no-op；检索耗时/LLM 计数/token/压缩等扩展点在头注备案接线落点。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：导出 `NewMetricsHandler` / `NewRuntimeMetrics`，并把 `*RuntimeMetrics` 绑定为 `biz.AgentRunObserver` 供 agent 层注入。 |
 
 ## 接入要点

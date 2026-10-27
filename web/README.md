@@ -45,7 +45,7 @@ go build ./cmd/server
 | [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（E2 工具调用/授权确认审计）、`agentRetrievalLogs.ts`（D3 检索留痕）、`agentEventWindow.ts`（A3 会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）、`ReplayPage` 运维复现视图（A3）；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）。 |
 
 ## 登录与令牌策略
 
@@ -60,17 +60,17 @@ go build ./cmd/server
   清态后经 `callbacks.ts` 通知 App 跳转登录页。
 - 登出不依赖后端结果：无论撤销成败（含网络失败）都清本地态并回登录页。
 
-## 对话页形态（A2）
+## 对话页形态
 
 - 流式问答：`agui/agent.ts` 的 `createChatAgent` 构造 `HttpAgent`，注入
-  `authFetch` 作为传输（EventSource 不能带头，fetch 可带令牌，见 TODO 决策 2）；
+  `authFetch` 作为传输（EventSource 不能带头，fetch 可带令牌）；
   每次运行发起时从 auth store 取当前令牌，401 时复用 `api/http.ts` 的单飞刷新
   状态机，刷新失败清态回登录页。运行事件经 `agui/events.ts` 的纯函数 reducer
   折叠为渲染态：文本增量（TEXT_MESSAGE_*）、工具调用生命周期（TOOL_CALL_*，
   参数/结果折叠展示）、步骤（STEP_*）与错误（RUN_ERROR → 错误横幅）。
 - 历史（thread）回放：切换会话时 POST `/agui/history` 拉一次 messages snapshot
   （`agui/history.ts` 手解 SSE data 行）。不跟 follow 流——上游 track follow 的
-  同毫秒事件可能被跳过（TODO §1.5 / ack D4），快照即回放，新消息由运行事件折叠。
+  同毫秒事件可能被跳过（上游已知缺陷），快照即回放，新消息由运行事件折叠。
 - 确认卡：流内 `tool_confirmation` 自定义事件（载荷字段与 ack `Payload` 一字
   对齐）出卡；决定 POST `/agui/ack/confirmation`（approve/deny × remember
   session|global），404 视为已失效收敛；待确认列表 GET `/agui/ack/confirmations?threadId=`
@@ -84,14 +84,14 @@ go build ./cmd/server
   渲染（等价 textContent），不引入 innerHTML / markdown 注入路径；将来引入
   markdown 渲染必须先过 sanitizer（如 dompurify）并另行评审。
 
-## 运维复现视图（A3）
+## 运维复现视图
 
 `/replay` 受保护路由（ChatPage 头部有入口）：会话选择 → 四联证据同屏——
 对话流回放、工具调用审计、授权确认记录、检索留痕——以 trace_id 关联串联
 同一次交互的全链路证据（验收口径：任一回答可反查全部召回证据）。
 
-- 对话回放：复用 A2 的 `/agui/history` 快照（`agui/history.ts`），快照即
-  回放；上游 track follow 的同毫秒事件缺陷（TODO §1.5 / ack D4）以「刷新
+- 对话回放：复用对话页的 `/agui/history` 快照（`agui/history.ts`），快照即
+  回放；上游 track follow 的同毫秒事件缺陷（上游已知缺陷）以「刷新
   快照」按钮手动兜底，不跟 follow 流。无 track 事件的会话（仅存 ack 待
   确认指针、或 track 事件已过保留期）快照运行上游 500，回放面按空态提示
   降级（`historyUnavailable` 分支），审计/授权/检索三面照常装载——回放

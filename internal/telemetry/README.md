@@ -2,7 +2,7 @@
 
 观测装配层：OTel TracerProvider 的生命周期（开关、OTLP 导出、采样、
 Shutdown）与 trpc-agent-go 框架观测面桥接（日志门面 + Tracer 全局变量）
-只在这里落子。对应 TODO E1「OTel SDK 接入 + 框架日志桥接 trace_id」。
+只在这里落子：OTel SDK 接入与框架日志桥接 trace_id。
 
 ## 装配与开关语义
 

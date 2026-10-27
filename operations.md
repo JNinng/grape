@@ -1,7 +1,6 @@
 # 生产部署与运维口径
 
-grape 单二进制（Go 后端 + 内嵌前端 SPA）的生产化部署与运维口径（TODO 流 E 的
-E3 收尾）：多实例粘性、SSE 超时治理、优雅停机、保留期与归档、密钥管理、
+grape 单二进制（Go 后端 + 内嵌前端 SPA）的生产化部署与运维口径：多实例粘性、SSE 超时治理、优雅停机、保留期与归档、密钥管理、
 框架升级检查单等。数据库部署执行顺序与升级步骤见
 [deploy_db.md](deploy_db.md)，权限模型见 [permission.md](permission.md)，
 本文不重复。
@@ -31,7 +30,7 @@ go build -o grape ./cmd/server
   `KRATOS_DATABASE_SOURCE` 覆盖 `data.database.master.source`），无默认值
   的占位在变量缺失时展开为空串，应用侧按必填校验拒绝启动（fail-closed）。
 - LLM 与 embedding 的 api_key 只在 HTTP 客户端配置面存在，从不进日志
-  （B3 logging 回调显式排除）；口令/令牌类日志面统一走
+  （模型层 logging 回调显式排除）；口令/令牌类日志面统一走
   [pkg/redact](pkg/redact/redact.go) 注册表（password/token/tool_param/
   retrieval 四类，日志 debug tracer、审计表、复现视图共用同一注册表）。
 - 配置结构（[internal/conf/conf.proto](internal/conf/conf.proto)）变更时
@@ -57,17 +56,17 @@ go build -o grape ./cmd/server
   trpc-agent-go 框架自管表：无 RLS、不存租户业务数据，属文档化的
   「设施面」例外。租户隔离靠 userKey（`tenant_id:user_id`）应用层编码
   （`EncodeUserKey` 单一代码点，AG-UI / ack / 审计共用），见
-  [permission.md](permission.md) 与 TODO 决策 1。
+  [permission.md](permission.md)。
 - 访问控制口径：库内授权只授予 `grape_u`（部署文件内 GRANT），会话事件
   含原始提示词与工具结果，属敏感数据面——保留期见下文统一节；不得把
   业务数据写入框架会话表（应用层不使用 app 级 state 存租户业务数据）。
 - 向量表 `agent.agent_document` 同为设施面（无 RLS，租户隔离由应用层
-  VectorStore 适配器强制，TODO 决策 6），授权收窄到该表、不覆盖 agent
+  VectorStore 适配器强制），授权收窄到该表、不覆盖 agent
   schema 全表。
 
 ## SSE 与超时治理
 
-B1 的治理方案（`configs/config.yaml` 有逐项注释）：
+AG-UI 长流的治理方案（`configs/config.yaml` 有逐项注释）：
 
 - `server.http.timeout: 0s`——Kratos 入站 filter 不再对全部路由统一限时
   （1s 会截断 AG-UI 的 SSE 长流：SSE 写循环监听请求 ctx.Done）；
@@ -99,7 +98,7 @@ B1 的治理方案（`configs/config.yaml` 有逐项注释）：
 
 ## 多实例与会话粘性
 
-ack 的已知限制（TODO §1.3）：**确认决定与运行必须同进程**。live 路径的
+ack 的已知限制：**确认决定与运行必须同进程**。live 路径的
 确认等待者在本进程内存中，决定请求被 LB 分到另一实例时等价于孤儿确认，
 走 recovery 路径（网关代执行或合成拒绝）而非原运行继续。多实例部署口径：
 
@@ -118,7 +117,7 @@ ack 的已知限制（TODO §1.3）：**确认决定与运行必须同进程**�
 ## 优雅停机
 
 停机走 SIGTERM（kratos 监听后逆序停传输面），禁止 SIGKILL——进程强杀
-可能丢失 flush 周期内的最后一条 SSE 事件（TODO §1.3 已知限制）。
+可能丢失 flush 周期内的最后一条 SSE 事件（ack 已知限制）。
 
 1. Kratos 停传输面（HTTP / gRPC / 维护任务，停止接入新连接）；
 2. main 的 defer 触发 wire cleanup，逆序于构造：agent core runner 关闭
@@ -131,19 +130,19 @@ ack 的已知限制（TODO §1.3）：**确认决定与运行必须同进程**�
 
 ## 保留期与归档统一口径
 
-各数据面的保留期策略与执行机制（E3 统一裁定；**归档/清理任务不在本期
+各数据面的保留期策略与执行机制（统一裁定；**归档/清理任务不在本期
 实现**，执行归运维——cron 定时或手动 SQL，口径如下）：
 
 | 数据面 | 保留策略 | 执行口径 |
 | --- | --- | --- |
-| 框架会话（agent.agent_* 六表） | conf `agent.session_storage` 四项 TTL（0 = 永不过期，默认）；track 事件 TTL 0 = 沿用 session TTL | TTL 由框架 session/postgres 自带清理生效（接线见 B2），无需外部任务；调整即改 conf 重启 |
+| 框架会话（agent.agent_* 六表） | conf `agent.session_storage` 四项 TTL（0 = 永不过期，默认）；track 事件 TTL 0 = 沿用 session TTL | TTL 由框架 session/postgres 自带清理生效，无需外部任务；调整即改 conf 重启 |
 | ack 未决确认 | **不设 TTL**：保持到决定或会话删除，与会话 TTL 同生命周期，不与终态审计混为一套清理 | 无需执行；泄漏指针的故障口径见上文粘性节备案 |
 | 终态审计（agent_tool_call_log / agent_confirmation_log） | 证据面，默认全量保留；建议生产口径按合规要求定（如 180 天） | 超期行 `DELETE WHERE created_at < now() - interval '…'` 分批删除；归档目标（冷表/对象存储）由运维环境定，应用不参与 |
-| 检索留痕（agent_retrieval_log） | 同审计口径（append-only 证据面，表注释声明「执行归 E3」，本节即裁定落点） | 同审计执行口径；两表可共用同一 cron 窗口 |
-| 授权吊销行（agent_tool_grant.revoked_at 非空行） | 吊销是审计语义行（deploy_db.md 步骤 18 声明 TTL/清理归 E3）：保留供追溯，查询面已过滤不命中 | 同审计执行口径批量清理；清理后同键重授无历史可查，属预期 |
+| 检索留痕（agent_retrieval_log） | 同审计口径（append-only 证据面，保留与执行口径以本节为准） | 同审计执行口径；两表可共用同一 cron 窗口 |
+| 授权吊销行（agent_tool_grant.revoked_at 非空行） | 吊销是审计语义行（deploy_db.md 步骤 18 声明保留与清理口径）：保留供追溯，查询面已过滤不命中 | 同审计执行口径批量清理；清理后同键重授无历史可查，属预期 |
 | 向量切片（agent.agent_document） | 无独立保留期 | 见下「向量孤儿」结论 |
 
-**向量孤儿结论**（E3 核实，不设清理任务）：「文档删除后残留切片」的孤儿
+**向量孤儿结论**（不设清理任务）：「文档删除后残留切片」的孤儿
 面在当前代码形态下不存在——摄取管线（`biz.DocumentUsecase.Ingest`）的
 覆盖语义是先 `DeleteByFilter(source_id)` 清旧再整批写入，且当前没有任何
 绕过该语义的文档删除入口（无独立删除用例；`DeleteByFilter` 是唯一删除
@@ -159,7 +158,7 @@ SQL），否则将产生真孤儿。
 
 - 设施诊断（既有）：data 各能力目录的 `FacilityDiagnostics` 原始样本 +
   `grape_diagnostics_scrape_errors_total`（按设施分列的采集失败计数）；
-- agent 运行面（E3）：`grape_agent_sse_active_connections`（活跃 SSE 运
+- agent 运行面：`grape_agent_sse_active_connections`（活跃 SSE 运
   行数 gauge）、`grape_agent_run_limit_rejections_total`（并发限流拒绝
   counter）、`grape_agent_tool_calls_total`（工具终态 counter，tool/
   status 分列）、`grape_agent_tool_call_duration_seconds`（工具耗时
@@ -184,12 +183,12 @@ SQL），否则将产生真孤儿。
 | `POST /agui/` | internal/agent | AG-UI chat 运行（SSE） |
 | `POST /agui/history` | internal/agent | messages snapshot 回放（SSE） |
 | `POST /agui/cancel` | internal/agent | 取消在途运行 |
-| `GET /agui/sessions` | internal/agent | agent 会话列表（A2） |
-| `GET /agui/event-window` | internal/agent | 会话事件窗口（A3 压缩对照） |
-| `GET /agui/grants`、`DELETE /agui/grants/{id}` | internal/agent | 授权管理（C2，权限码） |
+| `GET /agui/sessions` | internal/agent | agent 会话列表 |
+| `GET /agui/event-window` | internal/agent | 会话事件窗口（压缩对照） |
+| `GET /agui/grants`、`DELETE /agui/grants/{id}` | internal/agent | 授权管理（权限码） |
 | `POST /agui/ack/confirmation`、`GET /agui/ack/confirmations` | internal/agent | ack 决定与待确认查询（归属守卫内） |
-| `GET /v1/agent/audit/tool-calls`、`GET /v1/agent/audit/confirmations` | internal/service | 审计查询（E2/A3），支持 `tool_call_id` / `confirmation_id` 点查 |
-| `GET /v1/agent/retrieval-logs` | internal/service | 检索留痕查询（D3/A3） |
+| `GET /v1/agent/audit/tool-calls`、`GET /v1/agent/audit/confirmations` | internal/service | 审计查询，支持 `tool_call_id` / `confirmation_id` 点查 |
+| `GET /v1/agent/retrieval-logs` | internal/service | 检索留痕查询 |
 | `GET /`（及其余未命中路径） | internal/server | SPA 静态托管与 fallback（保留 API 前缀内 404） |
 
 全部手写业务端点经 Kratos 中间件链（认证生效，无令牌 401 有测试守卫）；
@@ -212,8 +211,8 @@ ack e0d2276 + pgx v5.11.0；对照各上游 tag 仓库）：
    解析 200 响应体取生效路径（`{"path": ...}` 字段），ackhttp 的 decide
    响应结构变更（字段改名/形态变化）会让审计面静默放弃确认行（记日志）。
    升级 ack 后必跑 internal/agent/audit_wire_test.go 全套。
-3. **上游 D4（track follow 同毫秒事件丢失）是否已修**：前端以「快照即回
-   放 + 手动刷新」兜底（web/README.md A3 节），修复后可评估启用 follow 流；
+3. **上游缺陷（track follow 同毫秒事件丢失）是否已修**：前端以「快照即回
+   放 + 手动刷新」兜底（web/README.md 复现视图节），修复后可评估启用 follow 流；
    核对方式：上游 track follow 游标过滤从「时间戳严格大于」改为「大于等于」
    或引入单调序号的提交。
 4. **快照运行对无事件会话的行为**：无 track 事件会话的 /history 500

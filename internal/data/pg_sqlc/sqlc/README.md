@@ -78,13 +78,13 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   [deploy_db.md](../../../../deploy_db.md)。
 - **会话框架表无 RLS（设施面例外）**：agent_* 会话表不进 @scope/RLS
   体系，租户隔离靠 userKey（tenant_id:user_id）应用层编码；不存租户
-  业务数据，属文档化「设施面」例外（见 permission.md 与 TODO 决策 1/3）。
+  业务数据，属文档化「设施面」例外（见 permission.md）。
 - **向量 SQL 不进 sqlc catalog**：agent_document 的存取 SQL 以手写
   参数化常量落在 [../vector_repo.go](../vector_repo.go)，不经 sqlc 生成
   ——pgvector 的类型与相似度算子超出 sqlc 的类型映射支持面（gen 包
   无法建模 vector 列），且向量存取没有动态查询协议需求。该表也不进
   @scope/RLS 体系：租户隔离由应用层适配器强制（每条 SQL 带租户过滤、
-  缺认证身份拒绝，TODO 决策 6），RLS 语句以注释形式附在 agent_vector.sql
+  缺认证身份拒绝），RLS 语句以注释形式附在 agent_vector.sql
   供按需启用；跨租户管理操作（在线重建索引、全量清理）走显式 super
   管理口径，不设普通入口。
 - **HNSW 建索引参数不进 conf（决策说明）**：度量（vector_cosine_ops）与
@@ -261,7 +261,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | RotateSysSession | :one | 当前刷新令牌哈希 + 新令牌哈希/有效期 → SysSession | 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，未命中时更新 0 行 |
 | CleanupExpiredSysSessions | :one | 宽限期秒数 → 删除行数 | 删除已撤销或过期超过宽限期的会话，返回删除行数 |
 
-### agent_audit.sql（Agent 业务审计读写，TODO E2）
+### agent_audit.sql（Agent 业务审计读写）
 
 两表 append-only：只有写入与读取，没有更新/删除面；读写都要求会话已设
 置 app.tenant_id（IdentityTx 门面注入）。租户边界双重声明：RLS 为主，
@@ -278,7 +278,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | CountAgentConfirmationLogs | :one | 可空 session_id → 行数 | 与 List 同条件的计数，供分页信封 |
 | GetAgentToolCallLogByToolCallID | :one | tool_call_id → AgentToolCallLog | 按工具调用 ID 点查；无行即不存在或跨租户（上层统一 NotFound） |
 | GetAgentConfirmationLogByConfirmationID | :one | confirmation_id → AgentConfirmationLog | 按确认 ID 点查；无行即不存在或跨租户（上层统一 NotFound） |
-### agent_grant.sql（Agent 工具授权固定 CRUD，C2）
+### agent_grant.sql（Agent 工具授权固定 CRUD）
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
@@ -294,9 +294,9 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 评估原语（两个 GetActive*）的「无行」是正常控制流：仓储映射为
 (nil, nil)，查询次序「会话级先于全局级」由用例层（biz.GrantUsecase.
 Resolve）编排。tenant_id 在全部查询里显式过滤——RLS 之外的应用层
-兜底（决策 6/D1 口径，集成测试以无 RLS 场景断言）。
+兜底（与向量层隔离口径一致，集成测试以无 RLS 场景断言）。
 
-### agent_retrieval_log.sql（Agent 检索留痕读写，D3）
+### agent_retrieval_log.sql（Agent 检索留痕读写）
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
@@ -319,7 +319,7 @@ Resolve）编排。tenant_id 在全部查询里显式过滤——RLS 之外的�
 
 ## RLS 策略（rls.sql 与域文件）
 
-21 张基线租户表在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql（C2）、Agent 检索留痕表在 97_agent_retrieval_log.sql（D3，策略随域文件走），都用同一条规则：`tenant_id = current_setting('app.tenant_id')`，
+21 张基线租户表在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql、Agent 检索留痕表在 97_agent_retrieval_log.sql（策略随域文件走），都用同一条规则：`tenant_id = current_setting('app.tenant_id')`，
 
 读和写都检查，表主也不豁免（FORCE）。会话没设置 app.tenant_id 时
 什么都读不到、写不进。sys_tenant 额外允许命中自身 id（子租户挂在
