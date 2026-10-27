@@ -20,7 +20,7 @@ go build -o grape ./cmd/server
   不会失败，但交付前必须执行 `make web`。
 - 运行配置初始化：`make config-init ARGS="--dir <目录>"` 从
   [cmd/configinit/template/config.yaml](cmd/configinit/template/config.yaml)
-  输出模板（与 `configs/config.yaml` 逐字节一致，有测试强制），敏感项填值
+  输出模板（正文与 `configs/config.yaml` 逐字节一致，仅多一份头注说明，有测试强制），敏感项填值
   后即可 `go run ./cmd/server -conf <dir>` 启动。
 
 ## 配置与密钥管理
@@ -91,6 +91,9 @@ B1 的治理方案（`configs/config.yaml` 有逐项注释）：
 
 - 只做「并发上限」单一维度，请求速率维度不做（速率突刺由运行超时与
   MaxToolIterations 收敛）；
+- 恢复路径续跑（ack 决定触发的网关代执行/续跑运行）不经 chat 入口，
+  不受门控限制、也不计入活跃连接 gauge——在途决定数与活跃连接数存在
+  口径差，属既定取舍（风险由运行超时与 MaxToolIterations 收敛）；
 - 计数为进程内内存态，多实例部署时是**每实例**上限而非全局上限；全局
   并发治理需外部协调面（网关侧按身份做信号量或接入配额服务）。
 
