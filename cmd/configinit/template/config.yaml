@@ -53,10 +53,10 @@ agent:
     # provider：OpenAI 兼容变体（openai / deepseek / qwen / minimax / kimi）；
     # base_url 留空时由框架按变体取内置默认端点。
     provider: openai
-    base_url: ${AGENT_LLM_BASE_URL:}
+    base_url: ${AGENT_LLM_BASE_URL:https://api.deepseek.com}
     # api_key 只经环境变量注入，不落默认配置。
     api_key: ${AGENT_LLM_API_KEY:}
-    model: ${AGENT_LLM_MODEL:gpt-4o-mini}
+    model: ${AGENT_LLM_MODEL:deepseek-flash}
     # 单次模型调用超时；未设置用框架默认。
     timeout: 60s
     # failover：主 provider 故障时按优先级切换备 provider。
