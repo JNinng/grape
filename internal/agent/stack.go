@@ -79,12 +79,13 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // 审计写入挂点（E2/C1 接线）：nil 即不审计——工具清单不包终态 wrapper、
 // ack 决定路由不装审计面，装配形态与接线前完全一致。
 type Stack struct {
-	handler  nethttp.Handler
-	runner   runner.Runner
-	basePath string
-	vectors  vectorstore.VectorStore
-	sessions *sessionList
-	audit    AuditHook
+	handler     nethttp.Handler
+	runner      runner.Runner
+	basePath    string
+	vectors     vectorstore.VectorStore
+	sessions    *sessionList
+	eventWindow *eventWindow
+	audit       AuditHook
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -223,12 +224,13 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	base := basePathOf(c)
 	return &Stack{
-		handler:  newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, logger),
-		runner:   coreRunner,
-		basePath: base,
-		vectors:  vectors,
-		sessions: newSessionList(sessions, c.GetAppName()),
-		audit:    o.audit,
+		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, logger),
+		runner:      coreRunner,
+		basePath:    base,
+		vectors:     vectors,
+		sessions:    newSessionList(sessions, c.GetAppName()),
+		eventWindow: newEventWindow(sessions, c.GetAppName()),
+		audit:       o.audit,
 	}, nil
 }
 
@@ -260,6 +262,13 @@ func (s *Stack) BasePath() string { return s.basePath }
 // （userKeyFromContext 解析，缺失 fail-closed 401）；路由注册与入链归
 // service，且必须先于 agent 前缀通配（见 server.NewHTTPServer）。
 func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
+
+// EventWindowHandler 返回会话事件窗口端点（GET {BasePath}/event-window，
+// A3 压缩占位原文对照与执行轨迹回查）的 HTTP 形态：与 AG-UI / ack 同一
+// session.Service 实例（WindowService 能力）、同一 app 名命名空间、同一
+// userKey 编码。路由注册与入链归 service，且必须先于 agent 前缀通配
+// （见 server.NewHTTPServer）。
+func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
 
 // newMux 构造外层 ServeMux：AG-UI handler 按前缀子树挂载（内部按完整
 // 路径匹配，"/agui" 由 ServeMux 301 到 "/agui/"），ackhttp 挂在更深的

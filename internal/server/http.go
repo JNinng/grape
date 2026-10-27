@@ -46,6 +46,7 @@ func NewHTTPServer(
 	session *service.SessionService,
 	agent *service.AgentService,
 	agentSessions *service.AgentSessionsService,
+	agentEventWindow *service.AgentEventWindowService,
 	agentAudit *service.AgentAuditService,
 	agentRetrieval *service.AgentRetrievalService,
 	web WebHandler,
@@ -99,6 +100,12 @@ func NewHTTPServer(
 	// /agui/sessions 精确路径只有排在 agent 前缀通配之前才不被吞并。
 	if agentSessions != nil {
 		agentSessions.RegisterHTTP(srv)
+	}
+	// agentEventWindow 为 nil 仅出现在不触达业务路由的测试装配里；生产装
+	// 配恒非 nil。路由（{agui 前缀}/event-window）在 agent 前缀内，与
+	// sessions 同理必须先于 agent 前缀通配注册。
+	if agentEventWindow != nil {
+		agentEventWindow.RegisterHTTP(srv)
 	}
 	// agentAudit 为 nil 仅出现在不触达业务路由的测试装配里；生产装配
 	// 恒非 nil。路由（/v1/agent/audit/*）不在 agent 前缀内，注册顺序

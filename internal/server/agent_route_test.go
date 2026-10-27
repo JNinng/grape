@@ -138,7 +138,8 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		// 不触达该路由；挂载顺序（sessions 先于 agent 前缀通配、agent
 		// 先于静态兜底）在 agent_sessions_route_test.go 守卫。
 		nil,
-		// 审计与检索留痕查询端点本文件用例不触达，传 nil。
+		// 事件窗口、审计与检索留痕查询端点本文件用例不触达，传 nil。
+		nil,
 		nil,
 		nil,
 		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
