@@ -42,10 +42,10 @@ go build ./cmd/server
 | [embed.go](embed.go) | `//go:embed all:dist` 导出 `fs.FS`；`go:embed` 不能引用父目录，故本包必须与 `dist` 同级，`server` 只导入该导出。 |
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`toApiError.ts`、`types.ts`。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（E2 工具调用/授权确认审计）、`agentRetrievalLogs.ts`（D3 检索留痕）、`agentEventWindow.ts`（A3 会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）、`ReplayPage` 运维复现视图（A3）；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）。 |
 
 ## 登录与令牌策略
 
@@ -83,6 +83,36 @@ go build ./cmd/server
 - sanitize 口径：模型文本与工具参数/结果一律不可信，全部以 React 文本节点
   渲染（等价 textContent），不引入 innerHTML / markdown 注入路径；将来引入
   markdown 渲染必须先过 sanitizer（如 dompurify）并另行评审。
+
+## 运维复现视图（A3）
+
+`/replay` 受保护路由（ChatPage 头部有入口）：会话选择 → 四联证据同屏——
+对话流回放、工具调用审计、授权确认记录、检索留痕——以 trace_id 关联串联
+同一次交互的全链路证据（验收口径：任一回答可反查全部召回证据）。
+
+- 对话回放：复用 A2 的 `/agui/history` 快照（`agui/history.ts`），快照即
+  回放；上游 track follow 的同毫秒事件缺陷（TODO §1.5 / ack D4）以「刷新
+  快照」按钮手动兜底，不跟 follow 流。
+- 工具调用审计 / 授权确认记录：GET `/v1/agent/audit/tool-calls` 与
+  `/confirmations`（`api/agentAudit.ts`）；检索留痕：GET
+  `/v1/agent/retrieval-logs`（`api/agentRetrievalLogs.ts`）。按会话过滤
+  分页沿用端点口径（offset/limit，每面默认 50），返回行是落库时已脱敏的
+  形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
+  UI 以「0（框架未暴露）」呈现避免误读。
+- trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
+  `replay/model.ts` 纯函数），选中后过滤三个证据面并按 toolCallId 桥接
+  高亮回放里的工具调用项（对话回放自身不带 trace_id，不被过滤改写）；
+  表内 trace 值可点击反选。
+- 压缩占位与原文对照：`replay/compaction.ts` 按 trpc-agent-go
+  context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记
+  含紧凑与裸变体、策略占位），提取 event_id 恢复引用；带引用的经
+  GET `/agui/event-window`（`api/agentEventWindow.ts`，后端见
+  `internal/agent/eventwindow.go`）懒加载会话事件原文并排对照，失败可
+  重试；无引用的只标注「已压缩（不可反查）」。识别以形状特征为准、不
+  假设必然出现（占位符产生在请求投影副本，回放原文里通常不出现）。
+- 数据组装（trace 汇总/过滤/高亮/hits 解析）与占位符识别均为纯函数，
+  畸形输入（非字符串、坏 JSON、缺字段）安全降级不抛错；渲染延续对话页
+  的纯文本 sanitize 基线。
 
 ## 命令
 
