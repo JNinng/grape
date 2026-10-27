@@ -495,3 +495,20 @@ func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T
 		t.Fatalf("list with max page size: %v", err)
 	}
 }
+
+// TestRetrievalLogRepo_unauthenticated_calls_fail_closed 守卫仓储身份门：
+// 无认证 ctx 的写入与读取一律拒绝——写侧装饰器直连仓储（不经用例），
+// 该门禁是留痕旁路面唯一的身份防线，与 audit/vector 同款显式断言。
+func TestRetrievalLogRepo_unauthenticated_calls_fail_closed(t *testing.T) {
+	d := setupRetrievalTestDB(t)
+	repo := NewRetrievalLogRepo(d)
+	ctx := context.Background()
+
+	err := repo.Append(ctx, &biz.RetrievalLogRecord{Source: biz.RetrievalSourceTool})
+	if err == nil {
+		t.Fatal("repo append without identity = nil error, want rejection")
+	}
+	if _, err := repo.List(ctx, &biz.RetrievalLogFilter{Limit: 1}); err == nil {
+		t.Fatal("repo list without identity = nil error, want rejection")
+	}
+}

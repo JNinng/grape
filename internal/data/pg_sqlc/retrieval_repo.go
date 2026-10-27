@@ -175,6 +175,8 @@ func retrievalLogToBiz(po *gen.AgentRetrievalLog) *biz.RetrievalLog {
 		EffectiveTopK: int32Value(po.EffectiveTopK),
 		FilterSummary: json.RawMessage(po.FilterSummary),
 		Hits:          json.RawMessage(po.Hits),
+		RerankBefore:  textValue(po.RerankBefore),
+		RerankAfter:   textValue(po.RerankAfter),
 		DurationMS:    int64(int32Value(po.DurationMs)),
 		Status:        po.Status,
 		CreatedAt:     tsToTime(po.CreatedAt),
