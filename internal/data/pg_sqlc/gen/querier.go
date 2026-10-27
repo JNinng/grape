@@ -29,6 +29,8 @@ type Querier interface {
 	CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error)
 	// 按会话过滤统计授权确认审计条数（与 List 同条件，供分页信封）
 	CountAgentConfirmationLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 按会话/来源过滤统计检索留痕条数（与 List 同条件，供分页信封）
+	CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRetrievalLogsParams) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
@@ -67,6 +69,15 @@ type Querier interface {
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
 	// 写入一条授权确认审计；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentConfirmationLog(ctx context.Context, arg InsertAgentConfirmationLogParams) (AgentConfirmationLog, error)
+	// Agent 检索留痕（TODO 流 D 的 D3）固定命名查询：表为追加写
+	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
+	// RLS（schema/97_agent_retrieval_log.sql 的策略）为主，读侧 WHERE 再
+	// 显式带同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时
+	// 读取仍不越租户，对齐 D1「隔离正确性不押在 RLS 是否存在上」的验收
+	// 口径。写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方
+	// 无法指定或伪造归属。
+	// 写入一条检索留痕；租户取会话 app.tenant_id，写入者与用户同值
+	InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRetrievalLogParams) (AgentRetrievalLog, error)
 	// Agent 业务审计（TODO 流 E 的 E2）固定命名查询：两表均为追加写
 	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
 	// RLS（schema/95_agent_audit.sql 的策略）为主，读侧 WHERE 再显式带上
@@ -90,6 +101,8 @@ type Querier interface {
 	ListActiveAgentToolGrantsByUser(ctx context.Context, arg ListActiveAgentToolGrantsByUserParams) ([]AgentToolGrant, error)
 	// 按会话过滤分页查询授权确认审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentConfirmationLogs(ctx context.Context, arg ListAgentConfirmationLogsParams) ([]AgentConfirmationLog, error)
+	// 按会话/来源过滤分页查询检索留痕（时间倒序）；NULL 参数不过滤
+	ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetrievalLogsParams) ([]AgentRetrievalLog, error)
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验

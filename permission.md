@@ -10,7 +10,7 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 
 | 约束 | 回答的问题 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| 租户边界 | 数据属于哪个租户 | PostgreSQL RLS（23 张租户表，ENABLE + FORCE：21 张基线在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql——策略随域文件走） | 未设 `app.tenant_id` → 默认全拒 |
+| 租户边界 | 数据属于哪个租户 | PostgreSQL RLS（26 张租户表，ENABLE + FORCE：21 张基线在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql、Agent 审计两表在 schema/95_agent_audit.sql、检索留痕表在 schema/97_agent_retrieval_log.sql——策略随域文件走） | 未设 `app.tenant_id` → 默认全拒 |
 | 行级数据范围 | 用户能看见、操作哪些行 | 读：`@scope`（列表）与 `fn_check_visible`（单行）；写：`fn_can_*` | 缺 Scope → 生成代码报错；判定 false → 拒绝 |
 | 功能权限码 | 用户能否调用某个操作 | 入口层（service / middleware）调 `fn_has_permission` | 未接入；接入后判定 false → 拒绝 |
 

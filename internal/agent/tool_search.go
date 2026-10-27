@@ -110,6 +110,11 @@ func searchInternalDocs(embedder biz.Embedder, vectors vectorstore.VectorStore) 
 		if err != nil {
 			return searchDocsOutput{}, fmt.Errorf("embed query: %w", err)
 		}
+		// D3 留痕挂点：会话 ID（框架执行 ctx 携带）与查询文本放进 biz
+		// 中性载体，供 data 层留痕装饰器写 agent_retrieval_log——biz/data
+		// 不导入框架包，事实必须由能读到它们的本层放入 ctx（见
+		// retrieval_context.go）。
+		ctx = withRetrievalLogFacts(ctx, query)
 		result, err := vectors.Search(ctx, &vectorstore.SearchQuery{
 			SearchMode: vectorstore.SearchModeVector,
 			Vector:     toFloat64(queryVector),

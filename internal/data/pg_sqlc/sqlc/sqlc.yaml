@@ -34,6 +34,7 @@ sql:
       - "operate.sql"
       - "expose.sql"
       - "96_agent_grant.sql"
+      - "schema/97_agent_retrieval_log.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -42,6 +43,7 @@ sql:
       - "queries/sys_session.sql"
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
+      - "queries/agent_retrieval_log.sql"
     gen:
       go:
         package: "gen"
@@ -68,6 +70,7 @@ sql:
       - "operate.sql"
       - "expose.sql"
       - "96_agent_grant.sql"
+      - "schema/97_agent_retrieval_log.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -76,6 +79,7 @@ sql:
       - "queries/sys_session.sql"
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
+      - "queries/agent_retrieval_log.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

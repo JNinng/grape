@@ -60,7 +60,9 @@ func newAgentAuditTestServer(t *testing.T) *kratoshttp.Server {
 	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
 		authMiddleware, ops.NewMetricsHandler(nil), nil, nil, nil, nil,
-		auditService, nil)
+		auditService, nil,
+		// 检索留痕查询端点本文件用例不触达，传 nil。
+		nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}
