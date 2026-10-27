@@ -59,6 +59,7 @@ export function ReplayPage() {
   const [sessions, setSessions] = useState<AgentSessionMeta[]>([])
   const [threadId, setThreadId] = useState<string | null>(null)
   const [items, setItems] = useState<ChatItem[]>([])
+  const [historyUnavailable, setHistoryUnavailable] = useState(false)
   const [toolCalls, setToolCalls] = useState<ToolCallAudit[]>([])
   const [confirmations, setConfirmations] = useState<ConfirmationAudit[]>([])
   const [retrievals, setRetrievals] = useState<RetrievalLog[]>([])
@@ -74,9 +75,14 @@ export function ReplayPage() {
     const seq = ++loadSeq.current
     setLoading(true)
     setError(null)
+    setHistoryUnavailable(false)
     try {
+      // /history 快照独立降级：无 track 事件的会话（仅存 ack 待确认指针、
+      // 或 track 事件已过保留期的会话）上游快照运行会 500（RunStartedEvent
+      // validation failed，与 ack D4 同族的框架快照缺陷）。回放只是四联
+      // 证据之一，缺失按空态提示降级，其余证据面照常装载。
       const [history, auditToolCalls, auditConfirmations, retrievalLogs] = await Promise.all([
-        fetchHistorySnapshot(tid),
+        fetchHistorySnapshot(tid).catch(() => null),
         fetchToolCallAudits(tid),
         fetchConfirmationAudits(tid),
         fetchRetrievalLogs(tid),
@@ -84,7 +90,8 @@ export function ReplayPage() {
       if (seq !== loadSeq.current) {
         return
       }
-      setItems(history)
+      setItems(history ?? [])
+      setHistoryUnavailable(history === null)
       setToolCalls(auditToolCalls)
       setConfirmations(auditConfirmations)
       setRetrievals(retrievalLogs)
@@ -203,7 +210,12 @@ export function ReplayPage() {
             <section aria-label="对话流回放">
               <h2>对话流回放</h2>
               <p>快照即回放：上游 follow 存在同毫秒事件可能被跳过的缺陷（ack D4），以快照刷新兜底。</p>
-              {items.length === 0 && <p>该会话暂无快照消息。</p>}
+              {items.length === 0 &&
+                (historyUnavailable ? (
+                  <p>该会话无可回放快照（可能没有持久化的事件），其余证据面不受影响。</p>
+                ) : (
+                  <p>该会话暂无快照消息。</p>
+                ))}
               {items.map((item) =>
                 item.kind === 'message' ? (
                   <article key={item.id} data-role={item.role}>
