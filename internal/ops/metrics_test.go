@@ -53,7 +53,7 @@ func TestMetricsHandlerMapsSamplesVerbatim(t *testing.T) {
 				Type: biz.MetricCounter, Value: 7,
 			},
 		}},
-	})
+	}, nil)
 	body := scrape(t, h)
 
 	for _, want := range []string{
@@ -85,7 +85,7 @@ func TestMetricsHandlerCountsFailuresPerFacility(t *testing.T) {
 				Type: biz.MetricGauge, Value: 4,
 			},
 		}},
-	})
+	}, nil)
 
 	body := scrape(t, h)
 	if !strings.Contains(body, "grape_pg_pool_connections_max 4\n") {

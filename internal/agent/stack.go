@@ -97,6 +97,7 @@ type StackOption func(*stackOptions)
 type stackOptions struct {
 	modelOverride model.Model
 	audit         AuditHook
+	observer      biz.AgentRunObserver
 }
 
 // WithModelOverride 用给定模型替换按配置构造的 LLM provider。
@@ -109,6 +110,14 @@ func WithModelOverride(m model.Model) StackOption {
 // nil = 不审计（测试装配不受影响）；挂点写入失败只记日志、不中断运行。
 func WithAuditHook(hook AuditHook) StackOption {
 	return func(o *stackOptions) { o.audit = hook }
+}
+
+// WithRunObserver 注入运行面观测契约（E3 metrics）：wire 生产装配传
+// biz.AgentRunObserver（ops 的 RuntimeMetrics，经 wire.Bind 提供）。缺省
+// nil = 不观测；观测为旁路推送，不影响任何请求语义。非 nil 时工具清单
+// 同样包上 wrapper（与审计共用单层包装，计数/耗时在终态处顺带观测）。
+func WithRunObserver(observer biz.AgentRunObserver) StackOption {
+	return func(o *stackOptions) { o.observer = observer }
 }
 
 // NewStackWithOptions 按 conf 与注入的会话服务、向量存储、业务用例装配
@@ -153,11 +162,13 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	// 检索工具经向量适配器访问向量（TODO 决策 6，D2）。
 	tools := append([]tool.Tool{newEchoTool()}, newUserTools(users)...)
 	tools = append(tools, newSearchTool(embedder, vectors))
-	// 审计接线（E2/C1）：挂点非 nil 时给全量工具清单包上终态审计 wrapper
-	//（echo 是链路验证工具，同样留痕保持全量），包装后的清单同时进
-	// LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper 被审计。
-	if o.audit != nil {
-		tools = auditedTools(tools, o.audit, logger)
+	// 审计接线（E2/C1）与运行观测（E3）：挂点非 nil 时给全量工具清单包上
+	// 终态审计 wrapper（echo 是链路验证工具，同样留痕保持全量），包装后的
+	// 清单同时进 LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper
+	// 被审计；观测契约非 nil 时同层包装顺带推送工具计数/耗时（单一包装点
+	// 同时服务两个旁路面）。
+	if o.audit != nil || o.observer != nil {
+		tools = auditedTools(tools, o.audit, o.observer, logger)
 	}
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
@@ -226,7 +237,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	}
 
 	base := basePathOf(c)
-	gate := newRunGate(c.GetAgui().GetMaxConcurrentRuns())
+	gate := newRunGate(c.GetAgui().GetMaxConcurrentRuns(), o.observer)
 	return &Stack{
 		handler:     newMux(aguiServer.Handler(), gateway, sessions, newGrantAdmin(grants), c.GetAppName(), base, o.audit, gate, logger),
 		runner:      coreRunner,

@@ -31,10 +31,11 @@ import (
 // 落库前完成（E1 注册表的 tool_param / retrieval 两类别，与日志、复现
 // 视图共用）。
 
-// auditedTools 给工具清单包上审计 wrapper：仅包装 CallableTool 形状的
-// 工具（当前全量），其余形状原样透传。hook 为 nil 时不应调用本函数
-// （装配侧判空后整段不装配，保证缺省零行为变化）。
-func auditedTools(tools []tool.Tool, hook AuditHook, logger *slog.Logger) []tool.Tool {
+// auditedTools 给工具清单包上审计/观测 wrapper：仅包装 CallableTool 形状
+// 的工具（当前全量），其余形状原样透传。hook 与 observer 都可为 nil
+// （各自缺省零行为），两者全 nil 时不应调用本函数（装配侧判空后整段不
+// 装配，保证缺省零行为变化）。
+func auditedTools(tools []tool.Tool, hook AuditHook, observer biz.AgentRunObserver, logger *slog.Logger) []tool.Tool {
 	wrapped := make([]tool.Tool, 0, len(tools))
 	for _, t := range tools {
 		ct, ok := t.(tool.CallableTool)
@@ -42,19 +43,21 @@ func auditedTools(tools []tool.Tool, hook AuditHook, logger *slog.Logger) []tool
 			wrapped = append(wrapped, t)
 			continue
 		}
-		wrapped = append(wrapped, &auditTool{CallableTool: ct, hook: hook, logger: logger})
+		wrapped = append(wrapped, &auditTool{CallableTool: ct, hook: hook, observer: observer, logger: logger})
 	}
 	return wrapped
 }
 
-// auditTool 是工具执行终态的审计 wrapper：嵌入内部工具透传声明，Call
-// 计时并记终态。调用 ID 从执行 ctx 取——运行内执行由框架处理器注入模型
-// 生成的 tool call ID（tool.ContextKeyToolCallID），恢复路径代执行由 ack
-// 决定审计面注入确认 ID（ack Payload 中确认 ID 与工具调用 ID 同源）。
+// auditTool 是工具执行终态的审计与观测 wrapper：嵌入内部工具透传声明，
+// Call 计时并记终态（hook 写审计行，observer 推送计数/耗时，两个旁路面
+// 共用单一包装点）。调用 ID 从执行 ctx 取——运行内执行由框架处理器注入
+// 模型生成的 tool call ID（tool.ContextKeyToolCallID），恢复路径代执行由
+// ack 决定审计面注入确认 ID（ack Payload 中确认 ID 与工具调用 ID 同源）。
 type auditTool struct {
 	tool.CallableTool
-	hook   AuditHook
-	logger *slog.Logger
+	hook     AuditHook
+	observer biz.AgentRunObserver
+	logger   *slog.Logger
 }
 
 // Call 执行内部工具并在终态后记审计：审计写入不改变工具结果与错误。
@@ -76,13 +79,20 @@ func (t *auditTool) Call(ctx context.Context, jsonArgs []byte) (result any, err 
 // record 组装一条工具调用审计并写入。无调用 ID 的执行无法构造合法审计行
 // （biz 侧 ToolCallID 必填），只记日志跳过；命中恢复路径捕获器（目标调用
 // ID 一致）时只归集不落库，由 ack 决定审计面在决定结算后与确认行组合
-// 批量写入。
+// 批量写入。观测推送在归集分支之前：代执行同样是一次工具调用终态。
 func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err error, d time.Duration) {
 	name := toolNameOf(t.CallableTool)
 	callID, _ := tool.ToolCallIDFromContext(ctx)
 	if strings.TrimSpace(callID) == "" {
 		t.logger.Warn("tool call id missing in context, skip tool call audit", "tool", name)
 		return
+	}
+	status := biz.ToolCallStatusSuccess
+	if err != nil {
+		status = biz.ToolCallStatusError
+	}
+	if t.observer != nil {
+		t.observer.ToolCallObserved(name, status, d)
 	}
 	in := &biz.ToolCallRecordInput{
 		SessionID:        sessionIDOf(ctx),
@@ -94,11 +104,14 @@ func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err
 		// 一次调用），按 biz 契约记 0；真实采集留 E3 评估回调接线。
 		RetryCount: 0,
 		DurationMS: d.Milliseconds(),
-		Status:     biz.ToolCallStatusSuccess,
+		Status:     status,
 	}
 	if err != nil {
-		in.Status = biz.ToolCallStatusError
 		in.ResultSummary = err.Error()
+	}
+	if t.hook == nil {
+		// 仅观测形态（审计挂点缺省）：工具行不写，观测推送已完成。
+		return
 	}
 	if c := captureFromContext(ctx); c != nil && c.toolCallID == callID {
 		c.add(in)

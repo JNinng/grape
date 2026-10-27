@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	nethttp "net/http"
 	"sync"
+
+	"grape/internal/biz"
 )
 
 // AG-UI 运行入口的并发治理（TODO E3 限流）：对 chat 运行请求按租户/用户
@@ -25,20 +27,22 @@ import (
 // runLimitExceededMsg 是超限拒绝的固定文案：不回显 userKey 等内部细节。
 const runLimitExceededMsg = "concurrent run limit exceeded"
 
-// runGate 是按 userKey 的在途运行计数器与门控。
+// runGate 是按 userKey 的在途运行计数器与门控。observer 可为 nil（不观测，
+// 行为不变）；非 nil 时占槽/释放配对推送活跃数、拒绝推送拒绝计数（E3）。
 type runGate struct {
 	limit    int
+	observer biz.AgentRunObserver
 	inflight map[string]int
 
 	mu sync.Mutex
 }
 
 // newRunGate 构造门控；maxConcurrentRuns ≤ 0 返回 nil（关闭，不包装）。
-func newRunGate(maxConcurrentRuns int32) *runGate {
+func newRunGate(maxConcurrentRuns int32, observer biz.AgentRunObserver) *runGate {
 	if maxConcurrentRuns <= 0 {
 		return nil
 	}
-	return &runGate{limit: int(maxConcurrentRuns), inflight: make(map[string]int)}
+	return &runGate{limit: int(maxConcurrentRuns), observer: observer, inflight: make(map[string]int)}
 }
 
 // isChatRun 判定请求是否为 chat 运行入口：POST 打在前缀根（/agui/）。
@@ -66,10 +70,21 @@ func (g *runGate) wrap(basePath string, h nethttp.Handler) nethttp.Handler {
 			return
 		}
 		if !g.acquire(userKey) {
+			if g.observer != nil {
+				g.observer.RunRejected()
+			}
 			writeRunGateError(w, nethttp.StatusTooManyRequests, runLimitExceededMsg)
 			return
 		}
-		defer g.release(userKey)
+		if g.observer != nil {
+			g.observer.RunActive(1)
+		}
+		defer func() {
+			if g.observer != nil {
+				g.observer.RunActive(-1)
+			}
+			g.release(userKey)
+		}()
 		h.ServeHTTP(w, r)
 	})
 }

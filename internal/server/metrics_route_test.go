@@ -43,7 +43,7 @@ func TestMetricsRouteBypassesBusinessMiddleware(t *testing.T) {
 				Type: biz.MetricGauge, Value: 4,
 			},
 		}},
-	})
+	}, nil)
 	// user/session/agent/web 服务传 nil：本测试不触达业务与静态路由，
 	// 注册只需路由存在。trace 位传空实现：/metrics 直挂链外，链上中间件
 	// 不会被调用；超时位传直通中间件，普通请求超时不属于本测试关注点。

@@ -122,10 +122,14 @@ func promValueType(t biz.MetricType) prometheus.ValueType {
 	return prometheus.GaugeValue
 }
 
-// NewMetricsHandler 构造标准指标出口：独立 registry 只承载设施诊断指标
-// （各设施原始样本 + 采集失败计数），经 promhttp 输出文本格式。
-func NewMetricsHandler(facilities []biz.FacilityDiagnostics) http.Handler {
+// NewMetricsHandler 构造标准指标出口：独立 registry 承载设施诊断指标
+// （各设施原始样本 + 采集失败计数）与 agent 运行面指标（RuntimeMetrics，
+// nil 时不注册——仅设施形态的测试装配），经 promhttp 输出文本格式。
+func NewMetricsHandler(facilities []biz.FacilityDiagnostics, runtime *RuntimeMetrics) http.Handler {
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(newFacilityCollector(facilities))
+	if runtime != nil {
+		reg.MustRegister(runtime)
+	}
 	return promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
 }

@@ -498,7 +498,7 @@ func newAuditEchoTool() []tool.Tool {
 func TestAuditTool_when_context_has_no_call_id_skips_record(t *testing.T) {
 	rec := newAuditRecorder()
 	logger := slog.New(slog.DiscardHandler)
-	tools := auditedTools(newAuditEchoTool(), rec, logger)
+	tools := auditedTools(newAuditEchoTool(), rec, nil, logger)
 	ct, ok := tools[0].(tool.CallableTool)
 	if !ok {
 		t.Fatalf("wrapped tool must stay callable")
@@ -534,7 +534,7 @@ func TestAuditTool_when_inner_tool_fails_records_error_status(t *testing.T) {
 		function.WithDescription("echo"),
 	)
 	rec := newAuditRecorder()
-	wrapped := auditedTools([]tool.Tool{inner}, rec, slog.New(slog.DiscardHandler))
+	wrapped := auditedTools([]tool.Tool{inner}, rec, nil, slog.New(slog.DiscardHandler))
 	ct := wrapped[0].(tool.CallableTool)
 	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-err-1")
 	if _, err := ct.Call(ctx, []byte(`{"text":""}`)); err == nil {
@@ -560,7 +560,7 @@ func TestAuditTool_when_inner_tool_fails_records_error_status(t *testing.T) {
 // 返回结果。
 func TestAuditTool_when_hook_panics_error_does_not_propagate(t *testing.T) {
 	rec := &auditRecorder{panicOn: "tool"}
-	tools := auditedTools(newAuditEchoTool(), rec, slog.New(slog.DiscardHandler))
+	tools := auditedTools(newAuditEchoTool(), rec, nil, slog.New(slog.DiscardHandler))
 	ct := tools[0].(tool.CallableTool)
 	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-panic-1")
 	res, err := ct.Call(ctx, []byte(`{"text":"hi"}`))
@@ -574,7 +574,7 @@ func TestAuditTool_when_hook_panics_error_does_not_propagate(t *testing.T) {
 // 由捕获器补齐；目标不一致（续跑运行的新调用）仍走直写。
 func TestAuditTool_when_capture_target_matches_records_into_capture(t *testing.T) {
 	rec := newAuditRecorder()
-	tools := auditedTools(newAuditEchoTool(), rec, slog.New(slog.DiscardHandler))
+	tools := auditedTools(newAuditEchoTool(), rec, nil, slog.New(slog.DiscardHandler))
 	ct := tools[0].(tool.CallableTool)
 
 	capture := &recoveryCapture{toolCallID: "call-recovery-1", sessionID: "thread-recovery"}
@@ -620,7 +620,7 @@ func TestAuditTool_when_inner_tool_panics_records_error_row_and_repanics(t *test
 		function.WithDescription("echo"),
 	)
 	rec := newAuditRecorder()
-	wrapped := auditedTools([]tool.Tool{inner}, rec, slog.New(slog.DiscardHandler))
+	wrapped := auditedTools([]tool.Tool{inner}, rec, nil, slog.New(slog.DiscardHandler))
 	ct := wrapped[0].(tool.CallableTool)
 	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-panic-tool-1")
 
@@ -765,5 +765,61 @@ func TestWriteAudit_when_hook_blocks_write_abandoned_after_budget(t *testing.T) 
 	case <-finished:
 	case <-time.After(2 * time.Second):
 		t.Fatal("blocked write must be abandoned after the budget")
+	}
+}
+
+// TestAuditTool_when_observer_present_counts_terminal_states 验证仅观测
+// 形态（hook 缺省、observer 非 nil）：成功/失败/panic 三种终态都推送
+// 工具计数（panic 记 error），无审计行写入；观测先于捕获器归集分支，
+// 恢复路径代执行同样被计数。
+func TestAuditTool_when_observer_present_counts_terminal_states(t *testing.T) {
+	obs := newFakeObserver()
+	tools := auditedTools(newAuditEchoTool(), nil, obs, slog.New(slog.DiscardHandler))
+	ct := tools[0].(tool.CallableTool)
+
+	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-obs-1")
+	if _, err := ct.Call(ctx, []byte(`{"text":"hi"}`)); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusSuccess); got != 1 {
+		t.Fatalf("echo success count = %d, want 1", got)
+	}
+
+	// panic 终态同样计数（error），panic 本身照常传播。
+	boom := function.NewFunctionTool(
+		func(context.Context, echoInput) (echoOutput, error) {
+			panic("boom")
+		},
+		function.WithName(echoToolName),
+		function.WithDescription("echo"),
+	)
+	wrapped := auditedTools([]tool.Tool{boom}, nil, obs, slog.New(slog.DiscardHandler))[0].(tool.CallableTool)
+	func() {
+		defer func() { _ = recover() }()
+		_, _ = wrapped.Call(ctx, []byte(`{"text":"hi"}`))
+	}()
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusError); got != 1 {
+		t.Fatalf("echo error count (panic terminal) = %d, want 1", got)
+	}
+}
+
+// TestAuditTool_when_hook_and_observer_both_present_both_fired 验证组合
+// 形态：审计挂点与观测契约同时注入时，单一包装点两路都生效——审计行
+// 照写、观测计数照推。
+func TestAuditTool_when_hook_and_observer_both_present_both_fired(t *testing.T) {
+	rec := newAuditRecorder()
+	obs := newFakeObserver()
+	tools := auditedTools(newAuditEchoTool(), rec, obs, slog.New(slog.DiscardHandler))
+	ct := tools[0].(tool.CallableTool)
+	ctx := context.WithValue(context.Background(), tool.ContextKeyToolCallID{}, "call-both-1")
+	if _, err := ct.Call(ctx, []byte(`{"text":"hi"}`)); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	toolsRows, _, _ := rec.snapshot()
+	if len(toolsRows) != 1 {
+		t.Fatalf("audit rows = %d, want 1", len(toolsRows))
+	}
+	if got := obs.toolCount(echoToolName, biz.ToolCallStatusSuccess); got != 1 {
+		t.Fatalf("observed count = %d, want 1", got)
 	}
 }

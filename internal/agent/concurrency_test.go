@@ -11,7 +11,9 @@ import (
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"grape/internal/biz"
 	"grape/internal/conf"
@@ -28,8 +30,9 @@ func concurrencyStackConf(maxRuns int32) *conf.Agent {
 }
 
 // newConcurrencyTestStack 按给定并发上限装配确认流测试栈（内存会话存储
-// + 注入模型 + 内存用户仓储，handler 外包归属者身份注入）。
-func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedModel, repo *fakeUserRepo) *confirmTestStack {
+// + 注入模型 + 内存用户仓储，handler 外包归属者身份注入）。可变参数
+// 透传 StackOption（如观测契约注入）。
+func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedModel, repo *fakeUserRepo, opts ...StackOption) *confirmTestStack {
 	t.Helper()
 	svc, closeSessions, err := NewMemorySessionService()
 	if err != nil {
@@ -37,7 +40,8 @@ func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedM
 	}
 	t.Cleanup(closeSessions)
 	stack, err := NewStackWithOptions(concurrencyStackConf(maxRuns), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
+		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4},
+		append([]StackOption{WithModelOverride(llm)}, opts...)...)
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
@@ -47,10 +51,64 @@ func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedM
 	return s
 }
 
+// fakeObserver 是运行观测契约的内存替身：记录活跃数增量序列、拒绝计数
+// 与工具终态计数（键 tool|status）。
+type fakeObserver struct {
+	mu        sync.Mutex
+	deltas    []int
+	rejected  int
+	toolCalls map[string]int
+}
+
+func newFakeObserver() *fakeObserver {
+	return &fakeObserver{toolCalls: make(map[string]int)}
+}
+
+func (f *fakeObserver) RunActive(delta int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deltas = append(f.deltas, delta)
+}
+
+func (f *fakeObserver) RunRejected() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rejected++
+}
+
+func (f *fakeObserver) ToolCallObserved(name, status string, _ time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.toolCalls[name+"|"+status]++
+}
+
+// activeNow 汇总增量序列得当前活跃数（配对增减时应为 0 或在途数）。
+func (f *fakeObserver) activeNow() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, d := range f.deltas {
+		n += d
+	}
+	return n
+}
+
+func (f *fakeObserver) rejectedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rejected
+}
+
+func (f *fakeObserver) toolCount(name, status string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.toolCalls[name+"|"+status]
+}
+
 // TestRunGate_when_slot_released_next_acquire_succeeds 验证原语面：占槽
 // 到上限即拒、释放后可再占、不同身份的配额相互独立。
 func TestRunGate_when_slot_released_next_acquire_succeeds(t *testing.T) {
-	g := newRunGate(2)
+	g := newRunGate(2, nil)
 	if g == nil {
 		t.Fatal("gate must be constructed for positive limit")
 	}
@@ -72,7 +130,7 @@ func TestRunGate_when_slot_released_next_acquire_succeeds(t *testing.T) {
 // TestRunGate_when_release_drops_last_slot_key_removed 验证计数器不随
 // 用户数无界增长：末槽释放后键被删除。
 func TestRunGate_when_release_drops_last_slot_key_removed(t *testing.T) {
-	g := newRunGate(1)
+	g := newRunGate(1, nil)
 	g.acquire("t-1:9")
 	g.release("t-1:9")
 	g.mu.Lock()
@@ -87,8 +145,8 @@ func TestRunGate_when_release_drops_last_slot_key_removed(t *testing.T) {
 // 构造门控（wrap 直接透传原 handler，零包装）。
 func TestRunGate_when_disabled_returns_nil_gate(t *testing.T) {
 	for _, v := range []int32{0, -1} {
-		if g := newRunGate(v); g != nil {
-			t.Fatalf("newRunGate(%d) = %v, want nil (disabled)", v, g)
+		if g := newRunGate(v, newFakeObserver()); g != nil {
+			t.Fatalf("newRunGate(%d) = %v, want nil (disabled, observer never wired)", v, g)
 		}
 	}
 }
@@ -226,5 +284,44 @@ func TestRunGate_when_identity_missing_chat_rejected_unauthorized(t *testing.T) 
 	s.raw.ServeHTTP(rec, req)
 	if rec.Code != nethttp.StatusUnauthorized {
 		t.Fatalf("identity-free run status = %d, want 401\n%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRunGate_when_run_lifecycle_pushed_to_observer 验证装配面观测推送：
+// 在途运行占住活跃数、超限请求推拒绝计数、运行收尾活跃数归零（配对）。
+func TestRunGate_when_run_lifecycle_pushed_to_observer(t *testing.T) {
+	const (
+		threadID = "thread-gate-obs"
+		runID    = "run-gate-obs"
+		callID   = "call-gate-obs"
+		nickname = "gate-obs-nick"
+	)
+	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
+	obs := newFakeObserver()
+	s := newConcurrencyTestStack(t, 1, nicknameCallScript(callID, nickname, "nickname updated"), repo, WithRunObserver(obs))
+
+	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
+	waitForPending(t, s.h, threadID, 1)
+	if got := obs.activeNow(); got != 1 {
+		t.Fatalf("active runs while in flight = %d, want 1", got)
+	}
+
+	second := postJSON(t, s.h, nethttp.MethodPost, "/agui/",
+		fmt.Sprintf(`{"threadId":%q,"runId":%q,"messages":[{"id":"m-2","role":"user","content":"again"}]}`, threadID, runID+"-2"))
+	if second.Code != nethttp.StatusTooManyRequests {
+		t.Fatalf("second run status = %d, want 429\n%s", second.Code, second.Body.String())
+	}
+	if got := obs.rejectedCount(); got != 1 {
+		t.Fatalf("rejections = %d, want 1", got)
+	}
+
+	decideRec := decide(t, s.h, threadID, callID, true)
+	if decideRec.Code != nethttp.StatusOK {
+		t.Fatalf("decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
+	}
+	chatEvents(t, chat)
+	if got := obs.activeNow(); got != 0 {
+		t.Fatalf("active runs after completion = %d, want 0 (paired deltas)", got)
 	}
 }
