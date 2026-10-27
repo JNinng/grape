@@ -106,11 +106,11 @@ func (r *retrievalLogRepo) Append(ctx context.Context, rec *biz.RetrievalLogReco
 			SessionID:     textPtr(rec.SessionID),
 			Source:        rec.Source,
 			QueryText:     textPtr(rec.QueryText),
-			RequestedTopK: int32PtrNonZero(rec.RequestedTopK),
-			EffectiveTopK: int32PtrNonZero(rec.EffectiveTopK),
+			RequestedTopK: int32Ptr(rec.RequestedTopK),
+			EffectiveTopK: int32Ptr(rec.EffectiveTopK),
 			FilterSummary: filterSummary,
 			Hits:          hits,
-			DurationMs:    int32Ptr(int32(rec.DurationMS)),
+			DurationMs:    int32Ptr(int(rec.DurationMS)),
 			Status:        rec.Status,
 		})
 		return err
@@ -183,12 +183,3 @@ func retrievalLogToBiz(po *gen.AgentRetrievalLog) *biz.RetrievalLog {
 	}
 }
 
-// int32PtrNonZero 是 0 → NULL 的可空整数渲染：top_k 的 0 语义是「未
-// 指定 / 不适用」，与耗时共用「未记录落 NULL」口径。
-func int32PtrNonZero(v int) *int32 {
-	if v == 0 {
-		return nil
-	}
-	out := int32(v)
-	return &out
-}

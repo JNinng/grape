@@ -94,6 +94,10 @@ type loggedVectorStore struct {
 	registry *redact.Registry
 }
 
+// 装饰器与被装饰仓储同守一份 biz.VectorStore 契约：接口增删方法在此
+// 编译期暴露，避免装饰器静默漏转发。
+var _ biz.VectorStore = (*loggedVectorStore)(nil)
+
 // Search 转发向量检索并留痕：无论成败都记一行（status 区分），留痕写入
 // 失败只记日志，检索结果不受影响。
 func (s *loggedVectorStore) Search(ctx context.Context, embedding []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
