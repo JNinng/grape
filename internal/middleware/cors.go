@@ -72,7 +72,7 @@ func (cr *CORS) originAllowed(origin string) bool {
 }
 
 // Middleware 返回链内 CORS 中间件：
-//   - 启用即恒回 Access-Control-Expose-Headers（E1：x-trace-id 必须可读），
+//   - 启用即恒回 Access-Control-Expose-Headers（x-trace-id 必须可读），
 //     Origin 命中白名单时回 Allow-Origin（回显具体 origin，兼容携带
 //     Authorization 的请求）；带 Origin 即回 Vary: Origin（防共享缓存
 //     串答），未命中白名单不带 Allow-Origin，由浏览器侧自拒；

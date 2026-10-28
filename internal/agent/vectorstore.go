@@ -109,9 +109,10 @@ func (a *vectorStoreAdapter) Delete(ctx context.Context, id string) error {
 }
 
 // Search 只落向量检索（SearchModeVector）：keyword/hybrid 需要 tsvector
-// 列与 embedder 管线配合（D2 范围），filter-only 检索没有相似度语义，
+// 列与 embedder 管线配合，filter-only 检索没有相似度语义，
 // 其余模式显式拒绝，不静默降级成纯向量而改变检索行为。searchfilter 的
-// UniversalFilterCondition 翻译同样归 D2 检索工具落地时按需映射。
+// UniversalFilterCondition 翻译尚未实现（检索工具当前只传向量与 Limit），
+// 需要时按需映射。
 func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.SearchQuery) (*vectorstore.SearchResult, error) {
 	store, err := a.requireStore()
 	if err != nil {
@@ -121,10 +122,10 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 		return nil, errors.New("agent: search query is required")
 	}
 	if query.SearchMode != vectorstore.SearchModeVector {
-		return nil, fmt.Errorf("%w: search mode %d needs the keyword/hybrid pipeline planned for D2", errVectorUnsupported, query.SearchMode)
+		return nil, fmt.Errorf("%w: search mode %d requires the keyword/hybrid pipeline, which is not implemented yet", errVectorUnsupported, query.SearchMode)
 	}
 	if query.Filter != nil && query.Filter.FilterCondition != nil {
-		return nil, fmt.Errorf("%w: universal filter condition translation is planned with the D2 retrieval tool", errVectorUnsupported)
+		return nil, fmt.Errorf("%w: universal filter condition translation is not supported yet", errVectorUnsupported)
 	}
 	if len(query.Vector) == 0 {
 		return nil, errors.New("agent: query vector is required")
@@ -155,7 +156,7 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 }
 
 // DeleteByFilter 映射 IDs 与 metadata 过滤；DeleteAll（租户级全量清理）
-// 是跨租户管理口径（super 路径，D1 只留占位），不适配。两条件均空在
+// 是跨租户管理口径（super 路径，此处仅占位），不适配。两条件均空在
 // 契约侧同样拒绝，这里先给出框架语境的错误。
 func (a *vectorStoreAdapter) DeleteByFilter(ctx context.Context, opts ...vectorstore.DeleteOption) error {
 	store, err := a.requireStore()
@@ -175,12 +176,12 @@ func (a *vectorStoreAdapter) DeleteByFilter(ctx context.Context, opts ...vectors
 
 // UpdateByFilter 不适配：框架的批量更新语义依赖 searchfilter 条件 DSL
 // 与 metadata.* 局部更新，当前无消费方；为不囤积未经使用的复杂度，
-// 待 D2 检索工具给出真实需求时按需映射。
+// 待检索工具给出真实需求时按需映射。
 func (a *vectorStoreAdapter) UpdateByFilter(ctx context.Context, opts ...vectorstore.UpdateByFilterOption) (int64, error) {
 	if _, err := a.requireStore(); err != nil {
 		return 0, err
 	}
-	return 0, fmt.Errorf("%w: bulk update by filter has no consumer yet; map it with the D2 retrieval tool when needed", errVectorUnsupported)
+	return 0, fmt.Errorf("%w: bulk update by filter has no consumer yet; map it with the retrieval tool when needed", errVectorUnsupported)
 }
 
 // Count 映射 metadata 过滤计数。

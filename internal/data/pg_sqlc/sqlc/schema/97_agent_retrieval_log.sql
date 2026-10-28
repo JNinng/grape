@@ -28,11 +28,11 @@
 -- source 新增取值（如 management）把索引重建、过滤策略调整写入本表，
 -- 触发点即 super 管理路径的实施点，届时同步本注释与本表取值约束。
 --
--- RLS 策略在本域文件内声明而非 rls.sql：rls.sql 是多任务流共触的共享
--- 文件，新域一律独立成文件、不改他人域文件；策略
--- 形态与 rls.sql 的租户隔离完全一致（95 同口径）。grape_u 的 DML 授权
--- 不在此重复：role.sql 的默认权限（部署角色于 public schema 所建新表
--- 自动 GRANT）覆盖追加执行的本文件。
+-- RLS 策略在本域文件内声明而非 rls.sql：rls.sql 是多域共享的文件，
+-- 新域一律独立成文件、不改共享文件；策略形态与 rls.sql 的租户隔离完全
+-- 一致（95 同口径）。grape_u 的 DML 授权不在此重复：role.sql 的默认
+-- 权限（部署角色于 public schema 所建新表自动 GRANT）覆盖追加执行的
+-- 本文件。
 -- ============================================================================
 -- Agent 检索留痕
 --    向量检索与摄取写入的证据链（谁、哪个租户、traceId、查询文本、
@@ -63,12 +63,12 @@ CREATE TABLE public.agent_retrieval_log
     CONSTRAINT agent_retrieval_log_pkey PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE public.agent_retrieval_log IS '检索留痕表：记录每次向量检索与摄取写入的证据链（一次操作一行，append-only 不可变更）。保留期与归档策略归 E3 维护面裁定，当前全量保留；索引重建/过滤策略调整属 super 管理面（D1 占位），该面落地时以新增 source 取值留痕于本表';
+COMMENT ON TABLE public.agent_retrieval_log IS '检索留痕表：记录每次向量检索与摄取写入的证据链（一次操作一行，append-only 不可变更）。保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义；索引重建/过滤策略调整属 super 管理面，该面落地时以新增 source 取值留痕于本表';
 
 COMMENT ON COLUMN public.agent_retrieval_log.id IS '日志 ID，自增序列';
 COMMENT ON COLUMN public.agent_retrieval_log.tenant_id IS '租户 ID，取写入事务的 app.tenant_id';
 COMMENT ON COLUMN public.agent_retrieval_log.user_id IS '发起操作的用户 ID（认证身份）';
-COMMENT ON COLUMN public.agent_retrieval_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入，E1 口径），无链路事实时为 NULL';
+COMMENT ON COLUMN public.agent_retrieval_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.session_id IS 'Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；摄取管线当前无会话事实，恒为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.source IS '检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）';
 COMMENT ON COLUMN public.agent_retrieval_log.query_text IS '检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document';
@@ -76,14 +76,14 @@ COMMENT ON COLUMN public.agent_retrieval_log.requested_top_k IS '请求的 top_k
 COMMENT ON COLUMN public.agent_retrieval_log.effective_top_k IS '实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.filter_summary IS '过滤条件摘要（jsonb）：ids/metadata/min_score 形态，metadata 值经 retrieval 类别脱敏；脱敏截断破坏 JSON 结构时以 {"summary_truncated": …} 摘要形态落库（应用层兜底）；无条件为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.hits IS '命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按相似度降序，上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）';
-COMMENT ON COLUMN public.agent_retrieval_log.rerank_before IS '预留：rerank 前的命中序（本仓未引入 reranker，D2 检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释';
+COMMENT ON COLUMN public.agent_retrieval_log.rerank_before IS '预留：rerank 前的命中序（本仓未引入 reranker，检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释';
 COMMENT ON COLUMN public.agent_retrieval_log.rerank_after IS '预留：rerank 后的命中序（同 rerank_before，本仓未引入 reranker 恒 NULL）';
 COMMENT ON COLUMN public.agent_retrieval_log.duration_ms IS '操作耗时（毫秒）；未知为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.status IS '操作终态：success-成功、error-失败（留痕装饰器记录尝试与结果两侧，失败行不反噬业务主流程）';
 COMMENT ON COLUMN public.agent_retrieval_log.created_by IS '写入者（认证用户，与 user_id 同值：留痕行由该用户的操作产生）';
 COMMENT ON COLUMN public.agent_retrieval_log.created_at IS '写入时间';
 
--- 索引满足租户+时间 / 租户+会话 / 租户+来源三类查询面（A3 按会话/时间
+-- 索引满足租户+时间 / 租户+会话 / 租户+来源三类查询面（按会话/时间
 -- 分页、按来源过滤）；created_at DESC 与查询排序同向，id 为同秒 tie-break。
 CREATE INDEX idx_agent_retrieval_log_tenant_time ON public.agent_retrieval_log USING btree (tenant_id, created_at DESC);
 CREATE INDEX idx_agent_retrieval_log_tenant_session ON public.agent_retrieval_log USING btree (tenant_id, session_id, created_at DESC);

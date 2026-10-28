@@ -10,7 +10,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// D3 留痕 ctx 事实载体单测：会话 ID 从框架执行 ctx 提取、查询文本原样
+// 留痕 ctx 事实载体单测：会话 ID 从框架执行 ctx 提取、查询文本原样
 // 注入、事实缺失不伪造（载体留空，留痕侧落 NULL）。
 
 // invocationContext 模拟框架运行时：把带会话的 Invocation 放进 ctx。

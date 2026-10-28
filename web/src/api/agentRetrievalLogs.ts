@@ -1,7 +1,7 @@
 import { authFetch } from './http'
 import { toApiError } from './toApiError'
 
-// 检索留痕查询端点（D3，供 A3 运维复现视图）的 DTO：字段与后端
+// 检索留痕查询端点（供运维复现视图）的 DTO：字段与后端
 // service/agent_retrieval.go 的 JSON 形状对齐，时间为 UTC RFC3339。
 // queryText / filterSummary / hits 是落库时已脱敏的形态，前端直接渲染。
 

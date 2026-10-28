@@ -12,7 +12,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-// searchInternalDocsToolName 是 D2 检索工具名：模型可见、ack 分级与恢
+// searchInternalDocsToolName 是检索工具名：模型可见、ack 分级与恢
 // 复路径解析都以它为键。
 const searchInternalDocsToolName = "search_internal_docs"
 
@@ -110,7 +110,7 @@ func searchInternalDocs(embedder biz.Embedder, vectors vectorstore.VectorStore) 
 		if err != nil {
 			return searchDocsOutput{}, fmt.Errorf("embed query: %w", err)
 		}
-		// D3 留痕挂点：会话 ID（框架执行 ctx 携带）与查询文本放进 biz
+		// 留痕挂点：会话 ID（框架执行 ctx 携带）与查询文本放进 biz
 		// 中性载体，供 data 层留痕装饰器写 agent_retrieval_log——biz/data
 		// 不导入框架包，事实必须由能读到它们的本层放入 ctx（见
 		// retrieval_context.go）。

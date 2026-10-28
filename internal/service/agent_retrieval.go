@@ -22,14 +22,13 @@ const (
 	agentRetrievalMaxLimit     = 200
 )
 
-// AgentRetrievalService 承载检索留痕查询的手写端点（非 proto 生成，
-// D3 独占新文件）：
+// AgentRetrievalService 承载检索留痕查询的手写端点（非 proto 生成）：
 //
 //	GET /v1/agent/retrieval-logs                    检索留痕列表
 //	GET /v1/agent/retrieval-logs?session_id=…       按会话过滤
 //	GET /v1/agent/retrieval-logs?source=tool|pipeline  按来源过滤
 //
-// 依赖只有 biz 留痕用例——不含 internal/agent 与框架包，遵守 E2 审计
+// 依赖只有 biz 留痕用例——不含 internal/agent 与框架包，遵守审计
 // 端点的同款纪律。租户边界由仓储 IdentityTx 与表 RLS 强制（跨租户不可
 // 见等同不存在）；返回的 query_text / 过滤摘要 / 命中是落库时已脱敏的
 // 形态（写入侧经 pkg/redact 注册表），本端点不二次脱敏也不回传原文。
@@ -66,7 +65,7 @@ func (s *AgentRetrievalService) routeHandler(list func(*nethttp.Request, nethttp
 }
 
 // retrievalLogItem 是检索留痕项的响应 DTO：query_text 是落库时已脱敏的
-// 形态；过滤摘要与命中以落库的 JSON 形态原样透传（A3 证据面渲染），
+// 形态；过滤摘要与命中以落库的 JSON 形态原样透传（证据面渲染），
 // 落库为 NULL 的两列渲染为 null。时间以 UTC RFC3339 渲染。
 type retrievalLogItem struct {
 	ID            int64           `json:"id"`

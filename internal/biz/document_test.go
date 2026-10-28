@@ -75,7 +75,7 @@ func ingestCtx() context.Context {
 
 func TestDocumentUsecase_when_constructed_with_mismatched_dimension_fails(t *testing.T) {
 	// 维度链路对账：embedder 声明 4 维而 conf 传 1024 → 构造期拒绝
-	//（启动即失败，与 D1 探针同口径）。
+	//（启动即失败，与 conf vs DDL 探针同口径）。
 	_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, 1024)
 	if err == nil || !strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("NewDocumentUsecase(mismatched dims) = %v, want dimension error", err)

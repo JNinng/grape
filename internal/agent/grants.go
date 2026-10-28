@@ -16,7 +16,7 @@ import (
 	"github.com/jninng/trpc_agent_go_ack"
 )
 
-// storedGrants 是许可源的真实现（C2，替换 C1 的 noopGrants）：ack 的
+// storedGrants 是许可源的真实现：ack 的
 // string UserID 是 userKey（tenant_id:user_id），经 DecodeUserKey 映射
 // 为内部 (tenant_id, user_id) 后交 biz.GrantUsecase 落 agent_tool_grant
 // 表（经 IdentityTx 走 RLS；仓储查询另显式携带租户过滤，RLS 关闭时
@@ -66,7 +66,7 @@ func (s *storedGrants) Lookup(ctx context.Context, q ack.GrantQuery) (ack.Grant,
 // Save 实现 ack.GrantSource：ack 在人工同意且指定 remember 时写入。
 // 会话级/全局级两形态按 SessionID 是否为空区分（空即全局级）；
 // created_by 记属主本人——归属守卫保证确认决定者即会话属主，许可归属
-// 与授权来源一致（DecidedBy 的决定者审计留痕归 E2 的确认日志面）。
+// 与授权来源一致（DecidedBy 的决定者审计留痕归确认日志面）。
 func (s *storedGrants) Save(ctx context.Context, g ack.Grant) error {
 	tenant, user, err := DecodeUserKey(g.UserID)
 	if err != nil {

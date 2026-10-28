@@ -159,7 +159,7 @@ var llmContentRedactor = redact.NewTruncate(promptLogLimit, "...(truncated)")
 // llmLoggerOf 返回 LLM 日志落点：生产为进程默认 logger（main.go 经
 // kratos log.SetDefault 注入 grape JSON logger，且 kratos v3 的
 // SetDefault 即 slog.SetDefault）——ctx 携带 SpanContext 时 trace_id /
-// span_id 由 logger extractor 自动展开（E1 桥接口径）。变量间接层仅供
+// span_id 由 logger extractor 自动展开（桥接口径）。变量间接层仅供
 // 测试替换捕获输出。
 var llmLoggerOf = func() *slog.Logger { return slog.Default() }
 

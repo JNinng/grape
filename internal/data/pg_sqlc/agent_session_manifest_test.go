@@ -29,7 +29,7 @@ var agentSessionDDLTables = []string{
 // 框架升级跑全量校验或运行期读写即断。
 func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *testing.T) {
 	// 相对序约束：agent_session.sql 在 seed.sql 之后即可，不锁绝对
-	// 最后——并行流（如向量域）追加的清单项可落在其后，避免尾部互斥。
+	// 最后——后续域（如向量域）追加的清单项可落在其后，避免尾部互斥。
 	seedPos, agentPos := -1, -1
 	for i, name := range DeployFiles {
 		switch name {

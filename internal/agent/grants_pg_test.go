@@ -53,7 +53,7 @@ var (
 )
 
 // grantSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
-// grape_u DSN。形态与 C1/B2 套件一致（单一事实源的部署清单 +
+// grape_u DSN。形态与既有套件一致（单一事实源的部署清单 +
 // 跨包互斥锁）。
 func grantSetupDatabase(t *testing.T) string {
 	t.Helper()
@@ -435,7 +435,7 @@ func TestPGGrant_when_remember_global_covers_other_thread(t *testing.T) {
 
 // TestPGGrant_when_pool_rebuilt_grant_still_effective 验证持久化维度
 // 的重启语义：许可在库中跨连接池存活，重建池 + 重建栈后同会话调用
-// 仍免确认（与 C1 孤儿确认的恢复语义互补：grants 在库、pending 指针
+// 仍免确认（与孤儿确认的恢复语义互补：grants 在库、pending 指针
 // 在会话状态，重启后都还在）。
 func TestPGGrant_when_pool_rebuilt_grant_still_effective(t *testing.T) {
 	dsn := grantSetupDatabase(t)

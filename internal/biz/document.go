@@ -84,7 +84,7 @@ type DocumentUsecase struct {
 // 透传（摄取入口接线时须补 conf.vector.dimension 的 wire 提供方——当前
 // 生产 injector 尚无消费方，wire 会剪枝本 provider）：与 embedder.Dimensions() 不
 // 一致即拒绝构造——维度链路（embedder 模型 → conf → DDL 列）的中间一
-// 环在启动期对账，与 D1 的 conf vs DDL 探针同口径，不一致启动即失败。
+// 环在启动期对账，与 conf vs DDL 探针同口径，不一致启动即失败。
 func NewDocumentUsecase(store VectorStore, embedder Embedder, dimension int, opts ...DocumentOption) (*DocumentUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: document usecase requires a vector store")

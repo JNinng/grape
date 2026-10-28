@@ -28,7 +28,7 @@ import (
 // 工具，不存在该形状）。
 //
 // 摘要纪律：参数/结果摘要收未脱敏原文，脱敏与截断由 biz.AuditUsecase 在
-// 落库前完成（E1 注册表的 tool_param / retrieval 两类别，与日志、复现
+// 落库前完成（注册表的 tool_param / retrieval 两类别，与日志、复现
 // 视图共用）。
 
 // auditedTools 给工具清单包上审计/观测 wrapper：仅包装 CallableTool 形状
@@ -101,7 +101,8 @@ func (t *auditTool) record(ctx context.Context, jsonArgs []byte, result any, err
 		ArgumentsSummary: string(jsonArgs),
 		ResultSummary:    summarizeToolResult(result),
 		// 框架不对外暴露重试次数（重试在框架执行面内部收敛，终态只见最终
-		// 一次调用），按 biz 契约记 0；真实采集留 E3 评估回调接线。
+		// 一次调用），按 biz 契约恒记 0；最终口径见根目录 operations.md
+		// 「工具重试次数口径」，框架透出计数时在本 wrapper 单点补采。
 		RetryCount: 0,
 		DurationMS: d.Milliseconds(),
 		Status:     status,
@@ -171,7 +172,7 @@ var auditWriteTimeout = 5 * time.Second
 // writeAudit 安全执行一次审计写入：写入走脱离请求生命周期的独立短超时
 // ctx（WithoutCancel 保留身份与链路事实——IdentityTx 取身份、审计行取
 // trace_id 都依赖 ctx 值；超时与取消不再跟随请求），hook 错误与 panic 都
-// 只记日志、不向上传播——审计不得反噬业务主流程（E2 纪律）。
+// 只记日志、不向上传播——审计不得反噬业务主流程。
 func writeAudit(ctx context.Context, logger *slog.Logger, action string, write func(ctx context.Context) error) {
 	defer func() {
 		if r := recover(); r != nil {

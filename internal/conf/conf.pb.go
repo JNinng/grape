@@ -979,7 +979,7 @@ func (x *Agent_Compression) GetKeepToolNames() []string {
 
 // Summarization 是会话摘要的配置位：当前恒关闭。启用需要额外的
 // summarizer 模型与摘要注入模式（system/user，user 模式参与 token
-// 预算裁剪）选型，B2 未实现；占位以保证后续启用不改配置结构。
+// 预算裁剪）选型，尚未实现；占位以保证后续启用不改配置结构。
 type Agent_Summarization struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Enabled       bool                   `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
@@ -1322,7 +1322,7 @@ type Server_HTTP struct {
 	RequestTimeout *durationpb.Duration `protobuf:"bytes,4,opt,name=request_timeout,json=requestTimeout,proto3" json:"request_timeout,omitempty"`
 	// CORS 是跨域资源共享的可选配置。默认关闭：不输出任何 CORS 头。
 	// 开启时所有链内响应恒带 Access-Control-Expose-Headers:
-	// x-trace-id, x-request-id（E1 明文要求，前端可读链路 ID）。
+	// x-trace-id, x-request-id（前端可读链路 ID）。
 	Cors          *Server_CORS `protobuf:"bytes,5,opt,name=cors,proto3" json:"cors,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

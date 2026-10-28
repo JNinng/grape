@@ -78,7 +78,7 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
 // 审计写入挂点：nil 即不审计——工具清单不包终态 wrapper、
 // ack 决定路由不装审计面，装配形态与接线前完全一致。gate 是运行入口
-// 并发门控（E3 限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
+// 并发门控（限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
 // handler 原样透传。
 type Stack struct {
 	handler     nethttp.Handler
@@ -105,14 +105,14 @@ func WithModelOverride(m model.Model) StackOption {
 	return func(o *stackOptions) { o.modelOverride = m }
 }
 
-// WithAuditHook 注入审计写入挂点（E2/C1 接线）：wire 生产装配传
+// WithAuditHook 注入审计写入挂点：wire 生产装配传
 // biz.AuditUsecase（满足 AuditHook 的编译期断言见 audit_hook.go）。缺省
 // nil = 不审计（测试装配不受影响）；挂点写入失败只记日志、不中断运行。
 func WithAuditHook(hook AuditHook) StackOption {
 	return func(o *stackOptions) { o.audit = hook }
 }
 
-// WithRunObserver 注入运行面观测契约（E3 metrics）：wire 生产装配传
+// WithRunObserver 注入运行面观测契约（metrics）：wire 生产装配传
 // biz.AgentRunObserver（ops 的 RuntimeMetrics，经 wire.Bind 提供）。缺省
 // nil = 不观测；观测为旁路推送，不影响任何请求语义。非 nil 时工具清单
 // 同样包上 wrapper（与审计共用单层包装，计数/耗时在终态处顺带观测）。
@@ -124,9 +124,9 @@ func WithRunObserver(observer biz.AgentRunObserver) StackOption {
 // Agent 骨架。装配顺序固定为 模型 → 工具 → ack 网关 → LLMAgent → core
 // runner → AG-UI runner（挂许可策略 + ack 恢复路径续跑用它）→ AG-UI
 // server → 外层 ServeMux；任一环失败即返回错误，装配失败拒绝启动。
-// grants 是工具授权用例（C2 的许可存储：非 nil 时 ack 网关接入
+// grants 是工具授权用例（许可存储：非 nil 时 ack 网关接入
 // agent_tool_grant 表，remember 生效、吊销后重新确认；nil 仅供不触达
-// 授权面的测试装配，维持 C1 的无许可源形态）。embedder 供检索工具做
+// 授权面的测试装配，维持无许可源形态）。embedder 供检索工具做
 // 查询向量化（向量设施未启用时为禁用占位实现，必填校验只拒 nil——
 // 那是装配错误）。
 func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, opts ...StackOption) (*Stack, error) {
@@ -190,17 +190,17 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		aguirunner.WithSessionService(sessions),
 		aguirunner.WithUserIDResolver(resolveUserID),
 		aguirunner.WithTimeout(runTimeout),
-		// B1 评审硬性项：每次 AG-UI 运行（含恢复路径的续跑运行）都经
+		// 每次 AG-UI 运行（含恢复路径的续跑运行）都经
 		// 网关的 RunOptionResolver 挂上许可策略——工具调用先经 ack 评估，
 		// Confirm 层级阻塞等待人工决定。缺它则分级表形同虚设，恢复路径
 		// 降级为拒绝。
 		aguirunner.WithRunOptionResolver(gateway.RunOptionResolver()),
-		// /history tail follow（B2 会话能力）：快照响应尾部持续输出新
+		// /history tail follow：快照响应尾部持续输出新
 		// 持久化的 track 事件。agui.New 的同名选项只进 aguiRunnerOptions，
 		// 会被下方 runner 工厂丢弃，必须在此同步一份。
 		aguirunner.WithMessagesSnapshotFollowEnabled(true),
 	)
-	// B1 评审硬性项：Bind 把 AG-UI runner 注入恢复路径——服务重启后的
+	// Bind 把 AG-UI runner 注入恢复路径——服务重启后的
 	// 孤儿确认经网关 Decide 时由它拉起续跑运行（代执行工具或合成拒绝）。
 	// 未 Bind 的网关对孤儿决定返回 ErrNotBound（HTTP 500），恢复路径
 	// 退化为拒绝。必须与实际服务请求的 runner 是同一实例（见下方
@@ -216,7 +216,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		agui.WithCancelEnabled(true),
 		agui.WithHeartbeatInterval(heartbeatOf(c)),
 		agui.WithTimeout(runTimeout),
-		// /history 快照回放（B2 会话能力）：要求会话存储实现
+		// /history 快照回放：要求会话存储实现
 		// TrackService，track 事件持久化进 agent_session_track_events。
 		agui.WithMessagesSnapshotEnabled(true),
 		agui.WithMessagesSnapshotFollowEnabled(true),
@@ -259,7 +259,7 @@ func (s *Stack) Close() {
 	}
 }
 
-// Handler 返回外层 ServeMux：AG-UI（chat / cancel，B2 加 /history）与
+// Handler 返回外层 ServeMux：AG-UI（chat / cancel，含 /history）与
 // ackhttp（confirmation 决定与待确认查询）共用一个前缀空间。子路径
 // 的方法分发在 mux 内完成，外层只需前缀整体入 Kratos 链。
 func (s *Stack) Handler() nethttp.Handler { return s.handler }
@@ -280,7 +280,7 @@ func (s *Stack) BasePath() string { return s.basePath }
 func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
 
 // EventWindowHandler 返回会话事件窗口端点（GET {BasePath}/event-window，
-// A3 压缩占位原文对照与执行轨迹回查）的 HTTP 形态：与 AG-UI / ack 同一
+// 压缩占位原文对照与执行轨迹回查）的 HTTP 形态：与 AG-UI / ack 同一
 // session.Service 实例（WindowService 能力）、同一 app 名命名空间、同一
 // userKey 编码。路由注册与入链归 service，且必须先于 agent 前缀通配
 // （见 server.NewHTTPServer）。
@@ -291,7 +291,7 @@ func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
 // /agui/ack 前缀上（方法级模式更具体，Go ServeMux 最长优先命中），授权
 // 管理端点以方法+路径模式挂载（GET {basePath}/grants 与
 // DELETE {basePath}/grants/{id}，模式特异性同样先于 AG-UI 前缀子树）。
-// gate 是运行入口并发门控（E3 限流）：nil 即关闭，AG-UI 子树原样挂载。
+// gate 是运行入口并发门控（限流）：nil 即关闭，AG-UI 子树原样挂载。
 // ack 子树外套会话归属守卫：ack 的 live 决定路径不校验决定者归属（见
 // ackOwnerGuard），grape 在唯一挂载点强制「确认决定/待确认查询只作用于
 // 自己名下的会话」。audit 非 nil 时归属守卫内层再套决定路由审计面

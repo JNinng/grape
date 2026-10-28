@@ -369,7 +369,7 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 func TestPGDocumentSearch_dimension_mismatch_rejects_at_assembly(t *testing.T) {
 	f := searchNewFixture(t)
 	// 替身 embedder 声明维度与 conf（部署列）不一致：装配期失败（启动
-	// 即失败，与 D1 conf vs DDL 探针共同封住维度链路两端）。
+	// 即失败，与 conf vs DDL 探针共同封住维度链路两端）。
 	_, err := biz.NewDocumentUsecase(f.store, &keywordEmbedder{dims: 8}, searchDimension)
 	if err == nil || !strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("NewDocumentUsecase(dimension mismatch) = %v, want rejection", err)

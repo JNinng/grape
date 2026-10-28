@@ -9,12 +9,12 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-// echoToolName 是 B1 骨架工具名：模型可见、ack 分级与恢复路径解析都
+// echoToolName 是骨架工具名：模型可见、ack 分级与恢复路径解析都
 // 以它为键。
 const echoToolName = "echo"
 
 // echoInput / echoOutput 是 echo 工具的入参与出参。只读、无副作用，
-// 用于 B1 打通模型 → 工具 → SSE 事件流的端到端链路；C1 起业务工具
+// 用于打通模型 → 工具 → SSE 事件流的端到端链路；业务工具
 // 经 biz 用例接入，不再在本层堆积。
 type echoInput struct {
 	Text string `json:"text"`

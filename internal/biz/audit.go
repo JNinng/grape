@@ -195,7 +195,7 @@ type AuditRepo interface {
 }
 
 // TraceIDFromContext 从 ctx 的 SpanContext 提取链路 ID（链路中间件注入，
-// E1 已打通；遥测开关关闭时 SpanContext 仍恒在）。无链路事实返回空串，
+// 遥测开关关闭时 SpanContext 仍恒在）。无链路事实返回空串，
 // 落库为 NULL——链路缺失如实留空，不伪造。
 func TraceIDFromContext(ctx context.Context) string {
 	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
@@ -212,7 +212,7 @@ type AuditUsecase struct {
 }
 
 // NewAuditUsecase 构造审计用例：registry 是与日志/复现视图共用的脱敏
-// 注册表（E1 单一代码点，经 wire 提供同一实例）。
+// 注册表（单一代码点，经 wire 提供同一实例）。
 func NewAuditUsecase(repo AuditRepo, registry *redact.Registry) *AuditUsecase {
 	return &AuditUsecase{repo: repo, registry: registry}
 }
@@ -395,8 +395,8 @@ func (uc *AuditUsecase) buildConfirmation(ctx context.Context, in *ConfirmationR
 // redactSummary 按类别消费脱敏注册表并做长度兜底。未登记类别（Redact
 // 返回 false）的选择是【放行原值但保留截断】：拒绝会让这次工具调用
 // 完全没有审计行——审计的目的是留痕，因脱敏语义未声明而丢弃记录比
-// 落一条已截断的原文危害更大；截断兜底保证不会落超长原文。装配方按
-// E1 口径补齐类别后自动全量生效。已登记类别输出脱敏值后同样过上限
+// 落一条已截断的原文危害更大；截断兜底保证不会落超长原文。装配方
+// 补齐类别后自动全量生效。已登记类别输出脱敏值后同样过上限
 // （非截断型实现如掩码/哈希天然短，此处只为统一语义）。
 func (uc *AuditUsecase) redactSummary(category, value string) string {
 	if value == "" {

@@ -32,7 +32,7 @@ type AgentConfirmationLog struct {
 	Remember *string `db:"remember" json:"remember"`
 	// 决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑
 	Path string `db:"path" json:"path"`
-	// 决定人：ack 网关的身份字符串（userKey 编码，与 B2/A1 同一编码）
+	// 决定人：ack 网关的身份字符串（userKey 编码）
 	DecidedBy string `db:"decided_by" json:"decided_by"`
 	// 决定时间
 	DecidedAt pgtype.Timestamp `db:"decided_at" json:"decided_at"`
@@ -42,7 +42,7 @@ type AgentConfirmationLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 检索留痕表：记录每次向量检索与摄取写入的证据链（一次操作一行，append-only 不可变更）。保留期与归档策略归 E3 维护面裁定，当前全量保留；索引重建/过滤策略调整属 super 管理面（D1 占位），该面落地时以新增 source 取值留痕于本表
+// 检索留痕表：记录每次向量检索与摄取写入的证据链（一次操作一行，append-only 不可变更）。保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义；索引重建/过滤策略调整属 super 管理面，该面落地时以新增 source 取值留痕于本表
 type AgentRetrievalLog struct {
 	// 日志 ID，自增序列
 	ID int64 `db:"id" json:"id"`
@@ -50,7 +50,7 @@ type AgentRetrievalLog struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 发起操作的用户 ID（认证身份）
 	UserID int64 `db:"user_id" json:"user_id"`
-	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入，E1 口径），无链路事实时为 NULL
+	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL
 	TraceID *string `db:"trace_id" json:"trace_id"`
 	// Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；摄取管线当前无会话事实，恒为 NULL
 	SessionID *string `db:"session_id" json:"session_id"`
@@ -66,7 +66,7 @@ type AgentRetrievalLog struct {
 	FilterSummary []byte `db:"filter_summary" json:"filter_summary"`
 	// 命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按相似度降序，上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）
 	Hits []byte `db:"hits" json:"hits"`
-	// 预留：rerank 前的命中序（本仓未引入 reranker，D2 检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释
+	// 预留：rerank 前的命中序（本仓未引入 reranker，检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释
 	RerankBefore *string `db:"rerank_before" json:"rerank_before"`
 	// 预留：rerank 后的命中序（同 rerank_before，本仓未引入 reranker 恒 NULL）
 	RerankAfter *string `db:"rerank_after" json:"rerank_after"`
@@ -132,7 +132,7 @@ type AgentToolGrant struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 吊销操作者：属主本人或持有 agent:grant:revoke 权限码的管理者
 	RevokedBy *int64 `db:"revoked_by" json:"revoked_by"`
-	// 吊销时间；NULL 即许可有效，非 NULL 行保留作审计现场（E3 定保留期）
+	// 吊销时间；NULL 即许可有效，非 NULL 行保留作审计现场
 	RevokedAt pgtype.Timestamp `db:"revoked_at" json:"revoked_at"`
 }
 

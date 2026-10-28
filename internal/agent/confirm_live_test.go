@@ -1,6 +1,6 @@
 package agent
 
-// C1 live 确认流集成测试：进程内会话存储 + 脚本化模型 + 内存用户仓储 +
+// live 确认流集成测试：进程内会话存储 + 脚本化模型 + 内存用户仓储 +
 // 完整 Stack handler，覆盖 ack 直通路径（live）的完整 HTTP 契约——写工具
 // 触发 tool_confirmation、同意后运行继续且工具真实执行、拒绝后以 denied
 // 结算且模型不重试、跨用户决定被归属守卫拒绝、工具迭代上限终止死循环。
@@ -359,7 +359,7 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 }
 
 // TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected
-// 防回归（评审实证的绕过形态）：守卫的 threadId 取值源与 ackhttp 严格
+// 防回归（已知绕过形态）：守卫的 threadId 取值源与 ackhttp 严格
 // 对齐——POST 决定只认 body。攻击者用「查询参数=自己名下会话（可通过
 // 归属校验的合法值）+ body=他人会话（真正要决定的目标）」必须在守卫处
 // 404：原确认不受影响、工具零执行；归属者后续合法决定仍走 live 路径
@@ -413,8 +413,8 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	_ = strangerChat
 }
 
-// TestConfirmLive_when_decide_body_trailing_data_rejected 防回归（复评
-// 实证的解码分歧形态）：body 为「合法 JSON + 尾随数据」时 ackhttp 的
+// TestConfirmLive_when_decide_body_trailing_data_rejected 防回归（已知
+// 的解码分歧形态）：body 为「合法 JSON + 尾随数据」时 ackhttp 的
 // json.Decoder 能正常解码并照常决定，守卫必须以完全同一的解码方式取值
 // ——若退化为 json.Unmarshal 会误判形状非法而放行，跨用户决定直达
 // ackhttp。该形态不依赖查询参数（旧取值源缺陷与解码分歧两条路都封死）。

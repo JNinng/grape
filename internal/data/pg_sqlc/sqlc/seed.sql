@@ -1474,7 +1474,7 @@ VALUES (63, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-0
 
 
 -- ===========================
--- 9. Agent 工具授权管理权限码 (sys_menu / sys_role_menu, C2)
+-- 9. Agent 工具授权管理权限码 (sys_menu / sys_role_menu)
 --    授权管理 REST 的功能权限入口：agent:grant:query（全租户授权列表）、
 --    agent:grant:revoke（吊销他人授权）。本人授权列表与本人吊销不设码，
 --    认证身份即凭据。菜单挂在独立一级目录「智能助手」下，ID 段 25x。

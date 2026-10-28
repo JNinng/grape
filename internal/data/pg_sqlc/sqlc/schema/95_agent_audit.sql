@@ -13,9 +13,9 @@
 -- 事务内完成，租户取会话 app.tenant_id；摘要列在落库前已经 pkg/redact
 -- 注册表脱敏（tool_param / retrieval 类别）并按应用层上限截断，长度
 -- 约束在列注释声明（应用层保证，不设数据库 CHECK——上限调整不该伴随
--- 存量行迁移）。RLS 策略在本域文件内声明而非 rls.sql：rls.sql 是多任务
--- 流共触的共享文件，新域一律独立成文件、不改他人域
--- 文件；策略形态与 rls.sql 的租户隔离完全一致。
+-- 存量行迁移）。RLS 策略在本域文件内声明而非 rls.sql：rls.sql 是多域
+-- 共享的文件，新域一律独立成文件、不改共享文件；策略形态与 rls.sql
+-- 的租户隔离完全一致。
 -- ============================================================================
 -- Agent 业务审计
 --    工具调用审计（谁、哪个租户、traceId、参数/结果摘要、重试、耗时、
@@ -98,7 +98,7 @@ COMMENT ON COLUMN public.agent_confirmation_log.tool_name IS '被确认的工具
 COMMENT ON COLUMN public.agent_confirmation_log.decision IS '决定：approved-同意、denied-拒绝（pending 是决定前状态，不入审计）';
 COMMENT ON COLUMN public.agent_confirmation_log.remember IS '决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（拒绝时恒为 NULL）';
 COMMENT ON COLUMN public.agent_confirmation_log.path IS '决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑';
-COMMENT ON COLUMN public.agent_confirmation_log.decided_by IS '决定人：ack 网关的身份字符串（userKey 编码，与 B2/A1 同一编码）';
+COMMENT ON COLUMN public.agent_confirmation_log.decided_by IS '决定人：ack 网关的身份字符串（userKey 编码）';
 COMMENT ON COLUMN public.agent_confirmation_log.decided_at IS '决定时间';
 COMMENT ON COLUMN public.agent_confirmation_log.created_by IS '写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方）';
 COMMENT ON COLUMN public.agent_confirmation_log.created_at IS '写入时间';
@@ -112,7 +112,7 @@ CREATE INDEX idx_agent_confirmation_log_tenant_session ON public.agent_confirmat
 -- RLS 租户隔离：与 rls.sql 的租户表同一规则（tenant_id =
 -- current_setting('app.tenant_id', true)，ENABLE + FORCE，表主不豁免；
 -- 未设置 app.tenant_id 时比较恒为假 → 默认全拒）。策略落在本域文件
--- 而非 rls.sql 的理由见文件头注释（并行冲突纪律 + 新域独立成文件）。
+-- 而非 rls.sql 的理由见文件头注释（新域独立成文件、不改共享文件）。
 -- grape_u 的 DML 授权不在此重复：role.sql 的默认权限（部署角色于
 -- public schema 所建新表自动 GRANT）覆盖追加执行的本文件。
 -- ============================================================

@@ -77,7 +77,7 @@ type VectorStore interface {
 	Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error)
 	// DeleteByFilter 按 IDs/Metadata 交集删除，返回删除行数；两个条件
 	// 均空时拒绝执行——租户级全量清理是跨租户管理口径（super 路径，
-	// D1 只留占位），不设普通入口。
+	// 向量层仅留占位，见 permission.md），不设普通入口。
 	DeleteByFilter(ctx context.Context, filter *VectorFilter) (int64, error)
 	// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量。
 	Count(ctx context.Context, filter *VectorFilter) (int64, error)

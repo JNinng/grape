@@ -22,8 +22,7 @@ const (
 	agentAuditMaxLimit     = 200
 )
 
-// AgentAuditService 承载 Agent 业务审计查询的手写端点（非 proto 生成，
-// E2 独占新文件）：
+// AgentAuditService 承载 Agent 业务审计查询的手写端点（非 proto 生成）：
 //
 //	GET /v1/agent/audit/tool-calls                 工具调用审计列表
 //	GET /v1/agent/audit/tool-calls?tool_call_id=…  按工具调用 ID 点查

@@ -224,7 +224,7 @@ message Agent {
 
   // Summarization 是会话摘要的配置位：当前恒关闭。启用需要额外的
   // summarizer 模型与摘要注入模式（system/user，user 模式参与 token
-  // 预算裁剪）选型，B2 未实现；占位以保证后续启用不改配置结构。
+  // 预算裁剪）选型，尚未实现；占位以保证后续启用不改配置结构。
   message Summarization {
     bool enabled = 1;
   }
@@ -255,7 +255,7 @@ message Server {
     google.protobuf.Duration request_timeout = 4;
     // CORS 是跨域资源共享的可选配置。默认关闭：不输出任何 CORS 头。
     // 开启时所有链内响应恒带 Access-Control-Expose-Headers:
-    // x-trace-id, x-request-id（E1 明文要求，前端可读链路 ID）。
+    // x-trace-id, x-request-id（前端可读链路 ID）。
     CORS cors = 5;
   }
   // CORS 是跨域资源共享配置，由 internal/middleware 的轻量 CORS 中间件

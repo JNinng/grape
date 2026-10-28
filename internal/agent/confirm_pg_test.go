@@ -48,7 +48,7 @@ const confirmTestDatabase = "grape_agent_confirm_test"
 const confirmGrapeUPassword = "grape_u_pwd"
 
 // confirmSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
-// grape_u DSN。形态与 B2 会话集成测试一致（单一事实源的部署清单 +
+// grape_u DSN。形态与会话集成测试一致（单一事实源的部署清单 +
 // 跨包互斥锁）。
 func confirmSetupDatabase(t *testing.T) string {
 	t.Helper()

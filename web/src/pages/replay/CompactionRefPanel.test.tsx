@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CompactionRef } from './compaction'
 import { CompactionRefPanel } from './CompactionRefPanel'
 
-// 组件最少集：压缩占位符徽标与原文对照展开（A3 的核心交互件）。
+// 组件最少集：压缩占位符徽标与原文对照展开（复现视图的核心交互件）。
 
 vi.mock('../../api/agentEventWindow', () => ({
   fetchEventWindow: vi.fn(),

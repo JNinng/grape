@@ -1,8 +1,9 @@
-// 压缩占位符识别（纯函数，A3 复现视图）：在回放文本中识别上下文压缩
+// 压缩占位符识别（纯函数，复现视图）：在回放文本中识别上下文压缩
 // 产生的占位符形状，提取 event_id 恢复引用供「占位 ↔ 原文」对照。
 //
 // 占位符形状与 trpc-agent-go internal/flow/processor/context_compact.go
-// 一致（B2 集成测试同样按这些形状断言）：
+// 一致（前端识别单测 compaction.test.ts 按这些形状断言；会话集成测试
+// 只断言占位符携带 event_id 引用）：
 //  1. 整体替换占位符（Pass 0/1 可恢复）：`[elided] Previous tool call
 //     succeeded …` 头部 + 尾部行式恢复引用（`event_id: <id>` /
 //     `tool_call_id: <id>` / `tool_name: <name>` / `reason: <reason>`）；

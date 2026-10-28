@@ -17,13 +17,13 @@ import (
 // 也不回传原文）。
 
 // 留痕行的领域取值：
-//   - source：检索来源。tool-检索工具链路（Search，当前唯一检索消费方
-//     是 D2 检索工具经框架适配器访问）；pipeline-摄取管线（Add/Update/
+//   - source：检索来源。tool-检索工具链路（Search 的唯一消费方是检索
+//     工具，经框架适配器访问）；pipeline-摄取管线（Add/Update/
 //     DeleteByFilter）；管理面（索引重建/过滤策略调整，super 路径占位）
 //     落地时扩展取值，触发点见 sqlc/schema/97_agent_retrieval_log.sql
 //     的头注释；
 //   - status：操作终态，成功 / 失败（失败行同样留痕——尝试即证据，
-//     与 E2 工具调用审计的终态口径一致）。
+//     与工具调用审计的终态口径一致）。
 const (
 	RetrievalSourceTool     = "tool"
 	RetrievalSourcePipeline = "pipeline"
@@ -33,7 +33,7 @@ const (
 )
 
 // 留痕列宽与分页口径：与 schema/97_agent_retrieval_log.sql 的列注释及
-// E2 审计的分页惯例一致（默认 20、单页上限 200、offset 非负）。
+// 审计的分页惯例一致（默认 20、单页上限 200、offset 非负）。
 const (
 	retrievalSessionColumnWidth = 255
 	retriealLogDefaultPageSize  = 20
@@ -63,7 +63,7 @@ type RetrievalHit struct {
 // 调用方无法伪造归属。QueryText 与 FilterSummary 收「已脱敏成型」的
 // 最终形态（脱敏与截断是装饰器的落库前义务，见 pg_sqlc 装饰器注释）。
 type RetrievalLogRecord struct {
-	// TraceID 是链路 ID（ctx SpanContext，E1 口径）；无链路事实为空，
+	// TraceID 是链路 ID（ctx SpanContext）；无链路事实为空，
 	// 落库为 NULL——链路缺失如实留空，不伪造。
 	TraceID string
 	// SessionID 是 Agent 会话 ID（检索工具链路经 ctx 事实载体携带）；
@@ -92,7 +92,7 @@ type RetrievalLogRecord struct {
 }
 
 // RetrievalLog 是检索留痕的读侧完整行。FilterSummary / Hits 以落库的
-// JSON 形态透传（json.RawMessage）：命中与过滤摘要是证据面，A3 按落库
+// JSON 形态透传（json.RawMessage）：命中与过滤摘要是证据面，按落库
 // 原样渲染，不做读侧重塑（同「返回脱敏后形态」口径——写入侧已脱敏）。
 // RequestedTopK / EffectiveTopK 的 0 值渲染 NULL（未指定 / 不适用）。
 type RetrievalLog struct {
@@ -133,7 +133,7 @@ type RetrievalLogList struct {
 // RetrievalLogRepo 是检索留痕读写的仓储契约，由 data 层实现；写入与
 // 查询都绑定认证身份（IdentityTx，每事务 set_config('app.tenant_id',
 // ..., true)），身份从 ctx 提取，契约不接收身份参数。表为追加写，
-// 契约只有写入与分页读取（A3 最小面），没有更新/删除/点查。
+// 契约只有写入与分页读取的最小面，没有更新/删除/点查。
 type RetrievalLogRepo interface {
 	// Append 写入一条检索留痕。
 	Append(ctx context.Context, rec *RetrievalLogRecord) error

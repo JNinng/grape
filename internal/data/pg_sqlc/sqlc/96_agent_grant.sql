@@ -10,7 +10,7 @@
 -- RLS 落点口径：表在 public 业务域、带 tenant_id，租户隔离策略随本
 -- 域文件声明而不进 rls.sql——与 expose.sql 承载 sys_perm_version 策略
 -- 同一口径（域内对象策略随域文件走，rls.sql 只集纳基线租户表），避免
--- 并行域在共享文件上互相牵动。ENABLE + FORCE 与基线表一致；缺
+-- 各域在共享文件上互相牵动。ENABLE + FORCE 与基线表一致；缺
 -- app.tenant_id 时 current_setting(...,true) 为 NULL，比较恒为假，
 -- 默认全拒。
 --
@@ -70,7 +70,7 @@ COMMENT ON COLUMN public.agent_tool_grant.session_id IS '绑定的会话（AG-UI
 COMMENT ON COLUMN public.agent_tool_grant.created_by IS '授权来源操作者（确认决定的 DecidedBy 解码，正常流即属主本人）';
 COMMENT ON COLUMN public.agent_tool_grant.created_at IS '授权时间（数据库时钟）';
 COMMENT ON COLUMN public.agent_tool_grant.revoked_by IS '吊销操作者：属主本人或持有 agent:grant:revoke 权限码的管理者';
-COMMENT ON COLUMN public.agent_tool_grant.revoked_at IS '吊销时间；NULL 即许可有效，非 NULL 行保留作审计现场（E3 定保留期）';
+COMMENT ON COLUMN public.agent_tool_grant.revoked_at IS '吊销时间；NULL 即许可有效，非 NULL 行保留作审计现场';
 
 -- 租户隔离策略：与基线租户表同一条规则（口径说明见文件头）。
 ALTER TABLE public.agent_tool_grant ENABLE ROW LEVEL SECURITY;

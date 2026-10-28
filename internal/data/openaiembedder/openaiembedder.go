@@ -37,8 +37,8 @@ const (
 // （所有调用按设施缺失拒绝，不发网络请求）；启用时校验配置完整并
 // fail-fast：dimension 在 (0, 16000]、base_url 与 model 必填。embedding
 // 模型的真实产出维度无法离线探知，维度对账的执行点在每次 Embed 响应
-// 复核 + DocumentUsecase 装配期与 conf 对账（biz 侧），与 D1 探针
-// （conf vs DDL）共同构成维度链路的三道校验。
+// 复核 + DocumentUsecase 装配期与 conf 对账（biz 侧），与 conf vs DDL
+// 探针共同构成维度链路的三道校验。
 func New(c *conf.Vector) (biz.Embedder, func(), error) {
 	if !c.GetEnabled() {
 		return disabledEmbedder{}, func() {}, nil

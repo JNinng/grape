@@ -56,7 +56,7 @@ func (g *ackOwnerGuard) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) 
 		// 只取首个 JSON 值、容忍尾随数据。取值结果必然一致——若退化为
 		// json.Unmarshal（拒绝尾随数据），「合法 JSON + 尾随数据」的请求
 		// 会被守卫当作形状非法放行，ackhttp 却能正常解码照常决定，
-		// 形成跨用户绕过（复评实证形态）。解码失败放行：ackhttp 对同一
+		// 形成跨用户绕过（已知绕过形态）。解码失败放行：ackhttp 对同一
 		// 输入同样失败，以 400 拒绝。
 		var req struct {
 			ThreadID string `json:"threadId"`

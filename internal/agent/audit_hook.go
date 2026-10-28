@@ -33,5 +33,5 @@ type AuditHook interface {
 }
 
 // biz 审计用例满足挂点接口的编译期断言：接线义务的形状约束在此固定，
-// C1 接线时若用例签名漂移将在此处编译失败。
+// 用例签名漂移将在此处编译失败。
 var _ AuditHook = (*biz.AuditUsecase)(nil)

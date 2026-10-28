@@ -200,7 +200,7 @@ func Test_newLLMModel_when_all_defaults_returns_bare_openai_model(t *testing.T) 
 		t.Fatalf("newLLMModel: %v", err)
 	}
 	// 全缺省（failover/hedge/logging 全关）必须零包装：返回值即裸
-	// OpenAI 适配器，与 B1 装配逐字节等价。
+	// OpenAI 适配器，与生产装配逐字节等价。
 	if _, ok := m.(*openai.Model); !ok {
 		t.Fatalf("model type = %T, want *openai.Model (zero wrapping)", m)
 	}
@@ -504,7 +504,7 @@ func Test_loggingModel_when_api_key_configured_key_never_logged(t *testing.T) {
 }
 
 func Test_loggingModel_when_ctx_carries_span_trace_id_logged(t *testing.T) {
-	// E1 桥接口径：ctx 携带 SpanContext 时 trace_id 由 logger extractor
+	// 桥接口径：ctx 携带 SpanContext 时 trace_id 由 logger extractor
 	// 自动展开。用合成 SpanContext（无需 OTel SDK）验证展开生效。
 	buf := captureLLMLogger(t)
 	sc := trace.NewSpanContext(trace.SpanContextConfig{

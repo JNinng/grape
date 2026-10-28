@@ -5,7 +5,7 @@ import type { LoginReply, SessionUser } from '../api/types'
 //   refresh token 静默续期恢复；把脚本可窃取的窗口压到最短。
 // - refreshToken 存 sessionStorage：暴露范围限定单标签页会话，关页即失
 //   效，不跨标签共享、不跨浏览器重启残留。XSS 的真正缓解是 CSP 与输出
-//   转义（后续任务补齐），存储介质只决定暴露时长与范围——localStorage
+//   转义，存储介质只决定暴露时长与范围——localStorage
 //   持久化且全标签共享，暴露面显著更大，禁止使用。
 const REFRESH_TOKEN_STORAGE_KEY = 'grape.refreshToken'
 

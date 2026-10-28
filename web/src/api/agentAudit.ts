@@ -1,7 +1,7 @@
 import { authFetch } from './http'
 import { toApiError } from './toApiError'
 
-// Agent 业务审计查询端点（E2，供 A3 运维复现视图）的 DTO：字段与后端
+// Agent 业务审计查询端点（供运维复现视图）的 DTO：字段与后端
 // service/agent_audit.go 的 JSON 形状对齐，时间为 UTC RFC3339。参数与
 // 结果摘要是落库时已脱敏的形态，前端直接渲染，不回传原文。
 

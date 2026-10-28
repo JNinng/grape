@@ -145,7 +145,7 @@ func (g *ackAuditGuard) record(ctx context.Context, decided *ackDecisionBody, pa
 		// Pending 预读失败或未命中，但恢复路径代执行已发生（捕获器持有
 		// 工具行）时回退单边批量：确认行的事实（工具名等）不可得只能
 		// 放弃，代执行工具行不能跟着丢——它是恢复路径执行证据的唯一
-		// 通路（P2 评审：预读失败不得连坐丢失已归集的工具行）。
+		// 通路（预读失败不得连坐丢失已归集的工具行）。
 		if tool := capture.take(); tool != nil {
 			writeAudit(ctx, g.logger, "record recovered tool call", func(wctx context.Context) error {
 				return g.hook.RecordToolCallWithConfirmation(wctx, tool, nil)

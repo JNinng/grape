@@ -75,7 +75,7 @@ func NewVectorStoreSupply(c *conf.Vector, d *Data) (VectorStoreSupply, func(), e
 // NewLoggedVectorStore 用检索留痕装饰器包装向量仓储，产出对外的
 // biz.VectorStore：框架适配器（agent.NewVectorStore）与摄取管线拿到的
 // 都是装饰后的实例，留痕对两条链路透明。registry 是与日志/审计表/复现
-// 视图共用的脱敏注册表（E1 单一代码点，经 wire 提供同一实例）；registry
+// 视图共用的脱敏注册表（单一代码点，经 wire 提供同一实例）；registry
 // 为 nil 时按「放行原值 + 截断兜底」降级（与审计用例同口径）。
 func NewLoggedVectorStore(supply VectorStoreSupply, logs biz.RetrievalLogRepo, registry *redact.Registry) (biz.VectorStore, func(), error) {
 	if supply.VectorStore == nil {

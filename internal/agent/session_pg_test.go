@@ -529,8 +529,8 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 	ctx := context.Background()
 	const (
 		sessID    = "sess-compact"
-		markerOne = "B2-MARKER-ONE-oversized-tool-result"
-		markerTwo = "B2-MARKER-TWO-second-tool-result"
+		markerOne = "AGENT-MARKER-ONE-oversized-tool-result"
+		markerTwo = "AGENT-MARKER-TWO-second-tool-result"
 	)
 
 	svc, cleanupSvc := sessionSvcUnderTest(t, dsn, 0)
