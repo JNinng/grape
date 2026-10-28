@@ -257,7 +257,7 @@ func TestPGGrant_when_remember_session_second_call_skips_confirmation(t *testing
 		t.Fatalf("decide status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
 	chatEvents(t, chat)
-	if updates := repo.updates(); len(updates) != 1 || updates[0].Nickname != "nick-first" {
+	if updates := repo.nicknames(); len(updates) != 1 || updates[0].nickname != "nick-first" {
 		t.Fatalf("first run must execute the tool once, got %+v", updates)
 	}
 
@@ -275,8 +275,8 @@ func TestPGGrant_when_remember_session_second_call_skips_confirmation(t *testing
 	if !strings.Contains(body, "second done") {
 		t.Fatalf("second run must finish with its final text:\n%s", body)
 	}
-	updates := repo.updates()
-	if len(updates) != 2 || updates[1].Nickname != "nick-second" {
+	updates := repo.nicknames()
+	if len(updates) != 2 || updates[1].nickname != "nick-second" {
 		t.Fatalf("second call must execute without confirmation, got %+v", updates)
 	}
 	if left := waitForPending(t, h2, thread, 0); len(left) != 0 {
@@ -335,14 +335,14 @@ func TestPGGrant_when_revoked_grant_reconfirms_on_next_call(t *testing.T) {
 	if items3[0].ToolName != updateMyNicknameToolName {
 		t.Fatalf("reconfirm must target the same tool, got %+v", items3[0])
 	}
-	if updates := repo.updates(); len(updates) != 2 {
+	if updates := repo.nicknames(); len(updates) != 2 {
 		t.Fatalf("tool must not execute before the new decision, got %+v", updates)
 	}
 	if rec := grantDecide(t, h3, thread, items3[0].ConfirmationID, false, ""); rec.Code != nethttp.StatusOK {
 		t.Fatalf("deny status = %d\n%s", rec.Code, rec.Body.String())
 	}
 	chatEvents(t, chat3)
-	if updates := repo.updates(); len(updates) != 2 {
+	if updates := repo.nicknames(); len(updates) != 2 {
 		t.Fatalf("denied reconfirm must not execute the tool, got %+v", updates)
 	}
 }
@@ -382,7 +382,7 @@ func TestPGGrant_when_session_grant_does_not_cover_other_thread(t *testing.T) {
 	if itemsB[0].ConfirmationID == items[0].ConfirmationID {
 		t.Fatalf("thread-B must raise its own confirmation, got %+v", itemsB)
 	}
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("tool must not execute in thread-B before decision, got %+v", updates)
 	}
 	if rec := grantDecide(t, h2, threadB, itemsB[0].ConfirmationID, false, ""); rec.Code != nethttp.StatusOK {
@@ -428,7 +428,7 @@ func TestPGGrant_when_remember_global_covers_other_thread(t *testing.T) {
 	h2 := identityHandler(s2.Handler(), confirmTestTenant, confirmTestOwnerID)
 	body := grantRunOnce(t, h2, threadB, "run-gb", "rename me in another thread")
 	grantRequireNoConfirmation(t, body)
-	if updates := repo.updates(); len(updates) != 2 || updates[1].Nickname != "nick-gb" {
+	if updates := repo.nicknames(); len(updates) != 2 || updates[1].nickname != "nick-gb" {
 		t.Fatalf("global grant must cover other threads, got %+v", updates)
 	}
 }
@@ -466,7 +466,7 @@ func TestPGGrant_when_pool_rebuilt_grant_still_effective(t *testing.T) {
 	h2 := identityHandler(s2.Handler(), confirmTestTenant, confirmTestOwnerID)
 	body := grantRunOnce(t, h2, thread, "run-p2", "rename me after restart")
 	grantRequireNoConfirmation(t, body)
-	if updates := repo.updates(); len(updates) != 2 || updates[1].Nickname != "nick-p2" {
+	if updates := repo.nicknames(); len(updates) != 2 || updates[1].nickname != "nick-p2" {
 		t.Fatalf("grant must survive the restart, got %+v", updates)
 	}
 }

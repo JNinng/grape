@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	v1 "grape/api/user/v1"
 
@@ -76,6 +77,8 @@ type UserRepo interface {
 	Create(ctx context.Context, auth Identity, u *User) (*User, error)
 	// Update 覆盖可变字段（不含 password 与归属三元组）。
 	Update(ctx context.Context, auth Identity, u *User) (*User, error)
+	// UpdateNickname 仅更新昵称（与 updated_by），其余可变字段保持原值。
+	UpdateNickname(ctx context.Context, auth Identity, id int64, nickname string) (*User, error)
 	// SetPassword 替换密码哈希。
 	SetPassword(ctx context.Context, auth Identity, id int64, hashedPassword string) error
 	// SoftDelete 软删除用户（deleted_at 置位）。
@@ -146,6 +149,19 @@ func (uc *UserUsecase) UpdateUser(ctx context.Context, auth Identity, u *User) (
 	return uc.repo.Update(ctx, auth, u)
 }
 
+// UpdateNickname 只更新昵称：入参去空白、非空且不超过列宽，其余可变
+// 字段保持原值（存储层定向更新，不做整行覆盖）。
+func (uc *UserUsecase) UpdateNickname(ctx context.Context, auth Identity, id int64, nickname string) (*User, error) {
+	if id <= 0 {
+		return nil, ErrUserInvalidArgument
+	}
+	trimmed := strings.TrimSpace(nickname)
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > userNicknameMaxRunes {
+		return nil, ErrUserInvalidArgument
+	}
+	return uc.repo.UpdateNickname(ctx, auth, id, trimmed)
+}
+
 // SetUserPassword 设置新密码；密码哈希后落库。
 func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth Identity, id int64, password string) error {
 	if id <= 0 || password == "" {
@@ -190,6 +206,9 @@ const (
 	UserStatusDisabled int32 = 0
 	UserStatusEnabled  int32 = 1
 )
+
+// userNicknameMaxRunes 与 sys_user.nickname 列宽（varchar(256)）对齐。
+const userNicknameMaxRunes = 256
 
 // validateUserMutable 校验可变字段：name/nickname 必填、status 合法。
 func validateUserMutable(u *User) error {

@@ -161,7 +161,7 @@ func TestAuditWire_when_live_approved_records_tool_call_and_confirmation(t *test
 	if len(batches) != 0 {
 		t.Fatalf("live path must not use combined batch, got %d", len(batches))
 	}
-	updates := repo.updates()
+	updates := repo.nicknames()
 	if len(updates) != 1 {
 		t.Fatalf("tool executions = %d, want 1", len(updates))
 	}
@@ -251,7 +251,7 @@ func TestAuditWire_when_live_denied_with_remember_records_normalized_confirmatio
 	if cf.Path != biz.ConfirmationPathLive {
 		t.Fatalf("confirmation path = %s, want live", cf.Path)
 	}
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("denied tool must not execute, got %+v", updates)
 	}
 }
@@ -344,7 +344,7 @@ func TestAuditWire_when_recovery_approved_records_combined_batch(t *testing.T) {
 	if bt == nil || bc == nil {
 		t.Fatalf("combined batch must carry both rows, got tool=%v conf=%v", bt, bc)
 	}
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("recovery must execute the tool once, got %+v", updates)
 	}
 	if bt.ToolCallID != callID || bt.ToolName != updateMyNicknameToolName || bt.Status != biz.ToolCallStatusSuccess {
@@ -414,7 +414,7 @@ func TestAuditWire_when_recovery_denied_records_confirmation_only_batch(t *testi
 	if bc.Remember != "" {
 		t.Fatalf("recovery deny remember = %q, want normalized empty", bc.Remember)
 	}
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("recovery denial must not execute the tool, got %+v", updates)
 	}
 }
@@ -444,7 +444,7 @@ func TestAuditWire_when_hook_fails_run_and_decide_still_succeed(t *testing.T) {
 	if !hasType(types, "RUN_FINISHED") {
 		t.Fatalf("run must finish despite audit failures, types: %v", types)
 	}
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("tool must execute despite audit failures, got %+v", updates)
 	}
 }

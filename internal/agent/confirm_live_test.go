@@ -271,8 +271,8 @@ func TestConfirmLive_when_approved_run_continues_and_tool_executes(t *testing.T)
 	if !strings.Contains(body, "nickname updated") {
 		t.Fatalf("final assistant text missing from stream:\n%s", body)
 	}
-	updates := repo.updates()
-	if len(updates) != 1 || updates[0].Nickname != nickname {
+	updates := repo.nicknames()
+	if len(updates) != 1 || updates[0].nickname != nickname {
 		t.Fatalf("tool must execute exactly once with new nickname, got %+v", updates)
 	}
 	if left := waitForPending(t, s.h, threadID, 0); len(left) != 0 {
@@ -311,7 +311,7 @@ func TestConfirmLive_when_denied_tool_skips_and_model_does_not_retry(t *testing.
 	if !strings.Contains(body, `"status":"denied"`) {
 		t.Fatalf("denied tool result not delivered to stream:\n%s", body)
 	}
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("tool must not execute after denial, got %+v", updates)
 	}
 	waitForPending(t, s.h, threadID, 0)
@@ -353,7 +353,7 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 		t.Fatalf("owner decide broken: status %d\n%s", rec.Code, rec.Body.String())
 	}
 	chatEvents(t, chat)
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
 }
@@ -396,7 +396,7 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
 		t.Fatalf("owner's pending disturbed: %+v", left)
 	}
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("tool executed %d times via bypassed decide, want 0", len(updates))
 	}
 
@@ -406,7 +406,7 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
 	}
 	chatEvents(t, chat)
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
 	// 他人视角的阻塞运行搁置（其确认无人决定，随测试进程终止）。
@@ -443,7 +443,7 @@ func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
 		t.Fatalf("owner's pending disturbed: %+v", left)
 	}
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("tool executed %d times via trailing-data bypass, want 0", len(updates))
 	}
 
@@ -453,7 +453,7 @@ func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
 	}
 	chatEvents(t, chat)
-	if updates := repo.updates(); len(updates) != 1 {
+	if updates := repo.nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
 	waitForPending(t, s.h, ownerThread, 0)

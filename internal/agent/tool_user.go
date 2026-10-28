@@ -185,9 +185,8 @@ type updateNicknameOutput struct {
 }
 
 // usersUpdateNickname 返回改昵称的工具处理函数（首批唯一 Confirm 写路径）：
-// 读改写两步不在同一事务——中间行只被自己读写，竞态面是自己的并发改名，
-// biz 侧可变字段校验在写入时刻兜底；Tier=Confirm 由分级表声明，未确认
-// 前工具不会执行。
+// 定向更新只触碰 nickname/updated_by，其余可变字段由存储层 SET 白名单保证
+// 不动；Tier=Confirm 由分级表声明，未确认前工具不会执行。
 func usersUpdateNickname(users *biz.UserUsecase) func(context.Context, updateNicknameInput) (updateNicknameOutput, error) {
 	return func(ctx context.Context, in updateNicknameInput) (updateNicknameOutput, error) {
 		auth, err := identityOf(ctx)
@@ -201,18 +200,8 @@ func usersUpdateNickname(users *biz.UserUsecase) func(context.Context, updateNic
 		if len(nickname) > maxNicknameChars {
 			return updateNicknameOutput{}, fmt.Errorf("nickname must be at most %d characters", maxNicknameChars)
 		}
-		// 可变字段覆盖式更新：携带读回的 name/status 满足用例校验，
-		// 昵称替换为入参值。
-		current, err := users.GetUser(ctx, auth, auth.UserID)
-		if err != nil {
-			return updateNicknameOutput{}, err
-		}
-		updated, err := users.UpdateUser(ctx, auth, &biz.User{
-			ID:       current.ID,
-			Status:   current.Status,
-			Name:     current.Name,
-			Nickname: nickname,
-		})
+		// 定向更新昵称：其余可变字段（email/phone/remark/locale）保持原值。
+		updated, err := users.UpdateNickname(ctx, auth, auth.UserID, nickname)
 		if err != nil {
 			return updateNicknameOutput{}, err
 		}

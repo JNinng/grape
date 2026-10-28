@@ -281,8 +281,8 @@ func TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes(t *testin
 	}
 
 	// 工具被网关代执行，恰好一次、参数正确。
-	updates := repo.updates()
-	if len(updates) != 1 || updates[0].Nickname != nickname {
+	updates := repo.nicknames()
+	if len(updates) != 1 || updates[0].nickname != nickname {
 		t.Fatalf("recovery must execute the tool once with new nickname, got %+v", updates)
 	}
 	// 续跑运行收尾：终答随 track 持久化，/history 快照可回放。
@@ -324,7 +324,7 @@ func TestPGConfirm_when_restarted_orphan_denied_synthesizes_denial(t *testing.T)
 		t.Fatalf("decide path mismatch, want recovery:\n%s", rec.Body.String())
 	}
 
-	if updates := repo.updates(); len(updates) != 0 {
+	if updates := repo.nicknames(); len(updates) != 0 {
 		t.Fatalf("orphan denial must not execute the tool, got %+v", updates)
 	}
 	confirmWaitHistoryPoll(t, h2, threadID, "kept the old nickname")

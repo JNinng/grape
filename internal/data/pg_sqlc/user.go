@@ -185,6 +185,47 @@ func (r *userRepo) Update(ctx context.Context, auth biz.Identity, u *biz.User) (
 	return out, nil
 }
 
+// UpdateNickname 只更新昵称。目标行经 LockSysUserPermitted 锁定并判定可
+// 操作；动态更新的 SET 白名单只含 nickname/updated_by，其余可变字段保持
+// 原值——不做整行覆盖，也不存在读改写的丢更新窗口。
+func (r *userRepo) UpdateNickname(ctx context.Context, auth biz.Identity, id int64, nickname string) (*biz.User, error) {
+	var out *biz.User
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		}); err != nil {
+			return err
+		}
+		n, err := gen.UpdateSysUser(ctx, s.Tx(),
+			gen.SysUserUpdate.SetNickname(nickname),
+			gen.SysUserUpdate.SetUpdatedBy(auth.UserID),
+			gen.SysUserUpdate.WhereIDEq(id),
+		)
+		if err != nil {
+			return err
+		}
+		if n == 0 {
+			return pgx.ErrNoRows
+		}
+		updated, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
+			ID:             id,
+			Operator:       auth.UserID,
+			PermissionCode: nil,
+		})
+		if err != nil {
+			return err
+		}
+		out = toBizUser(&updated)
+		return nil
+	})
+	if err != nil {
+		return nil, r.mapErr(err)
+	}
+	return out, nil
+}
+
 // SetPassword 替换密码哈希，先经 LockSysUserPermitted 锁定并判定。
 func (r *userRepo) SetPassword(ctx context.Context, auth biz.Identity, id int64, hashedPassword string) error {
 	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {

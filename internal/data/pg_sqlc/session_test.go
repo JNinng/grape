@@ -415,6 +415,42 @@ func TestUserRepo(t *testing.T) {
 		}
 	})
 
+	t.Run("update nickname only preserves other mutable fields", func(t *testing.T) {
+		u, err := repo.Create(ctx, super, &biz.User{
+			Name: "grape_it_nick", Nickname: "before", Password: "hashed-nick",
+			Email: ptrString("nick@example.com"), Phone: ptrString("13800000123"),
+			Remark: ptrString("keep-remark"), Locale: "en-US", Status: biz.UserStatusEnabled,
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		updated, err := repo.UpdateNickname(ctx, super, u.ID, "after")
+		if err != nil {
+			t.Fatalf("update nickname: %v", err)
+		}
+		if updated.Nickname != "after" || updated.UpdatedBy != super.UserID {
+			t.Fatalf("updated nickname/audit = %q/%d, want after/%d",
+				updated.Nickname, updated.UpdatedBy, super.UserID)
+		}
+		got, err := repo.GetByID(ctx, super, u.ID)
+		if err != nil {
+			t.Fatalf("read back: %v", err)
+		}
+		if got.Nickname != "after" || got.Name != "grape_it_nick" ||
+			got.Status != biz.UserStatusEnabled || got.Locale != "en-US" {
+			t.Fatalf("nickname update drifted: %+v", got)
+		}
+		if got.Email == nil || *got.Email != "nick@example.com" ||
+			got.Phone == nil || *got.Phone != "13800000123" ||
+			got.Remark == nil || *got.Remark != "keep-remark" {
+			t.Fatalf("non-nickname mutable fields must be preserved: %+v", got)
+		}
+		// 数据范围不可见等同不存在。
+		if _, err := repo.UpdateNickname(ctx, selfOnly, u.ID, "x"); !errors.Is(err, biz.ErrUserNotFound) {
+			t.Fatalf("invisible row update: want ErrUserNotFound, got %v", err)
+		}
+	})
+
 	t.Run("assign roles allow deny and idempotent skip", func(t *testing.T) {
 		// 角色 103 未配分发部门映射：超管（全租户）可分配给 sunqi；
 		// 重复分配跳过。角色 102 配了映射（仅部门 2/5），sunqi 在部门

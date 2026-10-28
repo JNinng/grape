@@ -89,6 +89,10 @@ func (*agentStubUserRepo) Update(context.Context, biz.Identity, *biz.User) (*biz
 	return nil, biz.ErrUserInvalidArgument
 }
 
+func (*agentStubUserRepo) UpdateNickname(context.Context, biz.Identity, int64, string) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
 func (*agentStubUserRepo) SetPassword(context.Context, biz.Identity, int64, string) error {
 	return biz.ErrUserInvalidArgument
 }

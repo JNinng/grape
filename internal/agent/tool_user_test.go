@@ -15,8 +15,12 @@ import (
 // toolTestUsers 是工具单测的内存行集：当前用户（t-1/7）与同租户他人。
 func toolTestUsers() []*biz.User {
 	name := "alice"
+	email := "alice@example.com"
+	phone := "13800000007"
+	remark := "keep-remark"
 	return []*biz.User{
-		{ID: 7, Status: biz.UserStatusEnabled, Name: "alice", Nickname: "Alice", Locale: "zh-CN",
+		{ID: 7, Status: biz.UserStatusEnabled, Name: "alice", Nickname: "Alice",
+			Email: &email, Phone: &phone, Remark: &remark, Locale: "zh-CN",
 			Password: "must-not-leak"},
 		{ID: 8, Status: biz.UserStatusEnabled, Name: "bob", Nickname: "Bob", Locale: "zh-CN"},
 		{ID: 9, Status: biz.UserStatusDisabled, Name: name, Nickname: "Carol", Locale: "zh-CN"},
@@ -157,7 +161,7 @@ func TestUserTool_when_update_nickname_blank_or_oversize_rejected(t *testing.T) 
 	}
 }
 
-func TestUserTool_when_update_nickname_approved_writes_own_row_carrying_fields(t *testing.T) {
+func TestUserTool_when_update_nickname_updates_only_nickname_preserving_fields(t *testing.T) {
 	repo := newFakeUserRepo(toolTestUsers()...)
 	users := biz.NewUserUsecase(repo)
 	var target tool.Tool
@@ -177,17 +181,25 @@ func TestUserTool_when_update_nickname_approved_writes_own_row_carrying_fields(t
 	if !strings.Contains(string(b), `"nickname":"neo"`) || !strings.Contains(string(b), `"id":7`) {
 		t.Fatalf("unexpected output:\n%s", b)
 	}
-	updates := repo.updates()
-	if len(updates) != 1 {
-		t.Fatalf("Update called %d times, want 1", len(updates))
+	calls := repo.nicknames()
+	if len(calls) != 1 || calls[0].id != 7 || calls[0].nickname != "neo" {
+		t.Fatalf("nickname update calls = %+v, want one for user 7 with neo", calls)
 	}
-	u := updates[0]
-	// 只改昵称：其余可变字段原样携带，目标是自己的行。
-	if u.ID != 7 || u.Nickname != "neo" || u.Name != "alice" || u.Status != biz.UserStatusEnabled {
-		t.Fatalf("update payload drifted: %+v", u)
+	if updates := repo.updates(); len(updates) != 0 {
+		t.Fatalf("full-row Update must not be called, got %+v", updates)
 	}
-	if u.Password != "" {
-		t.Fatalf("update payload must not carry password hash, got %q", u.Password)
+	stored, err := repo.GetByID(authCtx(), biz.Identity{TenantID: "t-1", UserID: 7}, 7)
+	if err != nil {
+		t.Fatalf("read stored user: %v", err)
+	}
+	if stored.Nickname != "neo" || stored.Name != "alice" || stored.Status != biz.UserStatusEnabled ||
+		stored.Locale != "zh-CN" || stored.Password != "must-not-leak" {
+		t.Fatalf("stored user drifted: %+v", stored)
+	}
+	if stored.Email == nil || *stored.Email != "alice@example.com" ||
+		stored.Phone == nil || *stored.Phone != "13800000007" ||
+		stored.Remark == nil || *stored.Remark != "keep-remark" {
+		t.Fatalf("non-nickname mutable fields must be preserved: %+v", stored)
 	}
 }
 
