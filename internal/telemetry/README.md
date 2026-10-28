@@ -29,7 +29,7 @@ TraceIDRatioBased（非 ParentBased），决策独立于父 span 的 sampled
 | `trpc-agent-go/log` 无 ctx 调用（`log.Infof` 等 → `Default`/`ContextDefault`） | 适配器实现框架 `log.Logger` 接口，转发 grape logger | **不带**——门面 API 不收 ctx，框架既成事实，不伪造 |
 | `trpc-agent-go/log` ctx 形态（`log.InfofContext` 等，package 级函数变量） | 覆盖变量，转发 ctx 到 grape logger | 自动携带——grape logger 由 kratos `log.NewLogger(WithExtractor(tracing.TraceAttrs))` 构造，落盘时展开 ctx 中的 SpanContext |
 | `trpc-agent-go/telemetry/trace.Tracer` 全局变量 | 桥到 `otel.GetTracerProvider()`（scope 名保持 `trpc.agent.go`） | 框架 LLM/工具/agent span 随全局 provider 真实导出 |
-| ack 网关日志（`ack.WithLogger`） | B1 已桥 grape logger（见 [internal/agent](../agent/)） | 不带——ack 日志 API 无 ctx 参数 |
+| ack 网关日志（`ack.WithLogger`） | 已桥 grape logger（见 [internal/agent](../agent/)） | 不带——ack 日志 API 无 ctx 参数 |
 
 局限（如实声明）：框架 `log.SetLevel` 治理其自带 zap logger，桥接后不再
 影响任何输出（级别归 grape 日志配置）；无 ctx 调用点无链路字段；Fatal
@@ -56,7 +56,7 @@ agent 前缀路由（AG-UI / ack）经 `ctx.Middleware` 入链，同被 span 覆
 
 - 只依赖 `conf`、otel SDK 与框架观测门面（仅桥接赋值），不承载业务数据流；
 - `server` 持 `*Setup` 决定 otel 中间件是否入链（时序锚点：保证全局注入
-  先于 server 构造）；消费面（E2 审计、A3 复现）经 ctx SpanContext 取
+  先于 server 构造）；消费面（审计、复现）经 ctx SpanContext 取
   trace_id，不直接依赖本包。
 
 ## 测试

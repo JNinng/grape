@@ -30,10 +30,10 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 12 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 24 条策略（含 sys_session 令牌维度 3 条）、4 个函数 |
 | 13 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
 | 14 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
-| 15 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（C2；策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
-| 16 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（D3；策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
+| 15 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
+| 16 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
 | 17 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD 与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 8 个文件、49 条命名查询 |
-| 18 | seed.sql | 填充种子数据（含多租户权限样例与 C2 授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| 18 | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 | 19 | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | 20 | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表、HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、2 个索引、2 条授权 |
 
@@ -73,7 +73,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   queries/agent_audit.sql），放清单尾部独立追加不改既有顺序，其
   grape_u 的 DML 授权由 role.sql 默认权限覆盖（同角色于 public 建表
   自动 GRANT，文件内不含授权语句）；RLS 策略落本域文件而非 rls.sql
-  （新域独立成文件、不改多流共触的 rls.sql，策略形态与 rls.sql 完全
+  （新域独立成文件、不改共享的 rls.sql，策略形态与 rls.sql 完全
   一致）。执行顺序的依赖细节、幂等边界与一键部署见仓库根
   [deploy_db.md](../../../../deploy_db.md)。
 - **会话框架表无 RLS（设施面例外）**：agent_* 会话表不进 @scope/RLS
@@ -91,7 +91,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   m / ef_construction 属物理 DDL，固化于 [agent_vector.sql](agent_vector.sql)
   ——索引结构是部署面资产，改参数即改 DDL 重建索引，不是运行期可调项；
   conf.vector 只持检索面参数（enabled / dimension / table_name），
-  ef_search 等检索期调参归 D2 检索配置另议（会话级 SET，不落表定义）。
+  ef_search 等检索期调参归检索配置另议（会话级 SET，不落表定义）。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 
@@ -99,7 +99,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 
 | 层 | 维度 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| PostgreSQL RLS | 租户隔离（绝对边界） | 23 张租户表策略（21 张基线表策略在 rls.sql，agent 审计两表策略在 schema/95_agent_audit.sql），`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
+| PostgreSQL RLS | 租户隔离（绝对边界） | 25 张租户表策略（21 张基线表在 rls.sql，agent 审计两表在 schema/95_agent_audit.sql，agent_tool_grant 在 96_agent_grant.sql，agent_retrieval_log 在 schema/97_agent_retrieval_log.sql），`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 
@@ -265,8 +265,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 
 两表 append-only：只有写入与读取，没有更新/删除面；读写都要求会话已设
 置 app.tenant_id（IdentityTx 门面注入）。租户边界双重声明：RLS 为主，
-读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS 被关闭时仍不越租户，
-对齐 D1 验收口径）。
+读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS 被关闭时仍不越租户）。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
@@ -301,7 +300,7 @@ Resolve）编排。tenant_id 在全部查询里显式过滤——RLS 之外的�
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
 | InsertAgentRetrievalLog | :one | 留痕字段（可空列 narg）→ AgentRetrievalLog | 写入一条检索留痕；租户取会话 app.tenant_id，写入者与用户同值 |
-| ListAgentRetrievalLogs | :many | 会话（可空）/来源（可空）/limit/offset → 行集 | 按会话/来源过滤分页查询（A3 按会话/时间回放），created_at DESC, id DESC |
+| ListAgentRetrievalLogs | :many | 会话（可空）/来源（可空）/limit/offset → 行集 | 按会话/来源过滤分页查询（供运维复现视图按会话/时间回放），created_at DESC, id DESC |
 | CountAgentRetrievalLogs | :one | 会话（可空）/来源（可空）→ int64 | 与 List 同条件计数，供分页信封 |
 
 租户边界与审计同型双重声明：RLS（97 域文件的策略）为主，读侧 WHERE
@@ -326,8 +325,8 @@ Resolve）编排。tenant_id 在全部查询里显式过滤——RLS 之外的�
 父租户名下时还能读写自己的行）。sys_config 是全局配置、没有租户列，
 不设 RLS；范围版本表 sys_perm_version 的策略在 expose.sql。Agent 业务
 审计两表（agent_tool_call_log / agent_confirmation_log）沿用同一规则，
-策略声明在各自的域文件 schema/95_agent_audit.sql（并行冲突纪律：新域
-独立成文件，不改多流共触的 rls.sql）。
+策略声明在各自的域文件 schema/95_agent_audit.sql（新域独立成文件，
+不改共享的 rls.sql）。
 
 sys_session 另有三条令牌维度策略（`sys_session_token_read` /
 `sys_session_token_rotate` / `sys_session_token_revoke`），服务会话
