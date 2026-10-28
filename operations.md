@@ -3,7 +3,8 @@
 grape 单二进制（Go 后端 + 内嵌前端 SPA）的生产化部署与运维口径：多实例粘性、SSE 超时治理、优雅停机、保留期与归档、密钥管理、
 框架升级检查单等。数据库部署执行顺序与升级步骤见
 [deploy_db.md](deploy_db.md)，权限模型见 [permission.md](permission.md)，
-本文不重复。
+本文不重复。Agent 运维复现的证据面、关联键与取证流程见
+[replay.md](replay.md)。
 
 ## 构建与发布
 

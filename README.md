@@ -31,3 +31,9 @@ sqlc generate -f sqlc.yaml
 
 修改 sqlc 输入（`schema/`、`rls/operate/expose`、`queries/`）后必须重新执行
 `sqlc generate -f sqlc.yaml` 并提交生成物；`seed.sql` 不参与生成，改动按部署流程执行。
+
+## Agent 运维复现
+
+会话事件、工具调用审计、授权确认审计与检索留痕构成复现的四联证据面；
+证据粒度、关联键、写入机制、查询面边界与标准取证流程见
+[replay.md](replay.md)。

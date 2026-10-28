@@ -86,9 +86,14 @@ go build ./cmd/server
 
 ## 运维复现视图
 
+证据面、关联键与写入机制的完整口径见根目录 [replay.md](../replay.md)；
+本节只描述页面行为。
+
 `/replay` 受保护路由（ChatPage 头部有入口）：会话选择 → 四联证据同屏——
-对话流回放、工具调用审计、授权确认记录、检索留痕——以 trace_id 关联串联
-同一次交互的全链路证据（验收口径：任一回答可反查全部召回证据）。
+对话流回放、工具调用审计、授权确认记录、检索留痕。同一请求内的证据以
+trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与工具行 trace
+不同、recovery 路径相同，两者按 toolCallId/confirmationId 关联。验收
+口径：任一回答可反查全部召回证据。
 
 - 对话回放：复用对话页的 `/agui/history` 快照（`agui/history.ts`），快照即
   回放；上游 track follow 的同毫秒事件缺陷（上游已知缺陷）以「刷新
@@ -105,7 +110,9 @@ go build ./cmd/server
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
   `replay/model.ts` 纯函数），选中后过滤三个证据面并按 toolCallId 桥接
   高亮回放里的工具调用项（对话回放自身不带 trace_id，不被过滤改写）；
-  表内 trace 值可点击反选。
+  表内 trace 值可点击反选。确认行与工具行的 trace 在 live 路径不同，跨
+  trace 的对账以 toolCallId/confirmationId 为准；下拉按 trace 分组，不
+  自动把两行并到一组。
 - 压缩占位与原文对照：`replay/compaction.ts` 按 trpc-agent-go
   context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记
   含紧凑与裸变体、策略占位），提取 event_id 恢复引用；带引用的经
