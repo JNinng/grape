@@ -7,7 +7,8 @@ import { newId } from './ids'
 // 形状的请求体拉取会话快照，流内 MESSAGES_SNAPSHOT 事件携带全量消息。
 // 上游 track follow 存在同毫秒事件可能被跳过的缺陷（上游已知缺陷），
 // 前端不做 follow 跟流，加载会话时拉一次快照即为回放；新消息由运行
-// 事件实时折叠。
+// 事件实时折叠。快照运行在快照事件后并不立即关流（框架还会走完
+// run 生命周期才结束），历史不依赖也不等待它。
 const historyPath = '/agui/history'
 
 // fetchHistorySnapshot 拉取一个会话的历史并折叠为渲染项。快照缺失
@@ -34,17 +35,17 @@ export async function fetchHistorySnapshot(threadId: string): Promise<ChatItem[]
   return messagesToItems(messages)
 }
 
-// collectSnapshotMessages 解析 SSE 流：只关心 data 行的 JSON 载荷，取
-// 首个 MESSAGES_SNAPSHOT 的消息列表（框架快照运行只发一份）。
+// collectSnapshotMessages 解析 SSE 流：只关心 data 行的 JSON 载荷，拿到
+// 首个 MESSAGES_SNAPSHOT 即取消读取（reader.cancel）并返回——历史立即
+// 渲染，不等快照流关闭；其后的事件对快照回放没有意义。
 async function collectSnapshotMessages(body: ReadableStream<Uint8Array>): Promise<Message[]> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let messages: Message[] = []
   for (;;) {
     const { done, value } = await reader.read()
     if (done) {
-      break
+      return []
     }
     buffer += decoder.decode(value, { stream: true })
     let newline = buffer.indexOf('\n')
@@ -54,13 +55,24 @@ async function collectSnapshotMessages(body: ReadableStream<Uint8Array>): Promis
       if (line.startsWith('data:')) {
         const event = parseDataLine(line.slice(5).trim())
         if (event !== null && event.type === 'MESSAGES_SNAPSHOT') {
-          messages = event.messages ?? []
+          const messages = event.messages ?? []
+          await cancelQuietly(reader)
+          return messages
         }
       }
       newline = buffer.indexOf('\n')
     }
   }
-  return messages
+}
+
+// cancelQuietly 断开快照流：取消失败（对端已关流等竞态）只影响清理，
+// 不影响已到手的快照。
+async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel()
+  } catch {
+    // 快照已到手，取消失败无需上报。
+  }
 }
 
 // parseDataLine 解析单条 data 载荷；非 JSON 行（心跳注释等）忽略。

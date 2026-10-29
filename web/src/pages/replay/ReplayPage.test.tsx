@@ -86,7 +86,21 @@ beforeEach(() => {
       calledAt: '2026-01-01T00:00:02Z',
     },
   ])
-  mockFetchConfirmations.mockResolvedValue([])
+  mockFetchConfirmations.mockResolvedValue([
+    {
+      id: 21,
+      confirmationId: 'conf-1',
+      sessionId: 'thread-1',
+      toolCallId: 'call-1',
+      toolName: 'update_my_nickname',
+      decision: 'approved',
+      remember: 'session',
+      path: 'live',
+      decidedBy: 't-1:7',
+      traceId: 'trace-a',
+      decidedAt: '2026-01-01T00:00:04Z',
+    },
+  ])
   mockFetchRetrievals.mockResolvedValue([
     {
       id: 11,
@@ -151,20 +165,49 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(within(auditRegion).getAllByText('0（框架未暴露）').length).toBeGreaterThan(0)
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(within(retrievalRegion).getByText('doc-1')).toBeInTheDocument()
+    // 未选中链路：证据行中性呈现，不预高亮也不灰显。
+    expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-violet-50', 'opacity-40')
+    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-violet-50', 'opacity-40')
   })
 
-  it('filters_all_evidence_facets_by_the_selected_trace', async () => {
+  it('keeps_all_evidence_rows_visible_and_dims_misses_when_a_trace_is_selected', async () => {
+    // 链路选中只做高亮对比，不隐藏数据：命中行（trace-b 的 echo）品牌紫
+    // 高亮，未命中行（trace-a 的工具审计 / 授权确认 / 检索留痕）灰显但仍
+    // 在文档中，保住证据间的上下文。
     const user = userEvent.setup()
     renderReplay()
     await screen.findByText('answer')
     await user.selectOptions(screen.getByRole('combobox', { name: 'trace 过滤' }), 'trace-b')
+
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
-    expect(within(auditRegion).getByText('echo')).toBeInTheDocument()
-    expect(within(auditRegion).queryByText('search_internal_docs')).not.toBeInTheDocument()
+    const echoRow = within(auditRegion).getByText('echo').closest('tr')
+    expect(echoRow).toHaveClass('bg-violet-50')
+    expect(echoRow).not.toHaveClass('opacity-40')
+    expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('opacity-40')
+
+    const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
+    expect(within(confirmRegion).getByText('update_my_nickname').closest('tr')).toHaveClass('opacity-40')
+
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
-    expect(within(retrievalRegion).getByText('无匹配的检索留痕。')).toBeInTheDocument()
-    // 回放工具项按 toolCallId 桥接高亮：trace-b 无工具调用审计行 → 无高亮。
+    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('opacity-40')
+
+    // 回放工具项按 toolCallId 桥接高亮：trace-b 的审计行（call-2）不在回
+    // 放流内 → 无高亮，也不降透明度（无命中项时整流保持原样）。
     expect(screen.queryByRole('group', { name: /当前链路/ })).not.toBeInTheDocument()
+  })
+
+  it('highlights_hit_rows_across_all_evidence_facets_for_the_selected_trace', async () => {
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'trace 过滤' }), 'trace-a')
+
+    const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
+    expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('bg-violet-50')
+    const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
+    expect(within(confirmRegion).getByText('update_my_nickname').closest('tr')).toHaveClass('bg-violet-50')
+    const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
+    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('bg-violet-50')
   })
 
   it('highlights_the_replay_tool_call_linked_to_the_selected_trace', async () => {

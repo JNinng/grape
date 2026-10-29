@@ -76,6 +76,35 @@ describe('fetchHistorySnapshot snapshot replay', () => {
     expect(items).toEqual([])
   })
 
+  it('cancels_the_stream_and_returns_on_the_first_snapshot_without_waiting_for_run_end', async () => {
+    // 快照即返：首份 MESSAGES_SNAPSHOT 到手即 reader.cancel()，不等待流
+    // 关闭（快照运行其后还要走完 run 生命周期才结束）。流构造为发出快
+    // 照后永不关闭，若实现仍读到底部，本用例会挂起超时而非通过。
+    let streamCancelled = false
+    const encoder = new TextEncoder()
+    const neverEnding = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"type":"MESSAGES_SNAPSHOT","messages":[' +
+              '{"id":"u-1","role":"user","content":"hi"}]}\n\n',
+          ),
+        )
+      },
+      cancel() {
+        streamCancelled = true
+      },
+    })
+    fetchMock.mockResolvedValue(
+      new Response(neverEnding, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
+    )
+
+    const items = await fetchHistorySnapshot('thread-1')
+
+    expect(items).toEqual([{ kind: 'message', id: 'u-1', role: 'user', content: 'hi' }])
+    expect(streamCancelled).toBe(true)
+  })
+
   it('throws_on_http_failure', async () => {
     fetchMock.mockResolvedValue(new Response('gone', { status: 404 }))
 

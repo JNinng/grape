@@ -39,13 +39,15 @@ export function collectTraceIds(facets: TraceFacets): string[] {
     .map(([traceId]) => traceId)
 }
 
-// filterByTraceId 按链路过滤证据行：null/空串表示不过滤（原样返回），
-// 非 null 时只保留同链路行（无 trace_id 的行被滤除——链路未知不冒充）。
-export function filterByTraceId<T extends { traceId?: string }>(rows: T[], traceId: string | null): T[] {
+// matchesTraceId 判定一行证据是否命中当前选中的链路：未选中链路
+// （null/空串）时一律未命中——高亮与灰显都以「已选中链路」为前提，未
+// 选中时证据面中性呈现。链路选中不改变证据行的可见性：命中行高亮、
+// 未命中行灰显，调用方以该谓词区分两种呈现。
+export function matchesTraceId<T extends { traceId?: string }>(row: T, traceId: string | null): boolean {
   if (traceId === null || traceId === '') {
-    return rows
+    return false
   }
-  return rows.filter((row) => row.traceId === traceId)
+  return row.traceId === traceId
 }
 
 // relatedToolCallIds 计算链路在回放侧关联的全部 toolCallId：审计行与授

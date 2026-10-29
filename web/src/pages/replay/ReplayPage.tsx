@@ -14,7 +14,7 @@ import { detectCompactionRefs } from './compaction'
 import {
   collectTraceIds,
   confirmationsForToolCall,
-  filterByTraceId,
+  matchesTraceId,
   parseRetrievalHits,
   relatedChatItemIds,
   relatedToolCallIds,
@@ -213,7 +213,7 @@ function ReplayMessage({
 }
 
 // ReplayPage 运维复现视图：会话选择 → 四联证据视图（对话流回放 /
-// 工具调用审计 / 授权确认记录 / 检索留痕），以 trace_id 关联过滤串联同
+// 工具调用审计 / 授权确认记录 / 检索留痕），以 trace_id 关联同
 // 一次交互的全链路证据。回放走 /history 快照（上游 follow 存在同毫秒事
 // 件缺陷——快照即回放，刷新按钮手动兜底）；审计与留痕为落库
 // 已脱敏形态，直接渲染；压缩占位符经事件窗口端点取原文对照。
@@ -305,9 +305,8 @@ export function ReplayPage() {
     [toolCalls, confirmations, retrievals],
   )
   const traceIds = useMemo(() => collectTraceIds(facets), [facets])
-  const visibleToolCalls = useMemo(() => filterByTraceId(toolCalls, traceFilter), [toolCalls, traceFilter])
-  const visibleConfirmations = useMemo(() => filterByTraceId(confirmations, traceFilter), [confirmations, traceFilter])
-  const visibleRetrievals = useMemo(() => filterByTraceId(retrievals, traceFilter), [retrievals, traceFilter])
+  // 链路选中只做高亮对比：三证据面全量渲染，命中行品牌紫高亮、未命中
+  // 行灰显，不隐藏任何证据行（对比呈现保住证据间的上下文）。
   // 回放流关联：桥接 ID 取审计∪确认（live 路径两面 trace 不同），再按分
   // 段邻近归属扩散到整段消息；仅在确有命中项时降透明度，避免整流变灰
   // 而无所指。
@@ -455,8 +454,8 @@ export function ReplayPage() {
 
                 <section aria-label="工具调用审计" className="card p-5">
                   <h2 className="mb-3 text-sm font-semibold text-slate-900">工具调用审计</h2>
-                  {visibleToolCalls.length === 0 ? (
-                    <p className="empty-note">无匹配的工具调用审计行。</p>
+                  {toolCalls.length === 0 ? (
+                    <p className="empty-note">暂无工具调用审计行。</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[760px] border-collapse text-sm">
@@ -473,44 +472,47 @@ export function ReplayPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {visibleToolCalls.map((row) => (
-                            <tr
-                              key={row.id}
-                              data-tool-call-id={row.toolCallId}
-                              className={`border-b border-slate-100 text-slate-600 transition-colors last:border-0 ${
-                                traceFilter !== null ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'
-                              }`}
-                            >
-                              <td className="px-2 py-2 font-medium text-slate-800">{row.toolName}</td>
-                              <td className="px-2 py-2">
-                                <span
-                                  className={`chip ${
-                                    row.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
-                                  }`}
-                                >
-                                  {row.status}
-                                </span>
-                              </td>
-                              <td className="px-2 py-2 tabular-nums">{row.durationMs}</td>
-                              <td className="px-2 py-2 text-slate-400">{formatRetryCount(row.retryCount)}</td>
-                              <td className="px-2 py-2">
-                                {row.traceId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => pickTrace(row.traceId ?? null)}
-                                    className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
+                          {toolCalls.map((row) => {
+                            const hit = matchesTraceId(row, traceFilter)
+                            return (
+                              <tr
+                                key={row.id}
+                                data-tool-call-id={row.toolCallId}
+                                className={`border-b border-slate-100 text-slate-600 transition-colors last:border-0 ${
+                                  hit ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'
+                                } ${traceFilter !== null && !hit ? 'opacity-40' : ''}`}
+                              >
+                                <td className="px-2 py-2 font-medium text-slate-800">{row.toolName}</td>
+                                <td className="px-2 py-2">
+                                  <span
+                                    className={`chip ${
+                                      row.status === 'success' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                                    }`}
                                   >
-                                    {row.traceId}
-                                  </button>
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                              <td className="max-w-52 truncate px-2 py-2 font-mono text-xs">{row.argumentsSummary ?? '—'}</td>
-                              <td className="max-w-52 truncate px-2 py-2 font-mono text-xs">{row.resultSummary ?? '—'}</td>
-                              <td className="px-2 py-2 whitespace-nowrap tabular-nums">{formatTime(row.calledAt)}</td>
-                            </tr>
-                          ))}
+                                    {row.status}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-2 tabular-nums">{row.durationMs}</td>
+                                <td className="px-2 py-2 text-slate-400">{formatRetryCount(row.retryCount)}</td>
+                                <td className="px-2 py-2">
+                                  {row.traceId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => pickTrace(row.traceId ?? null)}
+                                      className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
+                                    >
+                                      {row.traceId}
+                                    </button>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="max-w-52 truncate px-2 py-2 font-mono text-xs">{row.argumentsSummary ?? '—'}</td>
+                                <td className="max-w-52 truncate px-2 py-2 font-mono text-xs">{row.resultSummary ?? '—'}</td>
+                                <td className="px-2 py-2 whitespace-nowrap tabular-nums">{formatTime(row.calledAt)}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -519,8 +521,8 @@ export function ReplayPage() {
 
                 <section aria-label="授权确认记录" className="card p-5">
                   <h2 className="mb-3 text-sm font-semibold text-slate-900">授权确认记录</h2>
-                  {visibleConfirmations.length === 0 ? (
-                    <p className="empty-note">无匹配的授权确认记录。</p>
+                  {confirmations.length === 0 ? (
+                    <p className="empty-note">暂无授权确认记录。</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full min-w-[680px] border-collapse text-sm">
@@ -536,44 +538,47 @@ export function ReplayPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {visibleConfirmations.map((row) => (
-                            <tr
-                              key={row.id}
-                              className={`border-b border-slate-100 text-slate-600 transition-colors last:border-0 ${
-                                traceFilter !== null ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'
-                              }`}
-                            >
-                              <td className="px-2 py-2 font-medium text-slate-800">{row.toolName}</td>
-                              <td className="px-2 py-2">
-                                <span
-                                  className={`chip ${
-                                    row.decision === 'approve' || row.decision === 'approved'
-                                      ? 'bg-emerald-50 text-emerald-600'
-                                      : 'bg-red-50 text-red-600'
-                                  }`}
-                                >
-                                  {row.decision}
-                                </span>
-                              </td>
-                              <td className="px-2 py-2">{row.remember || '—'}</td>
-                              <td className="px-2 py-2 font-mono text-xs">{row.path}</td>
-                              <td className="px-2 py-2">{row.decidedBy}</td>
-                              <td className="px-2 py-2">
-                                {row.traceId ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => pickTrace(row.traceId ?? null)}
-                                    className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
+                          {confirmations.map((row) => {
+                            const hit = matchesTraceId(row, traceFilter)
+                            return (
+                              <tr
+                                key={row.id}
+                                className={`border-b border-slate-100 text-slate-600 transition-colors last:border-0 ${
+                                  hit ? 'bg-violet-50 hover:bg-violet-100' : 'hover:bg-slate-50'
+                                } ${traceFilter !== null && !hit ? 'opacity-40' : ''}`}
+                              >
+                                <td className="px-2 py-2 font-medium text-slate-800">{row.toolName}</td>
+                                <td className="px-2 py-2">
+                                  <span
+                                    className={`chip ${
+                                      row.decision === 'approve' || row.decision === 'approved'
+                                        ? 'bg-emerald-50 text-emerald-600'
+                                        : 'bg-red-50 text-red-600'
+                                    }`}
                                   >
-                                    {row.traceId}
-                                  </button>
-                                ) : (
-                                  '—'
-                                )}
-                              </td>
-                              <td className="px-2 py-2 whitespace-nowrap tabular-nums">{formatTime(row.decidedAt)}</td>
-                            </tr>
-                          ))}
+                                    {row.decision}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-2">{row.remember || '—'}</td>
+                                <td className="px-2 py-2 font-mono text-xs">{row.path}</td>
+                                <td className="px-2 py-2">{row.decidedBy}</td>
+                                <td className="px-2 py-2">
+                                  {row.traceId ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => pickTrace(row.traceId ?? null)}
+                                      className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
+                                    >
+                                      {row.traceId}
+                                    </button>
+                                  ) : (
+                                    '—'
+                                  )}
+                                </td>
+                                <td className="px-2 py-2 whitespace-nowrap tabular-nums">{formatTime(row.decidedAt)}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -582,19 +587,20 @@ export function ReplayPage() {
 
                 <section aria-label="检索留痕" className="card p-5">
                   <h2 className="mb-3 text-sm font-semibold text-slate-900">检索留痕</h2>
-                  {visibleRetrievals.length === 0 ? (
-                    <p className="empty-note">无匹配的检索留痕。</p>
+                  {retrievals.length === 0 ? (
+                    <p className="empty-note">暂无检索留痕。</p>
                   ) : (
                     <ol className="space-y-3">
-                      {visibleRetrievals.map((row) => {
+                      {retrievals.map((row) => {
+                        const hit = matchesTraceId(row, traceFilter)
                         const hits = parseRetrievalHits(row.hits)
                         return (
                           <li
                             key={row.id}
                             data-trace-id={row.traceId ?? undefined}
                             className={`rounded-xl border p-3.5 ${
-                              traceFilter !== null ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50'
-                            }`}
+                              hit ? 'border-violet-200 bg-violet-50' : 'border-slate-200 bg-slate-50'
+                            } ${traceFilter !== null && !hit ? 'opacity-40' : ''}`}
                           >
                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                               <span

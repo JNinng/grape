@@ -19,6 +19,11 @@ import { MessageList } from './chat/MessageList'
 // 不依赖该定时器。
 const PENDING_POLL_INTERVAL_MS = 30_000
 
+// 决定后历史收敛的重拉节奏：确认沿 ack 落定后，续跑产物要等服务端写
+// 回快照才能拉到；按先密后疏的间隔重拉，相邻两轮一致（快照已稳定）
+// 或达轮次上限即停。
+const HISTORY_CONVERGENCE_DELAYS_MS = [1_000, 2_000, 2_000, 3_000, 3_000]
+
 // sessionTitle 由会话元数据推导展示标题：框架会话无业务标题字段，取
 // 短 ID + 更新时间呈现，不伪造语义。
 function sessionTitle(session: AgentSessionMeta): string {
@@ -49,6 +54,9 @@ export function ChatPage() {
   const runIdRef = useRef<string | null>(null)
   const threadIdRef = useRef(threadId)
   threadIdRef.current = threadId
+  // pollTimerRef 持有决定后历史收敛轮询的当前定时器：重复决定重置节奏，
+  // 会话切换或卸载即时作废。
+  const pollTimerRef = useRef<number | null>(null)
   // scrollRef 承载消息滚动区；inputRef 承载输入框（自适应增高）。
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -84,6 +92,62 @@ export function ChatPage() {
     }
   }, [])
 
+  const clearHistoryPoll = useCallback(() => {
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+  }, [])
+
+  // convergeHistoryAfterDecision 在一次决定（含 404 已失效收敛）后重拉
+  // 历史快照：按先密后疏的节奏整表替换 items，相邻两轮一致（服务端快
+  // 照已稳定）或达轮次上限即停。会话切走即停；运行进行中跳过该轮（流
+  // 事件负责实时折叠），余下轮次照常。单轮失败静默，不因快照回写延迟
+  // 打扰对话。
+  const convergeHistoryAfterDecision = useCallback(
+    (tid: string) => {
+      clearHistoryPoll()
+      let last: string | null = null
+      let round = 0
+      const schedule = () => {
+        pollTimerRef.current = window.setTimeout(pull, HISTORY_CONVERGENCE_DELAYS_MS[round])
+        round += 1
+      }
+      const pull = () => {
+        pollTimerRef.current = null
+        if (threadIdRef.current !== tid) {
+          return
+        }
+        if (runIdRef.current !== null) {
+          if (round < HISTORY_CONVERGENCE_DELAYS_MS.length) {
+            schedule()
+          }
+          return
+        }
+        void fetchHistorySnapshot(tid)
+          .then((items) => {
+            if (threadIdRef.current !== tid) {
+              return
+            }
+            const serialized = JSON.stringify(items)
+            const stable = last !== null && last === serialized
+            last = serialized
+            setChat((s) => ({ ...s, items }))
+            if (!stable && round < HISTORY_CONVERGENCE_DELAYS_MS.length) {
+              schedule()
+            }
+          })
+          .catch(() => {
+            if (round < HISTORY_CONVERGENCE_DELAYS_MS.length) {
+              schedule()
+            }
+          })
+      }
+      schedule()
+    },
+    [clearHistoryPoll],
+  )
+
   // 会话列表：进入页面加载一次，发送消息后刷新（新会话入库后出现在列表）。
   const reloadSessions = useCallback(async () => {
     try {
@@ -99,12 +163,14 @@ export function ChatPage() {
     void reloadSessions()
   }, [reloadSessions])
 
-  // 切换会话（含新建）：终止进行中的运行，重置对话态并拉一次历史快照
-  // 与待确认列表。历史不跟流（上游 follow 同毫秒缺陷，快照即回放）。
+  // 切换会话（含新建）：终止进行中的运行与决定后收敛轮询，重置对话态
+  // 并拉一次历史快照与待确认列表。历史不跟流（上游 follow 同毫秒缺陷，
+  // 快照即回放）。
   useEffect(() => {
     agentRef.current?.abortRun()
     agentRef.current = null
     runIdRef.current = null
+    clearHistoryPoll()
     setChat(initialChatState())
     setHistoryError(null)
     let cancelled = false
@@ -124,8 +190,9 @@ export function ChatPage() {
     void refreshPending(threadId)
     return () => {
       cancelled = true
+      clearHistoryPoll()
     }
-  }, [threadId, refreshPending])
+  }, [threadId, refreshPending, clearHistoryPoll])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -329,6 +396,9 @@ export function ChatPage() {
                     confirmations: s.confirmations.filter((c) => c.confirmationId !== id),
                   }))
                   void refreshPending(threadId)
+                  // 决定成功与 404 已失效共用此回调：卡片移除后重拉历史
+                  // 快照，收敛续跑产物（另一端决定同路径生效）。
+                  convergeHistoryAfterDecision(threadId)
                 }}
                 onFailed={(_id, message) => {
                   setChat((s) => ({ ...s, error: `确认提交失败：${message}` }))

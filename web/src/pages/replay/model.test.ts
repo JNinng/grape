@@ -5,7 +5,7 @@ import type { RetrievalLog } from '../../api/agentRetrievalLogs'
 import {
   collectTraceIds,
   confirmationsForToolCall,
-  filterByTraceId,
+  matchesTraceId,
   parseRetrievalHits,
   relatedChatItemIds,
   relatedToolCallIds,
@@ -85,17 +85,24 @@ describe('collectTraceIds', () => {
   })
 })
 
-describe('filterByTraceId', () => {
+describe('matchesTraceId', () => {
   const rows = [toolCallRow(1, 'c-1', 'trace-a'), toolCallRow(2, 'c-2', 'trace-b'), toolCallRow(3, 'c-3')]
 
-  it('returns_all_rows_when_filter_is_null_or_empty', () => {
-    expect(filterByTraceId(rows, null)).toHaveLength(3)
-    expect(filterByTraceId(rows, '')).toHaveLength(3)
+  it('treats_every_row_as_a_miss_when_no_trace_is_selected', () => {
+    // 未选中链路：证据面中性呈现——不高亮任何行（灰显由调用方以「已选
+    // 中链路」为前提另行推导），谓词恒未命中。
+    for (const row of rows) {
+      expect(matchesTraceId(row, null)).toBe(false)
+      expect(matchesTraceId(row, '')).toBe(false)
+    }
   })
 
-  it('keeps_only_matching_trace_rows_and_drops_untraced_rows', () => {
-    const filtered = filterByTraceId(rows, 'trace-a')
-    expect(filtered.map((r) => r.id)).toEqual([1])
+  it('matches_only_the_selected_trace_and_marks_other_rows_as_misses', () => {
+    // 链路选中不隐藏证据行：谓词只区分高亮（命中）与灰显（未命中），
+    // 无 trace_id 的行按未命中呈现，不冒充命中。
+    expect(matchesTraceId(rows[0], 'trace-a')).toBe(true)
+    expect(matchesTraceId(rows[1], 'trace-a')).toBe(false)
+    expect(matchesTraceId(rows[2], 'trace-a')).toBe(false)
   })
 })
 
@@ -194,14 +201,14 @@ describe('parseRetrievalHits', () => {
 describe('trace evidence assembly', () => {
   it('chains_one_answer_to_all_retrieval_evidence_via_a_single_trace', () => {
     // 验收口径：一次回答的 trace_id 能同时召回它的工具调用、授权确认与
-    // 全部检索留痕。
+    // 全部检索留痕（谓词命中 = 高亮呈现，未命中 = 灰显呈现）。
     const toolCalls = [toolCallRow(1, 'call-search', 'trace-answer'), toolCallRow(2, 'call-echo', 'trace-other')]
     const confirmations = [confirmationRow(1, 'call-update', 'trace-answer')]
     const retrievals = [retrievalRow(1, 'trace-answer'), retrievalRow(2, 'trace-answer'), retrievalRow(3, 'trace-other')]
 
-    expect(filterByTraceId(toolCalls, 'trace-answer').map((r) => r.toolCallId)).toEqual(['call-search'])
-    expect(filterByTraceId(confirmations, 'trace-answer')).toHaveLength(1)
-    expect(filterByTraceId(retrievals, 'trace-answer')).toHaveLength(2)
+    expect(toolCalls.filter((r) => matchesTraceId(r, 'trace-answer')).map((r) => r.toolCallId)).toEqual(['call-search'])
+    expect(confirmations.every((r) => matchesTraceId(r, 'trace-answer'))).toBe(true)
+    expect(retrievals.filter((r) => matchesTraceId(r, 'trace-answer'))).toHaveLength(2)
     expect(
       relatedToolCallIds({ toolCalls, confirmations, retrievals }, 'trace-answer'),
     ).toEqual(new Set(['call-search', 'call-update']))

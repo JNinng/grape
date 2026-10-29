@@ -71,12 +71,18 @@ go build ./cmd/server
   折叠为渲染态：文本增量（TEXT_MESSAGE_*）、工具调用生命周期（TOOL_CALL_*，
   参数/结果折叠展示）、步骤（STEP_*）与错误（RUN_ERROR → 错误横幅）。
 - 历史（thread）回放：切换会话时 POST `/agui/history` 拉一次 messages snapshot
-  （`agui/history.ts` 手解 SSE data 行）。不跟 follow 流——上游 track follow 的
-  同毫秒事件可能被跳过（上游已知缺陷），快照即回放，新消息由运行事件折叠。
+  （`agui/history.ts` 手解 SSE data 行）。拿到首份 MESSAGES_SNAPSHOT 即取消
+  流（reader.cancel）返回——历史立即渲染，不等快照运行走完 run 生命周期
+  关流。不跟 follow 流——上游 track follow 的同毫秒事件可能被跳过（上游已
+  知缺陷），快照即回放，新消息由运行事件折叠。
 - 确认卡：流内 `tool_confirmation` 自定义事件（载荷字段与 ack `Payload` 一字
   对齐）出卡；决定 POST `/agui/ack/confirmation`（approve/deny × remember
   session|global），404 视为已失效收敛；待确认列表 GET `/agui/ack/confirmations?threadId=`
   在加载会话、运行结束与 30s 低频轮询兜底，服务端列表为对账基准。
+- 决定后收敛：一次决定落定（成功与 404 已失效共用 onDecided 回调）后，按
+  1s/2s/2s/3s/3s 的先密后疏节奏重拉历史快照（续跑产物要等服务端写回快照
+  才能拉到），整表替换 items；相邻两轮一致（快照已稳定）或达轮次上限即停。
+  会话切走即停；运行进行中跳过该轮（流事件负责实时折叠）；单轮失败静默。
 - 取消：运行中显示取消按钮，POST `/agui/cancel`（RunAgentInput 形状，
   threadId + runId 定位）；404 为运行已结束的正常竞态。
 - 会话列表：GET `/agui/sessions`（后端见 `internal/service/agent_sessions.go`）
@@ -110,14 +116,15 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
   UI 以「0（框架未暴露）」呈现避免误读。
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
-  `replay/model.ts` 纯函数），选中后过滤三个证据面并以品牌紫高亮留存
-  行；回放流经 `relatedToolCallIds` 桥接（toolCallId 取审计与确认两面
-  并集，live 路径两面 trace 不同），命中项所在的「用户消息为界」整段
-  经 `relatedChatItemIds` 邻近归属保持原样，段外项降透明度（无任何命
-  中项时不降，避免整流变灰而无所指）；表内 trace 值可点击反选。工具
-  调用项摘要行常显审计/确认关联数徽标，展开后在参数与结果原文下内嵌
-  同一 toolCallId 的审计行与授权确认行。确认行与工具行的 trace 在
-  live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
+  `replay/model.ts` 纯函数）。选中链路只做高亮对比、不隐藏数据：三个证据
+  面全量渲染，命中行品牌紫高亮、未命中行灰显（`matchesTraceId` 谓词区分
+  两种呈现），保住证据间的上下文；回放流经 `relatedToolCallIds` 桥接
+  （toolCallId 取审计与确认两面并集，live 路径两面 trace 不同），命中项所
+  在的「用户消息为界」整段经 `relatedChatItemIds` 邻近归属保持原样，段外
+  项降透明度（无任何命中项时不降，避免整流变灰而无所指）；表内 trace 值
+  可点击反选。工具调用项摘要行常显审计/确认关联数徽标，展开后在参数与
+  结果原文下内嵌同一 toolCallId 的审计行与授权确认行。确认行与工具行的
+  trace 在 live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
   下拉按 trace 分组，不自动把两行并到一组。
 - 压缩占位与原文对照：`replay/compaction.ts` 按 trpc-agent-go
   context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记

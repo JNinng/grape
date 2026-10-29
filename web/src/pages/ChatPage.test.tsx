@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,6 +14,7 @@ vi.mock('../agui/history', () => ({
 vi.mock('../agui/confirmation', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../agui/confirmation')>()),
   fetchPendingConfirmations: vi.fn(),
+  decideConfirmation: vi.fn(),
 }))
 vi.mock('../agui/agent', () => ({
   createChatAgent: vi.fn(),
@@ -24,15 +25,16 @@ vi.mock('../agui/cancel', () => ({
 
 import { fetchAgentSessions } from '../api/agentSessions'
 import { fetchHistorySnapshot } from '../agui/history'
-import { fetchPendingConfirmations } from '../agui/confirmation'
+import { AlreadyDecidedError, decideConfirmation, fetchPendingConfirmations } from '../agui/confirmation'
 import { cancelRun } from '../agui/cancel'
 import { createChatAgent } from '../agui/agent'
 import { ChatPage } from './ChatPage'
-import type { ChatItem } from '../agui/events'
+import type { ChatItem, ToolConfirmationPayload } from '../agui/events'
 
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
 const mockFetchHistory = vi.mocked(fetchHistorySnapshot)
 const mockFetchPending = vi.mocked(fetchPendingConfirmations)
+const mockDecide = vi.mocked(decideConfirmation)
 const mockCancelRun = vi.mocked(cancelRun)
 const mockCreateAgent = vi.mocked(createChatAgent)
 
@@ -208,5 +210,80 @@ describe('ChatPage streaming run', () => {
     expect(threadId).toBe(mockFetchHistory.mock.calls[0][0])
     expect(typeof runId).toBe('string')
     releaseRun()
+  })
+})
+
+describe('ChatPage history convergence after decision', () => {
+  // 说明：本组用例在假定时器下运行，交互用 fireEvent（同步派发）而非
+  // userEvent——后者经 RTL asyncWrapper 包裹，其收尾的微任务冲刷依赖
+  // jest 专属 API（jest.advanceTimersByTime），vitest 环境下会永久挂起。
+  // 所有异步链（挂载拉取、决定提交、轮询）一律用假时间推进显式冲刷。
+
+  function pendingConfirmation(): ToolConfirmationPayload {
+    return {
+      confirmationId: 'conf-1',
+      toolCallId: 'call-1',
+      toolName: 'echo',
+      arguments: { text: 'ping' },
+      sessionId: 'thread-pending',
+      status: 'pending',
+      createdAt: 1,
+      live: true,
+    }
+  }
+
+  it('repolls_history_after_a_decision_until_adjacent_snapshots_match', async () => {
+    vi.useFakeTimers()
+    try {
+      // 决定后服务端待确认列表不再含该项：首查返回 pending，其后为空，
+      // 否则兜底查询会把已移除的卡片加回来。
+      mockFetchPending.mockResolvedValueOnce([pendingConfirmation()]).mockResolvedValue([])
+      mockDecide.mockResolvedValue(undefined)
+      const settled: ChatItem[] = [{ kind: 'message', id: 'a-1', role: 'assistant', content: '决定后的回答' }]
+      mockFetchHistory
+        .mockResolvedValueOnce([]) // 挂载快照（空会话）
+        .mockResolvedValueOnce(settled) // 决定后第 1 轮（1s）
+        .mockResolvedValue(settled) // 决定后第 2 轮（2s）与上轮一致 → 收敛
+      renderChat()
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+      fireEvent.click(within(screen.getByTestId('confirmation-card')).getByRole('button', { name: '批准' }))
+      await vi.advanceTimersByTimeAsync(0)
+      // 节奏 1s/2s/2s/3s/3s：第 2 轮与第 1 轮一致即停，其后推进不再拉取。
+      await vi.advanceTimersByTimeAsync(1_000)
+      await vi.advanceTimersByTimeAsync(2_000)
+      await vi.advanceTimersByTimeAsync(8_000)
+
+      expect(mockFetchHistory).toHaveBeenCalledTimes(3)
+      const mountedThread = mockFetchHistory.mock.calls[0][0]
+      expect(mockFetchHistory).toHaveBeenLastCalledWith(mountedThread)
+      // 整表替换生效：快照内容上屏。
+      expect(screen.getByRole('log')).toHaveTextContent('决定后的回答')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('repolls_history_after_the_already_decided_404_convergence_without_an_error', async () => {
+    vi.useFakeTimers()
+    try {
+      mockFetchPending.mockResolvedValueOnce([pendingConfirmation()]).mockResolvedValue([])
+      // 404（并发已决定）在确认卡内收敛为 onDecided 共用回调：同样触发
+      // 历史重拉，且不报错打断用户。
+      mockDecide.mockRejectedValue(new AlreadyDecidedError())
+      mockFetchHistory.mockResolvedValue([])
+      renderChat()
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+      fireEvent.click(within(screen.getByTestId('confirmation-card')).getByRole('button', { name: '拒绝' }))
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(1_000)
+
+      expect(mockFetchHistory).toHaveBeenCalledTimes(2)
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(screen.queryByTestId('confirmation-card')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
