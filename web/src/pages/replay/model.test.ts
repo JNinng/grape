@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { ToolCallItem } from '../../agui/events'
+import type { ChatItem, ToolCallItem } from '../../agui/events'
 import type { ConfirmationAudit, ToolCallAudit } from '../../api/agentAudit'
 import type { RetrievalLog } from '../../api/agentRetrievalLogs'
 import {
   collectTraceIds,
   confirmationsForToolCall,
   filterByTraceId,
-  highlightedToolCallIds,
   parseRetrievalHits,
-  replayItemMatchesHighlight,
+  relatedChatItemIds,
+  relatedToolCallIds,
   toolCallAuditsFor,
 } from './model'
 
@@ -99,17 +99,55 @@ describe('filterByTraceId', () => {
   })
 })
 
-describe('highlightedToolCallIds and replay linking', () => {
-  it('maps_a_trace_to_the_replay_tool_items_via_tool_call_id', () => {
-    const audits = [toolCallRow(1, 'call-1', 'trace-a'), toolCallRow(2, 'call-2', 'trace-b')]
-    const highlight = highlightedToolCallIds(audits, 'trace-a')
-    expect(highlight).toEqual(new Set(['call-1']))
-    expect(replayItemMatchesHighlight(toolItem('call-1', 'ok'), highlight)).toBe(true)
-    expect(replayItemMatchesHighlight(toolItem('call-2', 'ok'), highlight)).toBe(false)
+describe('relatedToolCallIds and replay linking', () => {
+  it('unions_audit_and_confirmation_tool_call_ids_for_a_trace', () => {
+    // live 路径确认行与工具行 trace 不同：桥接取两面并集，避免只按审计
+    // 桥接时确认链路的工具项漏标。
+    const facets = {
+      toolCalls: [toolCallRow(1, 'call-1', 'trace-a'), toolCallRow(2, 'call-2', 'trace-b')],
+      confirmations: [confirmationRow(1, 'call-3', 'trace-a')],
+      retrievals: [],
+    }
+    expect(relatedToolCallIds(facets, 'trace-a')).toEqual(new Set(['call-1', 'call-3']))
+    expect(relatedToolCallIds(facets, 'trace-b')).toEqual(new Set(['call-2']))
   })
 
-  it('returns_an_empty_highlight_without_a_selected_trace', () => {
-    expect(highlightedToolCallIds([toolCallRow(1, 'call-1', 'trace-a')], null)).toEqual(new Set())
+  it('returns_an_empty_related_set_without_a_selected_trace', () => {
+    const facets = {
+      toolCalls: [toolCallRow(1, 'call-1', 'trace-a')],
+      confirmations: [],
+      retrievals: [],
+    }
+    expect(relatedToolCallIds(facets, null)).toEqual(new Set())
+  })
+
+  it('attributes_whole_user_turns_to_related_tool_calls_in_the_replay_stream', () => {
+    // 分段归属：命中工具项所在「用户消息为界」的整段（用户消息、工具
+    // 调用、助手回答）都判相关；其他分段不扩散。
+    const items: ChatItem[] = [
+      { kind: 'message', id: 'm-0', role: 'assistant', content: '开场' },
+      { kind: 'message', id: 'm-1', role: 'user', content: '第一问' },
+      toolItem('call-1', 'ok'),
+      { kind: 'message', id: 'm-2', role: 'assistant', content: '第一答' },
+      { kind: 'message', id: 'm-3', role: 'user', content: '第二问' },
+      { kind: 'message', id: 'm-4', role: 'assistant', content: '第二答' },
+    ]
+    const related = relatedChatItemIds(items, new Set(['call-1']))
+    expect(related.has('m-0')).toBe(false)
+    expect(related.has('m-1')).toBe(true)
+    expect(related.has('call-1')).toBe(true)
+    expect(related.has('m-2')).toBe(true)
+    expect(related.has('m-3')).toBe(false)
+    expect(related.has('m-4')).toBe(false)
+  })
+
+  it('returns_an_empty_related_stream_when_no_tool_call_matches', () => {
+    const items: ChatItem[] = [
+      { kind: 'message', id: 'm-1', role: 'user', content: '问' },
+      toolItem('call-1', 'ok'),
+    ]
+    expect(relatedChatItemIds(items, new Set(['call-x']))).toEqual(new Set())
+    expect(relatedChatItemIds(items, new Set())).toEqual(new Set())
   })
 
   it('links_audit_and_confirmation_rows_to_a_replay_tool_call', () => {
@@ -164,10 +202,13 @@ describe('trace evidence assembly', () => {
     expect(filterByTraceId(toolCalls, 'trace-answer').map((r) => r.toolCallId)).toEqual(['call-search'])
     expect(filterByTraceId(confirmations, 'trace-answer')).toHaveLength(1)
     expect(filterByTraceId(retrievals, 'trace-answer')).toHaveLength(2)
-    expect(highlightedToolCallIds(toolCalls, 'trace-answer')).toEqual(new Set(['call-search']))
+    expect(
+      relatedToolCallIds({ toolCalls, confirmations, retrievals }, 'trace-answer'),
+    ).toEqual(new Set(['call-search', 'call-update']))
   })
 
-  // 对话回放本身不带 trace_id（框架 track 事件无链路事实），它靠
-  // toolCallId 桥接高亮；过滤函数只作用于三证据面（上行断言），结构上
-  // 不存在触碰回放 items 的路径，故无「过滤改写回放」的可测行为。
+  // 对话回放本身不带 trace_id（框架 track 事件无链路事实）：它经
+  // relatedToolCallIds 的 toolCallId 桥接（上行断言）与 relatedChatItemIds
+  // 的分段邻近归属关联到回放 items；过滤函数只作用于三证据面（上行断
+  // 言），结构上不存在「过滤改写回放」的可测行为。
 })

@@ -5,7 +5,7 @@
 
 import type { ConfirmationAudit, ToolCallAudit } from '../../api/agentAudit'
 import type { RetrievalLog } from '../../api/agentRetrievalLogs'
-import type { ToolCallItem } from '../../agui/events'
+import type { ChatItem } from '../../agui/events'
 
 // TraceFacets 是带链路事实的三个证据面（对话回放自身不带 trace_id，其
 // 与证据面的关联经 toolCallId 桥接）。
@@ -48,26 +48,57 @@ export function filterByTraceId<T extends { traceId?: string }>(rows: T[], trace
   return rows.filter((row) => row.traceId === traceId)
 }
 
-// highlightedToolCallIds 计算回放侧需高亮的工具调用 ID 集合：选中链路
-// 时为该链路审计行涉及的全部 toolCallId；未选中（null）返回空集（不高
-// 亮）。回放工具项与审计行以 toolCallId 同值桥接——同一次工具调用在
-// 对话流与证据面之间的关联锚点。
-export function highlightedToolCallIds(toolCalls: ToolCallAudit[], traceId: string | null): Set<string> {
-  if (traceId === null || traceId === '') {
-    return new Set()
-  }
+// relatedToolCallIds 计算链路在回放侧关联的全部 toolCallId：审计行与授
+// 权确认行都携带 toolCallId，live 路径两者 trace 不同，取并集保证桥接召
+// 回；未选中链路（null/空串）返回空集。回放工具项与证据行以 toolCallId
+// 同值桥接——同一次工具调用在对话流与证据面之间的关联锚点。
+export function relatedToolCallIds(facets: TraceFacets, traceId: string | null): Set<string> {
   const ids = new Set<string>()
-  for (const row of toolCalls) {
+  if (traceId === null || traceId === '') {
+    return ids
+  }
+  for (const row of facets.toolCalls) {
     if (row.traceId === traceId && row.toolCallId !== '') {
+      ids.add(row.toolCallId)
+    }
+  }
+  for (const row of facets.confirmations) {
+    if (row.traceId === traceId && row.toolCallId) {
       ids.add(row.toolCallId)
     }
   }
   return ids
 }
 
-// replayItemMatchesHighlight 判定一个回放工具项是否命中高亮集合。
-export function replayItemMatchesHighlight(item: ToolCallItem, highlight: Set<string>): boolean {
-  return highlight.has(item.toolCallId)
+// relatedChatItemIds 把链路命中扩散为回放流内的相关项集合：工具项直接
+// 按 toolCallId 判定；文本消息自身不带 trace_id，按「一段交互（以用户
+// 消息为界）内存在命中工具项，则整段相关」的邻近口径归属——一段交互的
+// 用户消息、工具调用与助手回答是同一链路的完整叙事。无任何命中时返回
+// 空集（调用方据此跳过降透明度，避免整流变灰而无所指）。
+export function relatedChatItemIds(items: ChatItem[], relatedToolIds: Set<string>): Set<string> {
+  const ids = new Set<string>()
+  let segment: string[] = []
+  let hit = false
+  const flush = () => {
+    if (hit) {
+      for (const id of segment) {
+        ids.add(id)
+      }
+    }
+    segment = []
+    hit = false
+  }
+  for (const item of items) {
+    if (item.kind === 'message' && item.role === 'user') {
+      flush()
+    }
+    segment.push(item.kind === 'message' ? item.id : item.toolCallId)
+    if (item.kind === 'tool' && relatedToolIds.has(item.toolCallId)) {
+      hit = true
+    }
+  }
+  flush()
+  return ids
 }
 
 // RetrievalHit 是留痕命中行的前端形态（与 biz.RetrievalHit 的 jsonb 键

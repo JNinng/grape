@@ -1,6 +1,6 @@
 # web
 
-Grape 前端：Vite + React + TypeScript + `@ag-ui/client`。构建产物经
+Grape 前端：Vite + React + TypeScript + Tailwind CSS + `@ag-ui/client`。构建产物经
 [embed.go](embed.go) 的 `go:embed` 进 Go 二进制，由 `internal/server` 挂载静态托管
 与 SPA fallback，最终单二进制交付。
 
@@ -40,11 +40,13 @@ go build ./cmd/server
 | 路径 | 职责 |
 | ---- | ---- |
 | [embed.go](embed.go) | `//go:embed all:dist` 导出 `fs.FS`；`go:embed` 不能引用父目录，故本包必须与 `dist` 同级，`server` 只导入该导出。 |
-| [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 插件、开发代理、jsdom 测试环境。 |
+| [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 与 Tailwind 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
+| [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：品牌紫主色、字体栈、细滚动条基础层，以及按钮（btn）、输入框（field）、卡片（card）等跨页面组件类；页面样式一律写工具类，不另散落 CSS。色板以字面 hex 覆盖默认 oklch（旧内核解析不了 oklch 会使颜色全失效），并避免颜色透明度修饰符（color-mix 同因），新增色阶须在 @theme 补齐。 |
 | [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
+| [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 内联 SVG 图标集（品牌标与线性图标），全部 aria-hidden 不携带可访问名，语义由周边文本承载。 |
 | [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）。 |
 
 ## 登录与令牌策略
@@ -108,11 +110,15 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
   UI 以「0（框架未暴露）」呈现避免误读。
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
-  `replay/model.ts` 纯函数），选中后过滤三个证据面并按 toolCallId 桥接
-  高亮回放里的工具调用项（对话回放自身不带 trace_id，不被过滤改写）；
-  表内 trace 值可点击反选。确认行与工具行的 trace 在 live 路径不同，跨
-  trace 的对账以 toolCallId/confirmationId 为准；下拉按 trace 分组，不
-  自动把两行并到一组。
+  `replay/model.ts` 纯函数），选中后过滤三个证据面并以品牌紫高亮留存
+  行；回放流经 `relatedToolCallIds` 桥接（toolCallId 取审计与确认两面
+  并集，live 路径两面 trace 不同），命中项所在的「用户消息为界」整段
+  经 `relatedChatItemIds` 邻近归属保持原样，段外项降透明度（无任何命
+  中项时不降，避免整流变灰而无所指）；表内 trace 值可点击反选。工具
+  调用项摘要行常显审计/确认关联数徽标，展开后在参数与结果原文下内嵌
+  同一 toolCallId 的审计行与授权确认行。确认行与工具行的 trace 在
+  live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
+  下拉按 trace 分组，不自动把两行并到一组。
 - 压缩占位与原文对照：`replay/compaction.ts` 按 trpc-agent-go
   context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记
   含紧凑与裸变体、策略占位），提取 event_id 恢复引用；带引用的经

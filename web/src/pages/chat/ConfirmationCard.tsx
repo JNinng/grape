@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AlreadyDecidedError, decideConfirmation, type RememberOption } from '../../agui/confirmation'
 import type { ToolConfirmationPayload } from '../../agui/events'
+import { ShieldIcon } from '../../ui/icons'
 
 // ConfirmationCardProps 把决定结果交还页面：decided 移除卡片（服务端
 // 待确认列表随后由页面兜底查询对账），failed 展示可读错误。
@@ -61,35 +62,51 @@ export function ConfirmationCard({ confirmation, threadId, onDecided, onFailed }
 
   const args = argumentsText(confirmation.arguments)
   return (
-    <section role="group" aria-label={`工具确认：${confirmation.toolName}`} data-testid="confirmation-card">
-      <h3>工具请求确认</h3>
-      <p>
-        工具：<span>{confirmation.toolName}</span>
-      </p>
-      {args !== '' && (
-        <>
-          <h4>参数</h4>
-          <pre>{args}</pre>
-        </>
-      )}
-      <label>
-        记住决定
-        <select
-          aria-label="记住决定范围"
-          value={remember}
-          onChange={(e) => setRemember(e.target.value as RememberOption)}
-        >
-          <option value="none">不记住</option>
-          <option value="session">仅本次会话</option>
-          <option value="global">全局记住</option>
-        </select>
-      </label>
-      <button type="button" onClick={() => void handle(true)} disabled={deciding}>
-        批准
-      </button>
-      <button type="button" onClick={() => void handle(false)} disabled={deciding}>
-        拒绝
-      </button>
+    <section
+      role="group"
+      aria-label={`工具确认：${confirmation.toolName}`}
+      data-testid="confirmation-card"
+      className="card overflow-hidden border-violet-200"
+    >
+      <header className="flex items-center gap-2 border-b border-violet-100 bg-violet-50 px-4 py-3">
+        <ShieldIcon aria-hidden className="h-4 w-4 shrink-0 text-violet-500" />
+        <h3 className="text-sm font-semibold text-violet-900">工具请求确认</h3>
+      </header>
+      <div className="space-y-3 px-4 py-3.5">
+        <p className="flex items-center gap-1.5 text-sm text-slate-500">
+          工具：
+          <span className="chip bg-violet-50 font-mono text-violet-700">{confirmation.toolName}</span>
+        </p>
+        {args !== '' && (
+          <>
+            <h4 className="text-xs font-medium text-slate-400">参数</h4>
+            <pre className="code-block">{args}</pre>
+          </>
+        )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
+          <label className="flex items-center gap-2 text-sm text-slate-500">
+            记住决定
+            <select
+              aria-label="记住决定范围"
+              className="field w-auto py-1.5 text-xs"
+              value={remember}
+              onChange={(e) => setRemember(e.target.value as RememberOption)}
+            >
+              <option value="none">不记住</option>
+              <option value="session">仅本次会话</option>
+              <option value="global">全局记住</option>
+            </select>
+          </label>
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={() => void handle(true)} disabled={deciding} className="btn btn-primary btn-sm">
+              批准
+            </button>
+            <button type="button" onClick={() => void handle(false)} disabled={deciding} className="btn btn-danger btn-sm">
+              拒绝
+            </button>
+          </div>
+        </div>
+      </div>
     </section>
   )
 }

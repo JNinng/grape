@@ -1,0 +1,148 @@
+/* Tailwind 入口与全局设计基调：Grape 品牌紫为主色、emerald/amber/red
+ * 承载状态语义、slate 承载中性表面，整体走浅色清新的现代观感。页面级
+ * 样式一律使用工具类；此处只沉淀跨页面复用的基础层与组件层。 */
+@import 'tailwindcss';
+
+@theme {
+  /* 中文字形兜底：macOS 走 PingFang，Windows 走微软雅黑，其余回落系统栈 */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-mono: ui-monospace, sfmono-regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* 色板以字面 hex 覆盖默认 oklch 值：oklch 需要较新内核（Chrome 111+），
+   * 旧内核解析失败会使颜色变量全部失效——背景透明、边框回落 currentColor、
+   * 白字白底不可见。此处覆盖项目实际用到的全部色阶，保证任何内核都能
+   * 拿到可解析的字面色值；新增色阶时须在此补齐。 */
+  --color-violet-50: #f5f3ff;
+  --color-violet-100: #ede9fe;
+  --color-violet-200: #ddd6fe;
+  --color-violet-300: #c4b5fd;
+  --color-violet-400: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7c3aed;
+  --color-violet-700: #6d28d9;
+  --color-violet-900: #4c1d95;
+  --color-fuchsia-500: #d946ef;
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-amber-50: #fffbeb;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-slate-100 font-sans text-slate-800 antialiased;
+  }
+
+  /* 细滚动条：避免侧栏与消息流出现宽轨滚动条破坏轻盈感 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300;
+  }
+}
+
+@layer components {
+  /* 按钮基座与变体：尺寸修饰（btn-sm）可与任意变体叠加 */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply bg-violet-600 text-white shadow-xs hover:bg-violet-500 active:bg-violet-700;
+  }
+
+  .btn-outline {
+    @apply border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100;
+  }
+
+  .btn-ghost {
+    @apply text-slate-500 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200;
+  }
+
+  .btn-danger {
+    @apply border border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50 active:bg-red-100;
+  }
+
+  .btn-sm {
+    @apply rounded-md px-2.5 py-1.5 text-xs;
+  }
+
+  /* 表单控件基座：输入框 / 下拉 / 文本域共用 */
+  .field {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-xs transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 focus:outline-none;
+  }
+
+  /* 白面板：证据分区、卡片、折叠件的共同容器 */
+  .card {
+    @apply rounded-2xl border border-slate-200 bg-white shadow-xs;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+
+  /* 代码 / 载荷块：工具参数、结果与事件原文的统一呈现 */
+  .code-block {
+    @apply overflow-x-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-slate-700;
+  }
+
+  /* 错误横幅：role=alert 的统一视觉 */
+  .alert {
+    @apply flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700;
+  }
+
+  /* 空态提示：虚线框 + 居中弱化文案 */
+  .empty-note {
+    @apply rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-400;
+  }
+
+  /* 会话列表项（两个页面共用）：active 修饰叠加高亮 */
+  .session-item {
+    @apply flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 text-left transition-colors select-none hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500;
+  }
+
+  .session-item-active {
+    @apply bg-violet-50 hover:bg-violet-50;
+  }
+}

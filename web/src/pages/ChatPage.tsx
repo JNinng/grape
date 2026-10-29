@@ -10,6 +10,7 @@ import { applyChatEvent, initialChatState, type ChatState, type MessageItem } fr
 import { fetchHistorySnapshot } from '../agui/history'
 import { newId } from '../agui/ids'
 import { getUser } from '../auth/store'
+import { AlertCircleIcon, FlaskIcon, GrapeMark, LogOutIcon, PlusIcon, SendIcon, StopIcon } from '../ui/icons'
 import { ConfirmationCard } from './chat/ConfirmationCard'
 import { MessageList } from './chat/MessageList'
 
@@ -48,6 +49,26 @@ export function ChatPage() {
   const runIdRef = useRef<string | null>(null)
   const threadIdRef = useRef(threadId)
   threadIdRef.current = threadId
+  // scrollRef 承载消息滚动区；inputRef 承载输入框（自适应增高）。
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // 消息 / 步骤 / 确认卡变化时贴底滚动，保证流式输出始终可见。
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el !== null) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [chat.items, chat.steps, chat.confirmations])
+
+  // 输入框随内容自适应增高（封顶后内部滚动）。
+  useEffect(() => {
+    const el = inputRef.current
+    if (el !== null) {
+      el.style.height = 'auto'
+      el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+    }
+  }, [input])
 
   const refreshPending = useCallback(async (tid: string) => {
     try {
@@ -191,99 +212,172 @@ export function ChatPage() {
   }
 
   return (
-    <main className="chat-page">
-      <aside aria-label="会话侧栏">
-        <h2>会话</h2>
-        <button type="button" onClick={handleNewThread}>
-          新建会话
-        </button>
-        {sessionsError !== null && <p role="alert">会话列表加载失败：{sessionsError}</p>}
-        <ul aria-label="会话列表">
-          {sessions.map((session) => (
-            <li key={session.id}>
-              <button
-                type="button"
-                aria-current={session.id === threadId ? 'true' : undefined}
-                onClick={() => setThreadId(session.id)}
-              >
-                <span>{sessionTitle(session)}</span>
-                <time dateTime={session.updatedAt}>{formatTime(session.updatedAt)}</time>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      <section aria-label="对话区">
-        <header>
-          <h1>Grape AI 对话</h1>
-          <span>欢迎，{user?.nickname || user?.name || '用户'}</span>
-          <button type="button" onClick={() => navigate('/replay')}>
-            运维复现
+    <div className="flex h-full overflow-hidden bg-slate-100">
+      <aside aria-label="会话侧栏" className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
+        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+          <GrapeMark className="h-9 w-9" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-900">Grape</h2>
+            <p className="truncate text-xs text-slate-400">AI 对话工作台</p>
+          </div>
+        </div>
+        <div className="px-4 pb-3">
+          <button type="button" onClick={handleNewThread} className="btn btn-primary w-full">
+            <PlusIcon aria-hidden className="h-4 w-4" />
+            新建会话
           </button>
-          <button type="button" onClick={handleLogout}>
-            登出
-          </button>
-        </header>
-        {historyError !== null && <p role="alert">历史加载失败：{historyError}</p>}
-        {chat.error !== null && (
-          <p role="alert">运行出错：{chat.error}</p>
+        </div>
+        {sessionsError !== null && (
+          <p role="alert" className="alert mx-4 mb-3">
+            <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>会话列表加载失败：{sessionsError}</span>
+          </p>
         )}
+        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+          <ul aria-label="会话列表" className="space-y-1">
+            {sessions.map((session) => {
+              const active = session.id === threadId
+              return (
+                <li key={session.id}>
+                  <button
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
+                    onClick={() => setThreadId(session.id)}
+                    className={active ? 'session-item session-item-active' : 'session-item'}
+                  >
+                    <span className={`truncate text-sm font-medium ${active ? 'text-violet-700' : 'text-slate-700'}`}>
+                      {sessionTitle(session)}
+                    </span>
+                    <time
+                      dateTime={session.updatedAt}
+                      className={`text-xs ${active ? 'text-violet-400' : 'text-slate-400'}`}
+                    >
+                      {formatTime(session.updatedAt)}
+                    </time>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </nav>
+      </aside>
+
+      <section aria-label="对话区" className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6">
+          <h1 className="truncate text-base font-semibold text-slate-900">Grape AI 对话</h1>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="mr-1 hidden text-sm text-slate-500 lg:inline">
+              欢迎，{user?.nickname || user?.name || '用户'}
+            </span>
+            <span aria-hidden className="mr-2 hidden h-4 w-px bg-slate-200 lg:inline-block" />
+            <button type="button" onClick={() => navigate('/replay')} className="btn btn-ghost btn-sm">
+              <FlaskIcon aria-hidden className="h-3.5 w-3.5" />
+              运维复现
+            </button>
+            <button type="button" onClick={handleLogout} className="btn btn-ghost btn-sm">
+              <LogOutIcon aria-hidden className="h-3.5 w-3.5" />
+              登出
+            </button>
+          </div>
+        </header>
+
+        {(historyError !== null || chat.error !== null) && (
+          <div className="mx-auto w-full max-w-3xl space-y-2 px-6 pt-4">
+            {historyError !== null && (
+              <p role="alert" className="alert">
+                <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>历史加载失败：{historyError}</span>
+              </p>
+            )}
+            {chat.error !== null && (
+              <p role="alert" className="alert">
+                <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>运行出错：{chat.error}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         {chat.steps.length > 0 && (
-          <ol aria-label="运行步骤">
+          <ol aria-label="运行步骤" className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-6 pt-4">
             {chat.steps.map((step, index) => (
-              <li key={`${step.name}-${index}`}>
+              <li key={`${step.name}-${index}`} className="chip border border-slate-200 bg-white text-slate-500 shadow-xs">
+                <span
+                  aria-hidden
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    step.finished ? 'bg-emerald-500' : 'animate-pulse bg-violet-500'
+                  }`}
+                />
                 {step.name}
                 {step.finished ? '' : '…'}
               </li>
             ))}
           </ol>
         )}
-        <MessageList items={chat.items} />
-        {chat.confirmations.map((confirmation) => (
-          <ConfirmationCard
-            key={confirmation.confirmationId}
-            confirmation={confirmation}
-            threadId={threadId}
-            onDecided={(id) => {
-              setChat((s) => ({
-                ...s,
-                confirmations: s.confirmations.filter((c) => c.confirmationId !== id),
-              }))
-              void refreshPending(threadId)
-            }}
-            onFailed={(_id, message) => {
-              setChat((s) => ({ ...s, error: `确认提交失败：${message}` }))
-            }}
-          />
-        ))}
+
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
+            <MessageList items={chat.items} />
+            {chat.confirmations.map((confirmation) => (
+              <ConfirmationCard
+                key={confirmation.confirmationId}
+                confirmation={confirmation}
+                threadId={threadId}
+                onDecided={(id) => {
+                  setChat((s) => ({
+                    ...s,
+                    confirmations: s.confirmations.filter((c) => c.confirmationId !== id),
+                  }))
+                  void refreshPending(threadId)
+                }}
+                onFailed={(_id, message) => {
+                  setChat((s) => ({ ...s, error: `确认提交失败：${message}` }))
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
         <form
           onSubmit={(e) => {
             e.preventDefault()
             void send()
           }}
+          className="shrink-0 border-t border-slate-200 bg-white px-6 pt-4 pb-3"
         >
-          <textarea
-            aria-label="输入消息"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="输入消息，Enter 发送（Shift+Enter 换行）"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-          />
-          <button type="submit" disabled={chat.running || input.trim() === ''}>
-            发送
-          </button>
-          {chat.running && (
-            <button type="button" onClick={() => void handleCancel()}>
-              取消
-            </button>
-          )}
+          <div className="mx-auto w-full max-w-3xl">
+            <div className="flex items-end gap-2 rounded-2xl border border-slate-300 bg-white p-2 shadow-xs transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-200">
+              <textarea
+                ref={inputRef}
+                aria-label="输入消息"
+                rows={1}
+                className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="输入消息"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    void send()
+                  }
+                }}
+              />
+              {chat.running ? (
+                <button type="button" onClick={() => void handleCancel()} className="btn btn-danger">
+                  <StopIcon aria-hidden className="h-4 w-4" />
+                  取消
+                </button>
+              ) : (
+                <button type="submit" disabled={input.trim() === ''} className="btn btn-primary">
+                  <SendIcon aria-hidden className="h-4 w-4" />
+                  发送
+                </button>
+              )}
+            </div>
+            <p className="px-1 pt-1.5 text-center text-xs text-slate-400">Enter 发送 · Shift+Enter 换行</p>
+          </div>
         </form>
       </section>
-    </main>
+    </div>
   )
 }
