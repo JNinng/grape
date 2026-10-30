@@ -1,7 +1,15 @@
 import { useState } from 'react'
+import { ShieldCheckIcon } from 'lucide-react'
 import { AlreadyDecidedError, decideConfirmation, type RememberOption } from '../../agui/confirmation'
 import type { ToolConfirmationPayload } from '../../agui/events'
-import { ShieldIcon } from '../../ui/icons'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 // ConfirmationCardProps 把决定结果交还页面：decided 移除卡片（服务端
 // 待确认列表随后由页面兜底查询对账），failed 展示可读错误。
@@ -66,44 +74,53 @@ export function ConfirmationCard({ confirmation, threadId, onDecided, onFailed }
       role="group"
       aria-label={`工具确认：${confirmation.toolName}`}
       data-testid="confirmation-card"
-      className="card overflow-hidden border-violet-200"
+      className="overflow-hidden rounded-xl border border-brand-soft-border bg-card text-card-foreground shadow-sm"
     >
-      <header className="flex items-center gap-2 border-b border-violet-100 bg-violet-50 px-4 py-3">
-        <ShieldIcon aria-hidden className="h-4 w-4 shrink-0 text-violet-500" />
-        <h3 className="text-sm font-semibold text-violet-900">工具请求确认</h3>
+      <header className="flex items-center gap-2 border-b border-brand-soft-border bg-brand-soft px-4 py-3">
+        <ShieldCheckIcon aria-hidden className="size-4 shrink-0 text-primary" />
+        <h3 className="text-sm font-semibold text-brand-text">工具请求确认</h3>
       </header>
       <div className="space-y-3 px-4 py-3.5">
-        <p className="flex items-center gap-1.5 text-sm text-slate-500">
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           工具：
-          <span className="chip bg-violet-50 font-mono text-violet-700">{confirmation.toolName}</span>
+          <span className="inline-flex items-center rounded-full bg-brand-soft px-2 py-0.5 font-mono text-xs font-medium text-brand-text">
+            {confirmation.toolName}
+          </span>
         </p>
         {args !== '' && (
           <>
-            <h4 className="text-xs font-medium text-slate-400">参数</h4>
+            <h4 className="text-xs font-medium text-muted-foreground">参数</h4>
             <pre className="code-block">{args}</pre>
           </>
         )}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
-          <label className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
             记住决定
-            <select
-              aria-label="记住决定范围"
-              className="field w-auto py-1.5 text-xs"
-              value={remember}
-              onChange={(e) => setRemember(e.target.value as RememberOption)}
-            >
-              <option value="none">不记住</option>
-              <option value="session">仅本次会话</option>
-              <option value="global">全局记住</option>
-            </select>
-          </label>
+            <Select value={remember} onValueChange={(value) => setRemember(value as RememberOption)}>
+              <SelectTrigger size="sm" aria-label="记住决定范围" className="w-28 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">不记住</SelectItem>
+                <SelectItem value="session">仅本次会话</SelectItem>
+                <SelectItem value="global">全局记住</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <div className="ml-auto flex items-center gap-2">
-            <button type="button" onClick={() => void handle(true)} disabled={deciding} className="btn btn-primary btn-sm">
+            <Button type="button" size="sm" onClick={() => void handle(true)} disabled={deciding}>
               批准
-            </button>
-            <button type="button" onClick={() => void handle(false)} disabled={deciding} className="btn btn-danger btn-sm">
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void handle(false)}
+              disabled={deciding}
+              className="text-destructive hover:bg-destructive-soft hover:text-destructive"
+            >
               拒绝
-            </button>
+            </Button>
           </div>
         </div>
       </div>

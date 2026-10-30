@@ -24,6 +24,7 @@ import { fetchAgentSessions } from '../../api/agentSessions'
 import { fetchConfirmationAudits, fetchToolCallAudits } from '../../api/agentAudit'
 import { fetchRetrievalLogs } from '../../api/agentRetrievalLogs'
 import { fetchHistorySnapshot } from '../../agui/history'
+import { ThemeProvider } from '../../components/theme-provider'
 import { ReplayPage } from './ReplayPage'
 
 const mockFetchSessions = vi.mocked(fetchAgentSessions)
@@ -189,7 +190,9 @@ afterEach(() => {
 function renderReplay() {
   return render(
     <MemoryRouter>
-      <ReplayPage />
+      <ThemeProvider>
+        <ReplayPage />
+      </ThemeProvider>
     </MemoryRouter>,
   )
 }
@@ -235,8 +238,8 @@ describe('ReplayPage four-facet evidence view', () => {
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(within(retrievalRegion).getByText('doc-1')).toBeInTheDocument()
     // 未选中链路：证据行中性呈现，不预高亮也不灰显。
-    expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-violet-50', 'opacity-40')
-    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-violet-50', 'opacity-40')
+    expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-brand-soft', 'opacity-40')
+    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
   })
 
   it('keeps_all_evidence_rows_visible_and_dims_misses_when_a_trace_is_selected', async () => {
@@ -250,7 +253,7 @@ describe('ReplayPage four-facet evidence view', () => {
 
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
     const echoRow = within(auditRegion).getByText('echo').closest('tr')
-    expect(echoRow).toHaveClass('bg-violet-50')
+    expect(echoRow).toHaveClass('bg-brand-soft')
     expect(echoRow).not.toHaveClass('opacity-40')
     expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('opacity-40')
 
@@ -278,13 +281,13 @@ describe('ReplayPage four-facet evidence view', () => {
     await pickTraceOption(user, 'trace-a')
 
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
-    expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('bg-violet-50')
+    expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('bg-brand-soft')
     const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
     // trace-a 只命中 approved 行（trace-a），其余行按未命中呈现。
-    expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-violet-50')
-    expect(within(confirmRegion).getByText('auto_deny').closest('tr')).not.toHaveClass('bg-violet-50')
+    expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-brand-soft')
+    expect(within(confirmRegion).getByText('auto_deny').closest('tr')).not.toHaveClass('bg-brand-soft')
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
-    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('bg-violet-50')
+    expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('bg-brand-soft')
   })
 
   it('filters_dropdown_options_by_frontend_search_before_selection', async () => {
@@ -296,6 +299,7 @@ describe('ReplayPage four-facet evidence view', () => {
 
     const input = screen.getByRole('combobox', { name: 'trace 过滤' })
     await user.click(input)
+    // 候选列表（Popover 内的 cmdk Command）经其根 label（aria-labelledby）命名。
     expect(screen.getByRole('listbox', { name: 'trace 候选' })).toBeInTheDocument()
     await user.type(input, 'b')
 
@@ -306,7 +310,7 @@ describe('ReplayPage four-facet evidence view', () => {
     await user.click(within(listbox).getByRole('option', { name: 'trace-b' }))
     await waitFor(() => {
       expect(within(screen.getByRole('region', { name: '工具调用审计' })).getByText('echo').closest('tr')).toHaveClass(
-        'bg-violet-50',
+        'bg-brand-soft',
       )
     })
 
@@ -328,12 +332,12 @@ describe('ReplayPage four-facet evidence view', () => {
     const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
     await user.click(within(confirmRegion).getByRole('button', { name: '追踪 trace-a' }))
     await waitFor(() => {
-      expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-violet-50')
+      expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-brand-soft')
     })
 
     // 反选清除：再次点击同一按钮回到全链路视图。
     await user.click(within(confirmRegion).getByRole('button', { name: '追踪 trace-a' }))
-    expect(within(confirmRegion).getByText('approved').closest('tr')).not.toHaveClass('bg-violet-50')
+    expect(within(confirmRegion).getByText('approved').closest('tr')).not.toHaveClass('bg-brand-soft')
   })
 
   it('colors_confirmation_chips_by_decision_direction_with_fail_closed_red', async () => {
@@ -347,21 +351,24 @@ describe('ReplayPage four-facet evidence view', () => {
     const chip = (decision: string) => {
       const chips = within(confirmRegion)
         .getAllByText(decision)
-        .filter((el) => el.classList.contains('chip'))
+        .filter((el) => el.getAttribute('data-slot') === 'badge')
       expect(chips).toHaveLength(1)
       return chips[0]
     }
-    expect(chip('approved')).toHaveClass('bg-emerald-50')
-    expect(chip('auto')).toHaveClass('bg-emerald-50')
-    expect(chip('risk_auto')).toHaveClass('bg-emerald-50')
-    expect(chip('denied')).toHaveClass('bg-red-50')
-    expect(chip('auto_deny')).toHaveClass('bg-red-50')
-    expect(chip('risk_deny')).toHaveClass('bg-red-50')
-    expect(chip('legacy_approve')).toHaveClass('bg-red-50')
+    expect(chip('approved')).toHaveClass('bg-success-soft')
+    expect(chip('auto')).toHaveClass('bg-success-soft')
+    expect(chip('risk_auto')).toHaveClass('bg-success-soft')
+    expect(chip('denied')).toHaveClass('bg-danger-soft')
+    expect(chip('auto_deny')).toHaveClass('bg-danger-soft')
+    expect(chip('risk_deny')).toHaveClass('bg-danger-soft')
+    expect(chip('legacy_approve')).toHaveClass('bg-danger-soft')
 
-    // 回放工具项内嵌的授权确认行同规则（approved 行挂在 call-1 上）。
+    // 回放工具项内嵌的授权确认行同规则（approved 行挂在 call-1 上）：
+    // 折叠项默认收起，展开后内容才挂载。
+    const user = userEvent.setup()
     const callRow = screen.getByLabelText('工具调用 search_internal_docs')
-    expect(within(callRow).getByText('approved')).toHaveClass('bg-emerald-50')
+    await user.click(within(callRow).getByRole('button'))
+    expect(within(callRow).getByText('approved')).toHaveClass('bg-success-soft')
   })
 
   it('highlights_the_replay_tool_call_linked_to_the_selected_trace', async () => {
@@ -382,7 +389,8 @@ describe('ReplayPage four-facet evidence view', () => {
     const user = userEvent.setup()
     renderReplay()
     await screen.findByText('answer')
-    await user.click(screen.getByRole('button', { name: '会话 thread-2' }))
+    // 按钮的可访问名含列表项内的更新时间，按前缀正则匹配。
+    await user.click(screen.getByRole('button', { name: /会话 thread-2/ }))
     await waitFor(() => {
       expect(mockFetchHistory).toHaveBeenCalledWith('thread-2')
     })
@@ -410,9 +418,9 @@ describe('ReplayPage four-facet evidence view', () => {
     const user = userEvent.setup()
     renderReplay()
     // 初始装载选中 thread-1，其 history 挂起：页面处于 loading，无内容。
-    await screen.findByRole('button', { name: '会话 thread-1' })
+    await screen.findByRole('button', { name: /会话 thread-1/ })
     expect(screen.queryByText('thread-2 answer')).toBeNull()
-    await user.click(screen.getByRole('button', { name: '会话 thread-2' }))
+    await user.click(screen.getByRole('button', { name: /会话 thread-2/ }))
     await screen.findByText('thread-2 answer')
     // 释放 thread-1 的慢响应：守卫应丢弃，页面仍显示 thread-2 内容。
     releaseSlow([

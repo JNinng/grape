@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Event, Message } from '@ag-ui/client'
 import { useNavigate } from 'react-router'
+import {
+  CircleAlertIcon,
+  FlaskConicalIcon,
+  LogOutIcon,
+  PlusIcon,
+  SendIcon,
+  SquareIcon,
+} from 'lucide-react'
 import { fetchAgentSessions, type AgentSessionMeta } from '../api/agentSessions'
 import { logout } from '../api/session'
 import { createChatAgent } from '../agui/agent'
@@ -10,9 +18,33 @@ import { applyChatEvent, initialChatState, type ChatState, type MessageItem } fr
 import { fetchHistorySnapshot } from '../agui/history'
 import { newId } from '../agui/ids'
 import { getUser } from '../auth/store'
-import { AlertCircleIcon, FlaskIcon, GrapeMark, LogOutIcon, PlusIcon, SendIcon, StopIcon } from '../ui/icons'
+import { GrapeMark } from '../ui/icons'
 import { ConfirmationCard } from './chat/ConfirmationCard'
 import { MessageList } from './chat/MessageList'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
+import { AccentPicker } from '@/components/accent-picker'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { ModeToggle } from '@/components/mode-toggle'
+import { Separator } from '@/components/ui/separator'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 // 待确认列表的低频兜底轮询周期：覆盖页面加载与运行间隙之外的漂移
 // （如另一端决定、恢复路径孤儿确认）。运行结束与切换会话会立即查询，
@@ -279,26 +311,80 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-slate-100">
-      <aside aria-label="会话侧栏" className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white">
+    <div className="flex h-full overflow-hidden bg-background">
+      <aside aria-label="会话侧栏" className="flex w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
         <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
           <GrapeMark className="h-9 w-9" />
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-900">Grape</h2>
-            <p className="truncate text-xs text-slate-400">AI 对话工作台</p>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-foreground">Grape</h2>
+            <p className="truncate text-xs text-muted-foreground">AI 对话工作台</p>
           </div>
+          {/* 运维复现 / 登出收纳为侧栏头部的图标按钮，悬停出提示；主头部
+              只留身份与主题切换，视觉更轻。 */}
+          <TooltipProvider>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="运维复现"
+                    onClick={() => navigate('/replay')}
+                  >
+                    <FlaskConicalIcon aria-hidden className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">运维复现</TooltipContent>
+              </Tooltip>
+              <AlertDialog>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="登出"
+                      >
+                        <LogOutIcon aria-hidden className="size-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">登出</TooltipContent>
+                </Tooltip>
+                {/* 登出二次确认：撤销会话不可撤回，误触图标按钮的代价高。 */}
+                <AlertDialogContent size="sm">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>确认登出？</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      登出将撤销当前会话并返回登录页，未发送的输入将丢失。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogout}>
+                      登出
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </TooltipProvider>
         </div>
         <div className="px-4 pb-3">
-          <button type="button" onClick={handleNewThread} className="btn btn-primary w-full">
-            <PlusIcon aria-hidden className="h-4 w-4" />
+          <Button type="button" onClick={handleNewThread} className="w-full">
+            <PlusIcon aria-hidden className="size-4" />
             新建会话
-          </button>
+          </Button>
         </div>
         {sessionsError !== null && (
-          <p role="alert" className="alert mx-4 mb-3">
-            <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>会话列表加载失败：{sessionsError}</span>
-          </p>
+          <Alert variant="destructive" className="mx-4 mb-3">
+            <CircleAlertIcon aria-hidden className="mt-0.5 shrink-0" />
+            <AlertDescription>
+              <span>会话列表加载失败：{sessionsError}</span>
+            </AlertDescription>
+          </Alert>
         )}
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
           <ul aria-label="会话列表" className="space-y-1">
@@ -310,14 +396,20 @@ export function ChatPage() {
                     type="button"
                     aria-current={active ? 'true' : undefined}
                     onClick={() => setThreadId(session.id)}
-                    className={active ? 'session-item session-item-active' : 'session-item'}
+                    className={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 text-left transition-colors select-none hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring ${
+                      active ? 'bg-brand-soft hover:bg-brand-soft' : ''
+                    }`}
                   >
-                    <span className={`truncate text-sm font-medium ${active ? 'text-violet-700' : 'text-slate-700'}`}>
+                    <span
+                      className={`truncate text-sm font-medium ${
+                        active ? 'text-brand-text' : 'text-foreground'
+                      }`}
+                    >
                       {sessionTitle(session)}
                     </span>
                     <time
                       dateTime={session.updatedAt}
-                      className={`text-xs ${active ? 'text-violet-400' : 'text-slate-400'}`}
+                      className={`text-xs ${active ? 'text-brand-text-soft' : 'text-muted-foreground'}`}
                     >
                       {formatTime(session.updatedAt)}
                     </time>
@@ -330,37 +422,35 @@ export function ChatPage() {
       </aside>
 
       <section aria-label="对话区" className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-6">
-          <h1 className="truncate text-base font-semibold text-slate-900">Grape AI 对话</h1>
+        <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b bg-card px-6">
+          <h1 className="truncate text-base font-semibold text-foreground">Grape AI 对话</h1>
           <div className="flex shrink-0 items-center gap-1.5">
-            <span className="mr-1 hidden text-sm text-slate-500 lg:inline">
+            <span className="hidden text-sm text-muted-foreground lg:inline">
               欢迎，{user?.nickname || user?.name || '用户'}
             </span>
-            <span aria-hidden className="mr-2 hidden h-4 w-px bg-slate-200 lg:inline-block" />
-            <button type="button" onClick={() => navigate('/replay')} className="btn btn-ghost btn-sm">
-              <FlaskIcon aria-hidden className="h-3.5 w-3.5" />
-              运维复现
-            </button>
-            <button type="button" onClick={handleLogout} className="btn btn-ghost btn-sm">
-              <LogOutIcon aria-hidden className="h-3.5 w-3.5" />
-              登出
-            </button>
+            <Separator orientation="vertical" className="hidden h-4 lg:block" />
+            <AccentPicker />
+            <ModeToggle />
           </div>
         </header>
 
         {(historyError !== null || chat.error !== null) && (
           <div className="mx-auto w-full max-w-3xl space-y-2 px-6 pt-4">
             {historyError !== null && (
-              <p role="alert" className="alert">
-                <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>历史加载失败：{historyError}</span>
-              </p>
+              <Alert variant="destructive">
+                <CircleAlertIcon aria-hidden className="mt-0.5 shrink-0" />
+                <AlertDescription>
+                  <span>历史加载失败：{historyError}</span>
+                </AlertDescription>
+              </Alert>
             )}
             {chat.error !== null && (
-              <p role="alert" className="alert">
-                <AlertCircleIcon aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>运行出错：{chat.error}</span>
-              </p>
+              <Alert variant="destructive">
+                <CircleAlertIcon aria-hidden className="mt-0.5 shrink-0" />
+                <AlertDescription>
+                  <span>运行出错：{chat.error}</span>
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         )}
@@ -368,15 +458,17 @@ export function ChatPage() {
         {chat.steps.length > 0 && (
           <ol aria-label="运行步骤" className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-6 pt-4">
             {chat.steps.map((step, index) => (
-              <li key={`${step.name}-${index}`} className="chip border border-slate-200 bg-white text-slate-500 shadow-xs">
-                <span
-                  aria-hidden
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    step.finished ? 'bg-emerald-500' : 'animate-pulse bg-violet-500'
-                  }`}
-                />
-                {step.name}
-                {step.finished ? '' : '…'}
+              <li key={`${step.name}-${index}`}>
+                <Badge variant="outline" className="gap-1.5 shadow-xs">
+                  <span
+                    aria-hidden
+                    className={`size-1.5 rounded-full ${
+                      step.finished ? 'bg-emerald-500' : 'animate-pulse bg-primary'
+                    }`}
+                  />
+                  {step.name}
+                  {step.finished ? '' : '…'}
+                </Badge>
               </li>
             ))}
           </ol>
@@ -413,15 +505,15 @@ export function ChatPage() {
             e.preventDefault()
             void send()
           }}
-          className="shrink-0 border-t border-slate-200 bg-white px-6 pt-4 pb-3"
+          className="shrink-0 border-t bg-card px-6 pt-4 pb-3"
         >
           <div className="mx-auto w-full max-w-3xl">
-            <div className="flex items-end gap-2 rounded-2xl border border-slate-300 bg-white p-2 shadow-xs transition focus-within:border-violet-500 focus-within:ring-2 focus-within:ring-violet-200">
-              <textarea
+            <div className="flex items-end gap-2 rounded-2xl border border-input bg-card p-2 shadow-xs transition focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
+              <Textarea
                 ref={inputRef}
                 aria-label="输入消息"
                 rows={1}
-                className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400"
+                className="max-h-40 min-h-9 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm leading-relaxed shadow-none focus-visible:border-0 focus-visible:ring-0"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="输入消息"
@@ -433,18 +525,23 @@ export function ChatPage() {
                 }}
               />
               {chat.running ? (
-                <button type="button" onClick={() => void handleCancel()} className="btn btn-danger">
-                  <StopIcon aria-hidden className="h-4 w-4" />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCancel()}
+                  className="text-destructive hover:bg-destructive-soft hover:text-destructive"
+                >
+                  <SquareIcon aria-hidden className="size-4" />
                   取消
-                </button>
+                </Button>
               ) : (
-                <button type="submit" disabled={input.trim() === ''} className="btn btn-primary">
-                  <SendIcon aria-hidden className="h-4 w-4" />
+                <Button type="submit" disabled={input.trim() === ''}>
+                  <SendIcon aria-hidden className="size-4" />
                   发送
-                </button>
+                </Button>
               )}
             </div>
-            <p className="px-1 pt-1.5 text-center text-xs text-slate-400">Enter 发送 · Shift+Enter 换行</p>
+            <p className="px-1 pt-1.5 text-center text-xs text-muted-foreground">Enter 发送 · Shift+Enter 换行</p>
           </div>
         </form>
       </section>

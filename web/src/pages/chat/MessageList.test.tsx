@@ -51,9 +51,10 @@ describe('MessageList rendering', () => {
 
     const summary = screen.getByText(/工具 echo/)
     expect(summary).toHaveTextContent('结果')
-    // details 折叠内容默认不可见，展开后参数与结果可见。
-    expect(screen.getByText('{"text":"ping"}').closest('details')).not.toBeNull()
+    // 折叠内容默认不挂载，展开后参数与结果可见。
+    expect(screen.queryByText('{"text":"ping"}')).not.toBeInTheDocument()
     await user.click(summary)
+    expect(summary.closest('[aria-expanded]')).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('参数')).toBeInTheDocument()
     expect(screen.getByText('结果')).toBeInTheDocument()
   })

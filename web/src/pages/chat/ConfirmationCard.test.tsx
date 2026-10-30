@@ -49,7 +49,8 @@ describe('ConfirmationCard decision state machine', () => {
     mockDecide.mockResolvedValue()
     const { onDecided, onFailed } = renderCard()
 
-    await user.selectOptions(screen.getByLabelText('记住决定范围'), 'session')
+    await user.click(screen.getByRole('combobox', { name: '记住决定范围' }))
+    await user.click(await screen.findByRole('option', { name: '仅本次会话' }))
     await user.click(screen.getByRole('button', { name: '批准' }))
 
     await waitFor(() =>
@@ -69,7 +70,8 @@ describe('ConfirmationCard decision state machine', () => {
     mockDecide.mockResolvedValue()
     const { onDecided, onFailed } = renderCard()
 
-    await user.selectOptions(screen.getByLabelText('记住决定范围'), 'global')
+    await user.click(screen.getByRole('combobox', { name: '记住决定范围' }))
+    await user.click(await screen.findByRole('option', { name: '全局记住' }))
     await user.click(screen.getByRole('button', { name: '拒绝' }))
 
     await waitFor(() =>

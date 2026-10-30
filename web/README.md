@@ -1,8 +1,8 @@
 # web
 
-Grape 前端：Vite + React + TypeScript + Tailwind CSS + `@ag-ui/client`。构建产物经
-[embed.go](embed.go) 的 `go:embed` 进 Go 二进制，由 `internal/server` 挂载静态托管
-与 SPA fallback，最终单二进制交付。
+Grape 前端：Vite + React + TypeScript + Tailwind CSS + shadcn/ui（本地改写版）
++ `@ag-ui/client`。构建产物经 [embed.go](embed.go) 的 `go:embed` 进 Go 二进制，
+由 `internal/server` 挂载静态托管与 SPA fallback，最终单二进制交付。
 
 ## 构建顺序（重要）
 
@@ -42,12 +42,64 @@ go build ./cmd/server
 | [embed.go](embed.go) | `//go:embed all:dist` 导出 `fs.FS`；`go:embed` 不能引用父目录，故本包必须与 `dist` 同级，`server` 只导入该导出。 |
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 与 Tailwind 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
-| [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：品牌紫主色、字体栈、细滚动条基础层，以及按钮（btn）、输入框（field）、卡片（card）等跨页面组件类；页面样式一律写工具类，不另散落 CSS。色板以字面 hex 覆盖默认 oklch（旧内核解析不了 oklch 会使颜色全失效），并避免颜色透明度修饰符（color-mix 同因），新增色阶须在 @theme 补齐。 |
+| [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
+| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 18 个经 hex 兼容改写的官方组件（new-york-v4 口径，见「UI 组件与主题」节）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
 | [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
-| [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 内联 SVG 图标集（品牌标与线性图标），全部 aria-hidden 不携带可访问名，语义由周边文本承载。 |
+| [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 仅保留 GrapeMark 品牌标；通用线性图标一律用 lucide-react，加载态用 `ui/spinner`。 |
 | [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）。 |
+
+## UI 组件与主题
+
+组件层取自 shadcn/ui 官方仓库 `new-york-v4`（依赖统一包 `radix-ui`、`cn`、
+`class-variance-authority`、`lucide-react`、`cmdk`、`tw-animate-css`），落地
+18 个够用即止的组件到 `src/components/ui/`：alert、alert-dialog、badge、
+button、card、collapsible、command、dropdown-menu、empty、input、label、
+popover、select、separator、spinner、table、textarea、tooltip。
+`components.json` 保留 shadcn
+CLI 配置，未来 `npx shadcn add <x>` 拉取新组件后须做一次 hex 兼容改写再提交。
+
+**hex 兼容改写规则**（官方组件默认依赖 oklch 与透明度修饰符，编译为
+`color-mix()`，需 Chrome 111+；本项目坚持全内核可解析的字面色值）：
+
+1. 语义 token（`--background`、`--primary`、`--border` 等）值一律字面
+   hex；半透明（遮罩、弱化底色）用 rgba() 形式的专用 token
+   （`--overlay`、`--destructive-soft`、`--soft`），rgba 全内核可解析。
+2. 组件内 `/NN` 透明度修饰符全部消除：悬停加深 → `--primary-hover` /
+   `--destructive-hover`；聚焦/校验环 → 实色 `ring-ring` /
+   `ring-destructive-soft`；弱化悬停面 → `bg-soft`。
+3. 组件内 `dark:` 分支若仅为补偿 alpha 删除，若为真实配色差异改写为
+   语义 token（两套主题在 `:root` / `.dark` 各自给值）。
+4. 定位不用 `translate-x-/-y-*` 工具类——Tailwind v4 将其编译为独立 CSS
+   `translate` 属性（需 Chrome 104+），旧内核整条丢弃会使定位失效（如
+   弹框偏右下）；居中一律用 `fixed inset-0 grid place-items-center` 容器
+   （alert-dialog 已如此实现），动画的 transform 关键帧（tw-animate-css
+   走传统 `transform`）不受影响。
+
+**暗色模式**：`components/theme-provider.tsx`（移植自官方 vite-app 模板，
+零依赖）以 `theme`（dark/light/system）存 localStorage 并解析为 html 上的
+`.dark` 类；`index.html` 头部脚本在样式加载前预挂同类，避免暗色用户刷新
+闪白；切换器 `mode-toggle.tsx`（三选一下拉）位于登录页与对话页头部。
+浅色主题保持原视觉（slate 中性面 + violet-600 品牌主色），深色主题为
+slate 深蓝黑面 + 提亮一档的主色；页面内所有硬编码色已改语义 token，状态
+点缀色（emerald/amber/red）在 JSX 里以 `dark:` 深色阶成对出现。
+
+**主题色系（accent）**：明暗之外的第二维度，经 `html[data-accent]` 触发
+index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化、
+跨标签同步，`index.html` 头部脚本预挂载防闪；切换器为头部调色板下拉
+（`accent-picker.tsx`）。五个色系：`violet` 品牌紫（默认，:root 本值不落
+属性）、`blue` 蓝、`green` 绿、`amber` 琥珀、`safe` 色盲友好。色系覆盖
+品牌相关 token（primary/ring/品牌衍生面），其中色盲友好系额外把状态
+软色对从 红/绿 换成 橙/青绿（Okabe-Ito 蓝主色，红绿色觉障碍可分辨审批
+方向；语义仍以文字标签为主）。页面禁止硬编码品牌/状态 tint（会话选中、
+链路高亮、追踪按钮、审批与执行芯片一律走 `--brand-*` / `--success-*` /
+`--danger-*`），新色系须补齐浅深两套覆盖块。
+
+**测试**：radix 组件在 jsdom 下需要 `src/test/setup.ts` 的无操作垫片
+（pointer capture、scrollIntoView、ResizeObserver、matchMedia）；页面渲染
+需包 `ThemeProvider`（页头有 ModeToggle）；radix Select / Popover+Command
+的交互走「打开 → 点选选项」而非原生 selectOptions。
 
 ## 登录与令牌策略
 
@@ -116,11 +168,14 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
   UI 以「0（框架未暴露）」呈现避免误读。
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
-  `replay/model.ts` 纯函数）。下拉可搜索：输入子串即时前端过滤候选
-  （大小写不敏感，「全部链路」清除项恒在，无匹配给占位提示）。选中链
-  路只做高亮对比、不隐藏数据：三个证据面全量渲染，命中行品牌紫高亮、
-  未命中行灰显（`matchesTraceId` 谓词区分两种呈现），保住证据间的上下
-  文；回放流经 `relatedToolCallIds` 桥接（toolCallId 取审计与确认两面
+  `replay/model.ts` 纯函数）。下拉为 Popover+Command 组合的可搜索
+  Combobox：输入子串即时前端过滤候选（大小写不敏感，「全部链路」清除项
+  恒在，无匹配给占位提示），并补齐方向键导航与 Enter 选中（cmdk 内建；
+  锚点上的交互经 `onInteractOutside`/`onFocusOutside` 豁免，避免输入期间
+  弹层被外部点击判定关闭）。选中链路只做高亮对比、不隐藏数据：三个证据
+  面全量渲染，命中行品牌紫高亮、未命中行灰显（`matchesTraceId` 谓词区分
+  两种呈现），保住证据间的上下文；回放流经 `relatedToolCallIds` 桥接
+  （toolCallId 取审计与确认两面
   并集，live 路径两面 trace 不同），命中项所在的「用户消息为界」整段
   经 `relatedChatItemIds` 邻近归属保持原样，段外项降透明度（无任何命
   中项时不降，避免整流变灰而无所指）。凡携带 trace_id 的证据行（工具

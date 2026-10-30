@@ -3,6 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // 预挂载主题：与 ThemeProvider（localStorage "theme"/"accent"）同规则
+      // 先行解析，在样式加载前挂上 .light/.dark 与 data-accent，避免暗色
+      // 或非默认主题色用户刷新时闪白 / 闪错色
+      ;(function () {
+        try {
+          var theme = localStorage.getItem('theme')
+          if (theme !== 'dark' && theme !== 'light') {
+            theme = matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
+          }
+          document.documentElement.classList.add(theme)
+          var accent = localStorage.getItem('accent')
+          if (
+            accent === 'blue' ||
+            accent === 'green' ||
+            accent === 'amber' ||
+            accent === 'safe'
+          ) {
+            document.documentElement.setAttribute('data-accent', accent)
+          }
+        } catch (e) {}
+      })()
+    </script>
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍇</text></svg>"

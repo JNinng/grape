@@ -1,4 +1,11 @@
+import { useState } from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import type { ChatItem, MessageItem, ToolCallItem } from '../../agui/events'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 
 // sanitize 口径：模型文本与工具参数/结果一律不可信，全部以 React 文本
 // 节点渲染（等价于 textContent），不引入 innerHTML / markdown 注入路径；
@@ -16,17 +23,17 @@ function roleLabel(role: MessageItem['role']): string {
 }
 
 // MessageBubble 单条文本消息：用户消息右对齐品牌紫气泡，助手/系统消息
-// 左对齐白底卡片；角色标签置于气泡上方弱化呈现。
+// 左对齐卡片气泡；角色标签置于气泡上方弱化呈现。
 function MessageBubble({ item }: { item: MessageItem }) {
   const isUser = item.role === 'user'
   return (
     <article data-role={item.role} className={isUser ? 'flex flex-col items-end' : 'flex flex-col items-start'}>
-      <span className="mb-1 px-1 text-xs text-slate-400">{roleLabel(item.role)}</span>
+      <span className="mb-1 px-1 text-xs text-muted-foreground">{roleLabel(item.role)}</span>
       <p
         className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap ${
           isUser
-            ? 'rounded-br-sm bg-violet-600 text-white shadow-xs'
-            : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800 shadow-xs'
+            ? 'rounded-br-sm bg-primary text-primary-foreground shadow-xs'
+            : 'rounded-bl-sm border bg-card text-card-foreground shadow-xs'
         }`}
       >
         {item.content}
@@ -39,44 +46,44 @@ function MessageBubble({ item }: { item: MessageItem }) {
 // 结果仅在展开后可见。摘要行的文案保持单一直接文本节点（工具名与状态
 // 一体呈现），状态点与展开箭头为无障碍隐藏的装饰。
 function ToolCallEntry({ item }: { item: ToolCallItem }) {
+  const [open, setOpen] = useState(false)
   const state = item.result !== null ? '结果' : item.done ? '已结束' : '运行中'
   const settled = item.result !== null || item.done
   return (
-    <details className="card group w-full overflow-hidden" data-tool-state={item.result !== null ? 'result' : 'running'}>
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3.5 py-2.5 text-sm text-slate-500 transition-colors select-none hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+    <Collapsible
+      open={open}
+      onOpenChange={setOpen}
+      data-tool-state={item.result !== null ? 'result' : 'running'}
+      className="w-full overflow-hidden rounded-xl border bg-card shadow-sm"
+    >
+      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors select-none hover:bg-soft">
         <span
           aria-hidden
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${settled ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'}`}
+          className={`size-1.5 shrink-0 rounded-full ${settled ? 'bg-emerald-500' : 'animate-pulse bg-amber-500'}`}
         />
         {`工具 ${item.name || '(未知)'} · ${state}`}
-        <svg
+        <ChevronDownIcon
           aria-hidden
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="ml-auto h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 group-open:rotate-180"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </summary>
-      <div className="space-y-2 border-t border-slate-100 px-3.5 py-3">
-        {item.argsText !== '' && (
-          <>
-            <h4 className="text-xs font-medium text-slate-400">参数</h4>
-            <pre className="code-block">{item.argsText}</pre>
-          </>
-        )}
-        {item.result !== null && (
-          <>
-            <h4 className="text-xs font-medium text-slate-400">结果</h4>
-            <pre className="code-block">{item.result}</pre>
-          </>
-        )}
-      </div>
-    </details>
+          className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-2 border-t px-3.5 py-3">
+          {item.argsText !== '' && (
+            <>
+              <h4 className="text-xs font-medium text-muted-foreground">参数</h4>
+              <pre className="code-block">{item.argsText}</pre>
+            </>
+          )}
+          {item.result !== null && (
+            <>
+              <h4 className="text-xs font-medium text-muted-foreground">结果</h4>
+              <pre className="code-block">{item.result}</pre>
+            </>
+          )}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -86,7 +93,7 @@ export function MessageList({ items }: { items: ChatItem[] }) {
   return (
     <div role="log" aria-label="对话消息" className="space-y-4">
       {items.length === 0 && (
-        <div className="empty-note">
+        <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
           <p>暂无消息，发送第一条消息开始对话。</p>
         </div>
       )}

@@ -1,7 +1,15 @@
-/* Tailwind 入口与全局设计基调：Grape 品牌紫为主色、emerald/amber/red
- * 承载状态语义、slate 承载中性表面，整体走浅色清新的现代观感。页面级
- * 样式一律使用工具类；此处只沉淀跨页面复用的基础层与组件层。 */
+/* Tailwind 入口与全局设计基调：Grape 品牌紫为主色，语义 token（双主题）+
+ * emerald/amber/red 状态点缀。shadcn/ui 组件经 hex 兼容改写后落地于此：
+ * 1) 语义 token 值一律字面 hex/rgba——oklch 需 Chrome 111+，旧内核解析失败
+ *    会使颜色变量全部失效（背景透明、白字白底不可见）；rgba() 全内核可解析，
+ *    半透明（遮罩、弱化底色）统一走 rgba token 而非透明度修饰符；
+ * 2) 组件内禁止 /NN 透明度修饰符（编译依赖 color-mix()），改用专用状态
+ *    token（--primary-hover、--destructive-soft、--overlay、--soft）。
+ * 新增色阶或语义 token 时须在此补齐两套主题。 */
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
 
 @theme {
   /* 中文字形兜底：macOS 走 PingFang，Windows 走微软雅黑，其余回落系统栈 */
@@ -9,10 +17,324 @@
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --font-mono: ui-monospace, sfmono-regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
-  /* 色板以字面 hex 覆盖默认 oklch 值：oklch 需要较新内核（Chrome 111+），
-   * 旧内核解析失败会使颜色变量全部失效——背景透明、边框回落 currentColor、
-   * 白字白底不可见。此处覆盖项目实际用到的全部色阶，保证任何内核都能
-   * 拿到可解析的字面色值；新增色阶时须在此补齐。 */
+  /* 圆角基调：shadcn 派生刻度（rounded-md=0.5rem、xl≈0.875rem、2xl≈1.125rem） */
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+
+  /* 折叠内容开合动画：高度随 radix 的 --radix-collapsible-content-height
+   * 变量过渡，收起略快于展开更利落；曲线与换页过渡一致 */
+  --animate-collapsible-down: collapsible-down 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+  --animate-collapsible-up: collapsible-up 0.15s cubic-bezier(0.33, 1, 0.68, 1);
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+    }
+  }
+
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* 语义 token 映射为 Tailwind 颜色工具类；inline 使 .dark 覆盖即时生效 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-hover: var(--destructive-hover);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-soft: var(--soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* 品牌衍生面与状态软色：随主题色系（data-accent）切换 */
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-soft-strong: var(--brand-soft-strong);
+  --color-brand-soft-border: var(--brand-soft-border);
+  --color-brand-border: var(--brand-border);
+  --color-brand-text: var(--brand-text);
+  --color-brand-text-soft: var(--brand-text-soft);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-text: var(--danger-text);
+}
+
+:root {
+  --radius: 0.625rem;
+  /* 浅色：slate 中性面（页面灰底、白卡片），violet 品牌主色 */
+  --background: #f1f5f9;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  --primary: #7c3aed;
+  --primary-foreground: #ffffff;
+  --primary-hover: #8b5cf6;
+  --secondary: #e2e8f0;
+  --secondary-foreground: #334155;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-hover: #b91c1c;
+  --destructive-soft: rgba(220, 38, 38, 0.12);
+  --border: #e2e8f0;
+  --input: #cbd5e1;
+  --ring: #c4b5fd;
+  --overlay: rgba(15, 23, 42, 0.5);
+  --soft: #f8fafc;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e293b;
+  --sidebar-primary: #7c3aed;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #c4b5fd;
+  /* 品牌衍生面（品牌紫的浅/深 tint 阶），页面高亮、会话选中、追踪按钮等
+   * 一律走这组 token，随主题色系整体切换 */
+  --brand-soft: #f5f3ff;
+  --brand-soft-strong: #ede9fe;
+  --brand-soft-border: #ddd6fe;
+  --brand-border: #c4b5fd;
+  --brand-text: #6d28d9;
+  --brand-text-soft: #a78bfa;
+  /* 状态软色对（软底 + 文字）：审批方向与执行状态的成对呈现 */
+  --success-soft: #ecfdf5;
+  --success-text: #059669;
+  --danger-soft: #fef2f2;
+  --danger-text: #dc2626;
+  /* 滚动条拇指色（细滚动条专用，非 Tailwind 工具类） */
+  --scrollbar-thumb: #cbd5e1;
+
+  color-scheme: light;
+}
+
+.dark {
+  /* 深色：slate 深蓝黑面（页面 slate-900、卡片 slate-800），主色提亮一档 */
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --card: #1e293b;
+  --card-foreground: #e2e8f0;
+  --popover: #1e293b;
+  --popover-foreground: #e2e8f0;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --primary-hover: #a78bfa;
+  --secondary: #334155;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #334155;
+  --accent-foreground: #f1f5f9;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --destructive-hover: #f87171;
+  --destructive-soft: rgba(239, 68, 68, 0.16);
+  --border: #334155;
+  --input: #475569;
+  --ring: #5b21b6;
+  --overlay: rgba(2, 6, 23, 0.7);
+  --soft: rgba(51, 65, 85, 0.5);
+  --sidebar: #0f172a;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #8b5cf6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1e293b;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: #1e293b;
+  --sidebar-ring: #5b21b6;
+  --brand-soft: #2e1065;
+  --brand-soft-strong: #4c1d95;
+  --brand-soft-border: #4c1d95;
+  --brand-border: #6d28d9;
+  --brand-text: #c4b5fd;
+  --brand-text-soft: #a78bfa;
+  --success-soft: #022c22;
+  --success-text: #34d399;
+  --danger-soft: #450a0a;
+  --danger-text: #f87171;
+  --scrollbar-thumb: #334155;
+
+  color-scheme: dark;
+}
+
+/* 主题色系：html[data-accent] 覆盖品牌相关 token，浅色块用属性选择器、
+ * 深色块用 .dark 与属性复合（特异性高于上面的 :root/.dark 默认值）。
+ * 默认 violet 即 :root/.dark 本值，不写覆盖块。 */
+[data-accent='blue'] {
+  --primary: #2563eb;
+  --primary-foreground: #ffffff;
+  --primary-hover: #3b82f6;
+  --ring: #93c5fd;
+  --sidebar-primary: #2563eb;
+  --sidebar-ring: #93c5fd;
+  --brand-soft: #eff6ff;
+  --brand-soft-strong: #dbeafe;
+  --brand-soft-border: #bfdbfe;
+  --brand-border: #93c5fd;
+  --brand-text: #1d4ed8;
+  --brand-text-soft: #60a5fa;
+}
+
+.dark[data-accent='blue'] {
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --primary-hover: #60a5fa;
+  --ring: #1e40af;
+  --sidebar-primary: #3b82f6;
+  --sidebar-ring: #1e40af;
+  --brand-soft: #172554;
+  --brand-soft-strong: #1e3a8a;
+  --brand-soft-border: #1e3a8a;
+  --brand-border: #1e40af;
+  --brand-text: #93c5fd;
+  --brand-text-soft: #60a5fa;
+}
+
+[data-accent='green'] {
+  --primary: #047857;
+  --primary-foreground: #ffffff;
+  --primary-hover: #059669;
+  --ring: #6ee7b7;
+  --sidebar-primary: #047857;
+  --sidebar-ring: #6ee7b7;
+  --brand-soft: #ecfdf5;
+  --brand-soft-strong: #d1fae5;
+  --brand-soft-border: #a7f3d0;
+  --brand-border: #6ee7b7;
+  --brand-text: #047857;
+  --brand-text-soft: #34d399;
+}
+
+.dark[data-accent='green'] {
+  --primary: #10b981;
+  --primary-foreground: #022c22;
+  --primary-hover: #34d399;
+  --ring: #065f46;
+  --sidebar-primary: #10b981;
+  --sidebar-ring: #065f46;
+  --brand-soft: #022c22;
+  --brand-soft-strong: #064e3b;
+  --brand-soft-border: #064e3b;
+  --brand-border: #047857;
+  --brand-text: #6ee7b7;
+  --brand-text-soft: #34d399;
+}
+
+[data-accent='amber'] {
+  --primary: #b45309;
+  --primary-foreground: #ffffff;
+  --primary-hover: #d97706;
+  --ring: #fcd34d;
+  --sidebar-primary: #b45309;
+  --sidebar-ring: #fcd34d;
+  --brand-soft: #fffbeb;
+  --brand-soft-strong: #fef3c7;
+  --brand-soft-border: #fde68a;
+  --brand-border: #fcd34d;
+  --brand-text: #b45309;
+  --brand-text-soft: #fbbf24;
+}
+
+.dark[data-accent='amber'] {
+  --primary: #fbbf24;
+  --primary-foreground: #451a03;
+  --primary-hover: #fcd34d;
+  --ring: #92400e;
+  --sidebar-primary: #fbbf24;
+  --sidebar-ring: #92400e;
+  --brand-soft: #451a03;
+  --brand-soft-strong: #78350f;
+  --brand-soft-border: #78350f;
+  --brand-border: #b45309;
+  --brand-text: #fcd34d;
+  --brand-text-soft: #fbbf24;
+}
+
+/* 色盲友好（Okabe-Ito 蓝主色）：通过/拒绝的软色对从 红/绿 换成 橙/青绿
+ * （该色板对红绿色觉障碍可分辨）；语义仍以文字标签为主、颜色为辅。 */
+[data-accent='safe'] {
+  --primary: #0072b2;
+  --primary-foreground: #ffffff;
+  --primary-hover: #3391cc;
+  --ring: #93c5fd;
+  --sidebar-primary: #0072b2;
+  --sidebar-ring: #93c5fd;
+  --brand-soft: #eff6ff;
+  --brand-soft-strong: #dbeafe;
+  --brand-soft-border: #bfdbfe;
+  --brand-border: #93c5fd;
+  --brand-text: #1d4ed8;
+  --brand-text-soft: #60a5fa;
+  --success-soft: #f0fdfa;
+  --success-text: #0f766e;
+  --danger-soft: #fff7ed;
+  --danger-text: #ea580c;
+}
+
+.dark[data-accent='safe'] {
+  --primary: #56b4e9;
+  --primary-foreground: #0b2540;
+  --primary-hover: #7cc7ef;
+  --ring: #1e40af;
+  --sidebar-primary: #56b4e9;
+  --sidebar-ring: #1e40af;
+  --brand-soft: #172554;
+  --brand-soft-strong: #1e3a8a;
+  --brand-soft-border: #1e3a8a;
+  --brand-border: #1e40af;
+  --brand-text: #93c5fd;
+  --brand-text-soft: #60a5fa;
+  --success-soft: #042f2e;
+  --success-text: #5eead4;
+  --danger-soft: #431407;
+  --danger-text: #fb923c;
+}
+
+/* 状态点缀色板：仅声明实际用到的阶（含暗色配对的深底/亮字阶），
+ * 新增用法时在此补齐 */
+@theme {
   --color-violet-50: #f5f3ff;
   --color-violet-100: #ede9fe;
   --color-violet-200: #ddd6fe;
@@ -22,6 +344,7 @@
   --color-violet-600: #7c3aed;
   --color-violet-700: #6d28d9;
   --color-violet-900: #4c1d95;
+  --color-violet-950: #2e1065;
   --color-fuchsia-500: #d946ef;
   --color-slate-50: #f8fafc;
   --color-slate-100: #f1f5f9;
@@ -33,23 +356,30 @@
   --color-slate-700: #334155;
   --color-slate-800: #1e293b;
   --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
   --color-emerald-50: #ecfdf5;
+  --color-emerald-400: #34d399;
   --color-emerald-500: #10b981;
   --color-emerald-600: #059669;
+  --color-emerald-950: #022c22;
   --color-amber-50: #fffbeb;
+  --color-amber-400: #fbbf24;
   --color-amber-500: #f59e0b;
   --color-amber-600: #d97706;
+  --color-amber-950: #451a03;
   --color-red-50: #fef2f2;
   --color-red-100: #fee2e2;
   --color-red-200: #fecaca;
   --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
   --color-red-600: #dc2626;
   --color-red-700: #b91c1c;
+  --color-red-950: #450a0a;
 }
 
 @layer base {
-  :root {
-    color-scheme: light;
+  * {
+    @apply border-border outline-ring;
   }
 
   html,
@@ -59,13 +389,13 @@
   }
 
   body {
-    @apply bg-slate-100 font-sans text-slate-800 antialiased;
+    @apply bg-background font-sans text-foreground antialiased;
   }
 
   /* 细滚动条：避免侧栏与消息流出现宽轨滚动条破坏轻盈感 */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-slate-300) transparent;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
   }
 
   ::-webkit-scrollbar {
@@ -78,71 +408,38 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-slate-300;
+    border-radius: 9999px;
+    background: var(--scrollbar-thumb);
   }
 }
 
 @layer components {
-  /* 按钮基座与变体：尺寸修饰（btn-sm）可与任意变体叠加 */
-  .btn {
-    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors duration-150 select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500 disabled:cursor-not-allowed disabled:opacity-50;
+  /* 页面级换页过渡：挂载即播的整页淡入 + 8px 上浮。easeOutCubic 让内容
+   * 在前 1/3 时长内就基本显现（缓慢起步会读成「闪一下」），尾段缓缓
+   * 落定；系统开启减弱动效时直接跳过。 */
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
-  .btn-primary {
-    @apply bg-violet-600 text-white shadow-xs hover:bg-violet-500 active:bg-violet-700;
+  .page-enter {
+    animation: page-enter 0.3s cubic-bezier(0.33, 1, 0.68, 1) both;
   }
 
-  .btn-outline {
-    @apply border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 active:bg-slate-100;
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter {
+      animation: none;
+    }
   }
 
-  .btn-ghost {
-    @apply text-slate-500 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200;
-  }
-
-  .btn-danger {
-    @apply border border-red-200 bg-white text-red-600 hover:border-red-300 hover:bg-red-50 active:bg-red-100;
-  }
-
-  .btn-sm {
-    @apply rounded-md px-2.5 py-1.5 text-xs;
-  }
-
-  /* 表单控件基座：输入框 / 下拉 / 文本域共用 */
-  .field {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-xs transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-200 focus:outline-none;
-  }
-
-  /* 白面板：证据分区、卡片、折叠件的共同容器 */
-  .card {
-    @apply rounded-2xl border border-slate-200 bg-white shadow-xs;
-  }
-
-  .chip {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium;
-  }
-
-  /* 代码 / 载荷块：工具参数、结果与事件原文的统一呈现 */
+  /* 代码 / 载荷块：工具参数、结果与事件原文的统一呈现（shadcn 无对应原语） */
   .code-block {
-    @apply overflow-x-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-slate-700;
-  }
-
-  /* 错误横幅：role=alert 的统一视觉 */
-  .alert {
-    @apply flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700;
-  }
-
-  /* 空态提示：虚线框 + 居中弱化文案 */
-  .empty-note {
-    @apply rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-400;
-  }
-
-  /* 会话列表项（两个页面共用）：active 修饰叠加高亮 */
-  .session-item {
-    @apply flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 text-left transition-colors select-none hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500;
-  }
-
-  .session-item-active {
-    @apply bg-violet-50 hover:bg-violet-50;
+    @apply overflow-x-auto rounded-lg bg-muted p-3 font-mono text-xs leading-relaxed break-words whitespace-pre-wrap text-secondary-foreground;
   }
 }

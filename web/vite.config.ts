@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 
 // dev.proxy：开发期前后端分离，业务 API（/v1）与 AG-UI / ack（/agui，SSE
@@ -8,6 +9,11 @@ import { defineConfig } from 'vite'
 // 生产期前后端同源、由 Go 静态托管，无需代理。
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   server: {
     proxy: {
       '/v1': 'http://127.0.0.1:8000',

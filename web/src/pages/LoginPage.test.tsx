@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ThemeProvider } from '../components/theme-provider'
 import { LoginPage } from './LoginPage'
 
 vi.mock('../api/session', () => ({
@@ -17,10 +18,12 @@ afterEach(cleanup)
 function renderLogin() {
   return render(
     <MemoryRouter initialEntries={['/login']}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<div>chat home</div>} />
-      </Routes>
+      <ThemeProvider>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<div>chat home</div>} />
+        </Routes>
+      </ThemeProvider>
     </MemoryRouter>,
   )
 }

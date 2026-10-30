@@ -22,12 +22,17 @@ vi.mock('../agui/agent', () => ({
 vi.mock('../agui/cancel', () => ({
   cancelRun: vi.fn(),
 }))
+vi.mock('../api/session', () => ({
+  logout: vi.fn(),
+}))
 
 import { fetchAgentSessions } from '../api/agentSessions'
+import { logout } from '../api/session'
 import { fetchHistorySnapshot } from '../agui/history'
 import { AlreadyDecidedError, decideConfirmation, fetchPendingConfirmations } from '../agui/confirmation'
 import { cancelRun } from '../agui/cancel'
 import { createChatAgent } from '../agui/agent'
+import { ThemeProvider } from '../components/theme-provider'
 import { ChatPage } from './ChatPage'
 import type { ChatItem, ToolConfirmationPayload } from '../agui/events'
 
@@ -37,6 +42,7 @@ const mockFetchPending = vi.mocked(fetchPendingConfirmations)
 const mockDecide = vi.mocked(decideConfirmation)
 const mockCancelRun = vi.mocked(cancelRun)
 const mockCreateAgent = vi.mocked(createChatAgent)
+const mockLogout = vi.mocked(logout)
 
 function loginReply(): LoginReply {
   return {
@@ -84,7 +90,9 @@ afterEach(() => {
 function renderChat() {
   return render(
     <MemoryRouter>
-      <ChatPage />
+      <ThemeProvider>
+        <ChatPage />
+      </ThemeProvider>
     </MemoryRouter>,
   )
 }
@@ -210,6 +218,32 @@ describe('ChatPage streaming run', () => {
     expect(threadId).toBe(mockFetchHistory.mock.calls[0][0])
     expect(typeof runId).toBe('string')
     releaseRun()
+  })
+})
+
+describe('ChatPage logout confirmation', () => {
+  it('asks_for_confirmation_before_logging_out_and_only_logs_out_on_confirm', async () => {
+    const user = userEvent.setup()
+    renderChat()
+    await screen.findByLabelText('会话列表')
+
+    // 点击登出图标：只弹确认框，不触发登出。
+    await user.click(screen.getByRole('button', { name: '登出' }))
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('确认登出？')
+    expect(mockLogout).not.toHaveBeenCalled()
+
+    // 取消：关框且不登出。
+    await user.click(within(dialog).getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(mockLogout).not.toHaveBeenCalled()
+
+    // 再次打开并确认：此时才登出。
+    await user.click(screen.getByRole('button', { name: '登出' }))
+    await user.click(
+      within(screen.getByRole('alertdialog')).getByRole('button', { name: '登出' }),
+    )
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1))
   })
 })
 

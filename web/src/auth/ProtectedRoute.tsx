@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from 'react-router'
 import { getAccessToken } from './store'
 import { refreshSession } from './refresh'
+import { Spinner } from '@/components/ui/spinner'
 
 type RestoreState = 'pending' | 'ready' | 'denied'
 
@@ -32,10 +33,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (state === 'pending') {
     return (
-      <div className="flex min-h-full items-center justify-center">
-        <p role="status" className="text-sm text-slate-400">
-          正在恢复会话…
-        </p>
+      <div className="flex min-h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Spinner aria-hidden className="size-4" />
+        <span>正在恢复会话…</span>
       </div>
     )
   }

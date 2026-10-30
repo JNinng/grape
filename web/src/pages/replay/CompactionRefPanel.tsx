@@ -1,7 +1,15 @@
 import { useState } from 'react'
+import { ChevronDownIcon } from 'lucide-react'
 import { fetchEventWindow, type EventWindow } from '../../api/agentEventWindow'
 import type { CompactionRef } from './compaction'
-import { ChevronDownIcon } from '../../ui/icons'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 
 // CompactionRefPanel 是压缩占位符的「已压缩」徽标与原文对照展开：
 // 占位符携带 event_id 恢复引用时，展开经事件窗口端点取回会话事件原文
@@ -32,53 +40,67 @@ export function CompactionRefPanel({ compactionRef, threadId }: { compactionRef:
 
   return (
     <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span
+      <Badge
         role="note"
         aria-label="压缩标记"
         data-kind={compactionRef.kind}
-        className={`chip ${compactionRef.kind === 'truncated' ? 'bg-amber-50 text-amber-600' : 'bg-violet-50 text-violet-600'}`}
+        className={
+          compactionRef.kind === 'truncated'
+            ? 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400'
+            : 'bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400'
+        }
       >
         {label}
-      </span>
+      </Badge>
       {recoverable ? (
-        <details
+        <Collapsible
           className="min-w-0 flex-1 basis-full sm:basis-auto"
-          onToggle={(e) => {
-            if ((e.target as HTMLDetailsElement).open) {
+          onOpenChange={(open) => {
+            if (open) {
               void loadOriginal()
             }
           }}
         >
-          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-violet-600 transition-colors select-none hover:text-violet-500 [&::-webkit-details-marker]:hidden">
+          <CollapsibleTrigger className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-violet-600 transition-colors select-none hover:text-violet-500 dark:text-violet-400">
             对照原文
-            <ChevronDownIcon aria-hidden className="h-3.5 w-3.5" />
-          </summary>
-          <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-            {error !== null && (
-              <p role="alert" className="alert">
-                <span>
-                  原文加载失败：{error}{' '}
-                  <button type="button" onClick={() => void loadOriginal()} className="btn btn-outline btn-sm ml-1">
-                    重试
-                  </button>
-                </span>
-              </p>
-            )}
-            {loading && <p className="text-xs text-slate-400">原文加载中…</p>}
-            {window !== null && (
-              <>
-                <h4 className="text-xs font-medium text-slate-400">事件原文（event {window.anchorEventId}）</h4>
-                {window.events.map((evt) => (
-                  <pre key={evt.eventId} aria-label="事件原文" className="code-block">
-                    {evt.content ?? '（该事件无文本内容）'}
-                  </pre>
-                ))}
-              </>
-            )}
-          </div>
-        </details>
+            <ChevronDownIcon aria-hidden className="size-3.5" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="mt-2 space-y-2 rounded-xl border bg-soft p-3">
+              {error !== null && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    <span>
+                      原文加载失败：{error}{' '}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        className="ml-1"
+                        onClick={() => void loadOriginal()}
+                      >
+                        重试
+                      </Button>
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {loading && <p className="text-xs text-muted-foreground">原文加载中…</p>}
+              {window !== null && (
+                <>
+                  <h4 className="text-xs font-medium text-muted-foreground">事件原文（event {window.anchorEventId}）</h4>
+                  {window.events.map((evt) => (
+                    <pre key={evt.eventId} aria-label="事件原文" className="code-block">
+                      {evt.content ?? '（该事件无文本内容）'}
+                    </pre>
+                  ))}
+                </>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : (
-        <span aria-label="压缩说明" className="text-xs text-slate-400">
+        <span aria-label="压缩说明" className="text-xs text-muted-foreground">
           （无恢复引用，原文不可反查）
         </span>
       )}
