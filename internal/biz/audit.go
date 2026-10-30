@@ -22,10 +22,17 @@ import (
 
 // 审计记录的领域取值。与 ack / 框架语义一一对应：
 //   - 工具调用终态：成功 / 失败（一次调用一行，重试只记最终态与次数）；
-//   - 确认决定：approved / denied（pending 是决定前状态，不入审计）；
+//   - 确认决定：人工封闭值 approved / denied（pending 是决定前状态，不入
+//     审计）+ 系统决定两形态——无来源 auto / auto_deny，来源命名空间
+//     {name}_auto / {name}_deny（构造见 SystemDecision、词形判定见
+//     isSystemDecision）。系统决定由授权终态观察挂点落行、与人工决定
+//     互斥，每次工具调用恰好一条授权行；
 //   - 决定路径：live（原运行存活直接唤醒）/ recovery（孤儿确认由网关
-//     代执行或合成拒绝后续跑，ack PathLive / PathRecovery 同名）；
-//   - 记住作用域：session / global（空串语义为「未记住」，落库为 NULL）。
+//     代执行或合成拒绝后续跑，ack PathLive / PathRecovery 同名）为人工
+//     决定专用；auto（系统自动决定，评估管线内终结）为系统决定专用，
+//     与决定值一一配对，交叉配对非法；
+//   - 记住作用域：session / global（空串语义为「未记住」，落库为 NULL），
+//     仅人工批准（approved）可携带。
 const (
 	ToolCallStatusSuccess = "success"
 	ToolCallStatusError   = "error"
@@ -33,12 +40,86 @@ const (
 	ConfirmationDecisionApproved = "approved"
 	ConfirmationDecisionDenied   = "denied"
 
+	// ConfirmationDecisionAuto / ConfirmationDecisionAutoDeny 是无来源的
+	// 系统决定；有来源的词形经 SystemDecision 构造（{source}_auto /
+	// {source}_deny）。
+	ConfirmationDecisionAuto     = "auto"
+	ConfirmationDecisionAutoDeny = "auto_deny"
+
 	ConfirmationPathLive     = "live"
 	ConfirmationPathRecovery = "recovery"
+	// ConfirmationPathAuto 是系统决定的生效路径：授权在评估管线内自动
+	// 终结（层级放行/拒绝、策略判定、许可命中、取消/持久化失败结算）。
+	ConfirmationPathAuto = "auto"
 
 	ConfirmationRememberSession = "session"
 	ConfirmationRememberGlobal  = "global"
 )
+
+// 决定词表的未导出构造件：来源命名空间后缀与 decision 列宽。
+const (
+	decisionAutoSuffix = "_auto"
+	decisionDenySuffix = "_deny"
+	// decisionColumnWidth 是 decision 列宽（schema 的 varchar(16) 无
+	// CHECK），系统决定的模式校验在此把门。
+	decisionColumnWidth = 16
+)
+
+// SystemDecision 构造系统决定词形：无来源为 auto / auto_deny，有来源为
+// 来源命名空间 {source}_auto / {source}_deny。来源名不合法（词形校验见
+// validSystemSourceName）或总长超列宽返回 false——调用方按「无法构造
+// 合法决定」处理（fail-closed），禁止静默改写来源名。
+func SystemDecision(source string, allowed bool) (string, bool) {
+	if source == "" {
+		if allowed {
+			return ConfirmationDecisionAuto, true
+		}
+		return ConfirmationDecisionAutoDeny, true
+	}
+	if !validSystemSourceName(source) || len(source)+len(decisionAutoSuffix) > decisionColumnWidth {
+		return "", false
+	}
+	if allowed {
+		return source + decisionAutoSuffix, true
+	}
+	return source + decisionDenySuffix, true
+}
+
+// isSystemDecision 判定决定是否为系统决定词形：无来源 auto / auto_deny，
+// 或来源命名空间 {name}_auto / {name}_deny——name 小写字母开头、仅含
+// [a-z0-9_]、name ≠ auto（否则 {auto}_deny 与无来源的 auto_deny 词形
+// 冲突）、decision 总长 ≤ decisionColumnWidth。词形非法（含来源名不
+// 合法的伪系统形态）一律 false，交由人工封闭值校验拒绝。
+func isSystemDecision(decision string) bool {
+	if decision == ConfirmationDecisionAuto || decision == ConfirmationDecisionAutoDeny {
+		return true
+	}
+	name, ok := strings.CutSuffix(decision, decisionAutoSuffix)
+	if !ok {
+		name, ok = strings.CutSuffix(decision, decisionDenySuffix)
+	}
+	return ok && validSystemSourceName(name) && len(decision) <= decisionColumnWidth
+}
+
+// validSystemSourceName 校验来源命名空间的名字段：小写字母开头、仅含
+// 小写字母/数字/下划线，且不得为 auto。
+func validSystemSourceName(name string) bool {
+	if name == "" || name == ConfirmationDecisionAuto {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case i == 0:
+			if r < 'a' || r > 'z' {
+				return false
+			}
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
 
 // 审计列宽与摘要上限：与 schema/95_agent_audit.sql 的列注释一致。
 // 摘要列是 text，长度约束由应用层在本文件执行（超限截断），不设数据库
@@ -108,13 +189,16 @@ type ConfirmationRecordInput struct {
 	ToolCallID string
 	// ToolName 是被确认的工具名。
 	ToolName string
-	// Decision 是决定：approved / denied。
+	// Decision 是决定：人工封闭值 approved / denied，或系统决定词形
+	// （auto / auto_deny / {name}_auto / {name}_deny）。
 	Decision string
-	// Remember 是记住作用域：空串=未记住、session / global；拒绝时恒空。
+	// Remember 是记住作用域：空串=未记住、session / global；仅人工批准
+	// （approved）可携带，拒绝与系统决定恒空。
 	Remember string
-	// Path 是决定生效路径：live / recovery。
+	// Path 是决定生效路径：人工决定为 live / recovery，系统决定恒 auto。
 	Path string
-	// DecidedBy 是决定人（ack 身份字符串，userKey 编码）。
+	// DecidedBy 是决定人（ack 身份字符串，userKey 编码）；系统决定行取
+	// 运行属主身份。
 	DecidedBy string
 }
 
@@ -348,8 +432,10 @@ func (uc *AuditUsecase) buildToolCall(ctx context.Context, in *ToolCallRecordInp
 	}, nil
 }
 
-// buildConfirmation 校验写入入参并补齐身份与链路事实。拒绝决定的
-// remember 语义恒为「未记住」，非空即入参非法。
+// buildConfirmation 校验写入入参并补齐身份与链路事实。决定与生效路径
+// 一一配对：人工决定恒走 live / recovery，系统决定恒走 auto，交叉配对
+// 与词表外取值一律入参非法；remember 仍只属于人工批准（approved）——
+// 系统决定不产生许可、拒绝不记住（ack 对拒绝静默忽略 remember）。
 func (uc *AuditUsecase) buildConfirmation(ctx context.Context, in *ConfirmationRecordInput) (*ConfirmationAudit, error) {
 	if in == nil {
 		return nil, ErrAuditInvalidArgument
@@ -363,13 +449,28 @@ func (uc *AuditUsecase) buildConfirmation(ctx context.Context, in *ConfirmationR
 		return nil, ErrAuditInvalidArgument
 	case strings.TrimSpace(in.ToolName) == "" || len(in.ToolName) > auditIDColumnWidth:
 		return nil, ErrAuditInvalidArgument
-	case in.Decision != ConfirmationDecisionApproved && in.Decision != ConfirmationDecisionDenied:
-		return nil, ErrAuditInvalidArgument
-	case in.Path != ConfirmationPathLive && in.Path != ConfirmationPathRecovery:
-		return nil, ErrAuditInvalidArgument
 	case in.DecidedBy == "" || len(in.DecidedBy) > auditIDColumnWidth:
 		return nil, ErrAuditInvalidArgument
-	case in.Decision == ConfirmationDecisionDenied && in.Remember != "":
+	}
+	// 决定词表与生效路径的配对校验：人工决定（approved / denied）恒走
+	// live / recovery；系统决定（auto 词形）恒走 auto。既非人工封闭值
+	// 也非合法系统词形的取值（含来源名不合法的伪系统形态）一律非法。
+	human := in.Decision == ConfirmationDecisionApproved || in.Decision == ConfirmationDecisionDenied
+	switch {
+	case human:
+		if in.Path != ConfirmationPathLive && in.Path != ConfirmationPathRecovery {
+			return nil, ErrAuditInvalidArgument
+		}
+	case isSystemDecision(in.Decision):
+		if in.Path != ConfirmationPathAuto {
+			return nil, ErrAuditInvalidArgument
+		}
+	default:
+		return nil, ErrAuditInvalidArgument
+	}
+	switch {
+	case in.Remember != "" && in.Decision != ConfirmationDecisionApproved:
+		// remember 只属于人工批准：拒绝与系统决定恒「未记住」。
 		return nil, ErrAuditInvalidArgument
 	case in.Remember != "" && in.Remember != ConfirmationRememberSession && in.Remember != ConfirmationRememberGlobal:
 		return nil, ErrAuditInvalidArgument

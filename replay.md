@@ -14,7 +14,7 @@ Agent 运维复现的目标是仅凭落库证据还原一次交互：谁在哪�
 | --- | --- | --- | --- |
 | 会话事件流 | 会话内的消息与工具事件 | `agent.agent_session_*`（框架六表） | 框架 `session/postgres` |
 | 工具调用审计 | 一次工具调用的终态 | `public.agent_tool_call_log` | 工具执行审计包装器（覆盖运行内执行与恢复路径代执行） |
-| 授权确认审计 | 一次人工决定的终态 | `public.agent_confirmation_log` | ack（工具授权确认网关）决定路由审计面 |
+| 授权确认审计 | 一次授权终态（人工决定或系统自动决定，互斥） | `public.agent_confirmation_log` | ack 决定路由审计面（人工决定）与授权终态观察挂点（系统自动决定） |
 | 检索留痕 | 一次检索或摄取操作 | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器 |
 | 运行指标 | 进程内聚合 | Prometheus `/metrics` | `biz.AgentRunObserver` 推送 |
 | 链路与日志 | 一次入站请求的因果链 | 日志 `trace_id`/`span_id`、`x-trace-id` 响应头、OpenTelemetry（OTel）span | 链路中间件与 telemetry 桥接 |
@@ -91,21 +91,39 @@ session_id（会话）
 
 ### 授权确认审计
 
-- 路径语义：live 是原运行仍在本进程等待、决定直接唤醒；recovery 是原运行
-  已不在本进程（重启或粘性失效），由 ack 网关代执行工具或合成拒绝后续跑。
-- 在 ack 决定路由的归属守卫内层拦截 `POST {prefix}/confirmation`：请求体
-  得决定事实，结算前预读待确认负载（工具名、工具调用 ID），200 响应体
-  得生效路径。
-- 只有终态决定（approved/denied）入审计，待确认（pending）不入；拒绝决定
-  `remember` 归一为空。
-- live 路径只写确认行（工具行由执行终态自然落库）；recovery 路径代执行
-  工具行与确认行在同一审计事务内组合写入，无代执行时只写确认行；预读
-  失败但已归集代执行行时回退单边写，不丢工具行。
-- 拒绝决定不执行工具，因此只有确认行、没有对应工具行；同意在 live 由
-  原运行继续、在 recovery 由网关代执行，工具行都会出现。
-- 无结算（参数错误、归属不匹配、冲突）不审计。`decided_by` 取 ack 网关
-  身份回填值（userKey 编码）。
-- 表为 append-only，`(tenant_id, confirmation_id)` 唯一。
+- 决定词表：人工封闭值 `approved` / `denied` + 系统决定两形态——无来源
+  `auto`（自动放行）/ `auto_deny`（自动拒绝），有来源为来源命名空间
+  `{name}_auto` / `{name}_deny`（如 risk_deny；name 小写字母开头、仅
+  `[a-z0-9_]`、≠ auto，decision 总长 ≤16，varchar(16) 无 CHECK 由 biz
+  模式校验把门）。待确认（pending）不入审计。
+- 每次工具调用恰好一条授权行，两类写入点互斥：人工决定（ack `Decide`
+  结算，live 与 recovery 路径）由决定路由审计面落行，评估管线内自动
+  终结的调用（层级放行/拒绝、策略判定、许可命中、重复确认 ID 防御放
+  行、取消/持久化失败结算）由授权终态观察挂点（ack
+  `PermissionObserver`）转写落行——许可命中不与人工决定双写。
+- 路径语义与决定值一一配对：live 是原运行仍在本进程等待、决定直接唤
+  醒；recovery 是原运行已不在本进程（重启或粘性失效），由 ack 网关代
+  执行工具或合成拒绝后续跑；两者为人工决定专用。auto 是系统自动决定
+  专用路径，交叉配对非法。
+- 人工决定写入点：在 ack 决定路由的归属守卫内层拦截
+  `POST {prefix}/confirmation`，请求体得决定事实，结算前预读待确认负
+  载（工具名、工具调用 ID），200 响应体得生效路径。live 路径只写确认
+  行（工具行由执行终态自然落库）；recovery 路径代执行工具行与确认行
+  在同一审计事务内组合写入，无代执行时只写确认行；预读失败但已归集代
+  执行行时回退单边写，不丢工具行。拒绝决定不执行工具，因此只有确认
+  行、没有对应工具行。无结算（参数错误、归属不匹配、冲突）不审计；
+  `remember` 仅人工批准可携带，拒绝归一为空。
+- 系统自动决定写入点：`confirmation_id` 即 `tool_call_id`（自动终态
+  不发确认 ID，以工具调用 ID 为对账锚点）、`path` 恒 auto、`remember`
+  恒空、`decided_by` 取评估 ctx 的运行属主身份（userKey 编码）；来源
+  名不合规时该行 fail-closed 丢弃（词表无法承载，见 noopPolicy 的具名
+  形态接入约束）。
+- 两路写入共用审计旁路纪律：写入走独立短超时预算（5s），取不到事实
+  （负载/身份/调用 ID）只记日志放弃该行，失败不反噬决定与授权主流程。
+- 表为 append-only，`(tenant_id, confirmation_id)` 唯一。自动行以工具
+  调用 ID 充当 confirmation_id，行唯一性以调用 ID 租户内唯一为前提
+  （与工具调用审计行同一假设）；模型复用调用 ID 的重复授权行由唯一
+  索引收编、写入失败按旁路纪律记日志放弃，不伪造第二次授权行。
 
 ### 检索留痕
 

@@ -19,8 +19,9 @@
 -- ============================================================================
 -- Agent 业务审计
 --    工具调用审计（谁、哪个租户、traceId、参数/结果摘要、重试、耗时、
---    状态）与授权确认审计（confirmation_id、决定、remember、路径
---    live|recovery、操作者），供运维复现视图按租户/时间/会话查询。
+--    状态）与授权确认审计（confirmation_id、决定、remember、路径、操作
+--    者；决定词表与路径口径见 agent_confirmation_log 列注释），供运维复
+--    现视图按租户/时间/会话查询。
 -- ============================================================================
 
 -- agent_tool_call_log — 工具调用审计
@@ -85,22 +86,22 @@ CREATE TABLE public.agent_confirmation_log
     created_at      timestamp(0) DEFAULT CURRENT_TIMESTAMP NOT NULL,
     CONSTRAINT agent_confirmation_log_pkey PRIMARY KEY (id)
 );
-COMMENT ON TABLE public.agent_confirmation_log IS '授权确认审计表：记录 ack 工具确认的人工决定（仅终态，一确认一行），append-only 不可变更';
+COMMENT ON TABLE public.agent_confirmation_log IS '授权确认审计表：记录 ack 工具确认的授权终态——人工决定与系统自动决定互斥，每次工具调用恰好一行（一确认一行），append-only 不可变更';
 
 COMMENT ON COLUMN public.agent_confirmation_log.id IS '日志 ID，自增序列';
 COMMENT ON COLUMN public.agent_confirmation_log.tenant_id IS '租户 ID，取写入事务的 app.tenant_id';
 COMMENT ON COLUMN public.agent_confirmation_log.user_id IS '确认所属会话的发起用户 ID（认证身份）';
 COMMENT ON COLUMN public.agent_confirmation_log.trace_id IS '链路 ID：决定请求经链路中间件时从 SpanContext 取，无链路事实时为 NULL';
-COMMENT ON COLUMN public.agent_confirmation_log.confirmation_id IS '确认 ID（ack Payload 的 confirmationId，与工具调用 ID 同源），租户内唯一：一确认只有一次终态决定';
+COMMENT ON COLUMN public.agent_confirmation_log.confirmation_id IS '确认 ID（ack Payload 的 confirmationId，与工具调用 ID 同源），租户内唯一：一确认只有一次终态决定；系统自动决定行以工具调用 ID 充当本列，行唯一性以调用 ID 租户内唯一为前提（与 agent_tool_call_log 的 tool_call_id 唯一索引同一假设），重复 ID 的后到行由唯一索引收编、写入失败按审计旁路纪律记日志放弃';
 COMMENT ON COLUMN public.agent_confirmation_log.session_id IS '确认所属的 Agent 会话 ID';
 COMMENT ON COLUMN public.agent_confirmation_log.tool_call_id IS '关联的工具调用 ID（ack Payload 的 toolCallId），按会话回放时与工具调用审计对账';
 COMMENT ON COLUMN public.agent_confirmation_log.tool_name IS '被确认的工具名';
-COMMENT ON COLUMN public.agent_confirmation_log.decision IS '决定：approved-同意、denied-拒绝（pending 是决定前状态，不入审计）';
-COMMENT ON COLUMN public.agent_confirmation_log.remember IS '决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（拒绝时恒为 NULL）';
-COMMENT ON COLUMN public.agent_confirmation_log.path IS '决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑';
-COMMENT ON COLUMN public.agent_confirmation_log.decided_by IS '决定人：ack 网关的身份字符串（userKey 编码）';
+COMMENT ON COLUMN public.agent_confirmation_log.decision IS '决定：人工封闭值 approved-同意、denied-拒绝（pending 是决定前状态，不入审计）+ 系统决定两形态——无来源 auto-自动放行、auto_deny-自动拒绝，有来源为来源命名空间 {name}_auto / {name}_deny（name 小写字母开头、仅 [a-z0-9_]、≠ auto，与 decision 合计 ≤16：varchar(16) 无 CHECK，模式校验由应用层把门）';
+COMMENT ON COLUMN public.agent_confirmation_log.remember IS '决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（仅人工批准可携带，拒绝与系统决定恒为 NULL）';
+COMMENT ON COLUMN public.agent_confirmation_log.path IS '决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑（两者为人工决定专用）、auto-系统自动决定（评估管线内终结：层级放行/拒绝、策略判定、许可命中、取消/持久化失败结算，与系统决定词形一一配对）';
+COMMENT ON COLUMN public.agent_confirmation_log.decided_by IS '决定人：ack 网关的身份字符串（userKey 编码）；系统自动决定行取运行属主身份（评估 ctx 的认证编码）';
 COMMENT ON COLUMN public.agent_confirmation_log.decided_at IS '决定时间';
-COMMENT ON COLUMN public.agent_confirmation_log.created_by IS '写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方）';
+COMMENT ON COLUMN public.agent_confirmation_log.created_by IS '写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方，自动决定行为该运行的属主）';
 COMMENT ON COLUMN public.agent_confirmation_log.created_at IS '写入时间';
 
 CREATE UNIQUE INDEX agent_confirmation_log_tenant_conf_un ON public.agent_confirmation_log USING btree (tenant_id, confirmation_id);

@@ -37,6 +37,17 @@ function formatRetryCount(retryCount: number): string {
   return retryCount === 0 ? '0（框架未暴露）' : String(retryCount)
 }
 
+// decisionChipClass 按决定方向约定区分确认行配色：approved / auto /
+// `*_auto` 绿（放行方向），denied / auto_deny / `*_deny` 红（拒绝方向）；
+// 词表外取值 fail-closed 显红（决定词表由后端 biz 模式校验把门，前端
+// 不再枚举白名单）。
+function decisionChipClass(decision: string): string {
+  if (decision === 'approved' || decision === 'auto' || decision.endsWith('_auto')) {
+    return 'bg-emerald-50 text-emerald-600'
+  }
+  return 'bg-red-50 text-red-600'
+}
+
 // CompactibleText 是带压缩占位符识别的文本块：识别到占位符时给出徽标
 // 与原文对照展开，其余原样以纯文本渲染（sanitize 基线不变）。
 function CompactibleText({ text, threadId }: { text: string; threadId: string }) {
@@ -142,15 +153,7 @@ function ReplayToolCall({
                 key={row.id}
                 className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600"
               >
-                <span
-                  className={`chip ${
-                    row.decision === 'approve' || row.decision === 'approved'
-                      ? 'bg-emerald-50 text-emerald-600'
-                      : 'bg-red-50 text-red-600'
-                  }`}
-                >
-                  {row.decision}
-                </span>
+                <span className={`chip ${decisionChipClass(row.decision)}`}>{row.decision}</span>
                 <span>{row.remember || '—'}</span>
                 <span>{row.path}</span>
                 <span>{row.decidedBy}</span>
@@ -549,15 +552,7 @@ export function ReplayPage() {
                               >
                                 <td className="px-2 py-2 font-medium text-slate-800">{row.toolName}</td>
                                 <td className="px-2 py-2">
-                                  <span
-                                    className={`chip ${
-                                      row.decision === 'approve' || row.decision === 'approved'
-                                        ? 'bg-emerald-50 text-emerald-600'
-                                        : 'bg-red-50 text-red-600'
-                                    }`}
-                                  >
-                                    {row.decision}
-                                  </span>
+                                  <span className={`chip ${decisionChipClass(row.decision)}`}>{row.decision}</span>
                                 </td>
                                 <td className="px-2 py-2">{row.remember || '—'}</td>
                                 <td className="px-2 py-2 font-mono text-xs">{row.path}</td>

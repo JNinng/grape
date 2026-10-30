@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// 授权确认审计表：记录 ack 工具确认的人工决定（仅终态，一确认一行），append-only 不可变更
+// 授权确认审计表：记录 ack 工具确认的授权终态——人工决定与系统自动决定互斥，每次工具调用恰好一行（一确认一行），append-only 不可变更
 type AgentConfirmationLog struct {
 	// 日志 ID，自增序列
 	ID int64 `db:"id" json:"id"`
@@ -18,7 +18,7 @@ type AgentConfirmationLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 链路 ID：决定请求经链路中间件时从 SpanContext 取，无链路事实时为 NULL
 	TraceID *string `db:"trace_id" json:"trace_id"`
-	// 确认 ID（ack Payload 的 confirmationId，与工具调用 ID 同源），租户内唯一：一确认只有一次终态决定
+	// 确认 ID（ack Payload 的 confirmationId，与工具调用 ID 同源），租户内唯一：一确认只有一次终态决定；系统自动决定行以工具调用 ID 充当本列，行唯一性以调用 ID 租户内唯一为前提（与 agent_tool_call_log 的 tool_call_id 唯一索引同一假设），重复 ID 的后到行由唯一索引收编、写入失败按审计旁路纪律记日志放弃
 	ConfirmationID string `db:"confirmation_id" json:"confirmation_id"`
 	// 确认所属的 Agent 会话 ID
 	SessionID string `db:"session_id" json:"session_id"`
@@ -26,17 +26,17 @@ type AgentConfirmationLog struct {
 	ToolCallID *string `db:"tool_call_id" json:"tool_call_id"`
 	// 被确认的工具名
 	ToolName string `db:"tool_name" json:"tool_name"`
-	// 决定：approved-同意、denied-拒绝（pending 是决定前状态，不入审计）
+	// 决定：人工封闭值 approved-同意、denied-拒绝（pending 是决定前状态，不入审计）+ 系统决定两形态——无来源 auto-自动放行、auto_deny-自动拒绝，有来源为来源命名空间 {name}_auto / {name}_deny（name 小写字母开头、仅 [a-z0-9_]、≠ auto，与 decision 合计 ≤16：varchar(16) 无 CHECK，模式校验由应用层把门）
 	Decision string `db:"decision" json:"decision"`
-	// 决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（拒绝时恒为 NULL）
+	// 决定随附的记住作用域：NULL-未记住、session-会话级、global-全局级（仅人工批准可携带，拒绝与系统决定恒为 NULL）
 	Remember *string `db:"remember" json:"remember"`
-	// 决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑
+	// 决定生效路径：live-原运行存活直接唤醒、recovery-孤儿确认由网关代执行/合成拒绝后续跑（两者为人工决定专用）、auto-系统自动决定（评估管线内终结：层级放行/拒绝、策略判定、许可命中、取消/持久化失败结算，与系统决定词形一一配对）
 	Path string `db:"path" json:"path"`
-	// 决定人：ack 网关的身份字符串（userKey 编码）
+	// 决定人：ack 网关的身份字符串（userKey 编码）；系统自动决定行取运行属主身份（评估 ctx 的认证编码）
 	DecidedBy string `db:"decided_by" json:"decided_by"`
 	// 决定时间
 	DecidedAt pgtype.Timestamp `db:"decided_at" json:"decided_at"`
-	// 写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方）
+	// 写入者（认证用户：live 路径为决定人，recovery 路径为触发续跑的调用方，自动决定行为该运行的属主）
 	CreatedBy int64 `db:"created_by" json:"created_by"`
 	// 写入时间
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`

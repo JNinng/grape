@@ -126,6 +126,11 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   结果原文下内嵌同一 toolCallId 的审计行与授权确认行。确认行与工具行的
   trace 在 live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
   下拉按 trace 分组，不自动把两行并到一组。
+- 确认行配色按决定方向约定区分（`decisionChipClass`）：approved / auto /
+  `*_auto` 绿（放行方向），denied / auto_deny / `*_deny` 红（拒绝方向，
+  系统决定词表口径见 [replay.md](../replay.md) 授权确认审计节）；词表外
+  取值 fail-closed 显红——后端 biz 模式校验把门决定词表，前端不再枚举
+  白名单。
 - 压缩占位与原文对照：`replay/compaction.ts` 按 trpc-agent-go
   context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记
   含紧凑与裸变体、策略占位），提取 event_id 恢复引用；带引用的经

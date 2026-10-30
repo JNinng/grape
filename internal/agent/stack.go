@@ -77,7 +77,8 @@ var errMissingIdentity = errors.New(errMissingIdentityMsg)
 // sessions 是 agent 会话列表端点的装配物，与 AG-UI / ack 消费同一会话
 // 存储实例，HTTP 形态经 SessionsHandler 交 service 注册。audit 是可选的
 // 审计写入挂点：nil 即不审计——工具清单不包终态 wrapper、
-// ack 决定路由不装审计面，装配形态与接线前完全一致。gate 是运行入口
+// ack 决定路由不装审计面、ack 网关不挂授权终态观察，装配形态与接线前
+// 完全一致。gate 是运行入口
 // 并发门控（限流，conf agent.agui.max_concurrent_runs）：nil 即关闭，
 // handler 原样透传。
 type Stack struct {
@@ -173,12 +174,17 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	// ack 网关：app 名与 AG-UI runner 一致（会话定位的前提）；分级表与
 	// 工具集在构造期登记（分级决定 live 确认、工具集支撑恢复路径代执行），
-	// 许可源接授权存储、策略源维持弃权空实现（接入点预留）。
+	// 许可源接授权存储、策略源维持弃权空实现（接入点预留）、audit 非 nil
+	// 时挂授权终态观察（自动授权终态转写为授权确认审计行）。
 	var grantSource ack.GrantSource
 	if grants != nil {
 		grantSource = newStoredGrants(grants)
 	}
-	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext, tools, grantSource)
+	var permissionObserver ack.PermissionObserver
+	if o.audit != nil {
+		permissionObserver = newPermissionAuditor(o.audit, logger)
+	}
+	gateway := newGateway(sessions, c.GetAppName(), logger, userKeyFromContext, tools, grantSource, permissionObserver)
 
 	ag := llmagent.New(c.GetAppName(), llmAgentOptions(c, llm, tools)...)
 

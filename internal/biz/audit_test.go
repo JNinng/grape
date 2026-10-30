@@ -201,6 +201,108 @@ func TestAuditUsecase_validates_record_inputs(t *testing.T) {
 	}
 }
 
+// TestAuditUsecase_system_decision_vocabulary 验证系统决定词表的完整
+// 配对规则：合法形态（无来源两值、来源命名空间、列宽边界）写入成功且
+// 落库行如实；非法形态（remember 携带、live/auto 路径交叉配对、name=auto
+// 冲突、大写/数字开头/超长/错后缀）一律 ErrAuditInvalidArgument。
+func TestAuditUsecase_system_decision_vocabulary(t *testing.T) {
+	// SystemDecision 构造面：无来源两值 + 来源命名空间；不合规来源名
+	// fail-closed 返回 false。
+	if d, ok := SystemDecision("", true); !ok || d != ConfirmationDecisionAuto {
+		t.Fatalf("SystemDecision(no source, allow) = %q/%v, want auto/true", d, ok)
+	}
+	if d, ok := SystemDecision("", false); !ok || d != ConfirmationDecisionAutoDeny {
+		t.Fatalf("SystemDecision(no source, deny) = %q/%v, want auto_deny/true", d, ok)
+	}
+	if d, ok := SystemDecision("risk", false); !ok || d != "risk_deny" {
+		t.Fatalf("SystemDecision(risk, deny) = %q/%v, want risk_deny/true", d, ok)
+	}
+	if d, ok := SystemDecision("risk", true); !ok || d != "risk_auto" {
+		t.Fatalf("SystemDecision(risk, allow) = %q/%v, want risk_auto/true", d, ok)
+	}
+	for _, bad := range []string{"Risk", "1risk", "au-to", ConfirmationDecisionAuto} {
+		if _, ok := SystemDecision(bad, true); ok {
+			t.Fatalf("SystemDecision(%q) must be rejected", bad)
+		}
+	}
+
+	repo := &auditFakeRepo{}
+	uc := NewAuditUsecase(repo, redact.NewStandardRegistry())
+	ctx := auditIdentityContext(false)
+	record := func(decision, path, remember string) error {
+		return uc.RecordConfirmation(ctx, &ConfirmationRecordInput{
+			ConfirmationID: "cf-vocab", SessionID: "s", ToolName: "write",
+			Decision: decision, Remember: remember, Path: path, DecidedBy: "t-1:7",
+		})
+	}
+
+	// 合法形态：系统决定恒配 auto 路径，remember 恒空，决定值原样落库。
+	legal := []struct{ decision string }{
+		{ConfirmationDecisionAuto},
+		{ConfirmationDecisionAutoDeny},
+		{"risk_auto"},
+		{"risk_deny"},
+		// 列宽边界：11 字符名字 + "_deny" 后缀合计恰 16（varchar(16)）。
+		{"abcdefghijk_deny"},
+	}
+	for _, tc := range legal {
+		if err := record(tc.decision, ConfirmationPathAuto, ""); err != nil {
+			t.Fatalf("legal system decision %q rejected: %v", tc.decision, err)
+		}
+	}
+	if len(repo.confirmations) != len(legal) {
+		t.Fatalf("legal rows = %d, want %d", len(repo.confirmations), len(legal))
+	}
+	for i, tc := range legal {
+		rec := repo.confirmations[i]
+		if rec.Decision != tc.decision {
+			t.Fatalf("row decision = %q, want input %q preserved verbatim", rec.Decision, tc.decision)
+		}
+		if rec.Path != ConfirmationPathAuto || rec.Remember != "" {
+			t.Fatalf("system row path/remember = %s/%q, want auto/empty", rec.Path, rec.Remember)
+		}
+		if !isSystemDecision(rec.Decision) {
+			t.Fatalf("row decision %q must classify as system", rec.Decision)
+		}
+	}
+
+	// 非法形态：词表外取值、路径交叉配对、remember 越界携带。
+	for _, tc := range []struct {
+		name     string
+		decision string
+		path     string
+		remember string
+	}{
+		{"system decision carries remember", "risk_auto", ConfirmationPathAuto, ConfirmationRememberSession},
+		{"approved on auto path", ConfirmationDecisionApproved, ConfirmationPathAuto, ""},
+		{"denied on auto path", ConfirmationDecisionDenied, ConfirmationPathAuto, ""},
+		{"auto on live path", ConfirmationDecisionAuto, ConfirmationPathLive, ""},
+		{"auto_deny on recovery path", ConfirmationDecisionAutoDeny, ConfirmationPathRecovery, ""},
+		{"source auto conflicts with no-source vocabulary", "auto_auto", ConfirmationPathAuto, ""},
+		{"uppercase source", "Risk_auto", ConfirmationPathAuto, ""},
+		{"digit-leading source", "1risk_auto", ConfirmationPathAuto, ""},
+		{"decision over column width", "abcdefghijkl_auto", ConfirmationPathAuto, ""},
+		{"wrong suffix", "risk_autox", ConfirmationPathAuto, ""},
+		{"empty source name", "_auto", ConfirmationPathAuto, ""},
+		{"unknown decision", "pending", ConfirmationPathAuto, ""},
+	} {
+		if err := record(tc.decision, tc.path, tc.remember); !errors.Is(err, ErrAuditInvalidArgument) {
+			t.Fatalf("%s: err = %v, want ErrAuditInvalidArgument", tc.name, err)
+		}
+	}
+	if len(repo.confirmations) != len(legal) {
+		t.Fatalf("illegal rows must not land, got %d", len(repo.confirmations))
+	}
+
+	// isSystemDecision 的分类面：人工封闭值与任意词形外串恒 false。
+	if isSystemDecision(ConfirmationDecisionApproved) || isSystemDecision(ConfirmationDecisionDenied) {
+		t.Fatal("human decisions must not classify as system")
+	}
+	if isSystemDecision("") {
+		t.Fatal("empty decision must not classify as system")
+	}
+}
+
 func TestAuditUsecase_batch_forwards_both_records(t *testing.T) {
 	repo := &auditFakeRepo{}
 	uc := NewAuditUsecase(repo, redact.NewStandardRegistry())

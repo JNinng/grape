@@ -70,8 +70,6 @@ github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo
 github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
 github.com/jninng/sqlc_gen_dynamic v0.3.0 h1:M756WqTP7pw3O/RDYxMaOscpjOTG7zWQr8ZoVT4XbqU=
 github.com/jninng/sqlc_gen_dynamic v0.3.0/go.mod h1:4usRsk7rRc5zvz6TBCEFPS658Qu6TGiBZEwtC0I8WDA=
-github.com/jninng/trpc_agent_go_ack v0.0.0-20261016110510-e0d22765772c h1:YKYCe5fo1DjALuSUTxPLJtpC5BV/Qm28D6bDGFe7qRw=
-github.com/jninng/trpc_agent_go_ack v0.0.0-20261016110510-e0d22765772c/go.mod h1:BvniFL8q+Z+LgLnyUEQKNNF4T3sqxW55zesCLUeQ+/8=
 github.com/klauspost/compress v1.20.1 h1:T7kKElXUMXrUJ2E9QhQhxFtcK5rPyLdsGZvdbLMPdiQ=
 github.com/klauspost/compress v1.20.1/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=

@@ -5,8 +5,8 @@ package agent
 // live 同意（工具行直写 + 确认行）、live 拒绝（deny+remember 归一为空、
 // 无工具行）、同意携带 remember（作用域原样入参）、恢复路径同意（代执行
 // 工具行与确认行组合批量）、恢复路径拒绝（单边批量）、挂点失败不中断
-// 运行、echo 循环的执行次数与审计行数一致；wrapper 单元面覆盖无调用 ID
-// 跳过、失败终态状态、panic 不传播与捕获器归集。
+// 运行、echo 循环的执行行与逐次评估的 auto 授权行一一对应；wrapper
+// 单元面覆盖无调用 ID 跳过、失败终态状态、panic 不传播与捕获器归集。
 
 import (
 	"context"
@@ -36,12 +36,14 @@ type auditBatchRow struct {
 
 // auditRecorder 是审计挂点的内存替身：捕获三类写入的入参快照，可注入
 // 写入错误与 panic（失败注入用例）。快照做浅拷贝，断言不受调用侧后续
-// 变更影响。
+// 变更影响。attempts 记写入尝试次数（含失败与 panic 的调用），供「写入
+// 确实被尝试」的正向对照。
 type auditRecorder struct {
 	mu            sync.Mutex
 	toolCalls     []*biz.ToolCallRecordInput
 	confirmations []*biz.ConfirmationRecordInput
 	batches       []auditBatchRow
+	attempts      int
 	err           error  // 非 nil 时所有写入返回该错误
 	panicOn       string // "tool" / "confirmation" / "batch" 时对应方法 panic
 }
@@ -51,6 +53,7 @@ func newAuditRecorder() *auditRecorder { return &auditRecorder{} }
 func (r *auditRecorder) RecordToolCall(_ context.Context, in *biz.ToolCallRecordInput) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.attempts += 1
 	if r.panicOn == "tool" {
 		panic("audit hook panic: tool call")
 	}
@@ -65,6 +68,7 @@ func (r *auditRecorder) RecordToolCall(_ context.Context, in *biz.ToolCallRecord
 func (r *auditRecorder) RecordConfirmation(_ context.Context, in *biz.ConfirmationRecordInput) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.attempts += 1
 	if r.panicOn == "confirmation" {
 		panic("audit hook panic: confirmation")
 	}
@@ -79,6 +83,7 @@ func (r *auditRecorder) RecordConfirmation(_ context.Context, in *biz.Confirmati
 func (r *auditRecorder) RecordToolCallWithConfirmation(_ context.Context, t *biz.ToolCallRecordInput, c *biz.ConfirmationRecordInput) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.attempts += 1
 	if r.panicOn == "batch" {
 		panic("audit hook panic: batch")
 	}
@@ -451,7 +456,10 @@ func TestAuditWire_when_hook_fails_run_and_decide_still_succeed(t *testing.T) {
 
 // TestAuditWire_when_echo_loop_executions_match_audit_rows 验证全量留痕
 // 与计数一致：allow 层级的 echo 工具被循环调用至上限，每次执行都有
-// 一条成功工具审计行（调用 ID 来自框架 ctx、会话 ID 来自 Invocation）。
+// 一条成功工具审计行（调用 ID 来自框架 ctx、会话 ID 来自 Invocation），
+// 且每次评估各落一条 auto 授权行（观察挂点转写，confirmation_id 即
+// tool_call_id、path 恒 auto、属主 userKey 为 decided_by）——工具执行
+// 行与授权行一一对应。
 func TestAuditWire_when_echo_loop_executions_match_audit_rows(t *testing.T) {
 	const threadID = "thread-audit-echo-loop"
 	loop := acktest.NewScriptedModel("audit-loop-model",
@@ -468,12 +476,18 @@ func TestAuditWire_when_echo_loop_executions_match_audit_rows(t *testing.T) {
 		t.Fatalf("tool executions = %d, want %d", n, defaultMaxToolIter)
 	}
 	tools, confs, batches := rec.snapshot()
-	if len(confs) != 0 || len(batches) != 0 {
-		t.Fatalf("allow-tier loop must not record confirmations, got %d/%d", len(confs), len(batches))
+	if len(batches) != 0 {
+		t.Fatalf("allow-tier loop must not use combined batches, got %d", len(batches))
 	}
 	if len(tools) != defaultMaxToolIter {
 		t.Fatalf("tool audit rows = %d, want %d (matches executions)", len(tools), defaultMaxToolIter)
 	}
+	// 逐次评估各一条 auto 行：allow 层级的每次工具调用都经授权终态观察
+	// 转写为授权确认审计行，无人工决定行。
+	if len(confs) != defaultMaxToolIter {
+		t.Fatalf("permission audit rows = %d, want %d (one per evaluation)", len(confs), defaultMaxToolIter)
+	}
+	wantUserKey := ownerUserKey(t)
 	for _, tc := range tools {
 		if tc.ToolCallID != "call-audit-loop" || tc.ToolName != echoToolName {
 			t.Fatalf("unexpected tool row %s/%s", tc.ToolCallID, tc.ToolName)
@@ -483,6 +497,20 @@ func TestAuditWire_when_echo_loop_executions_match_audit_rows(t *testing.T) {
 		}
 		if tc.ArgumentsSummary != `{"text":"hi"}` {
 			t.Fatalf("unexpected echo args summary: %q", tc.ArgumentsSummary)
+		}
+	}
+	for _, cf := range confs {
+		if cf.ConfirmationID != "call-audit-loop" || cf.ToolCallID != "call-audit-loop" || cf.ToolName != echoToolName {
+			t.Fatalf("unexpected permission row %s/%s/%s", cf.ConfirmationID, cf.ToolCallID, cf.ToolName)
+		}
+		if cf.Decision != biz.ConfirmationDecisionAuto || cf.Path != biz.ConfirmationPathAuto {
+			t.Fatalf("permission decision/path = %s/%s, want auto/auto", cf.Decision, cf.Path)
+		}
+		if cf.SessionID != threadID || cf.Remember != "" {
+			t.Fatalf("unexpected permission row session/remember = %q/%q", cf.SessionID, cf.Remember)
+		}
+		if cf.DecidedBy != wantUserKey {
+			t.Fatalf("permission decidedBy = %q, want owner userKey %q", cf.DecidedBy, wantUserKey)
 		}
 	}
 }

@@ -96,7 +96,8 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 // 表，检索工具经向量适配器与 embedder 访问向量；
 // 运行面观测经注入的 observer 接 /metrics（ops 的 RuntimeMetrics 经
 // wire.Bind 以 biz.AgentRunObserver 提供）；审计经注入的审计用例接
-// AuditHook（工具执行终态与 ack 决定两个写入点，与复现视图查询端点
+// AuditHook（工具执行终态、ack 决定与授权终态观察三个写入面——自动授
+// 权终态由观察转写器落行，见 permission_audit.go，与复现视图查询端点
 // 共用同一用例实例）；测试经 NewStackWithOptions 注入替身。
 func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
 	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, WithAuditHook(audit), WithRunObserver(observer))

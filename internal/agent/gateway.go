@@ -13,8 +13,13 @@ import (
 // 裁决——与 ack 对 abstain 的既有语义一致（评估管线里 abstain 不改变
 // 处置，只在日志中留痕）。这是显式决策而非占位缺陷：当前没有
 // 真实策略需求，接入策略面时以实现 ack.PolicySource 的类型替换本
-// 类型（接入点即 newGateway 中 ack.WithPolicies 的实参）。策略源故障的
-// fail-safe 语义由 ack 评估侧保证（出错按 confirm 升级处理）。
+// 类型（接入点即 newGateway 中 ack.WithPolicies 的实参）；需要让生效
+// 依据进入授权终态事件与审计行时改挂 ack.NamedPolicy——名字即事件
+// Source、落审计为来源命名空间决定词形（{name}_auto / {name}_deny），
+// 因此名字必须满足 biz 的来源命名空间约束（小写字母开头、仅
+// [a-z0-9_]、≠ auto、加后缀总长 ≤16），不合规名字的授权行会在转写器
+// fail-closed 丢弃（见 permission_audit.go）。策略源故障的 fail-safe
+// 语义由 ack 评估侧保证（出错按 confirm 升级处理）。
 type noopPolicy struct{}
 
 // Consult 实现 ack.PolicySource：恒弃权。
@@ -45,8 +50,10 @@ func toolTiers() map[string]ack.Tier {
 // 见 toolTiers（读 allow/写 confirm）；许可源是 grants 非 nil 时的存储
 // 实现（agent_tool_grant 表，见 grants.go 的 storedGrants），nil
 // 时维持无许可源形态（评估永不命中、remember 被 ack 忽略并记日志）；策略
-// 源恒为弃权空实现（接入点，见 noopPolicy）。
-func newGateway(sessions session.Service, appName string, logger *slog.Logger, userKey func(ctx context.Context) (string, error), tools []tool.Tool, grants ack.GrantSource) *ack.Gateway {
+// 源恒为弃权空实现（接入点，见 noopPolicy）；observer 非 nil 时挂授权
+// 终态观察挂点——自动授权终态转写为授权确认审计行（见
+// permission_audit.go），人工决定仍由决定路由审计面落行，两路互斥。
+func newGateway(sessions session.Service, appName string, logger *slog.Logger, userKey func(ctx context.Context) (string, error), tools []tool.Tool, grants ack.GrantSource, observer ack.PermissionObserver) *ack.Gateway {
 	opts := []ack.Option{
 		ack.WithApp(appName),
 		ack.WithLogger(logger),
@@ -66,6 +73,9 @@ func newGateway(sessions session.Service, appName string, logger *slog.Logger, u
 	}
 	if grants != nil {
 		opts = append(opts, ack.WithGrants(grants))
+	}
+	if observer != nil {
+		opts = append(opts, ack.WithPermissionObserver(observer))
 	}
 	return ack.New(sessions, opts...)
 }

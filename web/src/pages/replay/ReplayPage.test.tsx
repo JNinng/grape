@@ -100,6 +100,67 @@ beforeEach(() => {
       traceId: 'trace-a',
       decidedAt: '2026-01-01T00:00:04Z',
     },
+    {
+      id: 22,
+      confirmationId: 'conf-2',
+      sessionId: 'thread-1',
+      toolCallId: 'call-2',
+      toolName: 'update_my_nickname',
+      decision: 'auto',
+      path: 'auto',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:05Z',
+    },
+    {
+      id: 23,
+      confirmationId: 'conf-3',
+      sessionId: 'thread-1',
+      toolName: 'update_my_nickname',
+      decision: 'auto_deny',
+      path: 'auto',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:06Z',
+    },
+    {
+      id: 24,
+      confirmationId: 'conf-4',
+      sessionId: 'thread-1',
+      toolName: 'update_my_nickname',
+      decision: 'risk_deny',
+      path: 'auto',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:07Z',
+    },
+    {
+      id: 25,
+      confirmationId: 'conf-5',
+      sessionId: 'thread-1',
+      toolName: 'update_my_nickname',
+      decision: 'legacy_approve',
+      path: 'live',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:08Z',
+    },
+    {
+      id: 26,
+      confirmationId: 'conf-6',
+      sessionId: 'thread-1',
+      toolName: 'update_my_nickname',
+      decision: 'risk_auto',
+      path: 'auto',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:09Z',
+    },
+    {
+      id: 27,
+      confirmationId: 'conf-7',
+      sessionId: 'thread-1',
+      toolName: 'update_my_nickname',
+      decision: 'denied',
+      path: 'live',
+      decidedBy: 't-1:7',
+      decidedAt: '2026-01-01T00:00:10Z',
+    },
   ])
   mockFetchRetrievals.mockResolvedValue([
     {
@@ -186,7 +247,13 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('opacity-40')
 
     const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
-    expect(within(confirmRegion).getByText('update_my_nickname').closest('tr')).toHaveClass('opacity-40')
+    const confirmRows = within(confirmRegion)
+      .getAllByText('update_my_nickname')
+      .map((el) => el.closest('tr'))
+    expect(confirmRows).toHaveLength(7)
+    for (const row of confirmRows) {
+      expect(row).toHaveClass('opacity-40')
+    }
 
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('opacity-40')
@@ -205,9 +272,39 @@ describe('ReplayPage four-facet evidence view', () => {
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
     expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('bg-violet-50')
     const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
-    expect(within(confirmRegion).getByText('update_my_nickname').closest('tr')).toHaveClass('bg-violet-50')
+    // trace-a 只命中 approved 行（trace-a），其余行按未命中呈现。
+    expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-violet-50')
+    expect(within(confirmRegion).getByText('auto_deny').closest('tr')).not.toHaveClass('bg-violet-50')
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('bg-violet-50')
+  })
+
+  it('colors_confirmation_chips_by_decision_direction_with_fail_closed_red', async () => {
+    // 决定方向配色：approved / auto / `*_auto` 绿（放行），denied /
+    // auto_deny / `*_deny` 红（拒绝）；词表外取值 fail-closed 显红。
+    // 「auto」同时出现在决定列与路径列，按 chip 类名收窄到决定徽标。
+    renderReplay()
+    await screen.findByText('answer')
+
+    const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
+    const chip = (decision: string) => {
+      const chips = within(confirmRegion)
+        .getAllByText(decision)
+        .filter((el) => el.classList.contains('chip'))
+      expect(chips).toHaveLength(1)
+      return chips[0]
+    }
+    expect(chip('approved')).toHaveClass('bg-emerald-50')
+    expect(chip('auto')).toHaveClass('bg-emerald-50')
+    expect(chip('risk_auto')).toHaveClass('bg-emerald-50')
+    expect(chip('denied')).toHaveClass('bg-red-50')
+    expect(chip('auto_deny')).toHaveClass('bg-red-50')
+    expect(chip('risk_deny')).toHaveClass('bg-red-50')
+    expect(chip('legacy_approve')).toHaveClass('bg-red-50')
+
+    // 回放工具项内嵌的授权确认行同规则（approved 行挂在 call-1 上）。
+    const callRow = screen.getByLabelText('工具调用 search_internal_docs')
+    expect(within(callRow).getByText('approved')).toHaveClass('bg-emerald-50')
   })
 
   it('highlights_the_replay_tool_call_linked_to_the_selected_trace', async () => {
