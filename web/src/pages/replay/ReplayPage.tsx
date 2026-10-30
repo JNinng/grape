@@ -48,6 +48,113 @@ function decisionChipClass(decision: string): string {
   return 'bg-red-50 text-red-600'
 }
 
+// TracePickButton 是证据行内的链路追踪按钮：一键选中该 trace 过滤（与
+// 下拉选中同一效果，再次点击同值经 pickTrace 反选清除）。凡携带
+// trace_id 的证据行（工具调用审计、授权确认、检索留痕）都用它统一入口，
+// 避免可点击性埋没在纯文本 chip 里。
+function TracePickButton({ traceId, onPickTrace }: { traceId: string; onPickTrace: (traceId: string | null) => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`追踪 ${traceId}`}
+      title={`按该链路过滤（trace ${traceId}）`}
+      onClick={() => onPickTrace(traceId)}
+      className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
+    >
+      追踪 {traceId}
+    </button>
+  )
+}
+
+// TraceFilterSelect 是可搜索的 trace 过滤下拉：输入即时做前端子串过滤
+// （大小写不敏感），选中后输入框回显当前链路，「全部链路」清除过滤；
+// 无匹配时给出占位提示。原生 select 无搜索能力，trace 候选多时难以定位。
+function TraceFilterSelect({ traceIds, value, onChange }: {
+  traceIds: string[]
+  value: string | null
+  onChange: (traceId: string | null) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const matches = needle === '' ? traceIds : traceIds.filter((id) => id.toLowerCase().includes(needle))
+  const pick = (traceId: string | null) => {
+    onChange(traceId)
+    setOpen(false)
+  }
+  return (
+    <div className="relative">
+      <input
+        role="combobox"
+        aria-expanded={open}
+        aria-controls="trace-filter-options"
+        aria-label="trace 过滤"
+        className="field w-64 min-w-0 font-mono text-xs"
+        placeholder="全部链路（输入以搜索）"
+        value={open ? query : value ?? ''}
+        onFocus={() => {
+          setQuery('')
+          setOpen(true)
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setOpen(false)
+          }
+        }}
+        onBlur={() => setOpen(false)}
+      />
+      {open && (
+        <ul
+          id="trace-filter-options"
+          role="listbox"
+          aria-label="trace 候选"
+          className="absolute left-0 top-full z-10 mt-1 max-h-60 w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          <li>
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === null}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(null)}
+              className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 ${
+                value === null ? 'bg-violet-50 text-violet-700' : 'text-slate-500'
+              }`}
+            >
+              全部链路
+            </button>
+          </li>
+          {matches.map((traceId) => (
+            <li key={traceId}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === traceId}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(traceId)}
+                className={`block w-full truncate px-3 py-1.5 text-left font-mono text-xs hover:bg-slate-50 ${
+                  value === traceId ? 'bg-violet-50 text-violet-700' : 'text-slate-600'
+                }`}
+              >
+                {traceId}
+              </button>
+            </li>
+          ))}
+          {matches.length === 0 && (
+            <li className="px-3 py-1.5 text-xs text-slate-400" aria-live="polite">
+              无匹配链路
+            </li>
+          )}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // CompactibleText 是带压缩占位符识别的文本块：识别到占位符时给出徽标
 // 与原文对照展开，其余原样以纯文本渲染（sanitize 基线不变）。
 function CompactibleText({ text, threadId }: { text: string; threadId: string }) {
@@ -138,6 +245,7 @@ function ReplayToolCall({
                   <span>耗时 {row.durationMs}ms</span>
                   <span>重试 {formatRetryCount(row.retryCount)}</span>
                   <span>{formatTime(row.calledAt)}</span>
+                  {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={onPickTrace} />}
                 </div>
                 {row.argumentsSummary !== null && <p className="break-all font-mono">参数摘要：{row.argumentsSummary}</p>}
                 {row.resultSummary !== null && <p className="break-all font-mono">结果摘要：{row.resultSummary}</p>}
@@ -158,15 +266,7 @@ function ReplayToolCall({
                 <span>{row.path}</span>
                 <span>{row.decidedBy}</span>
                 <span>{formatTime(row.decidedAt)}</span>
-                {row.traceId && (
-                  <button
-                    type="button"
-                    onClick={() => onPickTrace(row.traceId ?? null)}
-                    className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
-                  >
-                    trace {row.traceId}
-                  </button>
-                )}
+                {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={onPickTrace} />}
               </div>
             ))}
           </div>
@@ -365,22 +465,10 @@ export function ReplayPage() {
 
       <section aria-label="复现证据区" className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-6">
-          <label className="flex min-w-0 items-center gap-2 text-sm text-slate-500">
-            trace 过滤{' '}
-            <select
-              aria-label="trace 过滤"
-              className="field w-64 min-w-0 font-mono text-xs"
-              value={traceFilter ?? ''}
-              onChange={(e) => setTraceFilter(e.target.value === '' ? null : e.target.value)}
-            >
-              <option value="">全部链路</option>
-              {traceIds.map((traceId) => (
-                <option key={traceId} value={traceId}>
-                  {traceId}
-                </option>
-              ))}
-            </select>
-          </label>
+          <span className="flex min-w-0 items-center gap-2 text-sm text-slate-500">
+            trace 过滤
+            <TraceFilterSelect traceIds={traceIds} value={traceFilter} onChange={setTraceFilter} />
+          </span>
           {traceFilter !== null && (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTraceFilter(null)}>
               清除过滤
@@ -499,13 +587,7 @@ export function ReplayPage() {
                                 <td className="px-2 py-2 text-slate-400">{formatRetryCount(row.retryCount)}</td>
                                 <td className="px-2 py-2">
                                   {row.traceId ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => pickTrace(row.traceId ?? null)}
-                                      className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
-                                    >
-                                      {row.traceId}
-                                    </button>
+                                    <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />
                                   ) : (
                                     '—'
                                   )}
@@ -559,13 +641,7 @@ export function ReplayPage() {
                                 <td className="px-2 py-2">{row.decidedBy}</td>
                                 <td className="px-2 py-2">
                                   {row.traceId ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => pickTrace(row.traceId ?? null)}
-                                      className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
-                                    >
-                                      {row.traceId}
-                                    </button>
+                                    <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />
                                   ) : (
                                     '—'
                                   )}
@@ -610,15 +686,7 @@ export function ReplayPage() {
                                 top_k {row.requestedTopK ?? '未指定'} → {row.effectiveTopK ?? '不适用'} · {row.durationMs}
                                 ms · {formatTime(row.createdAt)}
                               </span>
-                              {row.traceId && (
-                                <button
-                                  type="button"
-                                  onClick={() => pickTrace(row.traceId ?? null)}
-                                  className="chip cursor-pointer bg-violet-50 font-mono text-[11px] text-violet-600 transition-colors hover:bg-violet-100"
-                                >
-                                  trace {row.traceId}
-                                </button>
-                              )}
+                              {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />}
                             </div>
                             {hits.length > 0 && (
                               <ul aria-label="检索命中" className="mt-2.5 space-y-1.5 border-t border-slate-200 pt-2.5">

@@ -116,15 +116,19 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
   UI 以「0（框架未暴露）」呈现避免误读。
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
-  `replay/model.ts` 纯函数）。选中链路只做高亮对比、不隐藏数据：三个证据
-  面全量渲染，命中行品牌紫高亮、未命中行灰显（`matchesTraceId` 谓词区分
-  两种呈现），保住证据间的上下文；回放流经 `relatedToolCallIds` 桥接
-  （toolCallId 取审计与确认两面并集，live 路径两面 trace 不同），命中项所
-  在的「用户消息为界」整段经 `relatedChatItemIds` 邻近归属保持原样，段外
-  项降透明度（无任何命中项时不降，避免整流变灰而无所指）；表内 trace 值
-  可点击反选。工具调用项摘要行常显审计/确认关联数徽标，展开后在参数与
-  结果原文下内嵌同一 toolCallId 的审计行与授权确认行。确认行与工具行的
-  trace 在 live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
+  `replay/model.ts` 纯函数）。下拉可搜索：输入子串即时前端过滤候选
+  （大小写不敏感，「全部链路」清除项恒在，无匹配给占位提示）。选中链
+  路只做高亮对比、不隐藏数据：三个证据面全量渲染，命中行品牌紫高亮、
+  未命中行灰显（`matchesTraceId` 谓词区分两种呈现），保住证据间的上下
+  文；回放流经 `relatedToolCallIds` 桥接（toolCallId 取审计与确认两面
+  并集，live 路径两面 trace 不同），命中项所在的「用户消息为界」整段
+  经 `relatedChatItemIds` 邻近归属保持原样，段外项降透明度（无任何命
+  中项时不降，避免整流变灰而无所指）。凡携带 trace_id 的证据行（工具
+  审计/授权确认/检索留痕，含回放工具项展开后的内嵌行）都以「追踪」
+  按钮一键选中该链路（再点同值反选清除），与下拉选中同一效果。工具
+  调用项摘要行常显审计/确认关联数徽标，展开后在参数与结果原文下内嵌
+  同一 toolCallId 的审计行与授权确认行。确认行与工具行的 trace 在
+  live 路径不同，跨 trace 的对账以 toolCallId/confirmationId 为准；
   下拉按 trace 分组，不自动把两行并到一组。
 - 确认行配色按决定方向约定区分（`decisionChipClass`）：approved / auto /
   `*_auto` 绿（放行方向），denied / auto_deny / `*_deny` 红（拒绝方向，

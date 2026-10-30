@@ -194,6 +194,14 @@ function renderReplay() {
   )
 }
 
+// pickTraceOption 经可搜索下拉选中一个链路：聚焦打开候选列表后点选目标
+// 选项（等价于 selectOptions 在原生 select 上的交互）。
+async function pickTraceOption(user: ReturnType<typeof userEvent.setup>, traceId: string) {
+  const input = screen.getByRole('combobox', { name: 'trace 过滤' })
+  await user.click(input)
+  await user.click(screen.getByRole('option', { name: traceId }))
+}
+
 describe('ReplayPage four-facet evidence view', () => {
   it('degrades_history_failure_to_empty_state_and_keeps_other_facets', async () => {
     // 无 track 事件会话：/history 快照上游 500（RunStartedEvent validation
@@ -238,7 +246,7 @@ describe('ReplayPage four-facet evidence view', () => {
     const user = userEvent.setup()
     renderReplay()
     await screen.findByText('answer')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'trace 过滤' }), 'trace-b')
+    await pickTraceOption(user, 'trace-b')
 
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
     const echoRow = within(auditRegion).getByText('echo').closest('tr')
@@ -267,7 +275,7 @@ describe('ReplayPage four-facet evidence view', () => {
     const user = userEvent.setup()
     renderReplay()
     await screen.findByText('answer')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'trace 过滤' }), 'trace-a')
+    await pickTraceOption(user, 'trace-a')
 
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
     expect(within(auditRegion).getByText('search_internal_docs').closest('tr')).toHaveClass('bg-violet-50')
@@ -277,6 +285,55 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(within(confirmRegion).getByText('auto_deny').closest('tr')).not.toHaveClass('bg-violet-50')
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).toHaveClass('bg-violet-50')
+  })
+
+  it('filters_dropdown_options_by_frontend_search_before_selection', async () => {
+    // 可搜索下拉：输入子串即时前端过滤候选（含清除项恒在），无匹配给占
+    // 位提示；从过滤结果中选中即生效。
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+
+    const input = screen.getByRole('combobox', { name: 'trace 过滤' })
+    await user.click(input)
+    expect(screen.getByRole('listbox', { name: 'trace 候选' })).toBeInTheDocument()
+    await user.type(input, 'b')
+
+    const listbox = screen.getByRole('listbox', { name: 'trace 候选' })
+    expect(within(listbox).getByRole('option', { name: 'trace-b' })).toBeInTheDocument()
+    expect(within(listbox).queryByRole('option', { name: 'trace-a' })).not.toBeInTheDocument()
+
+    await user.click(within(listbox).getByRole('option', { name: 'trace-b' }))
+    await waitFor(() => {
+      expect(within(screen.getByRole('region', { name: '工具调用审计' })).getByText('echo').closest('tr')).toHaveClass(
+        'bg-violet-50',
+      )
+    })
+
+    // 重新聚焦回显当前链路；搜索无匹配给占位提示，选「全部链路」清除。
+    await user.click(screen.getByRole('combobox', { name: 'trace 过滤' }))
+    await user.type(screen.getByRole('combobox', { name: 'trace 过滤' }), 'zzz')
+    expect(screen.getByText('无匹配链路')).toBeInTheDocument()
+    await user.click(screen.getByRole('option', { name: '全部链路' }))
+    expect(screen.queryByRole('group', { name: /当前链路/ })).not.toBeInTheDocument()
+  })
+
+  it('picks_the_trace_filter_from_track_buttons_on_evidence_rows', async () => {
+    // 追踪按钮：凡携带 trace_id 的证据行提供一键选中该链路（再点同值经
+    // 反选清除）——授权确认表的「追踪 trace-a」选中后命中行高亮。
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+
+    const confirmRegion = screen.getByRole('region', { name: '授权确认记录' })
+    await user.click(within(confirmRegion).getByRole('button', { name: '追踪 trace-a' }))
+    await waitFor(() => {
+      expect(within(confirmRegion).getByText('approved').closest('tr')).toHaveClass('bg-violet-50')
+    })
+
+    // 反选清除：再次点击同一按钮回到全链路视图。
+    await user.click(within(confirmRegion).getByRole('button', { name: '追踪 trace-a' }))
+    expect(within(confirmRegion).getByText('approved').closest('tr')).not.toHaveClass('bg-violet-50')
   })
 
   it('colors_confirmation_chips_by_decision_direction_with_fail_closed_red', async () => {
@@ -311,7 +368,7 @@ describe('ReplayPage four-facet evidence view', () => {
     const user = userEvent.setup()
     renderReplay()
     await screen.findByText('answer')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'trace 过滤' }), 'trace-a')
+    await pickTraceOption(user, 'trace-a')
     await waitFor(() => {
       expect(screen.getByLabelText('工具调用 search_internal_docs（当前链路）')).toBeInTheDocument()
     })
