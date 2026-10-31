@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/jninng/trpc_agent_go_ack"
@@ -39,6 +40,28 @@ func toolTiers() map[string]ack.Tier {
 	}
 }
 
+// denyTexts 声明五类拒绝的模型面文案。
+func denyTexts() ack.DenyTexts {
+	return ack.DenyTexts{
+		// 用户在确认提示中拒绝了工具 %s 的执行。
+		HumanDenied: func(call ack.ToolCall) string {
+			return fmt.Sprintf("User denied the execution of tool %s in the confirmation prompt.", call.ToolName)
+		},
+		// 工具 %s 被权限层级或策略禁用。请勿再次调用该工具。
+		TierDisabled: func(toolName string) string {
+			return fmt.Sprintf("Tool %s is disabled by the permission tier or policy. Do not call this tool again.", toolName)
+		},
+		// 工具执行前运行已被取消或超时。
+		Canceled: "The run was canceled or timed out before the tool executed.",
+		// 待确认记录无法落库；工具未执行。
+		PersistFailed: "The pending confirmation could not be recorded; the tool was not executed.",
+		// 工具 %s 不可用（%s）；未执行。请勿再次调用该工具。
+		Unavailable: func(toolName, detail string) string {
+			return fmt.Sprintf("Tool %s is unavailable (%s); it was not executed. Do not call this tool again.", toolName, detail)
+		},
+	}
+}
+
 // newGateway 构造 ack 许可网关。app 名是会话存储键的组成部分，
 // 必须与 AG-UI runner 一致；身份经 WithUserFunc 从认证 ctx 取与
 // AG-UI UserIDResolver 相同的 userKey 编码；grape logger 经 WithLogger
@@ -49,7 +72,8 @@ func toolTiers() map[string]ack.Tier {
 // 为"工具不可用"拒绝——工具集与 LLMAgent 注册的保持同一份。分级表
 // 见 toolTiers（读 allow/写 confirm）；许可源是 grants 非 nil 时的存储
 // 实现（agent_tool_grant 表，见 grants.go 的 storedGrants），nil
-// 时维持无许可源形态（评估永不命中、remember 被 ack 忽略并记日志）；策略
+// 时维持无许可源形态（评估永不命中、remember 被 ack 忽略并记日志）；拒绝
+// 文案经 WithDenyTexts 显式声明（见 denyTexts）；策略
 // 源恒为弃权空实现（接入点，见 noopPolicy）；observer 非 nil 时挂授权
 // 终态观察挂点——自动授权终态转写为授权确认审计行（见
 // permission_audit.go），人工决定仍由决定路由审计面落行，两路互斥。
@@ -68,6 +92,7 @@ func newGateway(sessions session.Service, appName string, logger *slog.Logger, u
 			return key
 		}),
 		ack.WithTiers(toolTiers()),
+		ack.WithDenyTexts(denyTexts()),
 		ack.WithStaticTools(tools...),
 		ack.WithPolicies(noopPolicy{}),
 	}
