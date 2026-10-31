@@ -17,11 +17,11 @@ const echoToolName = "echo"
 // 用于打通模型 → 工具 → SSE 事件流的端到端链路；业务工具
 // 经 biz 用例接入，不再在本层堆积。
 type echoInput struct {
-	Text string `json:"text"`
+	Text string `json:"text" jsonschema:"description=Text to echo back,required"`
 }
 
 type echoOutput struct {
-	Echo string `json:"echo"`
+	Echo string `json:"echo" jsonschema:"description=The echoed text"`
 }
 
 // newEchoTool 构造最小只读工具，走框架 function 工具注册：入参 schema
@@ -36,6 +36,6 @@ func newEchoTool() tool.Tool {
 		},
 		function.WithName(echoToolName),
 		function.WithDescription("Echo back the given text verbatim. "+
-			"Use it to verify the tool-calling pipeline; the text field is required."),
+			"Use it to verify the tool-calling pipeline."),
 	)
 }

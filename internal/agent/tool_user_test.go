@@ -216,3 +216,107 @@ func TestUserTool_when_update_nickname_target_missing_maps_not_found(t *testing.
 		t.Fatalf("want ErrUserNotFound, got %v", err)
 	}
 }
+
+// TestUserTool_declaration_input_schema_declares_parameter_constraints 锁定
+// jsonschema tag 到声明面的投影：参数约束经 InputSchema 暴露给模型，
+// 工具描述文本不承担参数说明职责。
+func TestUserTool_declaration_input_schema_declares_parameter_constraints(t *testing.T) {
+	decls := map[string]*tool.Declaration{}
+	for _, tl := range newUserTools(biz.NewUserUsecase(newFakeUserRepo(toolTestUsers()...))) {
+		if d := tl.(tool.CallableTool).Declaration(); d != nil {
+			decls[d.Name] = d
+		}
+	}
+	for _, tt := range []struct {
+		tool      string
+		required  []string
+		wantDescs map[string]string
+	}{
+		{
+			tool:     findUsersByNameToolName,
+			required: []string{"name"},
+			wantDescs: map[string]string{
+				"name":  "User name to fuzzy match (trimmed to at most 64 characters)",
+				"limit": "Optional page size between 1 and 20 (default 10)",
+			},
+		},
+		{
+			tool:      updateMyNicknameToolName,
+			required:  []string{"nickname"},
+			wantDescs: map[string]string{"nickname": "New nickname (trimmed to 1 to 256 characters)"},
+		},
+	} {
+		d, ok := decls[tt.tool]
+		if !ok {
+			t.Fatalf("tool %q not registered", tt.tool)
+		}
+		if len(d.InputSchema.Required) != len(tt.required) {
+			t.Fatalf("%s required = %v, want %v", tt.tool, d.InputSchema.Required, tt.required)
+		}
+		for i, want := range tt.required {
+			if d.InputSchema.Required[i] != want {
+				t.Fatalf("%s required = %v, want %v", tt.tool, d.InputSchema.Required, tt.required)
+			}
+		}
+		for field, want := range tt.wantDescs {
+			p, ok := d.InputSchema.Properties[field]
+			if !ok {
+				t.Fatalf("%s schema missing property %q", tt.tool, field)
+			}
+			if p.Description != want {
+				t.Fatalf("%s.%s description = %q, want %q", tt.tool, field, p.Description, want)
+			}
+		}
+	}
+}
+
+// TestUserTool_declaration_output_schema_declares_field_descriptions 锁定
+// 出参字段的 jsonschema 投影：OutputSchema 携带逐字段说明，工具描述文本
+// 不承担字段清单职责。
+func TestUserTool_declaration_output_schema_declares_field_descriptions(t *testing.T) {
+	decls := map[string]*tool.Declaration{}
+	for _, tl := range newUserTools(biz.NewUserUsecase(newFakeUserRepo(toolTestUsers()...))) {
+		if d := tl.(tool.CallableTool).Declaration(); d != nil {
+			decls[d.Name] = d
+		}
+	}
+	for _, tt := range []struct {
+		tool      string
+		wantDescs map[string]string
+	}{
+		{
+			tool: getCurrentUserToolName,
+			wantDescs: map[string]string{
+				"id":       "User id",
+				"name":     "Login name",
+				"nickname": "Display nickname",
+				"status":   "Account status: 0 disabled / 1 enabled",
+				"email":    "Email address (absent when unset)",
+				"phone":    "Phone number (absent when unset)",
+				"locale":   "Preferred language tag",
+			},
+		},
+		{
+			tool: findUsersByNameToolName,
+			wantDescs: map[string]string{
+				"total":    "Total matching users (absent when unknown)",
+				"has_more": "True when more pages remain",
+				"users":    "Matching users in this page",
+			},
+		},
+	} {
+		d, ok := decls[tt.tool]
+		if !ok {
+			t.Fatalf("tool %q not registered", tt.tool)
+		}
+		for field, want := range tt.wantDescs {
+			p, ok := d.OutputSchema.Properties[field]
+			if !ok {
+				t.Fatalf("%s output schema missing property %q", tt.tool, field)
+			}
+			if p.Description != want {
+				t.Fatalf("%s output.%s description = %q, want %q", tt.tool, field, p.Description, want)
+			}
+		}
+	}
+}

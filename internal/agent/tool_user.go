@@ -43,34 +43,32 @@ func newUserTools(users *biz.UserUsecase) []tool.Tool {
 	return []tool.Tool{
 		function.NewFunctionTool(usersCurrentUser(users),
 			function.WithName(getCurrentUserToolName),
-			function.WithDescription("Get the signed-in user's own profile "+
-				"(id, name, nickname, status, email, phone, locale). Takes no arguments."),
+			function.WithDescription("Get the signed-in user's own profile. "+
+				"Takes no arguments."),
 		),
 		function.NewFunctionTool(usersFindByName(users),
 			function.WithName(findUsersByNameToolName),
 			function.WithDescription("Search users by name (fuzzy match) within "+
-				"the caller's data scope. Parameters: name (required, max 64 chars), "+
-				"limit (optional page size, 1-20, default 10)."),
+				"the caller's data scope."),
 		),
 		function.NewFunctionTool(usersUpdateNickname(users),
 			function.WithName(updateMyNicknameToolName),
-			function.WithDescription("Update the signed-in user's own nickname. "+
-				"Requires explicit user confirmation before execution. "+
-				"Parameters: nickname (required, 1-256 chars after trim)."),
+			function.WithDescription("Update the signed-in user's own nickname."),
 		),
 	}
 }
 
 // userSummary 是工具出参的用户摘要投影：刻意收窄字段面，口令、审计列、
-// 归属三元组不出工具层。
+// 归属三元组不出工具层。字段说明经 jsonschema tag 进入 OutputSchema
+// （tag 值内不可含逗号——框架按逗号切分 tag 项）。
 type userSummary struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	Nickname string  `json:"nickname"`
-	Status   int32   `json:"status"`
-	Email    *string `json:"email,omitempty"`
-	Phone    *string `json:"phone,omitempty"`
-	Locale   string  `json:"locale"`
+	ID       int64   `json:"id" jsonschema:"description=User id"`
+	Name     string  `json:"name" jsonschema:"description=Login name"`
+	Nickname string  `json:"nickname" jsonschema:"description=Display nickname"`
+	Status   int32   `json:"status" jsonschema:"description=Account status: 0 disabled / 1 enabled"`
+	Email    *string `json:"email,omitempty" jsonschema:"description=Email address (absent when unset)"`
+	Phone    *string `json:"phone,omitempty" jsonschema:"description=Phone number (absent when unset)"`
+	Locale   string  `json:"locale" jsonschema:"description=Preferred language tag"`
 }
 
 func summarizeUser(u *biz.User) userSummary {
@@ -115,15 +113,17 @@ func usersCurrentUser(users *biz.UserUsecase) func(context.Context, struct{}) (u
 
 // findUsersByNameInput 是按名查用户的工具入参。
 type findUsersByNameInput struct {
-	Name  string `json:"name"`
-	Limit int    `json:"limit"`
+	Name string `json:"name" jsonschema:"description=User name to fuzzy match (trimmed to at most 64 characters),required"`
+	// omitempty 使框架不把 limit 标为 required：省略即由处理函数回落
+	// defaultFindUserLimit。
+	Limit int `json:"limit,omitempty" jsonschema:"description=Optional page size between 1 and 20 (default 10)"`
 }
 
 // findUsersByNameOutput 是按名查用户的工具出参。
 type findUsersByNameOutput struct {
-	Total   *int64        `json:"total,omitempty"`
-	HasMore bool          `json:"has_more"`
-	Users   []userSummary `json:"users"`
+	Total   *int64        `json:"total,omitempty" jsonschema:"description=Total matching users (absent when unknown)"`
+	HasMore bool          `json:"has_more" jsonschema:"description=True when more pages remain"`
+	Users   []userSummary `json:"users" jsonschema:"description=Matching users in this page"`
 }
 
 // usersFindByName 返回按用户名模糊查找的工具处理函数：查询协议在本层
@@ -173,15 +173,15 @@ func usersFindByName(users *biz.UserUsecase) func(context.Context, findUsersByNa
 	}
 }
 
-// updateNicknameInput 是改昵称的工具入参。
+// updateNicknameInput 是改昵称的工具入参，约束声明方式同 findUsersByNameInput。
 type updateNicknameInput struct {
-	Nickname string `json:"nickname"`
+	Nickname string `json:"nickname" jsonschema:"description=New nickname (trimmed to 1 to 256 characters),required"`
 }
 
 // updateNicknameOutput 是改昵称的工具出参。
 type updateNicknameOutput struct {
-	ID       int64  `json:"id"`
-	Nickname string `json:"nickname"`
+	ID       int64  `json:"id" jsonschema:"description=Updated user id"`
+	Nickname string `json:"nickname" jsonschema:"description=Nickname after trim"`
 }
 
 // usersUpdateNickname 返回改昵称的工具处理函数（首批唯一 Confirm 写路径）：

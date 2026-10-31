@@ -37,3 +37,13 @@ func TestEchoToolRejectsBlankText(t *testing.T) {
 		t.Fatalf("blank text: want error, got none")
 	}
 }
+
+func TestEchoTool_declaration_marks_text_required_with_description(t *testing.T) {
+	schema := newEchoTool().Declaration().InputSchema
+	if len(schema.Required) != 1 || schema.Required[0] != "text" {
+		t.Fatalf("echo required = %v, want [text]", schema.Required)
+	}
+	if got := schema.Properties["text"].Description; got != "Text to echo back" {
+		t.Fatalf("text description = %q, want %q", got, "Text to echo back")
+	}
+}
