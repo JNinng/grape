@@ -78,3 +78,5 @@ require (
 )
 
 replace trpc.group/trpc-go/trpc-mcp-go => github.com/JNinng/trpc-mcp-go v0.0.19-3
+
+replace trpc.group/trpc-go/trpc-agent-go/session/postgres => github.com/JNinng/trpc-agent-go/session/postgres v1.11.0-1
