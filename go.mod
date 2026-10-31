@@ -77,4 +77,4 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/storage/postgres v0.8.0 // indirect
 )
 
-replace github.com/jninng/trpc_agent_go_ack => ../trpc_agent_go_ack
+replace trpc.group/trpc-go/trpc-mcp-go => github.com/JNinng/trpc-mcp-go v0.0.19-1
