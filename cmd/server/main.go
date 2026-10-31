@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log/slog"
 	"os"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/go-kratos/kratos/v3/transport/http"
 
 	_ "go.uber.org/automaxprocs"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // go build -ldflags "-X main.Version=x.y.z"
@@ -65,18 +67,8 @@ func main() {
 	// HTTP JSON 必须按 protobuf JSON 映射编解码，默认 json codec 会
 	// 产出与 api 契约不一致的字段形态。
 	jsoncodec.Install()
-	logger := log.NewLogger(
-		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			AddSource: true,
-			Level:     slog.LevelInfo,
-		}),
-		log.WithExtractor(tracing.TraceAttrs),
-	).With(
-		slog.String("service.id", id),
-		slog.String("service.name", Name),
-		slog.String("service.version", Version),
-	)
-	log.SetDefault(logger)
+	// 配置先于日志装配：日志落盘路径来自 log.file，未配置仅输出标准
+	// 输出。配置加载期无日志依赖（失败直接 panic）。
 	c := config.New(
 		config.WithSource(
 			file.NewSource(flagconf),
@@ -93,6 +85,34 @@ func main() {
 	if err := c.Scan(&bc); err != nil {
 		panic(err)
 	}
+
+	// 日志 sink：标准输出恒在；log.file 配置了路径时额外落盘，滚动与
+	// 保留策略由 lumberjack 承担（0 值项沿用其默认）。
+	sinks := []io.Writer{os.Stdout}
+	if c := bc.GetLog(); c.GetFile() != "" {
+		w := &lumberjack.Logger{
+			Filename:   c.GetFile(),
+			MaxSize:    int(c.GetMaxSizeMb()),
+			MaxBackups: int(c.GetMaxBackups()),
+			MaxAge:     int(c.GetMaxAgeDays()),
+			Compress:   c.GetCompress(),
+			LocalTime:  true,
+		}
+		defer w.Close()
+		sinks = append(sinks, w)
+	}
+	logger := log.NewLogger(
+		slog.NewJSONHandler(io.MultiWriter(sinks...), &slog.HandlerOptions{
+			AddSource: true,
+			Level:     slog.LevelInfo,
+		}),
+		log.WithExtractor(tracing.TraceAttrs),
+	).With(
+		slog.String("service.id", id),
+		slog.String("service.name", Name),
+		slog.String("service.version", Version),
+	)
+	log.SetDefault(logger)
 
 	app, cleanup, err := wireApp(bc.Server, bc.Data, bc.Auth, bc.Agent, bc.Vector, bc.Telemetry, logger)
 	if err != nil {

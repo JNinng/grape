@@ -158,3 +158,14 @@ telemetry:
   # 资源属性 service.name；空取 grape。service_version 空省略。
   service_name: grape
 
+log:
+  # 应用日志落盘：标准输出始终保留，落盘是额外 sink。滚动与保留由
+  # lumberjack 承担：单文件超过 max_size_mb 滚动新文件，旧文件按
+  # max_backups / max_age_days 收敛，compress 开启 gzip 归档。
+  # 各 0 值项沿用 lumberjack 默认（100MB / 不按数量清理 / 不按时间
+  # 清理 / 不压缩）。路径相对进程工作目录，留空不落盘。
+  file: logs/grape.log
+  max_size_mb: 50
+  max_backups: 7
+  max_age_days: 14
+  compress: true

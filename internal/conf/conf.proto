@@ -19,6 +19,8 @@ message Bootstrap {
   Vector vector = 5;
   // 遥测配置（OpenTelemetry trace）。
   Telemetry telemetry = 6;
+  // 日志落盘配置。
+  Log log = 7;
 }
 
 // Telemetry 是 OpenTelemetry 遥测配置：SDK 开关与 OTLP 导出目标。
@@ -310,4 +312,25 @@ message Data {
     Slot system = 2;
   }
   Database database = 1;
+}
+
+// Log 是应用日志的落盘配置：标准输出始终保留，落盘是额外 sink。
+// 滚动与保留策略由 lumberjack 实现：单文件超过上限滚动新文件，旧文件
+// 按 backups / age 收敛，可压缩归档。
+message Log {
+  // 日志文件路径（如 logs/grape.log）。滚动时旧文件追加本地时间戳
+  // 后缀（如 grape-2026-11-01T00-00-00.000.log）。留空仅输出标准
+  // 输出，不落盘。
+  string file = 1;
+  // 单文件大小上限（MB），超过即滚动新文件；0 取 lumberjack 默认
+  // 100MB。
+  int32 max_size_mb = 2;
+  // 保留的滚动旧文件数量上限，超出删最旧；0 = 不按数量清理（仍受
+  // max_age_days 约束）。
+  int32 max_backups = 3;
+  // 滚动旧文件的最长保留天数，按文件名中的时间戳判定；0 = 不按
+  // 时间清理。
+  int32 max_age_days = 4;
+  // 滚动出的旧文件是否 gzip 压缩。
+  bool compress = 5;
 }
