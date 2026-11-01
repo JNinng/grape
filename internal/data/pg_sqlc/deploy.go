@@ -14,26 +14,11 @@ import (
 
 // DeployFiles 是数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
 // 这是 dbdeploy 命令与集成测试（setupTestDB）共用的单一事实源，
-// 顺序与仓库根 deploy_db.md 一致，两处禁止另行维护副本：
-//
-//	schema/10..90 → role.sql → rls.sql → operate.sql → expose.sql →
-//	seed.sql → agent_session.sql → agent_vector.sql →
-//	schema/95_agent_audit.sql → 96_agent_grant.sql →
-//	schema/97_agent_retrieval_log.sql
-//
-// role.sql 建角色与授权（口令占位符见下方占位符常量），必须先于
-// rls.sql：后续 operate/expose 的函数授权语句依赖角色先行存在；
-// seed.sql 依赖 expose.sql 的范围版本表（角色映射写入要触发 bump）；
-// agent_session.sql 建 Agent 会话存储（trpc-agent-go 框架表，独立
-// schema agent），只依赖 role.sql 的 grape_u 存在（GRANT 授权对象），
-// 与 public 业务域零耦合；agent_vector.sql（向量设施，同超级用户面）
-// 与其互不依赖，两文件均幂等建 schema、尾部追加互不扰动；
-// schema/95_agent_audit.sql 建 Agent 业务审计两表（public + RLS），
-// 96_agent_grant.sql 建工具授权表（public + RLS）：两者均只依赖
-// role.sql 的角色存在，尾部独立追加互不扰动；public 表的 DML 授权由
-// role.sql 默认权限覆盖（同角色于 public 建表自动生效）。
-// schema/97_agent_retrieval_log.sql 建检索留痕表（public + RLS）：
-// 同 95/96 口径的尾部追加域，只依赖 role.sql 的角色存在，与前列零耦合。
+// 顺序与仓库根 deploy_db.md 的「执行顺序」表互为镜像，两处禁止另行
+// 维护副本；各步骤的依赖关系、执行者身份与幂等边界以该表为准
+// （要点：role.sql 先于 rls/operate/expose——函数授权依赖角色先行；
+// seed.sql 在 RLS 启用后以超级用户/表 owner 执行；agent 域尾部追加，
+// 只依赖 role.sql 的角色存在）。
 var DeployFiles = []string{
 	"schema/10_basic.sql",
 	"schema/20_tenant.sql",

@@ -9,8 +9,8 @@
 // 消费面（只留接口，不在此实现）：业务审计表的参数/结果摘要落库前按
 // tool_param / retrieval 类别脱敏（biz 审计用例）；检索留痕的查询文本与
 // 过滤摘要按 retrieval 类别脱敏（data 层留痕装饰器）；复现视图回放同一
-// 摘要，不二次脱敏。标准注册表另供 internal/data/pg_sqlc 的 debug SQL
-// tracer 脱敏 token/password。
+// 摘要，不二次脱敏。internal/data/pg_sqlc 的 debug SQL tracer 以同
+// 默认值的自建实例脱敏 token/password，不共用装配实例。
 package redact
 
 import (

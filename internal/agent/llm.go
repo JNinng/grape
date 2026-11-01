@@ -166,6 +166,7 @@ var llmLoggerOf = func() *slog.Logger { return slog.Default() }
 // callCompletionsKey 携带单次调用的补全累积器：包装层在请求 ctx 上放入，
 // after 回调取出。流式补全正文分散在中间分片，包装层在透传时顺带累积，
 // 调用结束一并记录；ctx 不改任何既有值，对下层调用无副作用。
+// 升级到框架完整回调面的接缝是把 log 字段注册到 LLMAgent 选项。
 type callCompletionsKey struct{}
 
 // loggingModel 是 LLM 调用的观测包装：经框架
@@ -173,8 +174,7 @@ type callCompletionsKey struct{}
 // 调用落 grape logger。与 llmagent.WithModelCallbacks 的完整回调语义
 // （可改写请求、短路返回 CustomResponse）不同，本包装的回调是纯观测：
 // 不消费 CustomResponse、不改写请求；回调执行错误只记不传——观测面不
-// 打断模型调用。形态迁移路径：把 log 字段注册到 LLMAgent 选项即可升级
-// 为框架完整回调面（届时补全文本改由聚合响应携带，ctx 累积器可弃）。
+// 打断模型调用。
 type loggingModel struct {
 	inner model.Model
 	log   *model.Callbacks
