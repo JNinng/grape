@@ -99,7 +99,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 
 | 层 | 维度 | 执行者 | 失效姿态 |
 |---|---|---|---|
-| PostgreSQL RLS | 租户隔离（绝对边界） | 25 张租户表策略（21 张基线表在 rls.sql，agent 审计两表在 schema/95_agent_audit.sql，agent_tool_grant 在 96_agent_grant.sql，agent_retrieval_log 在 schema/97_agent_retrieval_log.sql），`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
+| PostgreSQL RLS | 租户隔离（绝对边界） | 26 张租户表策略（21 张基线表在 rls.sql、范围版本表在 expose.sql，agent 审计两表在 schema/95_agent_audit.sql，agent_tool_grant 在 96_agent_grant.sql，agent_retrieval_log 在 schema/97_agent_retrieval_log.sql），`tenant_id = current_setting('app.tenant_id')`，ENABLE + FORCE；sys_session 另加 3 条令牌维度策略 | 漏设变量 → 默认全拒 |
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 

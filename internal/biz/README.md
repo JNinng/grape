@@ -62,5 +62,5 @@
 
 ## 测试
 
-现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发。；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed。
+现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed。
 

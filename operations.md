@@ -33,7 +33,8 @@ go build -o grape ./cmd/server
 - LLM 与 embedding 的 api_key 只在 HTTP 客户端配置面存在，从不进日志
   （模型层 logging 回调显式排除）；口令/令牌类日志面统一走
   [pkg/redact](pkg/redact/redact.go) 注册表（password/token/tool_param/
-  retrieval 四类，日志 debug tracer、审计表、复现视图共用同一注册表）。
+  retrieval 四类；审计表、复现视图共用同一装配实例，日志 debug tracer
+  自建同默认值实例，脱敏口径一致）。
 - 配置结构（[internal/conf/conf.proto](internal/conf/conf.proto)）变更时
   同批更新 `configs/config.yaml` 与 configinit 模板（测试强制逐字节一致）。
 
