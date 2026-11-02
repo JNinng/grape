@@ -166,7 +166,7 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   `/v1/agent/retrieval-logs`（`api/agentRetrievalLogs.ts`）。按会话过滤
   分页沿用端点口径（offset/limit，每面默认 50），返回行是落库时已脱敏的
   形态，前端直接渲染、不回传原文。工具重试次数后端恒记 0（框架不暴露），
-  UI 以「0（框架未暴露）」呈现避免误读。
+  前端不声明也不呈现该字段。
 - trace_id 关联：三证据面的非空 trace_id 汇总为下拉（按出现频次降序，
   `replay/model.ts` 纯函数）。下拉为 Popover+Command 组合的可搜索
   Combobox：输入子串即时前端过滤候选（大小写不敏感，「全部链路」清除项

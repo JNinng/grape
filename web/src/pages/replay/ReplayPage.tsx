@@ -57,13 +57,6 @@ function formatTime(iso: string): string {
   return Number.isNaN(t.getTime()) ? iso : t.toLocaleString()
 }
 
-// formatRetryCount 呈现重试次数：框架不对外暴露工具重试（审计恒记 0，
-// 见 internal/agent/tool_audit.go），0 值以占位说明呈现避免误读为
-// 「确认无重试」。
-function formatRetryCount(retryCount: number): string {
-  return retryCount === 0 ? '0（框架未暴露）' : String(retryCount)
-}
-
 // decisionChipClass 按决定方向约定区分确认行配色：approved / auto /
 // `*_auto` 走 success 软色对（放行方向），denied / auto_deny / `*_deny`
 // 走 danger 软色对（拒绝方向）；词表外取值 fail-closed 显 danger（决定
@@ -289,7 +282,6 @@ function ReplayToolCall({
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <Badge className={statusChipClass(row.status)}>{row.status}</Badge>
                     <span>耗时 {row.durationMs}ms</span>
-                    <span>重试 {formatRetryCount(row.retryCount)}</span>
                     <span>{formatTime(row.calledAt)}</span>
                     {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={onPickTrace} />}
                   </div>
@@ -619,7 +611,6 @@ export function ReplayPage() {
                               <TableHead className="text-xs text-muted-foreground">工具</TableHead>
                               <TableHead className="text-xs text-muted-foreground">状态</TableHead>
                               <TableHead className="text-xs text-muted-foreground">耗时(ms)</TableHead>
-                              <TableHead className="text-xs text-muted-foreground">重试</TableHead>
                               <TableHead className="text-xs text-muted-foreground">trace_id</TableHead>
                               <TableHead className="text-xs text-muted-foreground">参数摘要</TableHead>
                               <TableHead className="text-xs text-muted-foreground">结果摘要</TableHead>
@@ -640,7 +631,6 @@ export function ReplayPage() {
                                     <Badge className={statusChipClass(row.status)}>{row.status}</Badge>
                                   </TableCell>
                                   <TableCell className="tabular-nums">{row.durationMs}</TableCell>
-                                  <TableCell className="text-muted-foreground">{formatRetryCount(row.retryCount)}</TableCell>
                                   <TableCell>
                                     {row.traceId ? (
                                       <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />

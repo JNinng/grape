@@ -22,7 +22,6 @@ function toolCallRow(id: number, toolCallId: string, traceId?: string): ToolCall
     toolName: 'echo',
     sessionId: 'sess-1',
     traceId,
-    retryCount: 0,
     durationMs: 12,
     status: 'success',
     calledAt: '2026-01-01T00:00:0' + id + 'Z',

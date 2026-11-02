@@ -70,7 +70,6 @@ beforeEach(() => {
       traceId: 'trace-a',
       argumentsSummary: '{"query":"grape"}',
       resultSummary: '{"document_id":"doc-1"}',
-      retryCount: 0,
       durationMs: 42,
       status: 'success',
       calledAt: '2026-01-01T00:00:01Z',
@@ -81,7 +80,6 @@ beforeEach(() => {
       toolName: 'echo',
       sessionId: 'thread-1',
       traceId: 'trace-b',
-      retryCount: 0,
       durationMs: 3,
       status: 'success',
       calledAt: '2026-01-01T00:00:02Z',
@@ -234,7 +232,8 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(await screen.findByText('answer')).toBeInTheDocument()
     const auditRegion = screen.getByRole('region', { name: '工具调用审计' })
     expect(within(auditRegion).getByText('search_internal_docs')).toBeInTheDocument()
-    expect(within(auditRegion).getAllByText('0（框架未暴露）').length).toBeGreaterThan(0)
+    // 框架不暴露工具重试（审计恒 0），审计表不渲染重试列。
+    expect(within(auditRegion).queryByRole('columnheader', { name: '重试' })).not.toBeInTheDocument()
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
     expect(within(retrievalRegion).getByText('doc-1')).toBeInTheDocument()
     // 未选中链路：证据行中性呈现，不预高亮也不灰显。

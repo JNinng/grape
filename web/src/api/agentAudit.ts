@@ -3,7 +3,9 @@ import { toApiError } from './toApiError'
 
 // Agent 业务审计查询端点（供运维复现视图）的 DTO：字段与后端
 // service/agent_audit.go 的 JSON 形状对齐，时间为 UTC RFC3339。参数与
-// 结果摘要是落库时已脱敏的形态，前端直接渲染，不回传原文。
+// 结果摘要是落库时已脱敏的形态，前端直接渲染，不回传原文。只声明视图
+// 消费的字段：后端另返回的 retry_count 恒 0（框架不暴露工具重试），前
+// 端不声明也不呈现。
 
 export interface ToolCallAudit {
   id: number
@@ -13,7 +15,6 @@ export interface ToolCallAudit {
   traceId?: string
   argumentsSummary?: string
   resultSummary?: string
-  retryCount: number
   durationMs: number
   status: string
   calledAt: string
