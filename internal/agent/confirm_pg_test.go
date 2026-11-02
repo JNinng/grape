@@ -22,111 +22,34 @@ package agent
 // 被破坏（这是生产语义：优雅取消不是孤儿）。
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"grape/internal/agent/internal/testsupport"
 	"grape/internal/biz"
 	"grape/internal/conf"
-	"grape/internal/data/pg_sqlc"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jninng/trpc_agent_go_ack/acktest"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// confirmTestDatabase 是本套件专属测试库；其余测试库绝不触碰。
-const confirmTestDatabase = "grape_agent_confirm_test"
-
-// confirmGrapeUPassword 与 role.sql 占位符替换值：grape_u 的既定测试口令。
-const confirmGrapeUPassword = "grape_u_pwd"
-
-// confirmSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
-// grape_u DSN。形态与会话集成测试一致（单一事实源的部署清单 +
-// 跨包互斥锁）。
-func confirmSetupDatabase(t *testing.T) string {
-	t.Helper()
-	adminDSN := os.Getenv("GRAPE_CONFIRM_TEST_ADMIN_DSN")
-	if adminDSN == "" {
-		t.Skip("GRAPE_CONFIRM_TEST_ADMIN_DSN not set, skip confirm recovery integration tests")
-	}
-	ctx := context.Background()
-
-	cfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	defer admin.Close(ctx)
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+confirmTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+confirmTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-
-	deployDir, err := pg_sqlc.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := pg_sqlc.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg := *cfg
-	deployCfg.Database = confirmTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, &deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := pg_sqlc.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, name := range pg_sqlc.DeployFiles {
-		sql, err := os.ReadFile(deployDir + "/" + name)
-		if err != nil {
-			t.Fatalf("read %s: %v", name, err)
-		}
-		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), confirmGrapeUPassword, "test_u_pwd")
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", name, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx,
-		"GRANT CONNECT ON DATABASE "+confirmTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
-
-	dsn, err := confirmGrapeUDSN(adminDSN)
-	if err != nil {
-		t.Fatalf("build grape_u dsn: %v", err)
-	}
-	return dsn
+// confirmSuite 是本套件专属测试库定位；其余测试库绝不触碰。
+var confirmSuite = testsupport.SuiteDatabase{
+	EnvVar:         "GRAPE_CONFIRM_TEST_ADMIN_DSN",
+	Database:       "grape_agent_confirm_test",
+	GrapeUPassword: "grape_u_pwd",
+	SkipMessage:    "GRAPE_CONFIRM_TEST_ADMIN_DSN not set, skip confirm recovery integration tests",
 }
 
-// confirmGrapeUDSN 把管理员 DSN 改写为 grape_u 连接专属测试库的 DSN。
-func confirmGrapeUDSN(adminDSN string) (string, error) {
-	u, err := url.Parse(adminDSN)
-	if err != nil {
-		return "", err
-	}
-	u.User = url.UserPassword("grape_u", confirmGrapeUPassword)
-	u.Path = "/" + confirmTestDatabase
-	return u.String(), nil
+// confirmSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// grape_u DSN。
+func confirmSetupDatabase(t *testing.T) string {
+	t.Helper()
+	return testsupport.SetupSuiteDatabase(t, confirmSuite)
 }
 
 // confirmSessionService 经生产装配函数构造会话服务（postgres 后端）。
@@ -138,7 +61,7 @@ func confirmSessionService(t *testing.T, grapeUDSN string) (session.Service, fun
 // confirmSessionServiceTTL 同 confirmSessionService，可指定 session TTL。
 func confirmSessionServiceTTL(t *testing.T, grapeUDSN string, ttl time.Duration) (session.Service, func()) {
 	t.Helper()
-	c := &conf.Agent{AppName: confirmTestAppName}
+	c := &conf.Agent{AppName: testsupport.AppName}
 	d := &conf.Data{Database: &conf.Data_Database{Master: &conf.Data_Database_Slot{Source: grapeUDSN}}}
 	sessionSvc, cleanup, err := NewSessionService(c, d)
 	if err != nil {
@@ -148,10 +71,10 @@ func confirmSessionServiceTTL(t *testing.T, grapeUDSN string, ttl time.Duration)
 }
 
 // confirmNewStack 以注入模型与用户仓储构建完整栈（生产装配路径）。
-func confirmNewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedModel, repo *fakeUserRepo) *Stack {
+func confirmNewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo) *Stack {
 	t.Helper()
-	stack, err := NewStackWithOptions(confirmStackConf(), nil, sessionSvc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4}, WithModelOverride(llm))
+	stack, err := NewStackWithOptions(testsupport.StackConf(), nil, sessionSvc, NewVectorStore(nil),
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
@@ -205,7 +128,7 @@ func (l *lockedRecorder) snapshot() (int, string) {
 // 请求随之搁置（其尾随 goroutine 随旧运行终态或进程退出消亡）。
 func confirmWaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains string) string {
 	t.Helper()
-	deadline := time.Now().Add(confirmTestWaitLimit)
+	deadline := time.Now().Add(testsupport.WaitLimit)
 	for {
 		rec := &lockedRecorder{rec: httptest.NewRecorder()}
 		served := make(chan struct{})
@@ -247,7 +170,7 @@ func TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes(t *testin
 		callID   = "call-orphan-approve"
 		nickname = "orphan-approved-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 
 	// 旧进程：运行阻塞在确认等待（搁置，不关闭——Close 会取消在途运行
@@ -255,24 +178,24 @@ func TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes(t *testin
 	svc1, cleanupSvc1 := confirmSessionService(t, dsn)
 	defer cleanupSvc1()
 	old := confirmNewStack(t, svc1, nicknameCallScript(callID, nickname, "resumed after approval"), repo)
-	h1 := identityHandler(old.Handler(), confirmTestTenant, confirmTestOwnerID)
-	_ = startChat(h1, threadID, runID, "rename me")
-	items := waitForPending(t, h1, threadID, 1)
+	h1 := testsupport.IdentityHandler(old.Handler(), testsupport.Tenant, testsupport.OwnerID)
+	_ = testsupport.StartChat(h1, threadID, runID, "rename me")
+	items := testsupport.WaitForPending(t, h1, threadID, 1)
 
 	// 新进程：全新连接池 + 全新栈（同库）。待确认指针持久化在会话状态，
 	// 旧网关的等待者不可达——Pending 应报孤儿（live=false）。
 	svc2, cleanupSvc2 := confirmSessionService(t, dsn)
 	defer cleanupSvc2()
 	current := confirmNewStack(t, svc2, nicknameCallScript(callID, nickname, "resumed after approval"), repo)
-	h2 := identityHandler(current.Handler(), confirmTestTenant, confirmTestOwnerID)
+	h2 := testsupport.IdentityHandler(current.Handler(), testsupport.Tenant, testsupport.OwnerID)
 
-	orphans := waitForPending(t, h2, threadID, 1)
+	orphans := testsupport.WaitForPending(t, h2, threadID, 1)
 	if orphans[0].ConfirmationID != items[0].ConfirmationID || orphans[0].Live {
 		t.Fatalf("orphan pending mismatch: want %s live=false, got %+v",
 			items[0].ConfirmationID, orphans[0])
 	}
 
-	rec := decide(t, h2, threadID, orphans[0].ConfirmationID, true)
+	rec := testsupport.Decide(t, h2, threadID, orphans[0].ConfirmationID, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("orphan decide status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
@@ -281,13 +204,13 @@ func TestPGConfirm_when_restarted_orphan_approved_executes_and_resumes(t *testin
 	}
 
 	// 工具被网关代执行，恰好一次、参数正确。
-	updates := repo.nicknames()
-	if len(updates) != 1 || updates[0].nickname != nickname {
+	updates := repo.Nicknames()
+	if len(updates) != 1 || updates[0].Nickname != nickname {
 		t.Fatalf("recovery must execute the tool once with new nickname, got %+v", updates)
 	}
 	// 续跑运行收尾：终答随 track 持久化，/history 快照可回放。
 	confirmWaitHistoryPoll(t, h2, threadID, "resumed after approval")
-	waitForPending(t, h2, threadID, 0)
+	testsupport.WaitForPending(t, h2, threadID, 0)
 }
 
 // TestPGConfirm_when_restarted_orphan_denied_synthesizes_denial 验证拒绝
@@ -300,23 +223,23 @@ func TestPGConfirm_when_restarted_orphan_denied_synthesizes_denial(t *testing.T)
 		runID    = "run-orphan-deny"
 		callID   = "call-orphan-deny"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 
 	svc1, cleanupSvc1 := confirmSessionService(t, dsn)
 	defer cleanupSvc1()
 	old := confirmNewStack(t, svc1, nicknameCallScript(callID, "orphan-denied-nick", "kept the old nickname"), repo)
-	h1 := identityHandler(old.Handler(), confirmTestTenant, confirmTestOwnerID)
-	_ = startChat(h1, threadID, runID, "rename me")
-	waitForPending(t, h1, threadID, 1)
+	h1 := testsupport.IdentityHandler(old.Handler(), testsupport.Tenant, testsupport.OwnerID)
+	_ = testsupport.StartChat(h1, threadID, runID, "rename me")
+	testsupport.WaitForPending(t, h1, threadID, 1)
 
 	svc2, cleanupSvc2 := confirmSessionService(t, dsn)
 	defer cleanupSvc2()
 	current := confirmNewStack(t, svc2, nicknameCallScript(callID, "orphan-denied-nick", "kept the old nickname"), repo)
-	h2 := identityHandler(current.Handler(), confirmTestTenant, confirmTestOwnerID)
-	orphans := waitForPending(t, h2, threadID, 1)
+	h2 := testsupport.IdentityHandler(current.Handler(), testsupport.Tenant, testsupport.OwnerID)
+	orphans := testsupport.WaitForPending(t, h2, threadID, 1)
 
-	rec := decide(t, h2, threadID, orphans[0].ConfirmationID, false)
+	rec := testsupport.Decide(t, h2, threadID, orphans[0].ConfirmationID, false)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("orphan decide status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
@@ -324,9 +247,9 @@ func TestPGConfirm_when_restarted_orphan_denied_synthesizes_denial(t *testing.T)
 		t.Fatalf("decide path mismatch, want recovery:\n%s", rec.Body.String())
 	}
 
-	if updates := repo.nicknames(); len(updates) != 0 {
+	if updates := repo.Nicknames(); len(updates) != 0 {
 		t.Fatalf("orphan denial must not execute the tool, got %+v", updates)
 	}
 	confirmWaitHistoryPoll(t, h2, threadID, "kept the old nickname")
-	waitForPending(t, h2, threadID, 0)
+	testsupport.WaitForPending(t, h2, threadID, 0)
 }

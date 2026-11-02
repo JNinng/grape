@@ -4,55 +4,28 @@ package agent
 // 完整 Stack handler，覆盖 ack 直通路径（live）的完整 HTTP 契约——写工具
 // 触发 tool_confirmation、同意后运行继续且工具真实执行、拒绝后以 denied
 // 结算且模型不重试、跨用户决定被归属守卫拒绝、工具迭代上限终止死循环。
+// 确认流推进助手（背景 chat / 待确认轮询 / 决定提交）在 testsupport，
+// 与子包及外部测试包的集成测试共用。
 
 import (
-	"encoding/json"
 	"fmt"
 	nethttp "net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
+	"grape/internal/agent/internal/testsupport"
+	"grape/internal/agent/tools"
 	"grape/internal/biz"
-	"grape/internal/conf"
 
 	"github.com/jninng/trpc_agent_go_ack/acktest"
-	"google.golang.org/protobuf/types/known/durationpb"
-)
-
-// confirmStackConf 组装确认流测试的骨架配置：短运行超时只影响挂死兜底，
-// 用例本身靠显式时限推进。
-func confirmStackConf() *conf.Agent {
-	return &conf.Agent{
-		AppName: confirmTestAppName,
-		Llm:     &conf.Agent_LLM{Model: "stub"},
-		Agui: &conf.Agent_AGUI{
-			BasePath:          "/agui",
-			Timeout:           durationpb.New(confirmTestRunTimeout),
-			HeartbeatInterval: durationpb.New(100 * time.Millisecond),
-		},
-	}
-}
-
-const (
-	confirmTestAppName    = "grape-agent"
-	confirmTestTenant     = "t-1"
-	confirmTestOwnerID    = int64(7)
-	confirmTestStrangerID = int64(8)
-	// confirmTestRunTimeout 是单次运行的守门超时：确认流用例在决定到达前
-	// 会阻塞运行，该值只保证阻塞不至挂死，用例节奏由测试自身控制。
-	confirmTestRunTimeout = 30 * time.Second
-	// confirmTestWaitLimit 是轮询等待确认登记/清理的总时限。
-	confirmTestWaitLimit = 10 * time.Second
 )
 
 // confirmTestStack 聚合一次确认流用例所需的全部组件。
 type confirmTestStack struct {
-	repo *fakeUserRepo
+	repo *testsupport.FakeUserRepo
 	// raw 是未包身份的 Stack handler；身份经 asUser 按视角注入。
 	raw nethttp.Handler
-	// h 是归属者（confirmTestOwnerID）视角的 handler，多数用例直接用。
+	// h 是归属者（testsupport.OwnerID）视角的 handler，多数用例直接用。
 	h nethttp.Handler
 }
 
@@ -60,161 +33,28 @@ type confirmTestStack struct {
 // + 内存用户仓储，handler 外包身份注入（等价认证中间件命中后的形态，
 // 挂载链治理由 internal/server 套件守卫）。可变参数透传 StackOption
 // （如审计挂点注入，见 audit_wire_test.go）。
-func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *fakeUserRepo, opts ...StackOption) *confirmTestStack {
+func newConfirmTestStack(t *testing.T, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo, opts ...StackOption) *confirmTestStack {
 	t.Helper()
 	svc, closeSessions, err := NewMemorySessionService()
 	if err != nil {
 		t.Fatalf("build session service: %v", err)
 	}
 	t.Cleanup(closeSessions)
-	stack, err := NewStackWithOptions(confirmStackConf(), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4}, append([]StackOption{WithModelOverride(llm)}, opts...)...)
+	stack, err := NewStackWithOptions(testsupport.StackConf(), nil, svc, NewVectorStore(nil),
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, append([]StackOption{WithModelOverride(llm)}, opts...)...)
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
 	t.Cleanup(stack.Close)
 	s := &confirmTestStack{repo: repo, raw: stack.Handler()}
-	s.h = s.asUser(confirmTestOwnerID)
+	s.h = s.asUser(testsupport.OwnerID)
 	return s
-}
-
-// identityHandler 以固定身份包装 handler（等价认证中间件命中后的 ctx）。
-func identityHandler(next nethttp.Handler, tenant string, userID int64) nethttp.Handler {
-	return nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-		ctx := biz.WithIdentity(r.Context(), biz.Identity{TenantID: tenant, UserID: userID})
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
 }
 
 // asUser 以指定身份视角复用同一底层 handler：跨用户用例需要两个视角，
 // 各自独立包装裸 handler，避免身份覆盖顺序引入假象。
 func (s *confirmTestStack) asUser(userID int64) nethttp.Handler {
-	return identityHandler(s.raw, confirmTestTenant, userID)
-}
-
-// postJSON 执行一次 JSON 请求并返回响应记录。
-func postJSON(t *testing.T, h nethttp.Handler, method, target, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, req)
-	return rec
-}
-
-// startChat 在后台 goroutine 发起 chat：运行阻塞在确认等待时请求不返回，
-// 由决定唤醒后收尾。返回响应记录通道。
-func startChat(h nethttp.Handler, threadID, runID, message string) <-chan *httptest.ResponseRecorder {
-	done := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		body := fmt.Sprintf(`{"threadId":%q,"runId":%q,"messages":[{"id":"m-%s","role":"user","content":%q}]}`,
-			threadID, runID, runID, message)
-		req := httptest.NewRequest(nethttp.MethodPost, "/agui/", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, req)
-		done <- rec
-	}()
-	return done
-}
-
-// pendingConfirmation 是 GET /agui/ack/confirmations 的列表项投影。
-type pendingConfirmation struct {
-	ConfirmationID string `json:"confirmationId"`
-	ToolName       string `json:"toolName"`
-	Status         string `json:"status"`
-	Live           bool   `json:"live"`
-}
-
-// listPending 查询当前身份下的待确认列表。归属守卫对调用者名下不存在的
-// 会话返回 404，语义即「对你不可见」——视为空列表（覆盖运行尚未建档的
-// 轮询竞态与跨用户不可见两个场景）。
-func listPending(t *testing.T, h nethttp.Handler, threadID string) []pendingConfirmation {
-	t.Helper()
-	rec := postJSON(t, h, nethttp.MethodGet, "/agui/ack/confirmations?threadId="+threadID, "")
-	if rec.Code == nethttp.StatusNotFound {
-		return nil
-	}
-	if rec.Code != nethttp.StatusOK {
-		t.Fatalf("list confirmations status = %d, want 200\n%s", rec.Code, rec.Body.String())
-	}
-	var items []pendingConfirmation
-	if err := json.Unmarshal(rec.Body.Bytes(), &items); err != nil {
-		t.Fatalf("parse confirmations: %v\n%s", err, rec.Body.String())
-	}
-	return items
-}
-
-// waitForPending 轮询直到待确认数量达到期望，返回当前列表。
-func waitForPending(t *testing.T, h nethttp.Handler, threadID string, want int) []pendingConfirmation {
-	t.Helper()
-	deadline := time.Now().Add(confirmTestWaitLimit)
-	for {
-		items := listPending(t, h, threadID)
-		if len(items) == want {
-			return items
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("pending confirmations = %d, want %d (timeout)", len(items), want)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-}
-
-// decide 提交一次确认决定。
-func decide(t *testing.T, h nethttp.Handler, threadID, confirmationID string, approved bool) *httptest.ResponseRecorder {
-	t.Helper()
-	body := fmt.Sprintf(`{"threadId":%q,"confirmationId":%q,"approved":%t}`, threadID, confirmationID, approved)
-	return postJSON(t, h, nethttp.MethodPost, "/agui/ack/confirmation", body)
-}
-
-// chatEvents 等待后台 chat 收尾并解析事件类型序列。
-func chatEvents(t *testing.T, ch <-chan *httptest.ResponseRecorder) (types []string, body string) {
-	t.Helper()
-	select {
-	case rec := <-ch:
-		if rec.Code != nethttp.StatusOK {
-			t.Fatalf("chat status = %d, want 200\n%s", rec.Code, rec.Body.String())
-		}
-		return eventTypesOf(t, rec.Body.String()), rec.Body.String()
-	case <-time.After(confirmTestRunTimeout):
-		t.Fatal("chat did not finish within guard timeout")
-		return nil, ""
-	}
-}
-
-// eventTypesOf 解析 SSE 响应体中的事件类型序列。
-func eventTypesOf(t *testing.T, body string) []string {
-	t.Helper()
-	var types []string
-	for _, line := range strings.Split(body, "\n") {
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		var evt struct {
-			Type string `json:"type"`
-		}
-		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &evt); err != nil {
-			t.Fatalf("parse sse event %q: %v", line, err)
-		}
-		types = append(types, evt.Type)
-	}
-	return types
-}
-
-// countTypes 统计事件序列中指定类型的出现次数。
-func countTypes(types []string, want string) int {
-	n := 0
-	for _, typ := range types {
-		if typ == want {
-			n++
-		}
-	}
-	return n
-}
-
-func hasType(types []string, want string) bool {
-	return countTypes(types, want) > 0
+	return testsupport.IdentityHandler(s.raw, testsupport.Tenant, userID)
 }
 
 // nicknameCallScript 构造两步脚本：先发起改昵称工具调用（ID 固定供决定
@@ -223,7 +63,7 @@ func hasType(types []string, want string) bool {
 func nicknameCallScript(callID, nickname, finalText string) *acktest.ScriptedModel {
 	return acktest.NewScriptedModel("confirm-script",
 		acktest.Step{ToolCalls: []acktest.ToolCallSpec{{
-			ID: callID, Name: updateMyNicknameToolName,
+			ID: callID, Name: tools.UpdateMyNicknameToolName,
 			Args: fmt.Sprintf(`{"nickname":%q}`, nickname),
 		}}},
 		acktest.Step{Text: finalText},
@@ -241,17 +81,17 @@ func TestConfirmLive_when_approved_run_continues_and_tool_executes(t *testing.T)
 		callID   = "call-update-1"
 		nickname = "approved-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, nicknameCallScript(callID, nickname, "nickname updated"), repo)
 
-	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
-	items := waitForPending(t, s.h, threadID, 1)
-	if items[0].ToolName != updateMyNicknameToolName || items[0].Status != "pending" || !items[0].Live {
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me to "+nickname)
+	items := testsupport.WaitForPending(t, s.h, threadID, 1)
+	if items[0].ToolName != tools.UpdateMyNicknameToolName || items[0].Status != "pending" || !items[0].Live {
 		t.Fatalf("unexpected pending item: %+v", items[0])
 	}
 
-	rec := decide(t, s.h, threadID, items[0].ConfirmationID, true)
+	rec := testsupport.Decide(t, s.h, threadID, items[0].ConfirmationID, true)
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
@@ -259,8 +99,8 @@ func TestConfirmLive_when_approved_run_continues_and_tool_executes(t *testing.T)
 		t.Fatalf("decide path mismatch, want live:\n%s", rec.Body.String())
 	}
 
-	types, body := chatEvents(t, chat)
-	if !hasType(types, "TOOL_CALL_RESULT") || !hasType(types, "RUN_FINISHED") {
+	types, body := testsupport.ChatEvents(t, chat)
+	if !testsupport.HasType(types, "TOOL_CALL_RESULT") || !testsupport.HasType(types, "RUN_FINISHED") {
 		t.Fatalf("run did not finish with tool result, types: %v", types)
 	}
 	// 确认卡事件本体：ack 以 tool_confirmation 自定义事件推流（前端渲染
@@ -271,11 +111,11 @@ func TestConfirmLive_when_approved_run_continues_and_tool_executes(t *testing.T)
 	if !strings.Contains(body, "nickname updated") {
 		t.Fatalf("final assistant text missing from stream:\n%s", body)
 	}
-	updates := repo.nicknames()
-	if len(updates) != 1 || updates[0].nickname != nickname {
+	updates := repo.Nicknames()
+	if len(updates) != 1 || updates[0].Nickname != nickname {
 		t.Fatalf("tool must execute exactly once with new nickname, got %+v", updates)
 	}
-	if left := waitForPending(t, s.h, threadID, 0); len(left) != 0 {
+	if left := testsupport.WaitForPending(t, s.h, threadID, 0); len(left) != 0 {
 		t.Fatalf("pending not cleared: %+v", left)
 	}
 }
@@ -289,32 +129,32 @@ func TestConfirmLive_when_denied_tool_skips_and_model_does_not_retry(t *testing.
 		runID    = "run-deny"
 		callID   = "call-update-2"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, nicknameCallScript(callID, "denied-nick", "ok, keeping the old one"), repo)
 
-	chat := startChat(s.h, threadID, runID, "rename me")
-	items := waitForPending(t, s.h, threadID, 1)
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me")
+	items := testsupport.WaitForPending(t, s.h, threadID, 1)
 
-	rec := decide(t, s.h, threadID, items[0].ConfirmationID, false)
+	rec := testsupport.Decide(t, s.h, threadID, items[0].ConfirmationID, false)
 	if rec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
 
-	types, body := chatEvents(t, chat)
-	if !hasType(types, "RUN_FINISHED") {
+	types, body := testsupport.ChatEvents(t, chat)
+	if !testsupport.HasType(types, "RUN_FINISHED") {
 		t.Fatalf("denied run must still finish normally, types: %v", types)
 	}
-	if n := countTypes(types, "TOOL_CALL_START"); n != 1 {
+	if n := testsupport.CountTypes(types, "TOOL_CALL_START"); n != 1 {
 		t.Fatalf("model retried the denied tool: %d tool call starts, want 1\ntypes: %v", n, types)
 	}
 	if !strings.Contains(body, `"status":"denied"`) {
 		t.Fatalf("denied tool result not delivered to stream:\n%s", body)
 	}
-	if updates := repo.nicknames(); len(updates) != 0 {
+	if updates := repo.Nicknames(); len(updates) != 0 {
 		t.Fatalf("tool must not execute after denial, got %+v", updates)
 	}
-	waitForPending(t, s.h, threadID, 0)
+	testsupport.WaitForPending(t, s.h, threadID, 0)
 }
 
 // TestConfirmLive_when_other_user_decides_confirmation_rejected 验证跨
@@ -326,34 +166,34 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 		runID    = "run-cross-user"
 		callID   = "call-update-3"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, nicknameCallScript(callID, "cross-nick", "nickname updated"), repo)
 
-	chat := startChat(s.h, threadID, runID, "rename me")
-	items := waitForPending(t, s.h, threadID, 1)
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me")
+	items := testsupport.WaitForPending(t, s.h, threadID, 1)
 
 	// 他人视角（同租户其他用户）：列表不可见、决定 404。
-	stranger := s.asUser(confirmTestStrangerID)
-	seen := listPending(t, stranger, threadID)
+	stranger := s.asUser(testsupport.StrangerID)
+	seen := testsupport.ListPending(t, stranger, threadID)
 	if len(seen) != 0 {
 		t.Fatalf("stranger must not list owner's confirmations, got %+v", seen)
 	}
-	rec := decide(t, stranger, threadID, items[0].ConfirmationID, true)
+	rec := testsupport.Decide(t, stranger, threadID, items[0].ConfirmationID, true)
 	if rec.Code != nethttp.StatusNotFound {
 		t.Fatalf("stranger decide status = %d, want 404\n%s", rec.Code, rec.Body.String())
 	}
-	if left := listPending(t, s.h, threadID); len(left) != 1 {
+	if left := testsupport.ListPending(t, s.h, threadID); len(left) != 1 {
 		t.Fatalf("owner's pending confirmation was disturbed: %+v", left)
 	}
 
 	// 归属者决定不受影响，链路照常走完。
-	rec = decide(t, s.h, threadID, items[0].ConfirmationID, true)
+	rec = testsupport.Decide(t, s.h, threadID, items[0].ConfirmationID, true)
 	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"path":"live"`) {
 		t.Fatalf("owner decide broken: status %d\n%s", rec.Code, rec.Body.String())
 	}
-	chatEvents(t, chat)
-	if updates := repo.nicknames(); len(updates) != 1 {
+	testsupport.ChatEvents(t, chat)
+	if updates := repo.Nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
 }
@@ -371,20 +211,20 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 		ownerCall      = "call-mismatch-owner"
 		strangerThread = "thread-mismatch-stranger"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, nicknameCallScript(ownerCall, "mismatch-nick", "nickname updated"), repo)
 
-	chat := startChat(s.h, ownerThread, ownerRun, "rename me")
-	items := waitForPending(t, s.h, ownerThread, 1)
+	chat := testsupport.StartChat(s.h, ownerThread, ownerRun, "rename me")
+	items := testsupport.WaitForPending(t, s.h, ownerThread, 1)
 
 	// 他人先在自己名下建档：让「查询参数指向自己名下会话」合法成立，
 	// 该值若被守卫误采信即放行（对老实现本用例失败）。
-	stranger := s.asUser(confirmTestStrangerID)
-	strangerChat := startChat(stranger, strangerThread, "run-mismatch-stranger", "rename me too")
-	waitForPending(t, stranger, strangerThread, 1)
+	stranger := s.asUser(testsupport.StrangerID)
+	strangerChat := testsupport.StartChat(stranger, strangerThread, "run-mismatch-stranger", "rename me too")
+	testsupport.WaitForPending(t, stranger, strangerThread, 1)
 
-	attempt := postJSON(t, stranger, nethttp.MethodPost,
+	attempt := testsupport.PostJSON(t, stranger, nethttp.MethodPost,
 		"/agui/ack/confirmation?threadId="+strangerThread,
 		fmt.Sprintf(`{"threadId":%q,"confirmationId":%q,"approved":true}`, ownerThread, items[0].ConfirmationID))
 	if attempt.Code != nethttp.StatusNotFound {
@@ -392,21 +232,21 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	}
 
 	// 原确认不受影响，工具零执行。
-	left := listPending(t, s.h, ownerThread)
+	left := testsupport.ListPending(t, s.h, ownerThread)
 	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
 		t.Fatalf("owner's pending disturbed: %+v", left)
 	}
-	if updates := repo.nicknames(); len(updates) != 0 {
+	if updates := repo.Nicknames(); len(updates) != 0 {
 		t.Fatalf("tool executed %d times via bypassed decide, want 0", len(updates))
 	}
 
 	// 归属者合法决定照常 live：排除残留指针把决定误路由到恢复路径。
-	rec := decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
+	rec := testsupport.Decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
 	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"path":"live"`) {
 		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
 	}
-	chatEvents(t, chat)
-	if updates := repo.nicknames(); len(updates) != 1 {
+	testsupport.ChatEvents(t, chat)
+	if updates := repo.Nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
 	// 他人视角的阻塞运行搁置（其确认无人决定，随测试进程终止）。
@@ -424,39 +264,39 @@ func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 		ownerRun    = "run-trailing-owner"
 		ownerCall   = "call-trailing-owner"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, nicknameCallScript(ownerCall, "trailing-nick", "nickname updated"), repo)
 
-	chat := startChat(s.h, ownerThread, ownerRun, "rename me")
-	items := waitForPending(t, s.h, ownerThread, 1)
+	chat := testsupport.StartChat(s.h, ownerThread, ownerRun, "rename me")
+	items := testsupport.WaitForPending(t, s.h, ownerThread, 1)
 
-	stranger := s.asUser(confirmTestStrangerID)
-	attempt := postJSON(t, stranger, nethttp.MethodPost, "/agui/ack/confirmation",
+	stranger := s.asUser(testsupport.StrangerID)
+	attempt := testsupport.PostJSON(t, stranger, nethttp.MethodPost, "/agui/ack/confirmation",
 		fmt.Sprintf(`{"threadId":%q,"confirmationId":%q,"approved":true}{}`,
 			ownerThread, items[0].ConfirmationID))
 	if attempt.Code != nethttp.StatusNotFound {
 		t.Fatalf("trailing-data decide status = %d, want 404\n%s", attempt.Code, attempt.Body.String())
 	}
 
-	left := listPending(t, s.h, ownerThread)
+	left := testsupport.ListPending(t, s.h, ownerThread)
 	if len(left) != 1 || left[0].ConfirmationID != items[0].ConfirmationID {
 		t.Fatalf("owner's pending disturbed: %+v", left)
 	}
-	if updates := repo.nicknames(); len(updates) != 0 {
+	if updates := repo.Nicknames(); len(updates) != 0 {
 		t.Fatalf("tool executed %d times via trailing-data bypass, want 0", len(updates))
 	}
 
 	// 归属者合法决定照常 live、链路收尾（排除残留状态）。
-	rec := decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
+	rec := testsupport.Decide(t, s.h, ownerThread, items[0].ConfirmationID, true)
 	if rec.Code != nethttp.StatusOK || !strings.Contains(rec.Body.String(), `"path":"live"`) {
 		t.Fatalf("owner decide after attack: status %d\n%s", rec.Code, rec.Body.String())
 	}
-	chatEvents(t, chat)
-	if updates := repo.nicknames(); len(updates) != 1 {
+	testsupport.ChatEvents(t, chat)
+	if updates := repo.Nicknames(); len(updates) != 1 {
 		t.Fatalf("tool executed %d times after owner approval, want 1", len(updates))
 	}
-	waitForPending(t, s.h, ownerThread, 0)
+	testsupport.WaitForPending(t, s.h, ownerThread, 0)
 }
 
 // TestConfirmLive_when_tool_iterations_exhausted_run_terminates 验证
@@ -466,19 +306,19 @@ func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 func TestConfirmLive_when_tool_iterations_exhausted_run_terminates(t *testing.T) {
 	const threadID = "thread-loop"
 	loop := acktest.NewScriptedModel("loop-model",
-		acktest.Step{ToolCalls: []acktest.ToolCallSpec{{ID: "call-loop", Name: echoToolName, Args: `{"text":"hi"}`}}},
+		acktest.Step{ToolCalls: []acktest.ToolCallSpec{{ID: "call-loop", Name: tools.EchoToolName, Args: `{"text":"hi"}`}}},
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConfirmTestStack(t, loop, repo)
 
-	chat := startChat(s.h, threadID, "run-loop", "loop")
-	types, _ := chatEvents(t, chat)
+	chat := testsupport.StartChat(s.h, threadID, "run-loop", "loop")
+	types, _ := testsupport.ChatEvents(t, chat)
 
-	if n := countTypes(types, "TOOL_CALL_RESULT"); n != defaultMaxToolIter {
+	if n := testsupport.CountTypes(types, "TOOL_CALL_RESULT"); n != defaultMaxToolIter {
 		t.Fatalf("tool executions = %d, want exactly %d (MaxToolIterations)", n, defaultMaxToolIter)
 	}
-	if !hasType(types, "RUN_ERROR") {
+	if !testsupport.HasType(types, "RUN_ERROR") {
 		t.Fatalf("exhausted run must terminate with RUN_ERROR, types: %v", types)
 	}
 }

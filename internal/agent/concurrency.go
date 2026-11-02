@@ -5,6 +5,7 @@ import (
 	nethttp "net/http"
 	"sync"
 
+	"grape/internal/agent/identity"
 	"grape/internal/biz"
 )
 
@@ -63,7 +64,7 @@ func (g *runGate) wrap(basePath string, h nethttp.Handler) nethttp.Handler {
 			h.ServeHTTP(w, r)
 			return
 		}
-		userKey, err := userKeyFromContext(r.Context())
+		userKey, err := identity.UserKeyFromContext(r.Context())
 		if err != nil {
 			// 身份缺失（绕过认证中间件的路径）fail-closed 401，不占槽。
 			writeRunGateError(w, nethttp.StatusUnauthorized, err.Error())

@@ -9,6 +9,7 @@ import (
 	"grape/internal/conf"
 
 	"github.com/google/wire"
+	"grape/internal/agent/tools"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/vectorstore"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
@@ -85,9 +86,10 @@ func NewMemorySessionService() (session.Service, func(), error) {
 
 // NewVectorStore 把 biz.VectorStore 契约适配为框架向量存储（向量层租户隔离的
 // 强制应用层适配器）：契约实现与启动维度探针在 data 层装配，本提供器
-// 只做形状转换，经 NewStack 进入骨架，供检索工具消费。
+// 只做形状转换（实现在 tools 包 NewVectorStoreAdapter），经 NewStack 进入
+// 骨架，供检索工具消费。
 func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
-	return &vectorStoreAdapter{store: store}
+	return tools.NewVectorStoreAdapter(store)
 }
 
 // NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler
@@ -96,9 +98,9 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 // 表，检索工具经向量适配器与 embedder 访问向量；
 // 运行面观测经注入的 observer 接 /metrics（ops 的 RuntimeMetrics 经
 // wire.Bind 以 biz.AgentRunObserver 提供）；审计经注入的审计用例接
-// AuditHook（工具执行终态、ack 决定与授权终态观察三个写入面——自动授
-// 权终态由观察转写器落行，见 permission_audit.go，与复现视图查询端点
-// 共用同一用例实例）；测试经 NewStackWithOptions 注入替身。
+// audit.Hook（工具执行终态、ack 决定与授权终态观察三个写入面——自动授
+// 权终态由观察转写器落行，见 audit 包 permission_audit.go，与复现视图
+// 查询端点共用同一用例实例）；测试经 NewStackWithOptions 注入替身。
 func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
 	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, WithAuditHook(audit), WithRunObserver(observer))
 	if err != nil {

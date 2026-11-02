@@ -11,10 +11,9 @@ import (
 	nethttp "net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
+	"grape/internal/agent/internal/testsupport"
 	"grape/internal/biz"
 	"grape/internal/conf"
 
@@ -24,7 +23,7 @@ import (
 // concurrencyStackConf 组装限流测试的骨架配置：maxConcurrentRuns 逐用例
 // 注入（0 = 门控关闭形态）。
 func concurrencyStackConf(maxRuns int32) *conf.Agent {
-	c := confirmStackConf()
+	c := testsupport.StackConf()
 	c.Agui.MaxConcurrentRuns = maxRuns
 	return c
 }
@@ -32,7 +31,7 @@ func concurrencyStackConf(maxRuns int32) *conf.Agent {
 // newConcurrencyTestStack 按给定并发上限装配确认流测试栈（内存会话存储
 // + 注入模型 + 内存用户仓储，handler 外包归属者身份注入）。可变参数
 // 透传 StackOption（如观测契约注入）。
-func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedModel, repo *fakeUserRepo, opts ...StackOption) *confirmTestStack {
+func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo, opts ...StackOption) *confirmTestStack {
 	t.Helper()
 	svc, closeSessions, err := NewMemorySessionService()
 	if err != nil {
@@ -40,69 +39,15 @@ func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedM
 	}
 	t.Cleanup(closeSessions)
 	stack, err := NewStackWithOptions(concurrencyStackConf(maxRuns), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &searchTestEmbedder{dims: 4},
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4},
 		append([]StackOption{WithModelOverride(llm)}, opts...)...)
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}
 	t.Cleanup(stack.Close)
 	s := &confirmTestStack{repo: repo, raw: stack.Handler()}
-	s.h = s.asUser(confirmTestOwnerID)
+	s.h = s.asUser(testsupport.OwnerID)
 	return s
-}
-
-// fakeObserver 是运行观测契约的内存替身：记录活跃数增量序列、拒绝计数
-// 与工具终态计数（键 tool|status）。
-type fakeObserver struct {
-	mu        sync.Mutex
-	deltas    []int
-	rejected  int
-	toolCalls map[string]int
-}
-
-func newFakeObserver() *fakeObserver {
-	return &fakeObserver{toolCalls: make(map[string]int)}
-}
-
-func (f *fakeObserver) RunActive(delta int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.deltas = append(f.deltas, delta)
-}
-
-func (f *fakeObserver) RunRejected() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.rejected++
-}
-
-func (f *fakeObserver) ToolCallObserved(name, status string, _ time.Duration) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.toolCalls[name+"|"+status]++
-}
-
-// activeNow 汇总增量序列得当前活跃数（配对增减时应为 0 或在途数）。
-func (f *fakeObserver) activeNow() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	n := 0
-	for _, d := range f.deltas {
-		n += d
-	}
-	return n
-}
-
-func (f *fakeObserver) rejectedCount() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.rejected
-}
-
-func (f *fakeObserver) toolCount(name, status string) int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.toolCalls[name+"|"+status]
 }
 
 // TestRunGate_when_slot_released_next_acquire_succeeds 验证原语面：占槽
@@ -145,7 +90,7 @@ func TestRunGate_when_release_drops_last_slot_key_removed(t *testing.T) {
 // 构造门控（wrap 直接透传原 handler，零包装）。
 func TestRunGate_when_disabled_returns_nil_gate(t *testing.T) {
 	for _, v := range []int32{0, -1} {
-		if g := newRunGate(v, newFakeObserver()); g != nil {
+		if g := newRunGate(v, testsupport.NewFakeObserver()); g != nil {
 			t.Fatalf("newRunGate(%d) = %v, want nil (disabled, observer never wired)", v, g)
 		}
 	}
@@ -162,15 +107,15 @@ func TestRunGate_when_in_flight_run_holds_slot_same_user_next_chat_rejected(t *t
 		callID   = "call-gate-reject"
 		nickname = "gate-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConcurrencyTestStack(t, 1, nicknameCallScript(callID, nickname, "nickname updated"), repo)
 
-	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
-	waitForPending(t, s.h, threadID, 1)
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me to "+nickname)
+	testsupport.WaitForPending(t, s.h, threadID, 1)
 
 	body := fmt.Sprintf(`{"threadId":%q,"runId":%q,"messages":[{"id":"m-2","role":"user","content":"again"}]}`, threadID, runID+"-2")
-	rejected := postJSON(t, s.h, nethttp.MethodPost, "/agui/", body)
+	rejected := testsupport.PostJSON(t, s.h, nethttp.MethodPost, "/agui/", body)
 	if rejected.Code != nethttp.StatusTooManyRequests {
 		t.Fatalf("second run status = %d, want 429\n%s", rejected.Code, rejected.Body.String())
 	}
@@ -182,13 +127,13 @@ func TestRunGate_when_in_flight_run_holds_slot_same_user_next_chat_rejected(t *t
 		t.Fatalf("rejection message = %q, want %q", payload["message"], runLimitExceededMsg)
 	}
 
-	decideRec := decide(t, s.h, threadID, callID, true)
+	decideRec := testsupport.Decide(t, s.h, threadID, callID, true)
 	if decideRec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
 	}
-	chatEvents(t, chat)
+	testsupport.ChatEvents(t, chat)
 
-	after := postJSON(t, s.h, nethttp.MethodPost, "/agui/",
+	after := testsupport.PostJSON(t, s.h, nethttp.MethodPost, "/agui/",
 		fmt.Sprintf(`{"threadId":%q,"runId":%q,"messages":[{"id":"m-3","role":"user","content":"third"}]}`, threadID, runID+"-3"))
 	if after.Code == nethttp.StatusTooManyRequests {
 		t.Fatalf("run after release must not be rejected\n%s", after.Body.String())
@@ -209,29 +154,29 @@ func TestRunGate_when_limit_held_other_user_run_accepted(t *testing.T) {
 		otherRunID    = "run-gate-other-b"
 		nickname      = "gate-other-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConcurrencyTestStack(t, 1, nicknameCallScript(callID, nickname, "nickname updated"), repo)
 
 	// 归属者发起运行并阻塞在确认等待（占住其配额）。
-	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
-	waitForPending(t, s.h, threadID, 1)
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me to "+nickname)
+	testsupport.WaitForPending(t, s.h, threadID, 1)
 
 	// 陌生身份的运行不受他键配额影响：受理并注册自己的待确认项。
-	stranger := identityHandler(s.raw, confirmTestTenant, confirmTestStrangerID)
-	otherChat := startChat(stranger, otherThreadID, otherRunID, "rename me too")
-	waitForPending(t, stranger, otherThreadID, 1)
+	stranger := testsupport.IdentityHandler(s.raw, testsupport.Tenant, testsupport.StrangerID)
+	otherChat := testsupport.StartChat(stranger, otherThreadID, otherRunID, "rename me too")
+	testsupport.WaitForPending(t, stranger, otherThreadID, 1)
 
-	otherDecide := decide(t, stranger, otherThreadID, callID, true)
+	otherDecide := testsupport.Decide(t, stranger, otherThreadID, callID, true)
 	if otherDecide.Code != nethttp.StatusOK {
 		t.Fatalf("stranger decide status = %d, want 200\n%s", otherDecide.Code, otherDecide.Body.String())
 	}
-	decideRec := decide(t, s.h, threadID, callID, true)
+	decideRec := testsupport.Decide(t, s.h, threadID, callID, true)
 	if decideRec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
 	}
-	chatEvents(t, chat)
-	chatEvents(t, otherChat)
+	testsupport.ChatEvents(t, chat)
+	testsupport.ChatEvents(t, otherChat)
 }
 
 // TestRunGate_when_disabled_concurrent_runs_not_limited 验证关闭形态的
@@ -247,33 +192,33 @@ func TestRunGate_when_disabled_concurrent_runs_not_limited(t *testing.T) {
 		otherRunID    = "run-gate-off-b"
 		nickname      = "gate-off-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConcurrencyTestStack(t, 0, nicknameCallScript(callID, nickname, "nickname updated"), repo)
 
-	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
-	waitForPending(t, s.h, threadID, 1)
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me to "+nickname)
+	testsupport.WaitForPending(t, s.h, threadID, 1)
 
-	secondChat := startChat(s.h, otherThreadID, otherRunID, "second run")
-	waitForPending(t, s.h, otherThreadID, 1)
+	secondChat := testsupport.StartChat(s.h, otherThreadID, otherRunID, "second run")
+	testsupport.WaitForPending(t, s.h, otherThreadID, 1)
 
-	secondDecide := decide(t, s.h, otherThreadID, callID, true)
+	secondDecide := testsupport.Decide(t, s.h, otherThreadID, callID, true)
 	if secondDecide.Code != nethttp.StatusOK {
 		t.Fatalf("second run decide status = %d, want 200\n%s", secondDecide.Code, secondDecide.Body.String())
 	}
-	decideRec := decide(t, s.h, threadID, callID, true)
+	decideRec := testsupport.Decide(t, s.h, threadID, callID, true)
 	if decideRec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
 	}
-	chatEvents(t, chat)
-	chatEvents(t, secondChat)
+	testsupport.ChatEvents(t, chat)
+	testsupport.ChatEvents(t, secondChat)
 }
 
 // TestRunGate_when_identity_missing_chat_rejected_unauthorized 验证
 // fail-closed：门控开启时身份缺失（绕过认证中间件的路径）的运行请求
 // 401，不占槽、不触达框架。
 func TestRunGate_when_identity_missing_chat_rejected_unauthorized(t *testing.T) {
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
 	s := newConcurrencyTestStack(t, 1, nicknameCallScript("call-gate-401", "nick", "done"), repo)
 
@@ -296,32 +241,32 @@ func TestRunGate_when_run_lifecycle_pushed_to_observer(t *testing.T) {
 		callID   = "call-gate-obs"
 		nickname = "gate-obs-nick"
 	)
-	repo := newFakeUserRepo(&biz.User{ID: confirmTestOwnerID, Status: biz.UserStatusEnabled,
+	repo := testsupport.NewFakeUserRepo(&biz.User{ID: testsupport.OwnerID, Status: biz.UserStatusEnabled,
 		Name: "alice", Nickname: "Alice", Locale: "zh-CN"})
-	obs := newFakeObserver()
+	obs := testsupport.NewFakeObserver()
 	s := newConcurrencyTestStack(t, 1, nicknameCallScript(callID, nickname, "nickname updated"), repo, WithRunObserver(obs))
 
-	chat := startChat(s.h, threadID, runID, "rename me to "+nickname)
-	waitForPending(t, s.h, threadID, 1)
-	if got := obs.activeNow(); got != 1 {
+	chat := testsupport.StartChat(s.h, threadID, runID, "rename me to "+nickname)
+	testsupport.WaitForPending(t, s.h, threadID, 1)
+	if got := obs.ActiveNow(); got != 1 {
 		t.Fatalf("active runs while in flight = %d, want 1", got)
 	}
 
-	second := postJSON(t, s.h, nethttp.MethodPost, "/agui/",
+	second := testsupport.PostJSON(t, s.h, nethttp.MethodPost, "/agui/",
 		fmt.Sprintf(`{"threadId":%q,"runId":%q,"messages":[{"id":"m-2","role":"user","content":"again"}]}`, threadID, runID+"-2"))
 	if second.Code != nethttp.StatusTooManyRequests {
 		t.Fatalf("second run status = %d, want 429\n%s", second.Code, second.Body.String())
 	}
-	if got := obs.rejectedCount(); got != 1 {
+	if got := obs.RejectedCount(); got != 1 {
 		t.Fatalf("rejections = %d, want 1", got)
 	}
 
-	decideRec := decide(t, s.h, threadID, callID, true)
+	decideRec := testsupport.Decide(t, s.h, threadID, callID, true)
 	if decideRec.Code != nethttp.StatusOK {
 		t.Fatalf("decide status = %d, want 200\n%s", decideRec.Code, decideRec.Body.String())
 	}
-	chatEvents(t, chat)
-	if got := obs.activeNow(); got != 0 {
+	testsupport.ChatEvents(t, chat)
+	if got := obs.ActiveNow(); got != 0 {
 		t.Fatalf("active runs after completion = %d, want 0 (paired deltas)", got)
 	}
 }

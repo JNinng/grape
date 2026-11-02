@@ -1,0 +1,49 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"trpc.group/trpc-go/trpc-agent-go/tool"
+)
+
+func TestEchoToolReturnsTextVerbatim(t *testing.T) {
+	echoTool := NewEchoTool()
+	if echoTool.Declaration() == nil || echoTool.Declaration().Name != EchoToolName {
+		t.Fatalf("tool declaration name = %v, want %q", echoTool.Declaration(), EchoToolName)
+	}
+	raw, err := json.Marshal(echoInput{Text: "ping"})
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	out, err := echoTool.(tool.CallableTool).Call(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("call echo tool: want no error, got %v", err)
+	}
+	echo, ok := out.(echoOutput)
+	if !ok || echo.Echo != "ping" {
+		t.Fatalf("echo result = %#v, want echoOutput{Echo: \"ping\"}", out)
+	}
+}
+
+func TestEchoToolRejectsBlankText(t *testing.T) {
+	raw, err := json.Marshal(echoInput{Text: "   "})
+	if err != nil {
+		t.Fatalf("marshal input: %v", err)
+	}
+	_, err = NewEchoTool().(tool.CallableTool).Call(context.Background(), raw)
+	if err == nil {
+		t.Fatalf("blank text: want error, got none")
+	}
+}
+
+func TestEchoTool_declaration_marks_text_required_with_description(t *testing.T) {
+	schema := NewEchoTool().Declaration().InputSchema
+	if len(schema.Required) != 1 || schema.Required[0] != "text" {
+		t.Fatalf("echo required = %v, want [text]", schema.Required)
+	}
+	if got := schema.Properties["text"].Description; got != "Text to echo back" {
+		t.Fatalf("text description = %q, want %q", got, "Text to echo back")
+	}
+}

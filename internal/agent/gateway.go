@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/jninng/trpc_agent_go_ack"
+	"grape/internal/agent/tools"
 	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -19,7 +20,7 @@ import (
 // Source、落审计为来源命名空间决定词形（{name}_auto / {name}_deny），
 // 因此名字必须满足 biz 的来源命名空间约束（小写字母开头、仅
 // [a-z0-9_]、≠ auto、加后缀总长 ≤16），不合规名字的授权行会在转写器
-// fail-closed 丢弃（见 permission_audit.go）。策略源故障的 fail-safe
+// fail-closed 丢弃（见 httpapi 包? no）。策略源故障的 fail-safe
 // 语义由 ack 评估侧保证（出错按 confirm 升级处理）。
 type noopPolicy struct{}
 
@@ -33,10 +34,10 @@ func (noopPolicy) Consult(context.Context, ack.ToolCall) (ack.Verdict, error) {
 // 先静态声明，conf 化（分级可配置）暂缓。
 func toolTiers() map[string]ack.Tier {
 	return map[string]ack.Tier{
-		echoToolName:             ack.TierAllow,
-		getCurrentUserToolName:   ack.TierAllow,
-		findUsersByNameToolName:  ack.TierAllow,
-		updateMyNicknameToolName: ack.TierConfirm,
+		tools.EchoToolName:             ack.TierAllow,
+		tools.GetCurrentUserToolName:   ack.TierAllow,
+		tools.FindUsersByNameToolName:  ack.TierAllow,
+		tools.UpdateMyNicknameToolName: ack.TierConfirm,
 	}
 }
 
@@ -76,7 +77,7 @@ func denyTexts() ack.DenyTexts {
 // 文案经 WithDenyTexts 显式声明（见 denyTexts）；策略
 // 源恒为弃权空实现（接入点，见 noopPolicy）；observer 非 nil 时挂授权
 // 终态观察挂点——自动授权终态转写为授权确认审计行（见
-// permission_audit.go），人工决定仍由决定路由审计面落行，两路互斥。
+// httpapi 包? no），人工决定仍由决定路由审计面落行，两路互斥。
 func newGateway(sessions session.Service, appName string, logger *slog.Logger, userKey func(ctx context.Context) (string, error), tools []tool.Tool, grants ack.GrantSource, observer ack.PermissionObserver) *ack.Gateway {
 	opts := []ack.Option{
 		ack.WithApp(appName),
