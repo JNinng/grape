@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -66,11 +66,11 @@ func SetupSuiteDatabase(t *testing.T, s SuiteDatabase) (grapeUDSN string) {
 		t.Fatalf("create test database: %v", err)
 	}
 
-	deployDir, err := pg_sqlc.DeployDir()
+	deployDir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := pg_sqlc.ValidateDeployFiles(deployDir); err != nil {
+	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg := *cfg
@@ -81,17 +81,17 @@ func SetupSuiteDatabase(t *testing.T, s SuiteDatabase) (grapeUDSN string) {
 		t.Fatalf("connect deploy: %v", err)
 	}
 	defer deployConn.Close(ctx)
-	release, err := pg_sqlc.AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, name := range pg_sqlc.DeployFiles {
+	for _, name := range deploy.DeployFiles {
 		sql, err := os.ReadFile(deployDir + "/" + name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		deployed := pg_sqlc.ResolveDeployPasswords(string(sql), s.GrapeUPassword, testUPassword)
+		deployed := deploy.ResolveDeployPasswords(string(sql), s.GrapeUPassword, testUPassword)
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", name, err)
 		}

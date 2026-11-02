@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -26,14 +26,14 @@ import (
 // 执行；结构 DDL 为裸创建，重复执行报错，全量重建先手动 DROP DATABASE。
 // logf 为日志回调（面向运维），口令绝不进入日志与错误文本。
 func Deploy(ctx context.Context, opts *Options, logf func(format string, args ...any)) error {
-	dir, err := pg_sqlc.DeployDir()
+	dir, err := deploy.DeployDir()
 	if err != nil {
 		return err
 	}
-	if err := pg_sqlc.ValidateDeployFiles(dir); err != nil {
+	if err := deploy.ValidateDeployFiles(dir); err != nil {
 		return err
 	}
-	logf("deploy manifest validated (%d files)", len(pg_sqlc.DeployFiles))
+	logf("deploy manifest validated (%d files)", len(deploy.DeployFiles))
 
 	if err := ensureDatabase(ctx, opts, logf); err != nil {
 		return err
@@ -90,7 +90,7 @@ func deployInTransaction(ctx context.Context, opts *Options, dir string, logf fu
 
 	// role.sql 的角色目录操作是集群级的，与其他 dbdeploy 进程及集成
 	// 测试包的并发部署互斥。
-	release, err := pg_sqlc.AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		return fmt.Errorf("acquire deploy lock: %w", err)
 	}
@@ -102,14 +102,14 @@ func deployInTransaction(ctx context.Context, opts *Options, dir string, logf fu
 	}
 	defer func() { _ = tx.Rollback(ctx) }() // Commit 成功后为无害空操作
 
-	total := len(pg_sqlc.DeployFiles)
-	for i, name := range pg_sqlc.DeployFiles {
+	total := len(deploy.DeployFiles)
+	for i, name := range deploy.DeployFiles {
 		content, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			return fmt.Errorf("read deploy file %s: %w", name, err)
 		}
-		sql := pg_sqlc.ResolveDeployPasswords(string(content), opts.GrapeUPassword, opts.TestUPassword)
-		if pg_sqlc.HasResidualPlaceholder(sql) {
+		sql := deploy.ResolveDeployPasswords(string(content), opts.GrapeUPassword, opts.TestUPassword)
+		if deploy.HasResidualPlaceholder(sql) {
 			return fmt.Errorf("deploy file %s still contains a password placeholder after substitution, refusing to execute (transaction rolled back)", name)
 		}
 		if _, err := tx.Exec(ctx, sql); err != nil {

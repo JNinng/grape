@@ -106,8 +106,8 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 
 各层与能力目录的 `ProviderSet`（`service` / `task` / `biz` / `data` / `server` / `middleware` / `ops` / `agent` 各一个，能力目录每能力一个）由 [cmd](../cmd/) 中的 Wire 统一装配：
 
-- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc`，另有文本向量化设施 `openaiembedder`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
-- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`）；能力目录 `openaiembedder`：biz `Embedder` 契约的 OpenAI 兼容端点实现（conf.vector.embedding，`vector.enabled=false` 返回禁用占位）；
+- `data`：存储后端选择点，聚合各能力目录的 ProviderSet（当前静态选定关系存储 `pg_sqlc` 及其向量子包 `pg_sqlc/vector`，另有文本向量化设施 `openaiembedder`）与设施诊断面/维护面（`NewFacilityDiagnostics` / `NewFacilityMaintenance`，新设施在此追加）；
+- 能力目录 `pg_sqlc`：存储客户端构造函数（返回 cleanup）+ 仓储构造函数（返回 `biz.<Resource>Repo` 接口）+ 诊断面构造函数（返回 `biz.FacilityDiagnostics`）+ 维护面构造函数（返回 `biz.FacilityMaintenance`），向量存储与检索留痕装饰器在子包 `pg_sqlc/vector`（独立 ProviderSet），部署面在子包 `pg_sqlc/deploy`（不入 wire）；能力目录 `openaiembedder`：biz `Embedder` 契约的 OpenAI 兼容端点实现（conf.vector.embedding，`vector.enabled=false` 返回禁用占位）；
 - `biz`：用例构造函数（依赖仓储接口）；
 - `service`：服务构造函数（依赖用例）；
 - `task`：任务构造函数（依赖用例）；

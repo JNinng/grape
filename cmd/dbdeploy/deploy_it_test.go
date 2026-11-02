@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -243,7 +243,7 @@ func connectGrapeU(t *testing.T, adminDSN string) *pgx.Conn {
 // applyFile 对已部署库重放清单中的单个文件（替换口令占位符）。
 func applyFile(ctx context.Context, t *testing.T, conn *pgx.Conn, name string) error {
 	t.Helper()
-	dir, err := pg_sqlc.DeployDir()
+	dir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
@@ -251,7 +251,7 @@ func applyFile(ctx context.Context, t *testing.T, conn *pgx.Conn, name string) e
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}
-	sql := pg_sqlc.ResolveDeployPasswords(string(content), itGrapeUPassword, itTestUPassword)
+	sql := deploy.ResolveDeployPasswords(string(content), itGrapeUPassword, itTestUPassword)
 	if _, err := conn.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("exec %s: %w", name, err)
 	}

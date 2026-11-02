@@ -234,7 +234,7 @@ func (a *vectorStoreAdapter) GetMetadata(ctx context.Context, opts ...vectorstor
 }
 
 // Close 无自有资源：连接池与向量仓储的生命周期归 data 层装配
-// （pg_sqlc.NewVectorStore 的 cleanup），按框架接口要求返回 nil。
+// （data 层 pg_sqlc/vector.NewVectorStore 的 cleanup），按框架接口要求返回 nil。
 func (a *vectorStoreAdapter) Close() error { return nil }
 
 // toFrameworkDocument 领域文档 → 框架文档（EmbeddingText 不参与存储，

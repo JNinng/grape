@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"

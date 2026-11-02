@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"
@@ -10,12 +10,13 @@ import (
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	pgsqlc "grape/internal/data/pg_sqlc"
 	"grape/pkg/redact"
 )
 
 // biz.VectorStore 的检索留痕装饰器与它的 wire 供给
 // 类型。装配位置：向量仓储（vector_repo.go 的 pgvector 实现）之上、框架
-// 适配器（internal/agent/vectorstore.go）之下——检索工具与摄取管线两条
+// 适配器（internal/agent/tools/vectorstore.go）之下——检索工具与摄取管线两条
 // 链路都经契约访问向量，装饰器因此同时覆盖两侧：
 //
 //	检索：工具 → 框架适配器（top_k 钳制）→ 本装饰器（Search 留痕）→ 仓储
@@ -54,7 +55,7 @@ const (
 	retrievalMaxLoggedHits = 50
 )
 
-// VectorStoreSupply 是向量存储的 wire 供给包装（与 SystemData 对 *Data
+// VectorStoreSupply 是向量存储的 wire 供给包装（与 SystemData 对 *pgsqlc.Data
 // 同一手法）：留痕装饰器以本类型为入参包装出最终对外的 biz.VectorStore，
 // 避免原仓储与装饰器提供同一接口类型造成装配环。字段嵌入保持零成本
 // 透传，测试与非 wire 消费方仍可直接用 NewVectorStore。
@@ -64,7 +65,7 @@ type VectorStoreSupply struct {
 
 // NewVectorStoreSupply 提供向量存储的 wire 供给：构造既有 pgvector 仓储
 // （含维度探针等装配期校验）并包装为可装饰类型。
-func NewVectorStoreSupply(c *conf.Vector, d *Data) (VectorStoreSupply, func(), error) {
+func NewVectorStoreSupply(c *conf.Vector, d *pgsqlc.Data) (VectorStoreSupply, func(), error) {
 	store, cleanup, err := NewVectorStore(c, d)
 	if err != nil {
 		return VectorStoreSupply{}, nil, err

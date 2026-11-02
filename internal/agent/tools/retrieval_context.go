@@ -9,7 +9,7 @@ import (
 )
 
 // 检索留痕的 ctx 事实接线：data 层留痕装饰器
-// （pg_sqlc.retrieval_log.go）写 agent_retrieval_log 需要会话 ID 与查询
+// （pg_sqlc/vector 的 retrieval_log.go）写 agent_retrieval_log 需要会话 ID 与查询
 // 文本两项事实，它们只在 agent 层可见——会话 ID 在框架执行 ctx 携带的
 // Invocation 里（biz/data 禁止导入框架包），查询文本只在检索工具的入参
 // 里。本函数在检索执行现场把两项事实放进 biz 的中性 ctx 载体，装饰器

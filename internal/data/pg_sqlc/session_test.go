@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 	"grape/internal/data/pg_sqlc/gen"
 
 	"github.com/jackc/pgx/v5"
@@ -55,8 +56,8 @@ func TestTokenLookupValidate(t *testing.T) {
 //	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
 //	go test ./internal/data/pg_sqlc -run TestSession -count=1 -v
 //
-// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 DeployFiles 部署清单
-// 装载 sqlc/ 全部文件，见 deploy.go），不触碰其他数据库。
+// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 deploy.DeployFiles 部署清单
+// 装载 sqlc/ 全部文件，见 deploy 子包），不触碰其他数据库。
 
 const testDatabase = "grape_pgsqlc_test"
 
@@ -97,17 +98,17 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("close admin: %v", err)
 	}
 
-	// 装载部署文件：清单即 deploy.go 的 DeployFiles（与 dbdeploy 共用）；
+	// 装载部署文件：清单即 deploy 子包的 DeployFiles（与 dbdeploy 共用）；
 	// 文件内含多语句与函数体，走 simple protocol
 	deployCfg, err := pgx.ParseConfig(adminDSN)
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	deployDir, err := DeployDir()
+	deployDir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := ValidateDeployFiles(deployDir); err != nil {
+	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg.Database = testDatabase
@@ -118,17 +119,17 @@ func setupTestDB(t *testing.T) *Data {
 	}
 	defer deployConn.Close(ctx)
 	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range DeployFiles {
+	for _, f := range deploy.DeployFiles {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		deployed := ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
+		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", f, err)
 		}

@@ -26,6 +26,7 @@ import (
 	"grape/internal/biz"
 	"grape/internal/conf"
 	"grape/internal/data/pg_sqlc"
+	pgvector "grape/internal/data/pg_sqlc/vector"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -93,7 +94,7 @@ type searchFixture struct {
 func searchNewFixture(t *testing.T) *searchFixture {
 	t.Helper()
 	data, grapeUDSN := searchSetupDatabase(t)
-	store, cleanup, err := pg_sqlc.NewVectorStore(&conf.Vector{
+	store, cleanup, err := pgvector.NewVectorStore(&conf.Vector{
 		Enabled:   true,
 		Dimension: searchDimension,
 	}, data)

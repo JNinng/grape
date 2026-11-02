@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"grape/internal/biz"
 	"grape/internal/data/pg_sqlc/gen"
 
 	"github.com/jackc/pgx/v5"
@@ -27,6 +28,17 @@ func (a Identity) validate() error {
 		return fmt.Errorf("pg_sqlc: auth user id must be positive, got %d", a.UserID)
 	}
 	return nil
+}
+
+// NewIdentity 把 biz 身份映射为会话门面入参并校验（空租户/非正用户
+// 拒绝）：供子能力包（如 vector 按身份双写列与 metadata）在进入
+// IdentityTx 之前就持有合法身份。
+func NewIdentity(auth biz.Identity) (Identity, error) {
+	id := pgAuth(auth)
+	if err := id.validate(); err != nil {
+		return Identity{}, err
+	}
+	return id, nil
 }
 
 // txHandle 是三类事务句柄共用的底座：绑定事务与懒加载的命名查询集。

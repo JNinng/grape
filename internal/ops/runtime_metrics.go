@@ -27,7 +27,7 @@ import (
 //     偏差）。
 //
 // 扩展点备案（量未交付，接线落点已明确）：
-//   - 检索耗时/召回命中率：事实在 data 层留痕装饰器（retrieval_log.go
+//   - 检索耗时/召回命中率：事实在 data 层留痕装饰器（pg_sqlc/vector 的 retrieval_log.go
 //     已有耗时与命中数），接线需扩充 biz 观测契约（如
 //     RetrievalObserved）或把装饰器改为可注入 observer 的构造参数；
 //   - LLM 调用计数与 token 用量：事实在模型层 logging 包装的 model.Callbacks 前后

@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	pgsqlc "grape/internal/data/pg_sqlc"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
@@ -87,7 +88,7 @@ var vectorTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
 // vectorStore 是向量存储的介质实现。
 type vectorStore struct {
-	data      *Data
+	data      *pgsqlc.Data
 	table     string // 已过白名单校验的表名（agent schema 内）
 	dimension int32
 }
@@ -98,7 +99,7 @@ var _ biz.VectorStore = (*vectorStore)(nil)
 // 占位实现（所有调用按设施缺失拒绝，不触库）；启用时执行装配期校验并
 // fail-fast：维度在 (0, 16000] 内、表名过标识符白名单、启动探针确认
 // 部署表存在且 embedding 列维度与配置一致——维度配置错误启动即失败。
-func NewVectorStore(c *conf.Vector, d *Data) (biz.VectorStore, func(), error) {
+func NewVectorStore(c *conf.Vector, d *pgsqlc.Data) (biz.VectorStore, func(), error) {
 	if !c.GetEnabled() {
 		return &disabledVectorStore{}, func() {}, nil
 	}
@@ -129,12 +130,12 @@ func NewVectorStore(c *conf.Vector, d *Data) (biz.VectorStore, func(), error) {
 // 池直连只读 pg_catalog（无业务数据、无租户上下文），配置错表/错维度
 // 在装配期失败，不带病启动。
 func (r *vectorStore) probeDimension(ctx context.Context) error {
-	if r.data == nil || r.data.db == nil {
+	if r.data == nil || r.data.Pool() == nil {
 		return errors.New("pg_sqlc: vector probe requires an initialized database handle")
 	}
 	qualified := vectorSchema + "." + r.table
 	var columnType *string
-	err := r.data.db.QueryRow(ctx, vectorProbeSQL, qualified).Scan(&columnType)
+	err := r.data.Pool().QueryRow(ctx, vectorProbeSQL, qualified).Scan(&columnType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("pg_sqlc: vector table %s is not deployed (embedding column missing); run agent_vector.sql first", qualified)
 	}
@@ -170,22 +171,18 @@ func vectorDeclaredDimension(declared string) (int32, error) {
 
 // vectorIdentity 从认证 ctx 提取身份：缺失或非法（空租户/非正用户）一律
 // 拒绝。身份只来自服务端认证中间件，永不受请求侧输入影响。
-func vectorIdentity(ctx context.Context) (Identity, error) {
+func vectorIdentity(ctx context.Context) (pgsqlc.Identity, error) {
 	id, ok := biz.IdentityFromContext(ctx)
 	if !ok {
-		return Identity{}, errors.New("pg_sqlc: vector store requires an authenticated identity")
+		return pgsqlc.Identity{}, errors.New("pg_sqlc: vector store requires an authenticated identity")
 	}
-	auth := pgAuth(id)
-	if err := auth.validate(); err != nil {
-		return Identity{}, err
-	}
-	return auth, nil
+	return pgsqlc.NewIdentity(id)
 }
 
 // vectorMetadata 把认证身份写进文档 metadata 副本：tenant_id/user_id 以
 // 服务端身份为准覆盖同名键（请求侧伪造无效），调用方自定义键保留。列
 // 与 metadata 双写：列供 SQL 强制过滤，metadata 供框架侧过滤语义回读。
-func vectorMetadata(metadata map[string]any, auth Identity) map[string]any {
+func vectorMetadata(metadata map[string]any, auth pgsqlc.Identity) map[string]any {
 	out := make(map[string]any, len(metadata)+2)
 	for k, v := range metadata {
 		out[k] = v
@@ -237,7 +234,7 @@ func (r *vectorStore) Add(ctx context.Context, doc *biz.VectorDocument) error {
 	if err != nil {
 		return err
 	}
-	return r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	return r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		_, err := s.Tx().Exec(ctx,
 			fmt.Sprintf(vectorInsertSQL, r.qualifiedTable()),
 			doc.ID, auth.TenantID, auth.UserID, doc.Name, doc.Content,
@@ -254,7 +251,7 @@ func (r *vectorStore) Get(ctx context.Context, id string) (*biz.VectorDocument, 
 		return nil, err
 	}
 	var row vectorDocRow
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		return s.Tx().QueryRow(ctx,
 			fmt.Sprintf(vectorSelectSQL, r.qualifiedTable()),
 			auth.TenantID, id).Scan(row.fields()...)
@@ -279,7 +276,7 @@ func (r *vectorStore) Update(ctx context.Context, doc *biz.VectorDocument) error
 	if err != nil {
 		return err
 	}
-	return r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	return r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		tag, err := s.Tx().Exec(ctx,
 			fmt.Sprintf(vectorUpdateSQL, r.qualifiedTable()),
 			auth.TenantID, doc.ID, doc.Name, doc.Content,
@@ -300,7 +297,7 @@ func (r *vectorStore) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	return r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		tag, err := s.Tx().Exec(ctx,
 			fmt.Sprintf(vectorDeleteSQL, r.qualifiedTable()),
 			auth.TenantID, id)
@@ -353,7 +350,7 @@ func (r *vectorStore) Search(ctx context.Context, embedding []float32, filter *b
 		vectorColumns, fmt.Sprintf(vectorScoreExpr, 1), r.qualifiedTable(), where, len(args))
 
 	var out []*biz.ScoredVectorDocument
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		rows, err := s.Tx().Query(ctx, sql, args...)
 		if err != nil {
 			return err
@@ -395,7 +392,7 @@ func (r *vectorStore) DeleteByFilter(ctx context.Context, filter *biz.VectorFilt
 	}
 	args := append([]any{auth.TenantID}, plan.args...)
 	var deleted int64
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		return s.Tx().QueryRow(ctx,
 			fmt.Sprintf(vectorDeleteByFilterSQL, r.qualifiedTable(), plan.where()),
 			args...).Scan(&deleted)
@@ -418,7 +415,7 @@ func (r *vectorStore) Count(ctx context.Context, filter *biz.VectorFilter) (int6
 	}
 	args := append([]any{auth.TenantID}, plan.args...)
 	var total int64
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		return s.Tx().QueryRow(ctx,
 			fmt.Sprintf(vectorCountSQL, r.qualifiedTable(), plan.where()),
 			args...).Scan(&total)
@@ -459,7 +456,7 @@ func (r *vectorStore) GetMetadata(ctx context.Context, filter *biz.VectorFilter)
 	}
 
 	out := map[string]map[string]any{}
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		rows, err := s.Tx().Query(ctx, sql, args...)
 		if err != nil {
 			return err

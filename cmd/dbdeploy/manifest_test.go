@@ -7,22 +7,22 @@ import (
 	"strings"
 	"testing"
 
-	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 )
 
 func TestValidateDeployFiles_real_manifest_passes(t *testing.T) {
-	dir, err := pg_sqlc.DeployDir()
+	dir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := pg_sqlc.ValidateDeployFiles(dir); err != nil {
+	if err := deploy.ValidateDeployFiles(dir); err != nil {
 		t.Fatalf("real deploy manifest must validate: %v", err)
 	}
 }
 
 func TestValidateDeployFiles_reports_missing_file(t *testing.T) {
 	dir := t.TempDir()
-	err := pg_sqlc.ValidateDeployFiles(dir)
+	err := deploy.ValidateDeployFiles(dir)
 	if err == nil {
 		t.Fatal("missing manifest files must be reported")
 	}
@@ -35,7 +35,7 @@ func TestValidateDeployFiles_reports_missing_file(t *testing.T) {
 // infected 文件的内容替换为给定语句。
 func writeManifest(t *testing.T, dir, infected, content string) {
 	t.Helper()
-	for _, name := range pg_sqlc.DeployFiles {
+	for _, name := range deploy.DeployFiles {
 		body := "-- ok\nSELECT 1;\n"
 		if name == infected {
 			body = content
@@ -53,7 +53,7 @@ func writeManifest(t *testing.T, dir, infected, content string) {
 func TestValidateDeployFiles_rejects_concurrently_statement(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "rls.sql", "CREATE INDEX CONCURRENTLY idx ON public.t (col);\n")
-	err := pg_sqlc.ValidateDeployFiles(dir)
+	err := deploy.ValidateDeployFiles(dir)
 	if err == nil {
 		t.Fatal("CONCURRENTLY in a manifest file must be rejected")
 	}
@@ -65,7 +65,7 @@ func TestValidateDeployFiles_rejects_concurrently_statement(t *testing.T) {
 func TestValidateDeployFiles_rejects_create_database_statement(t *testing.T) {
 	dir := t.TempDir()
 	writeManifest(t, dir, "role.sql", "CREATE DATABASE foo;\n")
-	err := pg_sqlc.ValidateDeployFiles(dir)
+	err := deploy.ValidateDeployFiles(dir)
 	if err == nil {
 		t.Fatal("CREATE DATABASE in a manifest file must be rejected")
 	}
@@ -76,7 +76,7 @@ func TestValidateDeployFiles_rejects_create_database_statement(t *testing.T) {
 
 func TestDeployFiles_schema_order_numbers_are_consecutive(t *testing.T) {
 	prev := 0
-	for _, name := range pg_sqlc.DeployFiles {
+	for _, name := range deploy.DeployFiles {
 		if !strings.HasPrefix(name, "schema/") {
 			break
 		}
@@ -98,7 +98,7 @@ func TestDeployFiles_schema_order_numbers_are_consecutive(t *testing.T) {
 
 func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing.T) {
 	index := map[string]int{}
-	for i, name := range pg_sqlc.DeployFiles {
+	for i, name := range deploy.DeployFiles {
 		if _, dup := index[name]; dup {
 			t.Fatalf("file %s listed twice", name)
 		}

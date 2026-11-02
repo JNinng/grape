@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"grape/internal/data/pg_sqlc/deploy"
 )
 
 // agentSessionDDLTables 是框架 session/postgres 服务启动校验要求的六张表
@@ -31,7 +33,7 @@ func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *t
 	// 相对序约束：agent_session.sql 在 seed.sql 之后即可，不锁绝对
 	// 最后——后续域（如向量域）追加的清单项可落在其后，避免尾部互斥。
 	seedPos, agentPos := -1, -1
-	for i, name := range DeployFiles {
+	for i, name := range deploy.DeployFiles {
 		switch name {
 		case "seed.sql":
 			seedPos = i
@@ -40,16 +42,16 @@ func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *t
 		}
 	}
 	if seedPos < 0 || agentPos < 0 {
-		t.Fatalf("manifest must contain seed.sql and agent_session.sql, got %v", DeployFiles)
+		t.Fatalf("manifest must contain seed.sql and agent_session.sql, got %v", deploy.DeployFiles)
 	}
 	if agentPos <= seedPos {
 		t.Fatalf("agent_session.sql (pos %d) must come after seed.sql (pos %d)", agentPos, seedPos)
 	}
-	dir, err := DeployDir()
+	dir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := ValidateDeployFiles(dir); err != nil {
+	if err := deploy.ValidateDeployFiles(dir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	content, err := os.ReadFile(filepath.Join(dir, "agent_session.sql"))

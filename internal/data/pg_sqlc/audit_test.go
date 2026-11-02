@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 	"grape/pkg/redact"
 
 	"github.com/jackc/pgx/v5"
@@ -20,7 +21,7 @@ import (
 
 // 审计仓储集成测试：以真实 PostgreSQL 验证租户 RLS、
 // 写入-查询往返（含脱敏后内容）、组合批量与分页边界。测试自建专属库
-// grape_audit_test 并重建（DROP+CREATE+按 DeployFiles 部署清单全量
+// grape_audit_test 并重建（DROP+CREATE+按 deploy.DeployFiles 部署清单全量
 // 装载，含 schema/95_agent_audit.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
@@ -94,11 +95,11 @@ func setupAuditTestDB(t *testing.T) *Data {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	deployDir, err := DeployDir()
+	deployDir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := ValidateDeployFiles(deployDir); err != nil {
+	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg.Database = auditTestDatabase
@@ -109,17 +110,17 @@ func setupAuditTestDB(t *testing.T) *Data {
 	}
 	defer deployConn.Close(ctx)
 	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range DeployFiles {
+	for _, f := range deploy.DeployFiles {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		deployed := ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
+		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", f, err)
 		}

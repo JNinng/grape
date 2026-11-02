@@ -20,6 +20,12 @@ type Data struct {
 	db *pgxpool.Pool
 }
 
+// Pool 暴露底层连接池，仅供无认证身份的装配期系统面取用（如 vector 包
+// 的维度探针查 information_schema）；业务读写一律经 IdentityTx /
+// TokenTx / TenantTx 门面，绕过门面即绕过 RLS 会话变量注入。零值 Data
+// 返回 nil。
+func (d *Data) Pool() *pgxpool.Pool { return d.db }
+
 // SystemData 是系统库句柄，平台级设施（将来全局配置/任务状态等）专用。
 // 底层与业务主库句柄 *Data 同构，以命名类型承载是为了在 wire 装配层与
 // *Data 区分——wire 按参数类型装配，同型双参无法区分（同 TraceMiddleware

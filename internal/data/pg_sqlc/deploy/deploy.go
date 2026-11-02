@@ -1,4 +1,7 @@
-package pg_sqlc
+// Package deploy 是 pg_sqlc 声明资产（../sqlc/）的部署面：执行清单、口令
+// 占位符替换、跨进程部署锁与清单校验。dbdeploy 命令与各包 PG 集成测试
+// 共用本包作为部署的单一事实源；不依赖运行期存储门面（*pg_sqlc.Data）。
+package deploy
 
 import (
 	"context"
@@ -122,15 +125,15 @@ func AcquireDeployLock(ctx context.Context) (func(), error) {
 	}
 }
 
-// DeployDir 返回 sqlc/ 目录在当前文件系统中的路径，以本文件源码位置
-// 定位，与进程工作目录无关：包内测试（go test）与从仓库根运行的
+// DeployDir 返回 pg_sqlc/sqlc/ 目录在当前文件系统中的路径，以本文件源码
+// 位置（pg_sqlc/deploy/）的上一级定位，与进程工作目录无关：包内测试（go test）与从仓库根运行的
 // dbdeploy 命令共用同一解析。部署依赖源码树中的 SQL 文件存在。
 func DeployDir() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		return "", errors.New("deploy: cannot locate deploy.go source file")
 	}
-	dir := filepath.Join(filepath.Dir(file), "sqlc")
+	dir := filepath.Join(filepath.Dir(file), "..", "sqlc")
 	info, err := os.Stat(dir)
 	if err != nil {
 		return "", fmt.Errorf("deploy: sqlc dir not found: %w", err)

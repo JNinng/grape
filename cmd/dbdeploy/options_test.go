@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 )
 
 const (
@@ -123,9 +123,9 @@ func TestParseOptions_invalid_database_name_rejected(t *testing.T) {
 }
 
 func TestResolveDeployPasswords_substitutes_both_placeholders(t *testing.T) {
-	sql := "CREATE USER grape_u WITH PASSWORD '" + pg_sqlc.GrapeUPasswordPlaceholder + "';\n" +
-		"CREATE USER test_u WITH PASSWORD '" + pg_sqlc.TestUPasswordPlaceholder + "';"
-	got := pg_sqlc.ResolveDeployPasswords(sql, "gp", "tp")
+	sql := "CREATE USER grape_u WITH PASSWORD '" + deploy.GrapeUPasswordPlaceholder + "';\n" +
+		"CREATE USER test_u WITH PASSWORD '" + deploy.TestUPasswordPlaceholder + "';"
+	got := deploy.ResolveDeployPasswords(sql, "gp", "tp")
 	want := "CREATE USER grape_u WITH PASSWORD 'gp';\nCREATE USER test_u WITH PASSWORD 'tp';"
 	if got != want {
 		t.Fatalf("resolved = %q, want %q", got, want)
@@ -133,8 +133,8 @@ func TestResolveDeployPasswords_substitutes_both_placeholders(t *testing.T) {
 }
 
 func TestResolveDeployPasswords_escapes_single_quotes_in_password(t *testing.T) {
-	sql := "PASSWORD '" + pg_sqlc.GrapeUPasswordPlaceholder + "'"
-	got := pg_sqlc.ResolveDeployPasswords(sql, "it's", "x")
+	sql := "PASSWORD '" + deploy.GrapeUPasswordPlaceholder + "'"
+	got := deploy.ResolveDeployPasswords(sql, "it's", "x")
 	want := "PASSWORD 'it''s'"
 	if got != want {
 		t.Fatalf("resolved = %q, want escaped %q", got, want)
@@ -142,10 +142,10 @@ func TestResolveDeployPasswords_escapes_single_quotes_in_password(t *testing.T) 
 }
 
 func TestHasResidualPlaceholder_detects_unreplaced_marker(t *testing.T) {
-	if !pg_sqlc.HasResidualPlaceholder("PASSWORD '" + pg_sqlc.GrapeUPasswordPlaceholder + "'") {
+	if !deploy.HasResidualPlaceholder("PASSWORD '" + deploy.GrapeUPasswordPlaceholder + "'") {
 		t.Fatal("unreplaced placeholder must be detected")
 	}
-	if pg_sqlc.HasResidualPlaceholder("PASSWORD 'clean'") {
+	if deploy.HasResidualPlaceholder("PASSWORD 'clean'") {
 		t.Fatal("clean sql must not be flagged")
 	}
 }

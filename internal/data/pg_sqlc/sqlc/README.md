@@ -13,7 +13,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | # | 文件 | 作用描述 | sqlc 输入 | 内容 |
 
 > 表内 # 为 sqlc.yaml 装载序，不是部署执行序：部署顺序以
-> `internal/data/pg_sqlc/deploy.go` 的 DeployFiles 清单与仓库根
+> `internal/data/pg_sqlc/deploy/deploy.go` 的 DeployFiles 清单与仓库根
 > deploy_db.md 为准（schema 域文件整体先于 role.sql）。
 |---|---|---|---|---|
 | 1 | schema/10_basic.sql | 定义 basic 业务表：租户列、审计列、归属三元组与 @scope 列注释 | 是 | 1 张表 |
@@ -61,7 +61,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `agent_session.sql` 与 `agent_vector.sql` → `schema/95_agent_audit.sql`
   → `96_agent_grant.sql` → `schema/97_agent_retrieval_log.sql`。单一事实源是
 
-  `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
+  `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
   与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
   授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
   表 owner 连接（超级用户绕过 RLS），agent 域两文件只依赖 `role.sql` 的
@@ -80,7 +80,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   体系，租户隔离靠 userKey（tenant_id:user_id）应用层编码；不存租户
   业务数据，属文档化「设施面」例外（见 permission.md）。
 - **向量 SQL 不进 sqlc catalog**：agent_document 的存取 SQL 以手写
-  参数化常量落在 [../vector_repo.go](../vector_repo.go)，不经 sqlc 生成
+  参数化常量落在 [../vector/vector_repo.go](../vector/vector_repo.go)，不经 sqlc 生成
   ——pgvector 的类型与相似度算子超出 sqlc 的类型映射支持面（gen 包
   无法建模 vector 列），且向量存取没有动态查询协议需求。该表也不进
   @scope/RLS 体系：租户隔离由应用层适配器强制（每条 SQL 带租户过滤、

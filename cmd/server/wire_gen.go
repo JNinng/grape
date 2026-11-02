@@ -14,6 +14,7 @@ import (
 	"grape/internal/data"
 	"grape/internal/data/openaiembedder"
 	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/vector"
 	"grape/internal/middleware"
 	"grape/internal/ops"
 	"grape/internal/server"
@@ -30,7 +31,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, vector *conf.Vector, confTelemetry *conf.Telemetry, logger *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, confVector *conf.Vector, confTelemetry *conf.Telemetry, logger *slog.Logger) (*kratos.App, func(), error) {
 	setup, cleanup, err := telemetry.NewSetup(confTelemetry, logger)
 	if err != nil {
 		return nil, nil, err
@@ -61,7 +62,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	vectorStoreSupply, cleanup4, err := pg_sqlc.NewVectorStoreSupply(vector, pg_sqlcData)
+	vectorStoreSupply, cleanup4, err := vector.NewVectorStoreSupply(confVector, pg_sqlcData)
 	if err != nil {
 		cleanup3()
 		cleanup2()
@@ -70,7 +71,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	}
 	retrievalLogRepo := pg_sqlc.NewRetrievalLogRepo(pg_sqlcData)
 	registry := biz.NewRedactRegistry()
-	vectorStore, cleanup5, err := pg_sqlc.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
+	vectorStore, cleanup5, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
 	if err != nil {
 		cleanup4()
 		cleanup3()
@@ -81,7 +82,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
 	grantRepo := pg_sqlc.NewGrantRepo(pg_sqlcData)
 	grantUsecase := biz.NewGrantUsecase(grantRepo)
-	embedder, cleanup6, err := openaiembedder.New(vector)
+	embedder, cleanup6, err := openaiembedder.New(confVector)
 	if err != nil {
 		cleanup5()
 		cleanup4()

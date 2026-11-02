@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"
@@ -12,23 +12,24 @@ import (
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	pgsqlc "grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 	"grape/pkg/redact"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // 检索留痕集成测试：以真实 PostgreSQL 验证检索留痕
 // 行落库（query/top_k/命中与实际一致）、租户 RLS、RLS 关闭时读侧兜底、
 // 留痕失败不中断检索、管线摄取留痕来源与分页边界。测试自建专属库并
-// 重建（DROP+CREATE+按 DeployFiles 部署清单全量装载，含
+// 重建（DROP+CREATE+按 deploy.DeployFiles 部署清单全量装载，含
 // schema/97_agent_retrieval_log.sql 与 agent_vector.sql），不触碰其他
 // 数据库。设置以下环境变量后运行，未设置时跳过：
 //
 //	GRAPE_RETRIEVAL_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_RETRIEVAL_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_retrieval_test \
-//	go test ./internal/data/pg_sqlc -run "TestRetrievalLog" -count=1 -v
+//	go test ./internal/data/pg_sqlc/vector -run "TestRetrievalLog" -count=1 -v
 //
 // 隔离口径：本表启用租户 RLS（部署默认），租户边界由 RLS 强制、读侧
 // WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见（对齐「隔离正确性不押在 RLS
@@ -48,7 +49,7 @@ var retrievalTestTraceID = [16]byte{0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
 
 // setupRetrievalTestDB 重建专属测试库、按序装载部署清单（含
 // schema/97_agent_retrieval_log.sql）并返回以 grape_u 连接的存储门面。
-func setupRetrievalTestDB(t *testing.T) *Data {
+func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_DSN")
@@ -80,11 +81,11 @@ func setupRetrievalTestDB(t *testing.T) *Data {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	deployDir, err := DeployDir()
+	deployDir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := ValidateDeployFiles(deployDir); err != nil {
+	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg.Database = retrievalTestDatabase
@@ -95,17 +96,17 @@ func setupRetrievalTestDB(t *testing.T) *Data {
 	}
 	defer deployConn.Close(ctx)
 	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range DeployFiles {
+	for _, f := range deploy.DeployFiles {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		deployed := ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
+		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", f, err)
 		}
@@ -114,17 +115,20 @@ func setupRetrievalTestDB(t *testing.T) *Data {
 		t.Fatalf("grant connect: %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, testDSN)
+	d, cleanup, err := pgsqlc.NewData(&conf.Data{Database: &conf.Data_Database{
+		Master: &conf.Data_Database_Slot{Source: testDSN},
+		System: &conf.Data_Database_Slot{Source: testDSN},
+	}})
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
 	}
-	t.Cleanup(pool.Close)
-	return &Data{db: pool}
+	t.Cleanup(cleanup)
+	return d
 }
 
 // newLoggedVectorStoreForTest 构造装饰器与留痕仓储：真实 pgvector 仓储
 // （维度与部署列对齐）为内层，registry 与生产装配同默认值。
-func newLoggedVectorStoreForTest(t *testing.T, d *Data, logs biz.RetrievalLogRepo) biz.VectorStore {
+func newLoggedVectorStoreForTest(t *testing.T, d *pgsqlc.Data, logs biz.RetrievalLogRepo) biz.VectorStore {
 	t.Helper()
 	c := &conf.Vector{Enabled: true, Dimension: vectorDimension, TableName: "agent_document"}
 	store, cleanup, err := NewVectorStore(c, d)
@@ -176,10 +180,14 @@ func (failingRetrievalRepo) List(context.Context, *biz.RetrievalLogFilter) (*biz
 
 // countRetrievalRows 经身份事务直查留痕行数（表主非 grape_u 且 FORCE
 // RLS，裸计数会被全拒；绕过装饰器验证落库事实需要同源租户注入）。
-func countRetrievalRows(t *testing.T, d *Data, tenant biz.Identity) int64 {
+func countRetrievalRows(t *testing.T, d *pgsqlc.Data, tenant biz.Identity) int64 {
 	t.Helper()
+	auth, err := pgsqlc.NewIdentity(tenant)
+	if err != nil {
+		t.Fatalf("map identity: %v", err)
+	}
 	var total int64
-	err := d.IdentityTx(context.Background(), pgAuth(tenant), func(s *IdentityTx) error {
+	err = d.IdentityTx(context.Background(), auth, func(s *pgsqlc.IdentityTx) error {
 		return s.Tx().QueryRow(context.Background(),
 			"SELECT count(*) FROM public.agent_retrieval_log").Scan(&total)
 	})
@@ -210,7 +218,7 @@ func seedVectorDocs(t *testing.T, store biz.VectorStore, id biz.Identity) []floa
 
 func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	logRepo := NewRetrievalLogRepo(d)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
 	queryVector := seedVectorDocs(t, store, retrievalTenantA)
 
@@ -273,7 +281,7 @@ func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *test
 
 func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	logRepo := NewRetrievalLogRepo(d)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
 	seedVectorDocs(t, store, retrievalTenantA)
 	// 租户 A 的检索留痕已落库。
@@ -300,7 +308,7 @@ func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 
 func TestRetrievalLog_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	logRepo := NewRetrievalLogRepo(d)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
 	seedVectorDocs(t, store, retrievalTenantA)
 	uc := biz.NewRetrievalLogUsecase(logRepo)
@@ -365,7 +373,7 @@ func (pipelineEmbedder) Embed(_ context.Context, text string) ([]float32, error)
 
 func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	logRepo := NewRetrievalLogRepo(d)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
 	ucase, err := biz.NewDocumentUsecase(store, pipelineEmbedder{}, int(vectorDimension), biz.WithChunking(8, 2))
 	if err != nil {
@@ -435,7 +443,7 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 
 func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	logRepo := NewRetrievalLogRepo(d)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	ctx := retrievalIdentityContext(retrievalTenantA, false)
 
 	// 同秒写入 25 行（created_at 秒级精度，id 为 tie-break）。
@@ -501,7 +509,7 @@ func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T
 // 该门禁是留痕旁路面唯一的身份防线，与 audit/vector 同款显式断言。
 func TestRetrievalLogRepo_unauthenticated_calls_fail_closed(t *testing.T) {
 	d := setupRetrievalTestDB(t)
-	repo := NewRetrievalLogRepo(d)
+	repo := pgsqlc.NewRetrievalLogRepo(d)
 	ctx := context.Background()
 
 	err := repo.Append(ctx, &biz.RetrievalLogRecord{Source: biz.RetrievalSourceTool})

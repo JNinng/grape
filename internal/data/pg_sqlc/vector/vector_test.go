@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"
@@ -13,20 +13,21 @@ import (
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	pgsqlc "grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // 向量存储介质集成测试：以真实 PostgreSQL 验证应用层租户隔离
-// 与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 DeployFiles 部署
+// 与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 deploy.DeployFiles 部署
 // 清单全量装载，含 agent_vector.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
 //	GRAPE_VECTOR_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_test \
-//	go test ./internal/data/pg_sqlc -run "TestVectorStore|TestNewVectorStore" -count=1 -v
+//	go test ./internal/data/pg_sqlc/vector -run "TestVectorStore|TestNewVectorStore"|TestNewVectorStore" -count=1 -v
 //
 // 隔离口径：agent_document 不启用 RLS，租户边界由 vector_repo 的应用层
 // 过滤强制——用例显式断言 RLS 关闭（relrowsecurity=false）时跨租户仍
@@ -36,6 +37,11 @@ const (
 	vectorTestDatabase = "grape_vector_test"
 	vectorDimension    = int32(1024)
 	scoreEpsilon       = 1e-6
+
+	// testGrapeUPassword / testTestUPassword 与 role.sql 占位符替换值：两个
+	// 运行角色的既定测试口令（与根包关系面套件同值）。
+	testGrapeUPassword = "grape_u_pwd"
+	testTestUPassword  = "test_u_pwd"
 )
 
 // vectorTestTenant/User 是用例身份：tenant_id 列宽 varchar(16)，取值
@@ -59,7 +65,7 @@ func vectorIdentityContext(id biz.Identity) context.Context {
 
 // setupVectorTestDB 重建专属测试库、按序装载部署清单（含
 // agent_vector.sql）并返回以 grape_u 连接的存储门面。
-func setupVectorTestDB(t *testing.T) *Data {
+func setupVectorTestDB(t *testing.T) *pgsqlc.Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_VECTOR_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_VECTOR_TEST_DSN")
@@ -91,11 +97,11 @@ func setupVectorTestDB(t *testing.T) *Data {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	deployDir, err := DeployDir()
+	deployDir, err := deploy.DeployDir()
 	if err != nil {
 		t.Fatalf("locate deploy dir: %v", err)
 	}
-	if err := ValidateDeployFiles(deployDir); err != nil {
+	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
 		t.Fatalf("validate deploy files: %v", err)
 	}
 	deployCfg.Database = vectorTestDatabase
@@ -106,17 +112,17 @@ func setupVectorTestDB(t *testing.T) *Data {
 	}
 	defer deployConn.Close(ctx)
 	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := AcquireDeployLock(ctx)
+	release, err := deploy.AcquireDeployLock(ctx)
 	if err != nil {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range DeployFiles {
+	for _, f := range deploy.DeployFiles {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		deployed := ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
+		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
 		if _, err := deployConn.Exec(ctx, deployed); err != nil {
 			t.Fatalf("deploy %s: %v", f, err)
 		}
@@ -125,12 +131,15 @@ func setupVectorTestDB(t *testing.T) *Data {
 		t.Fatalf("grant connect: %v", err)
 	}
 
-	pool, err := pgxpool.New(ctx, testDSN)
+	d, cleanup, err := pgsqlc.NewData(&conf.Data{Database: &conf.Data_Database{
+		Master: &conf.Data_Database_Slot{Source: testDSN},
+		System: &conf.Data_Database_Slot{Source: testDSN},
+	}})
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
 	}
-	t.Cleanup(pool.Close)
-	return &Data{db: pool}
+	t.Cleanup(cleanup)
+	return d
 }
 
 // containsAll 报告 s 是否包含 subs 中全部子串。
@@ -144,7 +153,7 @@ func containsAll(s string, subs ...string) bool {
 }
 
 // newVectorStoreForTest 以与部署一致的配置构造向量存储（探针应通过）。
-func newVectorStoreForTest(t *testing.T, d *Data) biz.VectorStore {
+func newVectorStoreForTest(t *testing.T, d *pgsqlc.Data) biz.VectorStore {
 	t.Helper()
 	store, cleanup, err := NewVectorStore(&conf.Vector{
 		Enabled:   true,
@@ -224,7 +233,7 @@ func TestVectorStore_cross_tenant_search_returns_empty_while_rls_disabled(t *tes
 	// 固定场景前提：表无 RLS——本用例证明隔离来自应用层过滤而非数据库
 	// 策略（RLS 可作为可选加强，见 agent_vector.sql 注释）。
 	var rowSecurity bool
-	err := d.db.QueryRow(context.Background(),
+	err := d.Pool().QueryRow(context.Background(),
 		`SELECT relrowsecurity FROM pg_class WHERE oid = 'agent.agent_document'::regclass`).Scan(&rowSecurity)
 	if err != nil {
 		t.Fatalf("read relrowsecurity: %v", err)

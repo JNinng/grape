@@ -1,4 +1,4 @@
-package pg_sqlc
+package vector
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	pgsqlc "grape/internal/data/pg_sqlc"
 )
 
 // 向量存储单测（纯内存，不触数据库）：配置校验与维度解析、身份注入与
@@ -19,7 +20,7 @@ func vectorTestConf(enabled bool, dimension int32, table string) *conf.Vector {
 }
 
 func TestNewVectorStore_disabled_conf_returns_disabled_store(t *testing.T) {
-	store, cleanup, err := NewVectorStore(vectorTestConf(false, 0, ""), &Data{})
+	store, cleanup, err := NewVectorStore(vectorTestConf(false, 0, ""), &pgsqlc.Data{})
 	if err != nil {
 		t.Fatalf("NewVectorStore(disabled) = %v, want nil error", err)
 	}
@@ -31,7 +32,7 @@ func TestNewVectorStore_disabled_conf_returns_disabled_store(t *testing.T) {
 
 func TestNewVectorStore_invalid_dimension_fails(t *testing.T) {
 	for _, dimension := range []int32{0, -1, vectorMaxDimension + 1} {
-		if _, _, err := NewVectorStore(vectorTestConf(true, dimension, ""), &Data{}); err == nil {
+		if _, _, err := NewVectorStore(vectorTestConf(true, dimension, ""), &pgsqlc.Data{}); err == nil {
 			t.Fatalf("NewVectorStore(dimension=%d) = nil error, want failure", dimension)
 		}
 	}
@@ -58,7 +59,7 @@ func TestNewVectorStore_valid_table_name_defaults_and_passes_pattern(t *testing.
 	// 合法表名应通过白名单与维度校验，进入启动探针；本用例无数据库
 	// 句柄，断言只到探针报"句柄未初始化"为止——错误文案不含白名单/
 	// 维度字样，即前两道校验已放行。
-	_, _, err := NewVectorStore(vectorTestConf(true, 4, "agent_document"), &Data{})
+	_, _, err := NewVectorStore(vectorTestConf(true, 4, "agent_document"), &pgsqlc.Data{})
 	if err == nil {
 		t.Fatal("NewVectorStore without a database = nil error, want probe failure")
 	}
@@ -74,7 +75,7 @@ func TestNewVectorStore_table_name_without_agent_prefix_fails(t *testing.T) {
 	// agent_ 前缀强制：合法标识符但缺前缀同样在构造期
 	// 拒绝，且发生在启动探针之前（本用例传空 Data 即可安全返回错误）。
 	for _, name := range []string{"document", "vec_documents", "agentdocument"} {
-		_, _, err := NewVectorStore(vectorTestConf(true, 4, name), &Data{})
+		_, _, err := NewVectorStore(vectorTestConf(true, 4, name), &pgsqlc.Data{})
 		if err == nil || !strings.Contains(err.Error(), "must have the agent_ prefix") {
 			t.Fatalf("NewVectorStore(table=%q) = %v, want agent_ prefix rejection", name, err)
 		}
@@ -108,7 +109,7 @@ func TestVectorDeclaredDimension_parses_format_type_output(t *testing.T) {
 }
 
 func TestVectorMetadata_overrides_forged_identity_and_keeps_custom_keys(t *testing.T) {
-	auth := Identity{TenantID: "t-a", UserID: 7}
+	auth := pgsqlc.Identity{TenantID: "t-a", UserID: 7}
 	metadata := vectorMetadata(map[string]any{
 		"tenant_id": "t-forged",
 		"user_id":   999,
@@ -141,7 +142,7 @@ func TestVectorIdentity_missing_or_invalid_rejected(t *testing.T) {
 func TestVectorStore_methods_reject_without_identity(t *testing.T) {
 	// Data 为 nil 池：身份检查先于一切触库动作，未认证调用必须在此
 	// 拒绝，绝不落到驱动层。
-	store := &vectorStore{data: &Data{}, table: vectorDefaultTable, dimension: 4}
+	store := &vectorStore{data: &pgsqlc.Data{}, table: vectorDefaultTable, dimension: 4}
 	ctx := context.Background()
 	doc := &biz.VectorDocument{ID: "doc-1", Content: "c", Embedding: make([]float32, 4)}
 
@@ -172,7 +173,7 @@ func TestVectorStore_methods_reject_without_identity(t *testing.T) {
 }
 
 func TestVectorStore_check_document_errors(t *testing.T) {
-	store := &vectorStore{data: &Data{}, table: vectorDefaultTable, dimension: 4}
+	store := &vectorStore{data: &pgsqlc.Data{}, table: vectorDefaultTable, dimension: 4}
 
 	cases := []struct {
 		name string

@@ -40,7 +40,7 @@ go build -o grape ./cmd/server
 
 ## 数据库部署与角色拆分
 
-- 执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy.go` 的 `DeployFiles`
+- 执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles`
   清单（19 个文件），一键部署 `make dbdeploy`（单事务、失败整体回滚），
   手工顺序与升级步骤见 [deploy_db.md](deploy_db.md)。
 - 角色拆分（[role.sql](internal/data/pg_sqlc/sqlc/role.sql)）：`grape_u`
