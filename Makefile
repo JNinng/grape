@@ -17,7 +17,7 @@ config:
 .PHONY: config-init
 # write initial config.yaml to a directory (from cmd/configinit template)
 config-init:
-	go run ./cmd/configinit
+	go run ./cmd/configinit $(ARGS)
 
 .PHONY: api
 # generate api proto
