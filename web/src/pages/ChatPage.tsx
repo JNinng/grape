@@ -7,6 +7,7 @@ import {
   LogOutIcon,
   PlusIcon,
   SendIcon,
+  SettingsIcon,
   SquareIcon,
 } from 'lucide-react'
 import { fetchAgentSessions, type AgentSessionMeta } from '../api/agentSessions'
@@ -431,6 +432,24 @@ export function ChatPage() {
             <Separator orientation="vertical" className="hidden h-4 lg:block" />
             <AccentPicker />
             <ModeToggle />
+            <Separator orientation="vertical" className="hidden h-4 sm:block" />
+            {/* 管理页入口：与主题切换并排收纳在头部右侧，图标语义见提示。 */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="系统设置"
+                    onClick={() => navigate('/settings')}
+                  >
+                    <SettingsIcon aria-hidden className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">系统设置</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </header>
 

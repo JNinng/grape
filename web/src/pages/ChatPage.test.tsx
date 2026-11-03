@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LoginReply } from '../api/types'
 import { clearSession, setSession } from '../auth/store'
@@ -218,6 +218,27 @@ describe('ChatPage streaming run', () => {
     expect(threadId).toBe(mockFetchHistory.mock.calls[0][0])
     expect(typeof runId).toBe('string')
     releaseRun()
+  })
+})
+
+describe('ChatPage settings entry', () => {
+  it('navigates_to_the_settings_page_from_the_header_icon', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <ThemeProvider>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/settings" element={<div>settings-target</div>} />
+          </Routes>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    await screen.findByLabelText('会话列表')
+
+    await user.click(screen.getByRole('button', { name: '系统设置' }))
+
+    expect(await screen.findByText('settings-target')).toBeInTheDocument()
   })
 })
 
