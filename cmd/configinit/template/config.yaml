@@ -131,23 +131,29 @@ vector:
   # agent_vector.sql 部署；enabled=false 时向量仓储按设施缺失拒绝调用，
   # 不触库。
   enabled: false
-  # embedding 维度：必须与 agent_vector.sql 的列类型 vector(维度) 一致
-  # （默认部署为 1024），同时必须与 embedding 模型的产出维度一致，
-  # 两处不一致分别在装配期失败。
-  dimension: 1024
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
-  # embedding：OpenAI 兼容 embeddings 端点（与 LLM provider 同口径）。启用向量
-  # 设施时必填 base_url 与 model；api_key 只经环境变量注入。
-  embedding:
-    # provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空即可。
-    provider: openai
-    base_url: ${VECTOR_EMBEDDING_BASE_URL:}
-    api_key: ${VECTOR_EMBEDDING_API_KEY:}
-    model: ${VECTOR_EMBEDDING_MODEL:text-embedding-3-small}
-    # 单次 embedding 调用超时；未设置取 30s。
-    timeout: 30s
+  # 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 vector.embedder
+  # 键）时的兜底，必须引用下方 embedders 已声明的键。
+  default_embedder: ${VECTOR_EMBEDDING_MODEL:text-embedding-3-small}
+  # embedders：嵌入空间清单（≥1 条）。空间键 = model（version 留空）或
+  # model@version，即落库 embedder 列与检索过滤用的身份；dimension 必须
+  # 与 agent_vector.sql 内对应维度的表达式部分 HNSW 索引一致（默认部署
+  # 1024），装配期探针逐维度校验。多空间并存支撑多模型与版本迭代，换
+  # 版本即新空间，存量经重摄取迁移。
+  embedders:
+    - # provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空即可。
+      provider: openai
+      base_url: ${VECTOR_EMBEDDING_BASE_URL:}
+      api_key: ${VECTOR_EMBEDDING_API_KEY:}
+      model: ${VECTOR_EMBEDDING_MODEL:text-embedding-3-small}
+      # 版本后缀（可空）：迭代标识（如 v1、v2），非空时空间键为
+      # model@version。
+      # version: v1
+      dimension: 1024
+      # 单次 embedding 调用超时；未设置取 30s。
+      timeout: 30s
 telemetry:
   # OpenTelemetry 链路遥测。enabled=false 完全 noop：不构造
   # exporter、不发起任何连接；开启后 server span 经 OTLP gRPC 导出。

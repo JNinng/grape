@@ -22,10 +22,9 @@ var ErrDocumentSourceTooLong = errors.New("biz: document source id too long")
 //     （rune 计），与主流 embedding 模型的输入窗口量级匹配；替换为
 //     语义切分（递归/按结构）时改 DocumentOption 注入，接口面不变。
 const (
-	maxSourceIDChars      = 96
-	defaultChunkSize      = 800
-	defaultChunkOverlap   = 100
-	defaultEmbedDimension = 1024
+	maxSourceIDChars    = 96
+	defaultChunkSize    = 800
+	defaultChunkOverlap = 100
 )
 
 // Document 是摄取管线的领域文档来源。文档来源先限内部（运维导入、
@@ -71,33 +70,30 @@ func WithChunking(size, overlap int) DocumentOption {
 // DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约
 // 落库。租户过滤由 VectorStore 实现强制，管线不接触身份以外
 // 的存储细节、绝不直连 SQL；身份从认证 ctx 提取（管线由受权入口驱动，
-// 身份缺失 fail-closed）。
+// 身份缺失 fail-closed）。摄取空间在每次 Ingest 现场解析（默认空间，
+// 见 EmbedderResolver）：换默认不迁移存量——旧切片留在原空间，重摄取
+// 经 source_id 锚点跨空间清除后以新空间重写，即迁移路径。
 type DocumentUsecase struct {
 	store        VectorStore
 	embedder     Embedder
-	dimension    int
+	resolver     EmbedderResolver
 	chunkSize    int
 	chunkOverlap int
 }
 
-// NewDocumentUsecase 构造摄取管线。dimension 是 conf.vector.dimension 的
-// 透传（摄取入口接线时须补 conf.vector.dimension 的 wire 提供方——当前
-// 生产 injector 尚无消费方，wire 会剪枝本 provider）：与 embedder.Dimensions() 不
-// 一致即拒绝构造——维度链路（embedder 模型 → conf → DDL 列）的中间一
-// 环在启动期对账，与 conf vs DDL 探针同口径，不一致启动即失败。
-func NewDocumentUsecase(store VectorStore, embedder Embedder, dimension int, opts ...DocumentOption) (*DocumentUsecase, error) {
+// NewDocumentUsecase 构造摄取管线。维度链路（embedder 空间声明 → conf
+// → DDL 索引）的中间一环改在写路径逐次对账：解析出的默认空间必须能
+// 取到维度声明，且每次 Embed 响应长度与之一致（Embedder 实现自身亦
+// 复核），存储层再按注册表对账——声明与实际向量三方一致才落库。
+func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, opts ...DocumentOption) (*DocumentUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: document usecase requires a vector store")
 	}
 	if embedder == nil {
 		return nil, errors.New("biz: document usecase requires an embedder")
 	}
-	if dimension <= 0 {
-		return nil, errors.New("biz: document usecase requires a positive configured dimension")
-	}
-	if embedder.Dimensions() != dimension {
-		return nil, fmt.Errorf("biz: embedder dimension %d does not match configured dimension %d; align conf.vector.dimension with the embedding model",
-			embedder.Dimensions(), dimension)
+	if resolver == nil {
+		return nil, errors.New("biz: document usecase requires an embedder resolver")
 	}
 	o := &documentOptions{chunkSize: defaultChunkSize, chunkOverlap: defaultChunkOverlap}
 	for _, opt := range opts {
@@ -112,7 +108,7 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, dimension int, opt
 	return &DocumentUsecase{
 		store:        store,
 		embedder:     embedder,
-		dimension:    dimension,
+		resolver:     resolver,
 		chunkSize:    o.chunkSize,
 		chunkOverlap: o.chunkOverlap,
 	}, nil
@@ -149,19 +145,29 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		return nil, errors.New("biz: document content chunks to nothing")
 	}
 
+	// 摄取空间在删除旧行之前解析：本次切片落在解析出的默认空间，旧
+	// 切片（可能属于其他空间）由覆盖语义跨空间清除，重摄取即换空间
+	// 迁移路径。
+	space, dimension, err := u.resolver.ResolveDefaultEmbedder(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("biz: resolve default embedder for document %s: %w", sourceID, err)
+	}
+
 	// 逐块向量化在删除旧行之前完成：embed 失败（端点故障、维度漂移）
 	// 时不破坏存量数据，重摄即可补偿。
 	docs := make([]*VectorDocument, 0, len(chunks))
 	for i, c := range chunks {
-		embedding, err := u.embedder.Embed(ctx, c.content)
+		embedding, err := u.embedder.Embed(ctx, space, c.content)
 		if err != nil {
 			return nil, fmt.Errorf("biz: embed chunk %d of document %s: %w", i, sourceID, err)
 		}
-		if len(embedding) != u.dimension {
-			return nil, fmt.Errorf("biz: embedder returned dimension %d, configured %d", len(embedding), u.dimension)
+		if len(embedding) != dimension {
+			return nil, fmt.Errorf("biz: embedder returned dimension %d for space %s, expected %d", len(embedding), space, dimension)
 		}
 		docs = append(docs, &VectorDocument{
 			ID:        chunkID(sourceID, i),
+			Embedder:  space,
+			Dimension: dimension,
 			Name:      doc.Name,
 			Content:   c.content,
 			Embedding: embedding,

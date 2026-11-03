@@ -26,7 +26,7 @@ go build -o grape ./cmd/server
 ## 配置与密钥管理
 
 - 密钥一律经 `${ENV:default}` 占位注入（如 `agent.llm.api_key`、
-  `vector.embedding.api_key`），仓库与配置模板不落明文；env source 仅识别
+  `vector.embedders[].api_key`），仓库与配置模板不落明文；env source 仅识别
   `KRATOS_` 前缀——环境变量形态为 `KRATOS_<层级路径大写>`（如
   `KRATOS_DATABASE_SOURCE` 覆盖 `data.database.master.source`），无默认值
   的占位在变量缺失时展开为空串，应用侧按必填校验拒绝启动（fail-closed）。

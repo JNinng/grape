@@ -9,16 +9,17 @@
 -- 写入一条检索留痕；租户取会话 app.tenant_id，写入者与用户同值
 -- name: InsertAgentRetrievalLog :one
 INSERT INTO public.agent_retrieval_log (tenant_id, user_id, trace_id, session_id,
-                                        source, query_text, requested_top_k,
-                                        effective_top_k, filter_summary, hits,
-                                        rerank_before, rerank_after, duration_ms,
+                                        source, embedder, query_text,
+                                        requested_top_k, effective_top_k,
+                                        filter_summary, hits, rerank_before,
+                                        rerank_after, duration_ms,
                                         status, created_by)
 VALUES (current_setting('app.tenant_id'), sqlc.arg('user_id'), sqlc.narg('trace_id'),
-        sqlc.narg('session_id'), sqlc.arg('source'), sqlc.narg('query_text'),
-        sqlc.narg('requested_top_k'), sqlc.narg('effective_top_k'),
-        sqlc.narg('filter_summary'), sqlc.narg('hits'), sqlc.narg('rerank_before'),
-        sqlc.narg('rerank_after'), sqlc.narg('duration_ms'), sqlc.arg('status'),
-        sqlc.arg('user_id'))
+        sqlc.narg('session_id'), sqlc.arg('source'), sqlc.narg('embedder'),
+        sqlc.narg('query_text'), sqlc.narg('requested_top_k'),
+        sqlc.narg('effective_top_k'), sqlc.narg('filter_summary'),
+        sqlc.narg('hits'), sqlc.narg('rerank_before'), sqlc.narg('rerank_after'),
+        sqlc.narg('duration_ms'), sqlc.arg('status'), sqlc.arg('user_id'))
 RETURNING *;
 
 -- 按会话/来源过滤分页查询检索留痕（时间倒序）；NULL 参数不过滤

@@ -32,17 +32,18 @@ func (q *Queries) CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRet
 const insertAgentRetrievalLog = `-- name: InsertAgentRetrievalLog :one
 
 INSERT INTO public.agent_retrieval_log (tenant_id, user_id, trace_id, session_id,
-                                        source, query_text, requested_top_k,
-                                        effective_top_k, filter_summary, hits,
-                                        rerank_before, rerank_after, duration_ms,
+                                        source, embedder, query_text,
+                                        requested_top_k, effective_top_k,
+                                        filter_summary, hits, rerank_before,
+                                        rerank_after, duration_ms,
                                         status, created_by)
 VALUES (current_setting('app.tenant_id'), $1, $2,
         $3, $4, $5,
         $6, $7,
-        $8, $9, $10,
-        $11, $12, $13,
-        $1)
-RETURNING id, tenant_id, user_id, trace_id, session_id, source, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at
+        $8, $9,
+        $10, $11, $12,
+        $13, $14, $1)
+RETURNING id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at
 `
 
 type InsertAgentRetrievalLogParams struct {
@@ -50,6 +51,7 @@ type InsertAgentRetrievalLogParams struct {
 	TraceID       *string `db:"trace_id" json:"trace_id"`
 	SessionID     *string `db:"session_id" json:"session_id"`
 	Source        string  `db:"source" json:"source"`
+	Embedder      *string `db:"embedder" json:"embedder"`
 	QueryText     *string `db:"query_text" json:"query_text"`
 	RequestedTopK *int32  `db:"requested_top_k" json:"requested_top_k"`
 	EffectiveTopK *int32  `db:"effective_top_k" json:"effective_top_k"`
@@ -75,6 +77,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 		arg.TraceID,
 		arg.SessionID,
 		arg.Source,
+		arg.Embedder,
 		arg.QueryText,
 		arg.RequestedTopK,
 		arg.EffectiveTopK,
@@ -93,6 +96,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 		&i.TraceID,
 		&i.SessionID,
 		&i.Source,
+		&i.Embedder,
 		&i.QueryText,
 		&i.RequestedTopK,
 		&i.EffectiveTopK,
@@ -109,7 +113,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 }
 
 const listAgentRetrievalLogs = `-- name: ListAgentRetrievalLogs :many
-SELECT id, tenant_id, user_id, trace_id, session_id, source, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at FROM public.agent_retrieval_log
+SELECT id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at FROM public.agent_retrieval_log
 WHERE tenant_id = current_setting('app.tenant_id', true)
   AND ($1::varchar IS NULL OR session_id = $1)
   AND ($2::varchar IS NULL OR source = $2)
@@ -146,6 +150,7 @@ func (q *Queries) ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetri
 			&i.TraceID,
 			&i.SessionID,
 			&i.Source,
+			&i.Embedder,
 			&i.QueryText,
 			&i.RequestedTopK,
 			&i.EffectiveTopK,

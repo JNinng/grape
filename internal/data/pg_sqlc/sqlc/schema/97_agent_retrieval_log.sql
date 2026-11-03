@@ -9,8 +9,8 @@
 -- bigserial 自增主键。
 --
 -- 留痕点：写入方是 data 层的 biz.VectorStore 留痕装饰器
--- （internal/data/pg_sqlc/retrieval_log.go，装配在向量仓储与框架适配器
--- 之间）——Search 记 query/top_k/命中/耗时（来源 tool），Add/Update/
+-- （internal/data/pg_sqlc/vector/retrieval_log.go，装配在向量仓储与框架适配器
+-- 之间）——Search 记 query/embedder/top_k/命中/耗时（来源 tool），Add/Update/
 -- DeleteByFilter 记摄取侧（来源 pipeline）。租户/用户/trace_id 从认证
 -- ctx 提取，写入经 IdentityTx（每事务 set_config）。检索内容（查询文本）
 -- 与过滤摘要在装饰器内经 pkg/redact 的 retrieval 类别脱敏并做长度兜底
@@ -35,9 +35,9 @@
 -- 本文件。
 -- ============================================================================
 -- Agent 检索留痕
---    向量检索与摄取写入的证据链（谁、哪个租户、traceId、查询文本、
---    top_k 请求值与生效值、过滤摘要、命中、耗时、来源、状态），供运维
---    复现视图按租户/会话/时间/来源查询，反查全部召回证据。
+--    向量检索与摄取写入的证据链（谁、哪个租户、traceId、嵌入空间、查询
+--    文本、top_k 请求值与生效值、过滤摘要、命中、耗时、来源、状态），供
+--    运维复现视图按租户/会话/时间/来源查询，反查全部召回证据。
 -- ============================================================================
 
 -- agent_retrieval_log — 检索留痕
@@ -49,6 +49,7 @@ CREATE TABLE public.agent_retrieval_log
     trace_id        varchar(64)                            NULL,
     session_id      varchar(255)                           NULL,
     source          varchar(16)                            NOT NULL,
+    embedder        varchar(128)                           NULL,
     query_text      text                                   NULL,
     requested_top_k int4                                   NULL,
     effective_top_k int4                                   NULL,
@@ -71,6 +72,7 @@ COMMENT ON COLUMN public.agent_retrieval_log.user_id IS '发起操作的用户 I
 COMMENT ON COLUMN public.agent_retrieval_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.session_id IS 'Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；摄取管线当前无会话事实，恒为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.source IS '检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）';
+COMMENT ON COLUMN public.agent_retrieval_log.embedder IS '嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，未知/未声明为 NULL（不伪造）';
 COMMENT ON COLUMN public.agent_retrieval_log.query_text IS '检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document';
 COMMENT ON COLUMN public.agent_retrieval_log.requested_top_k IS '请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/tools/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL';
 COMMENT ON COLUMN public.agent_retrieval_log.effective_top_k IS '实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL';

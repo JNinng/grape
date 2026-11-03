@@ -51,7 +51,20 @@ func (a *vectorStoreAdapter) requireStore() (biz.VectorStore, error) {
 	return a.store, nil
 }
 
-// Add 落库文档与向量：形状映射，身份与维度校验都在契约实现内。
+// requireEmbedderSpace 从 ctx 事实读取嵌入空间（键 + 维度成对，检索
+// 工具在调用现场经 biz.WithEmbedderSpace 注入）：框架的 document/
+// SearchQuery 类型不携带空间概念，本适配器是事实到契约的翻译点——
+// 缺失即拒绝（fail-closed），不猜测空间（跨空间混排会破坏相似度语义）。
+func requireEmbedderSpace(ctx context.Context) (string, int, error) {
+	embedder, dimension, ok := biz.EmbedderSpaceFromContext(ctx)
+	if !ok {
+		return "", 0, errors.New("agent: embedder space is required in context (inject with biz.WithEmbedderSpace)")
+	}
+	return embedder, dimension, nil
+}
+
+// Add 落库文档与向量：形状映射，身份、维度与空间声明校验都在契约实现
+// 内；嵌入空间取 ctx 事实（见 requireEmbedderSpace）。
 func (a *vectorStoreAdapter) Add(ctx context.Context, doc *document.Document, embedding []float64) error {
 	store, err := a.requireStore()
 	if err != nil {
@@ -63,8 +76,14 @@ func (a *vectorStoreAdapter) Add(ctx context.Context, doc *document.Document, em
 	if len(embedding) == 0 {
 		return errors.New("agent: embedding is required")
 	}
+	embedder, dimension, err := requireEmbedderSpace(ctx)
+	if err != nil {
+		return err
+	}
 	return store.Add(ctx, &biz.VectorDocument{
 		ID:        doc.ID,
+		Embedder:  embedder,
+		Dimension: dimension,
 		Name:      doc.Name,
 		Content:   doc.Content,
 		Embedding: toFloat32(embedding),
@@ -86,7 +105,8 @@ func (a *vectorStoreAdapter) Get(ctx context.Context, id string) (*document.Docu
 	return toFrameworkDocument(doc), toFloat64(doc.Embedding), nil
 }
 
-// Update 整体覆盖文档与向量，映射语义与契约一致。
+// Update 整体覆盖文档与向量，映射语义与契约一致；嵌入空间取 ctx 事实
+// （空间变更即显式重嵌入）。
 func (a *vectorStoreAdapter) Update(ctx context.Context, doc *document.Document, embedding []float64) error {
 	store, err := a.requireStore()
 	if err != nil {
@@ -98,8 +118,14 @@ func (a *vectorStoreAdapter) Update(ctx context.Context, doc *document.Document,
 	if len(embedding) == 0 {
 		return errors.New("agent: embedding is required")
 	}
+	embedder, dimension, err := requireEmbedderSpace(ctx)
+	if err != nil {
+		return err
+	}
 	return store.Update(ctx, &biz.VectorDocument{
 		ID:        doc.ID,
+		Embedder:  embedder,
+		Dimension: dimension,
 		Name:      doc.Name,
 		Content:   doc.Content,
 		Embedding: toFloat32(embedding),
@@ -138,13 +164,18 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 	if len(query.Vector) == 0 {
 		return nil, errors.New("agent: query vector is required")
 	}
-	// top_k 上限在适配器强制：超限请求钳到 maxSearchTopK，
-	// 不报错也不放行——工具层与未来其他框架侧消费方都无法绕过该上限。
+	// 嵌入空间取 ctx 事实（检索工具在 embed 现场注入），缺失拒绝；
+	// top_k 上限在适配器强制：超限请求钳到 maxSearchTopK，不报错也不
+	// 放行——工具层与未来其他框架侧消费方都无法绕过该上限。
+	embedder, dimension, err := requireEmbedderSpace(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := query.Limit
 	if limit > maxSearchTopK {
 		limit = maxSearchTopK
 	}
-	filter := &biz.VectorFilter{Limit: limit, MinScore: query.MinScore}
+	filter := &biz.VectorFilter{Embedder: embedder, Dimension: dimension, Limit: limit, MinScore: query.MinScore}
 	if query.Filter != nil {
 		filter.IDs = query.Filter.IDs
 		filter.Metadata = query.Filter.Metadata
@@ -237,13 +268,22 @@ func (a *vectorStoreAdapter) GetMetadata(ctx context.Context, opts ...vectorstor
 func (a *vectorStoreAdapter) Close() error { return nil }
 
 // toFrameworkDocument 领域文档 → 框架文档（EmbeddingText 不参与存储，
-// 摄取时已物化为向量）。
+// 摄取时已物化为向量）。嵌入空间身份复制进 metadata 副本：命中结果可
+// 观测所属空间（列是本体，metadata 是只读冗余，不回写调用方原 map）。
 func toFrameworkDocument(doc *biz.VectorDocument) *document.Document {
+	metadata := make(map[string]any, len(doc.Metadata)+1)
+	for k, v := range doc.Metadata {
+		metadata[k] = v
+	}
+	if doc.Embedder != "" {
+		metadata["embedder"] = doc.Embedder
+		metadata["embed_dim"] = doc.Dimension
+	}
 	return &document.Document{
 		ID:        doc.ID,
 		Name:      doc.Name,
 		Content:   doc.Content,
-		Metadata:  doc.Metadata,
+		Metadata:  metadata,
 		CreatedAt: doc.CreatedAt,
 		UpdatedAt: doc.UpdatedAt,
 	}

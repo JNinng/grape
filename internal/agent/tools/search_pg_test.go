@@ -39,8 +39,11 @@ var searchSuite = testsupport.SuiteDatabase{
 	SkipMessage:    "GRAPE_SEARCH_TEST_ADMIN_DSN not set, skip document search integration tests",
 }
 
-// searchDimension 与部署 DDL 的 embedding 列维度一致（vector(1024)）。
+// searchDimension 与部署 DDL 的表达式部分索引维度一致（1024）。
 const searchDimension = 1024
+
+// searchSpace 是检索套件的嵌入空间键（替身解析器固定产出）。
+const searchSpace = "bge-m3@v1"
 
 // d2 租户身份：tenant_id 列宽 varchar(16)，取值保持在列宽内。
 var (
@@ -55,7 +58,7 @@ type keywordEmbedder struct {
 	calls []string
 }
 
-func (k *keywordEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+func (k *keywordEmbedder) Embed(_ context.Context, _ string, text string) ([]float32, error) {
 	k.calls = append(k.calls, text)
 	index := 3
 	switch {
@@ -71,13 +74,21 @@ func (k *keywordEmbedder) Embed(_ context.Context, text string) ([]float32, erro
 	return vec, nil
 }
 
-func (k *keywordEmbedder) Dimensions() int { return k.dims }
+func (k *keywordEmbedder) Dimension(_ string) (int, error) { return k.dims, nil }
+
+// keywordSpaceResolver 是检索套件的替身默认空间解析器：固定产出
+// searchSpace（生产由 pg_sqlc 的 EmbedderResolver 读租户配置）。
+type keywordSpaceResolver struct{}
+
+func (keywordSpaceResolver) ResolveDefaultEmbedder(context.Context) (string, int, error) {
+	return searchSpace, searchDimension, nil
+}
 
 func searchIdentityContext(id biz.Identity) context.Context {
 	return biz.WithIdentity(context.Background(), id)
 }
 
-// searchFixture 装配生产路径的检索面：真实向量存储（含启动维度探针）→
+// searchFixture 装配生产路径的检索面：真实向量存储（含启动空间探针）→
 // 框架适配器 → 检索工具，外加同一替身 embedder 驱动的摄取管线与库句柄
 // （RLS 场景断言直查 pg_catalog 用）。
 type searchFixture struct {
@@ -95,15 +106,18 @@ func searchNewFixture(t *testing.T) *searchFixture {
 	t.Helper()
 	data, grapeUDSN := searchSetupDatabase(t)
 	store, cleanup, err := pgvector.NewVectorStore(&conf.Vector{
-		Enabled:   true,
-		Dimension: searchDimension,
+		Enabled:         true,
+		DefaultEmbedder: searchSpace,
+		Embedders: []*conf.Vector_Embedding{
+			{Model: "bge-m3", Version: "v1", Dimension: searchDimension},
+		},
 	}, data)
 	if err != nil {
 		t.Fatalf("NewVectorStore = %v, want probe pass", err)
 	}
 	t.Cleanup(cleanup)
 	embedder := &keywordEmbedder{dims: searchDimension}
-	pipeline, err := biz.NewDocumentUsecase(store, embedder, searchDimension)
+	pipeline, err := biz.NewDocumentUsecase(store, embedder, keywordSpaceResolver{})
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -112,7 +126,7 @@ func searchNewFixture(t *testing.T) *searchFixture {
 		grapeUDSN: grapeUDSN,
 		store:     store,
 		pipeline:  pipeline,
-		tool: NewSearchTool(embedder, NewVectorStoreAdapter(store)).(interface {
+		tool: NewSearchTool(embedder, keywordSpaceResolver{}, NewVectorStoreAdapter(store)).(interface {
 			Call(ctx context.Context, jsonArgs []byte) (any, error)
 		}),
 		embedder: embedder,
@@ -202,6 +216,9 @@ func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testi
 	if doc.Content != "alpha refund policy applies to all annual plans without exceptions." {
 		t.Fatalf("stored chunk content = %q, want original", doc.Content)
 	}
+	if doc.Embedder != searchSpace || doc.Dimension != searchDimension {
+		t.Fatalf("stored chunk space = %s/%d, want %s/%d", doc.Embedder, doc.Dimension, searchSpace, searchDimension)
+	}
 	if doc.Metadata["source_id"] != "kb-alpha-1" {
 		t.Fatalf("stored metadata source_id = %v, want kb-alpha-1", doc.Metadata["source_id"])
 	}
@@ -242,12 +259,13 @@ func TestPGDocumentSearch_cross_tenant_not_recallable_while_rls_disabled(t *test
 	if out.Count != 0 || len(out.Hits) != 0 {
 		t.Fatalf("cross-tenant tool hits = %+v, want none", out.Hits)
 	}
-	// biz 路径：租户 B 以同一查询向量直检契约，同样 0 命中。
-	vec, err := f.embedder.Embed(context.Background(), "alpha")
+	// biz 路径：租户 B 以同一查询向量直检契约（声明同一检索空间），同样
+	// 0 命中。
+	vec, err := f.embedder.Embed(context.Background(), searchSpace, "alpha")
 	if err != nil {
 		t.Fatalf("embed query: %v", err)
 	}
-	hits, err := f.store.Search(ctxB, vec, &biz.VectorFilter{Limit: 10})
+	hits, err := f.store.Search(ctxB, vec, &biz.VectorFilter{Embedder: searchSpace, Dimension: searchDimension, Limit: 10})
 	if err != nil {
 		t.Fatalf("biz search as tenant b: %v", err)
 	}
@@ -264,7 +282,7 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 	f := searchNewFixture(t)
 	ctx := searchIdentityContext(searchTenantA)
 	// 小块切分制造多块场景（默认切块下单文档单块）。
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, searchDimension, biz.WithChunking(4, 1))
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
@@ -295,20 +313,30 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 	}
 }
 
-func TestPGDocumentSearch_dimension_mismatch_rejects_at_assembly(t *testing.T) {
+func TestPGDocumentSearch_dimension_drift_rejects_at_ingest(t *testing.T) {
 	f := searchNewFixture(t)
-	// 替身 embedder 声明维度与 conf（部署列）不一致：装配期失败（启动
-	// 即失败，与 conf vs DDL 探针共同封住维度链路两端）。
-	_, err := biz.NewDocumentUsecase(f.store, &keywordEmbedder{dims: 8}, searchDimension)
-	if err == nil || !strings.Contains(err.Error(), "dimension") {
-		t.Fatalf("NewDocumentUsecase(dimension mismatch) = %v, want rejection", err)
+	ctx := searchIdentityContext(searchTenantA)
+	// 替身 embedder 产出维度与解析器声明不一致：写路径逐次对账在调用点
+	// 显式拒绝，存量数据不破坏（与存储注册表对账共同封住维度链路）。
+	drifted := &keywordEmbedder{dims: 8}
+	pipeline, err := biz.NewDocumentUsecase(f.store, drifted, keywordSpaceResolver{})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := pipeline.Ingest(ctx, &biz.Document{ID: "kb-drift", Content: "alpha content"}); err == nil ||
+		!strings.Contains(err.Error(), "dimension") {
+		t.Fatalf("Ingest with drifting embedder = %v, want dimension error", err)
+	}
+	total, err := f.store.Count(ctx, &biz.VectorFilter{IDs: []string{"kb-drift#0"}})
+	if err != nil || total != 0 {
+		t.Fatalf("count after drift rejection = (%d, %v), want (0, nil) — store untouched", total, err)
 	}
 }
 
 func TestPGDocumentSearch_oversized_top_k_bounded_by_adapter_cap(t *testing.T) {
 	f := searchNewFixture(t)
 	ctx := searchIdentityContext(searchTenantA)
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, searchDimension, biz.WithChunking(4, 1))
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}

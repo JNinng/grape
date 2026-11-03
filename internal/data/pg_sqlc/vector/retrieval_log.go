@@ -162,8 +162,9 @@ func (s *loggedVectorStore) GetMetadata(ctx context.Context, filter *biz.VectorF
 }
 
 // buildRecord 组装留痕行公共部分：身份/租户不进行（仓储从认证 ctx 提取
-// 经 IdentityTx 注入），trace_id / session_id 取 ctx 事实，查询文本与
-// top_k 由检索路径的调用方补充。status 按操作成败取终态。
+// 经 IdentityTx 注入），trace_id / session_id 取 ctx 事实，嵌入空间取
+// 过滤声明，查询文本与 top_k 由检索路径的调用方补充。status 按操作成败
+// 取终态。
 func (s *loggedVectorStore) buildRecord(ctx context.Context, source string, filter *biz.VectorFilter, hits []biz.RetrievalHit, opErr error, elapsed time.Duration) *biz.RetrievalLogRecord {
 	rec := &biz.RetrievalLogRecord{
 		TraceID:    biz.TraceIDFromContext(ctx),
@@ -176,6 +177,9 @@ func (s *loggedVectorStore) buildRecord(ctx context.Context, source string, filt
 	if opErr != nil {
 		rec.Status = biz.RetrievalStatusError
 	}
+	if filter != nil {
+		rec.Embedder = filter.Embedder
+	}
 	if summary := s.redactFilterSummary(retrievalFilterSummary(filter)); summary != nil {
 		rec.FilterSummary = summary
 	}
@@ -183,7 +187,7 @@ func (s *loggedVectorStore) buildRecord(ctx context.Context, source string, filt
 }
 
 // buildIngestRecord 组装摄取侧行：作用文档进 hits 列（单元素，锚点取
-// 切片元数据），无查询文本与 top_k 语义。
+// 切片元数据），嵌入空间取文档归属，无查询文本与 top_k 语义。
 func (s *loggedVectorStore) buildIngestRecord(ctx context.Context, doc *biz.VectorDocument, opErr error, elapsed time.Duration) *biz.RetrievalLogRecord {
 	rec := &biz.RetrievalLogRecord{
 		TraceID:    biz.TraceIDFromContext(ctx),
@@ -196,6 +200,7 @@ func (s *loggedVectorStore) buildIngestRecord(ctx context.Context, doc *biz.Vect
 		rec.Status = biz.RetrievalStatusError
 	}
 	if doc != nil {
+		rec.Embedder = doc.Embedder
 		rec.Hits = []biz.RetrievalHit{{
 			DocumentID: doc.ID,
 			Anchor:     metadataString(doc.Metadata, "anchor"),

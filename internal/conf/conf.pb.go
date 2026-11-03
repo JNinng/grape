@@ -220,22 +220,24 @@ func (x *Telemetry) GetServiceVersion() string {
 	return ""
 }
 
-// Vector 是向量检索设施（pgvector）的配置：表结构与维度由部署 DDL
-// （sqlc/agent_vector.sql）定，本段必须与之保持一致，装配期探针校验
-// 不一致即拒绝启动。由 internal/data/pg_sqlc 的向量仓储构造函数消费。
+// Vector 是向量检索设施（pgvector）的配置：表结构与每维度索引由部署
+// DDL（sqlc/agent_vector.sql）定，本段必须与之保持一致，装配期探针
+// 校验不一致即拒绝启动。由 internal/data/pg_sqlc 的向量仓储与
+// internal/data/openaiembedder 共同消费。
 type Vector struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 是否启用向量存储设施。启用前须先完成 agent_vector.sql 部署；
 	// 未启用时向量仓储按设施缺失拒绝所有调用，不触库。
 	Enabled bool `protobuf:"varint,1,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	// embedding 维度，必须与 DDL 列类型 vector(维度) 一致（默认部署为
-	// 1024），同时必须与 embedding 模型的产出维度一致（embedding 段）；
-	// 两处不一致分别在装配期失败。启用时必填。
-	Dimension int32 `protobuf:"varint,2,opt,name=dimension,proto3" json:"dimension,omitempty"`
 	// 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
 	// 留空取默认 agent_document。
-	TableName     string            `protobuf:"bytes,3,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
-	Embedding     *Vector_Embedding `protobuf:"bytes,4,opt,name=embedding,proto3" json:"embedding,omitempty"`
+	TableName string `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
+	// 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 vector.embedder
+	// 键）时的兜底。必须引用 embedders 中已声明的键，装配期校验，未知键
+	// 拒绝启动。启用时必填。
+	DefaultEmbedder string `protobuf:"bytes,3,opt,name=default_embedder,json=defaultEmbedder,proto3" json:"default_embedder,omitempty"`
+	// 嵌入空间清单（≥1 条）：键重复在装配期拒绝。
+	Embedders     []*Vector_Embedding `protobuf:"bytes,4,rep,name=embedders,proto3" json:"embedders,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -277,13 +279,6 @@ func (x *Vector) GetEnabled() bool {
 	return false
 }
 
-func (x *Vector) GetDimension() int32 {
-	if x != nil {
-		return x.Dimension
-	}
-	return 0
-}
-
 func (x *Vector) GetTableName() string {
 	if x != nil {
 		return x.TableName
@@ -291,9 +286,16 @@ func (x *Vector) GetTableName() string {
 	return ""
 }
 
-func (x *Vector) GetEmbedding() *Vector_Embedding {
+func (x *Vector) GetDefaultEmbedder() string {
 	if x != nil {
-		return x.Embedding
+		return x.DefaultEmbedder
+	}
+	return ""
+}
+
+func (x *Vector) GetEmbedders() []*Vector_Embedding {
+	if x != nil {
+		return x.Embedders
 	}
 	return nil
 }
@@ -628,8 +630,10 @@ func (x *Log) GetCompress() bool {
 	return false
 }
 
-// Embedding 是 embedding 服务的配置（OpenAI 兼容 embeddings 端点，
-// 与 LLM provider 同口径），由 internal/data/openaiembedder 消费。
+// Embedding 是一个嵌入空间的配置（OpenAI 兼容 embeddings 端点，与
+// LLM provider 同口径）。空间键 = model（version 留空）或
+// model@version，即落库 embedder 列与检索过滤用的身份；多空间可并存
+// 以支撑多模型与版本迭代（换版本即新空间，存量经重摄取迁移）。
 type Vector_Embedding struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空或
@@ -640,11 +644,20 @@ type Vector_Embedding struct {
 	BaseUrl string `protobuf:"bytes,2,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	// API key，经 ${ENV:...} 占位注入，不落默认配置。
 	ApiKey string `protobuf:"bytes,3,opt,name=api_key,json=apiKey,proto3" json:"api_key,omitempty"`
-	// embedding 模型名。启用时必填；模型产出维度必须与上层 dimension
-	// 一致，运行期每次响应按 dimension 校验，漂移即报错。
+	// embedding 模型名（空间身份的组成部分）。启用时必填；模型产出
+	// 维度必须与本条 dimension 一致，运行期每次响应按 dimension 校验，
+	// 漂移即报错。
 	Model string `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	// 版本后缀（可空）：迭代标识（如 v1、v2），非空时空间键为
+	// model@version。同一模型换维度/换端点必须换版本号开新空间，
+	// 禁止在原键下变更语义。
+	Version string `protobuf:"bytes,5,opt,name=version,proto3" json:"version,omitempty"`
+	// 该模型产出向量的维度。必须与 DDL 的表达式部分 HNSW 索引维度
+	// （agent_vector.sql 内 vector(N) cast 与 embed_dim 谓词）一致，
+	// 装配期探针逐维度校验；同时落库 embed_dim 列。启用时必填。
+	Dimension int32 `protobuf:"varint,6,opt,name=dimension,proto3" json:"dimension,omitempty"`
 	// 单次 embedding 调用超时；未设置取 30s。
-	Timeout       *durationpb.Duration `protobuf:"bytes,5,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	Timeout       *durationpb.Duration `protobuf:"bytes,7,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -705,6 +718,20 @@ func (x *Vector_Embedding) GetModel() string {
 		return x.Model
 	}
 	return ""
+}
+
+func (x *Vector_Embedding) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *Vector_Embedding) GetDimension() int32 {
+	if x != nil {
+		return x.Dimension
+	}
+	return 0
 }
 
 func (x *Vector_Embedding) GetTimeout() *durationpb.Duration {
@@ -1800,19 +1827,21 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\binsecure\x18\x03 \x01(\bR\binsecure\x12#\n" +
 	"\rsampler_ratio\x18\x04 \x01(\x01R\fsamplerRatio\x12!\n" +
 	"\fservice_name\x18\x05 \x01(\tR\vserviceName\x12'\n" +
-	"\x0fservice_version\x18\x06 \x01(\tR\x0eserviceVersion\"\xc4\x02\n" +
+	"\x0fservice_version\x18\x06 \x01(\tR\x0eserviceVersion\"\x89\x03\n" +
 	"\x06Vector\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1c\n" +
-	"\tdimension\x18\x02 \x01(\x05R\tdimension\x12\x1d\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1d\n" +
 	"\n" +
-	"table_name\x18\x03 \x01(\tR\ttableName\x12:\n" +
-	"\tembedding\x18\x04 \x01(\v2\x1c.kratos.api.Vector.EmbeddingR\tembedding\x1a\xa6\x01\n" +
+	"table_name\x18\x02 \x01(\tR\ttableName\x12)\n" +
+	"\x10default_embedder\x18\x03 \x01(\tR\x0fdefaultEmbedder\x12:\n" +
+	"\tembedders\x18\x04 \x03(\v2\x1c.kratos.api.Vector.EmbeddingR\tembedders\x1a\xde\x01\n" +
 	"\tEmbedding\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x19\n" +
 	"\bbase_url\x18\x02 \x01(\tR\abaseUrl\x12\x17\n" +
 	"\aapi_key\x18\x03 \x01(\tR\x06apiKey\x12\x14\n" +
-	"\x05model\x18\x04 \x01(\tR\x05model\x123\n" +
-	"\atimeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xd9\x0f\n" +
+	"\x05model\x18\x04 \x01(\tR\x05model\x12\x18\n" +
+	"\aversion\x18\x05 \x01(\tR\aversion\x12\x1c\n" +
+	"\tdimension\x18\x06 \x01(\x05R\tdimension\x123\n" +
+	"\atimeout\x18\a \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xd9\x0f\n" +
 	"\x05Agent\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12'\n" +
 	"\x03llm\x18\x02 \x01(\v2\x15.kratos.api.Agent.LLMR\x03llm\x12*\n" +
@@ -1957,7 +1986,7 @@ var file_conf_conf_proto_depIdxs = []int32{
 	2,  // 4: kratos.api.Bootstrap.vector:type_name -> kratos.api.Vector
 	1,  // 5: kratos.api.Bootstrap.telemetry:type_name -> kratos.api.Telemetry
 	7,  // 6: kratos.api.Bootstrap.log:type_name -> kratos.api.Log
-	8,  // 7: kratos.api.Vector.embedding:type_name -> kratos.api.Vector.Embedding
+	8,  // 7: kratos.api.Vector.embedders:type_name -> kratos.api.Vector.Embedding
 	9,  // 8: kratos.api.Agent.llm:type_name -> kratos.api.Agent.LLM
 	10, // 9: kratos.api.Agent.agui:type_name -> kratos.api.Agent.AGUI
 	11, // 10: kratos.api.Agent.session_storage:type_name -> kratos.api.Agent.SessionStorage

@@ -127,11 +127,10 @@ func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 }
 
 // newLoggedVectorStoreForTest 构造装饰器与留痕仓储：真实 pgvector 仓储
-// （维度与部署列对齐）为内层，registry 与生产装配同默认值。
+// （空间声明与部署索引对齐）为内层，registry 与生产装配同默认值。
 func newLoggedVectorStoreForTest(t *testing.T, d *pgsqlc.Data, logs biz.RetrievalLogRepo) biz.VectorStore {
 	t.Helper()
-	c := &conf.Vector{Enabled: true, Dimension: vectorDimension, TableName: "agent_document"}
-	store, cleanup, err := NewVectorStore(c, d)
+	store, cleanup, err := NewVectorStore(vectorStoreConf(), d)
 	if err != nil {
 		t.Fatalf("build vector store: %v", err)
 	}
@@ -203,10 +202,10 @@ func seedVectorDocs(t *testing.T, store biz.VectorStore, id biz.Identity) []floa
 	t.Helper()
 	ctx := retrievalIdentityContext(id, false)
 	docs := []*biz.VectorDocument{
-		{ID: "doc-a", Content: "grape vector alpha", Embedding: unitVector(int(vectorDimension), 0),
-			Metadata: map[string]any{"source_id": "doc", "anchor": "runes 0-16"}},
-		{ID: "doc-b", Content: "grape vector beta", Embedding: unitVector(int(vectorDimension), 1),
-			Metadata: map[string]any{"source_id": "doc", "anchor": "runes 0-16"}},
+		spaceDoc(&biz.VectorDocument{ID: "doc-a", Content: "grape vector alpha", Embedding: unitVector(int(vectorDimension), 0),
+			Metadata: map[string]any{"source_id": "doc", "anchor": "runes 0-16"}}),
+		spaceDoc(&biz.VectorDocument{ID: "doc-b", Content: "grape vector beta", Embedding: unitVector(int(vectorDimension), 1),
+			Metadata: map[string]any{"source_id": "doc", "anchor": "runes 0-16"}}),
 	}
 	for _, doc := range docs {
 		if err := store.Add(ctx, doc); err != nil {
@@ -214,6 +213,11 @@ func seedVectorDocs(t *testing.T, store biz.VectorStore, id biz.Identity) []floa
 		}
 	}
 	return unitVector(int(vectorDimension), 0)
+}
+
+// retrievalSpaceFilter 是指向测试空间的检索过滤（Search 必填项）。
+func retrievalSpaceFilter() *biz.VectorFilter {
+	return &biz.VectorFilter{Embedder: vectorTestSpace, Dimension: int(vectorDimension), Limit: 2}
 }
 
 func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *testing.T) {
@@ -224,8 +228,7 @@ func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *test
 
 	uc := biz.NewRetrievalLogUsecase(logRepo)
 	ctx := retrievalSearchContext(retrievalTenantA, "grape 检索")
-	filter := &biz.VectorFilter{Limit: 2}
-	hits, err := store.Search(ctx, queryVector, filter)
+	hits, err := store.Search(ctx, queryVector, retrievalSpaceFilter())
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("search = (%d hits, %v), want 2", len(hits), err)
 	}
@@ -242,6 +245,8 @@ func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *test
 		t.Fatalf("row owner = (%s, %d), want from authenticated identity", row.TenantID, row.UserID)
 	case row.TraceID == "" || row.SessionID != "sess-d3-run":
 		t.Fatalf("row facts = (trace %q, session %q), want trace id and session id recorded", row.TraceID, row.SessionID)
+	case row.Embedder != vectorTestSpace:
+		t.Fatalf("row embedder = %q, want %s (search space recorded)", row.Embedder, vectorTestSpace)
 	case row.QueryText != "grape 检索":
 		t.Fatalf("query text = %q, want original (standard registry keeps short text)", row.QueryText)
 	case row.RequestedTopK != 2 || row.EffectiveTopK != 2:
@@ -291,7 +296,7 @@ func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 
 	// 租户 B 检索本租户文档（自身留痕成功）后查询：跨租户行不可见，
 	// 只见自己的行。
-	store.Search(retrievalSearchContext(retrievalTenantB, "b query"), unitVector(int(vectorDimension), 2), nil)
+	store.Search(retrievalSearchContext(retrievalTenantB, "b query"), unitVector(int(vectorDimension), 2), retrievalSpaceFilter())
 	uc := biz.NewRetrievalLogUsecase(logRepo)
 	foreign, err := uc.List(retrievalIdentityContext(retrievalTenantB, false), nil)
 	if err != nil || foreign.Total != 1 {
@@ -352,7 +357,7 @@ func TestRetrievalLog_write_failure_does_not_break_search(t *testing.T) {
 	store := newLoggedVectorStoreForTest(t, d, failingRetrievalRepo{})
 	queryVector := seedVectorDocs(t, store, retrievalTenantA)
 
-	hits, err := store.Search(retrievalSearchContext(retrievalTenantA, "grape 检索"), queryVector, &biz.VectorFilter{Limit: 2})
+	hits, err := store.Search(retrievalSearchContext(retrievalTenantA, "grape 检索"), queryVector, retrievalSpaceFilter())
 	if err != nil || len(hits) != 2 {
 		t.Fatalf("search with failing log repo = (%d hits, %v), must succeed", len(hits), err)
 	}
@@ -361,21 +366,29 @@ func TestRetrievalLog_write_failure_does_not_break_search(t *testing.T) {
 	}
 }
 
-// pipelineEmbedder 是摄取管线的替身 embedder：维度与部署列一致，向量
+// pipelineEmbedder 是摄取管线的替身 embedder：维度与部署索引一致，向量
 // 由文本长度决定维度位（确定性，内容与留痕断言无关）。
 type pipelineEmbedder struct{}
 
-func (pipelineEmbedder) Dimensions() int { return int(vectorDimension) }
+func (pipelineEmbedder) Dimension(string) (int, error) { return int(vectorDimension), nil }
 
-func (pipelineEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+func (pipelineEmbedder) Embed(_ context.Context, _ string, text string) ([]float32, error) {
 	return unitVector(int(vectorDimension), len(text)%int(vectorDimension)), nil
+}
+
+// fixedSpaceResolver 是摄取管线的替身默认空间解析器：固定解析测试空间
+// （生产由 pg_sqlc 的 EmbedderResolver 读租户配置）。
+type fixedSpaceResolver struct{}
+
+func (fixedSpaceResolver) ResolveDefaultEmbedder(context.Context) (string, int, error) {
+	return vectorTestSpace, int(vectorDimension), nil
 }
 
 func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
-	ucase, err := biz.NewDocumentUsecase(store, pipelineEmbedder{}, int(vectorDimension), biz.WithChunking(8, 2))
+	ucase, err := biz.NewDocumentUsecase(store, pipelineEmbedder{}, fixedSpaceResolver{}, biz.WithChunking(8, 2))
 	if err != nil {
 		t.Fatalf("build document usecase: %v", err)
 	}
@@ -427,6 +440,9 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 		}
 		if row.QueryText != "" || row.RequestedTopK != 0 || row.EffectiveTopK != 0 {
 			t.Fatalf("add row %d = (%q, %d, %d), want ingest-side nulls", i, row.QueryText, row.RequestedTopK, row.EffectiveTopK)
+		}
+		if row.Embedder != vectorTestSpace {
+			t.Fatalf("add row %d embedder = %q, want %s (ingested space recorded)", i, row.Embedder, vectorTestSpace)
 		}
 	}
 

@@ -69,10 +69,12 @@ type searchDocsOutput struct {
 // 工具走 ack 默认 allow，与首批只读工具同规）。向量访问只经框架适配
 // 器（NewVectorStoreAdapter 产出、随根包骨架注入的 vectorstore.VectorStore）：
 // 租户过滤由契约实现从认证 ctx 强制，top_k 上限由适配器钳制，本工具
-// 不感知也不得绕过。embedder 供查询向量化；向量设施未启用时两者均为
-// 禁用占位实现，调用按设施缺失报错而非系统故障。
-func NewSearchTool(embedder biz.Embedder, vectors vectorstore.VectorStore) tool.Tool {
-	return function.NewFunctionTool(searchInternalDocs(embedder, vectors),
+// 不感知也不得绕过。embedder 供查询向量化，resolver 解析默认嵌入空间
+// （租户配置 > 全局兜底，见 biz.EmbedderResolver）——检索固定落在解析
+// 出的空间内，跨空间混排不存在；向量设施未启用时两者均为禁用占位
+// 实现，调用按设施缺失报错而非系统故障。
+func NewSearchTool(embedder biz.Embedder, resolver biz.EmbedderResolver, vectors vectorstore.VectorStore) tool.Tool {
+	return function.NewFunctionTool(searchInternalDocs(embedder, resolver, vectors),
 		function.WithName(SearchToolName),
 		function.WithDescription("Search the caller's internal knowledge base (read-only, "+
 			"tenant-isolated). Parameters: query (required, 1-512 chars), top_k (optional, "+
@@ -82,11 +84,12 @@ func NewSearchTool(embedder biz.Embedder, vectors vectorstore.VectorStore) tool.
 	)
 }
 
-// searchInternalDocs 返回检索工具处理函数：查询文本 → embedder 向量化 →
-// 框架适配器向量检索（SearchModeVector，keyword/hybrid 管线仍不支持）→
-// 围栏包装出参。执行身份取认证 ctx（live 运行 ctx 与恢复路径决定 ctx
-// 都经认证中间件注入），缺失 fail-closed。
-func searchInternalDocs(embedder biz.Embedder, vectors vectorstore.VectorStore) func(context.Context, searchDocsInput) (searchDocsOutput, error) {
+// searchInternalDocs 返回检索工具处理函数：查询文本 → 解析默认嵌入空间
+// → embedder 按空间向量化 → 空间事实入 ctx → 框架适配器向量检索
+// （SearchModeVector，keyword/hybrid 管线仍不支持；适配器从 ctx 取空间
+// 填充契约过滤）→ 围栏包装出参。执行身份取认证 ctx（live 运行 ctx 与
+// 恢复路径决定 ctx 都经认证中间件注入），缺失 fail-closed。
+func searchInternalDocs(embedder biz.Embedder, resolver biz.EmbedderResolver, vectors vectorstore.VectorStore) func(context.Context, searchDocsInput) (searchDocsOutput, error) {
 	return func(ctx context.Context, in searchDocsInput) (searchDocsOutput, error) {
 		if _, err := identityOf(ctx); err != nil {
 			return searchDocsOutput{}, err
@@ -105,15 +108,20 @@ func searchInternalDocs(embedder biz.Embedder, vectors vectorstore.VectorStore) 
 		if topK < 0 {
 			return searchDocsOutput{}, fmt.Errorf("top_k must be positive")
 		}
-		queryVector, err := embedder.Embed(ctx, query)
+		space, dimension, err := resolver.ResolveDefaultEmbedder(ctx)
+		if err != nil {
+			return searchDocsOutput{}, fmt.Errorf("resolve default embedder: %w", err)
+		}
+		queryVector, err := embedder.Embed(ctx, space, query)
 		if err != nil {
 			return searchDocsOutput{}, fmt.Errorf("embed query: %w", err)
 		}
-		// 留痕挂点：会话 ID（框架执行 ctx 携带）与查询文本放进 biz
-		// 中性载体，供 data 层留痕装饰器写 agent_retrieval_log——biz/data
-		// 不导入框架包，事实必须由能读到它们的本层放入 ctx（见
-		// retrieval_context.go）。
+		// 留痕挂点：会话 ID（框架执行 ctx 携带）、查询文本与嵌入空间
+		// 事实放进 biz 中性载体，供 data 层留痕装饰器与契约适配器消费
+		// ——biz/data 不导入框架包，事实必须由能读到它们的本层放入 ctx
+		// （见 retrieval_context.go）。
 		ctx = withRetrievalLogFacts(ctx, query)
+		ctx = biz.WithEmbedderSpace(ctx, space, dimension)
 		result, err := vectors.Search(ctx, &vectorstore.SearchQuery{
 			SearchMode: vectorstore.SearchModeVector,
 			Vector:     toFloat64(queryVector),

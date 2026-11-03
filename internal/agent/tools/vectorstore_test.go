@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"grape/internal/agent/internal/testsupport"
 	"grape/internal/biz"
 
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
@@ -84,10 +85,16 @@ func (f *fakeVectorStore) GetMetadata(_ context.Context, filter *biz.VectorFilte
 	return f.metadata, nil
 }
 
+// spaceCtx 是适配器单测的固定空间 ctx：检索工具在生产路径经
+// biz.WithEmbedderSpace 注入的事实形状。
+func spaceCtx(ctx context.Context) context.Context {
+	return biz.WithEmbedderSpace(ctx, testsupport.SearchTestSpace, 4)
+}
+
 func TestVectorStoreAdapter_add_maps_document_and_embedding(t *testing.T) {
 	fake := &fakeVectorStore{}
 	adapter := NewVectorStoreAdapter(fake)
-	err := adapter.Add(context.Background(), &document.Document{
+	err := adapter.Add(spaceCtx(context.Background()), &document.Document{
 		ID:      "doc-1",
 		Name:    "policy",
 		Content: "text",
@@ -101,6 +108,10 @@ func TestVectorStoreAdapter_add_maps_document_and_embedding(t *testing.T) {
 	if fake.addDoc == nil || fake.addDoc.ID != "doc-1" || fake.addDoc.Name != "policy" || fake.addDoc.Content != "text" {
 		t.Fatalf("document not mapped: %+v", fake.addDoc)
 	}
+	// 嵌入空间事实随 ctx 进入契约：身份与维度成对落到文档。
+	if fake.addDoc.Embedder != testsupport.SearchTestSpace || fake.addDoc.Dimension != 4 {
+		t.Fatalf("space not mapped: %s/%d, want %s/4", fake.addDoc.Embedder, fake.addDoc.Dimension, testsupport.SearchTestSpace)
+	}
 	if got := fake.addDoc.Embedding; len(got) != 2 || got[0] != 1.5 || got[1] != -2.25 {
 		t.Fatalf("embedding = %v, want float32 conversion of [1.5 -2.25]", got)
 	}
@@ -108,11 +119,32 @@ func TestVectorStoreAdapter_add_maps_document_and_embedding(t *testing.T) {
 		t.Fatalf("metadata not mapped: %+v", fake.addDoc.Metadata)
 	}
 
-	if err := adapter.Add(context.Background(), nil, []float64{1}); err == nil {
+	if err := adapter.Add(spaceCtx(context.Background()), nil, []float64{1}); err == nil {
 		t.Fatal("Add(nil document) = nil error, want rejection")
 	}
-	if err := adapter.Add(context.Background(), &document.Document{ID: "doc-1"}, nil); err == nil {
+	if err := adapter.Add(spaceCtx(context.Background()), &document.Document{ID: "doc-1"}, nil); err == nil {
 		t.Fatal("Add(empty embedding) = nil error, want rejection")
+	}
+}
+
+func TestVectorStoreAdapter_add_without_space_fails_closed(t *testing.T) {
+	// ctx 无空间事实（工具层未注入/直连适配器）：拒绝而非猜测空间
+	// （跨空间混排破坏相似度语义）。
+	fake := &fakeVectorStore{}
+	adapter := NewVectorStoreAdapter(fake)
+	if err := adapter.Add(context.Background(), &document.Document{ID: "doc-1"}, []float64{1}); err == nil {
+		t.Fatal("Add without space ctx = nil error, want fail-closed rejection")
+	}
+	if err := adapter.Update(context.Background(), &document.Document{ID: "doc-1"}, []float64{1}); err == nil {
+		t.Fatal("Update without space ctx = nil error, want fail-closed rejection")
+	}
+	if _, err := adapter.Search(context.Background(), &vectorstore.SearchQuery{
+		Vector: []float64{1}, SearchMode: vectorstore.SearchModeVector,
+	}); err == nil {
+		t.Fatal("Search without space ctx = nil error, want fail-closed rejection")
+	}
+	if fake.addDoc != nil || fake.updateDoc != nil || fake.searchF != nil {
+		t.Fatal("fail-closed rejections must not reach the store")
 	}
 }
 
@@ -120,6 +152,8 @@ func TestVectorStoreAdapter_get_maps_back_to_framework_document(t *testing.T) {
 	fake := &fakeVectorStore{
 		getDoc: &biz.VectorDocument{
 			ID:        "doc-1",
+			Embedder:  testsupport.SearchTestSpace,
+			Dimension: 4,
 			Name:      "policy",
 			Content:   "text",
 			Embedding: []float32{1, 2},
@@ -136,6 +170,17 @@ func TestVectorStoreAdapter_get_maps_back_to_framework_document(t *testing.T) {
 	}
 	if doc == nil || doc.ID != "doc-1" || doc.Content != "text" {
 		t.Fatalf("framework document not mapped: %+v", doc)
+	}
+	// 空间身份复制进 metadata 副本（命中可观测所属空间），调用方原
+	// map 不被改写。
+	if doc.Metadata["embedder"] != testsupport.SearchTestSpace || doc.Metadata["embed_dim"] != 4 {
+		t.Fatalf("space metadata not mapped: %+v", doc.Metadata)
+	}
+	if doc.Metadata["tenant_id"] != "t-a" {
+		t.Fatalf("caller metadata lost: %+v", doc.Metadata)
+	}
+	if fake.getDoc.Metadata["embedder"] != nil {
+		t.Fatal("caller metadata map must not be mutated")
 	}
 	if len(embedding) != 2 || embedding[0] != 1 || embedding[1] != 2 {
 		t.Fatalf("embedding = %v, want float64 conversion of [1 2]", embedding)
@@ -154,7 +199,7 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 		},
 	}
 	adapter := NewVectorStoreAdapter(fake)
-	result, err := adapter.Search(context.Background(), &vectorstore.SearchQuery{
+	result, err := adapter.Search(spaceCtx(context.Background()), &vectorstore.SearchQuery{
 		Vector:     []float64{0.5, 0.5},
 		Limit:      5,
 		MinScore:   0.5,
@@ -176,6 +221,10 @@ func TestVectorStoreAdapter_search_maps_vector_mode_and_rejects_other_modes(t *t
 	if fake.searchF == nil || fake.searchF.Limit != 5 || fake.searchF.MinScore != 0.5 ||
 		len(fake.searchF.IDs) != 1 || fake.searchF.Metadata["category"] != "hr" {
 		t.Fatalf("filter not mapped: %+v", fake.searchF)
+	}
+	if fake.searchF.Embedder != testsupport.SearchTestSpace || fake.searchF.Dimension != 4 {
+		t.Fatalf("space not mapped into filter: %s/%d, want %s/4",
+			fake.searchF.Embedder, fake.searchF.Dimension, testsupport.SearchTestSpace)
 	}
 
 	// keyword/hybrid/filter-only 模式需要 tsvector 与 embedder 管线，
@@ -214,7 +263,7 @@ func TestVectorStoreAdapter_search_topk_clamped_to_adapter_cap(t *testing.T) {
 	// 侧消费方都无法绕过；Limit 非正的缺省语义在契约实现内保持不变。
 	fake := &fakeVectorStore{}
 	adapter := NewVectorStoreAdapter(fake)
-	ctx := context.Background()
+	ctx := spaceCtx(context.Background())
 
 	_, err := adapter.Search(ctx, &vectorstore.SearchQuery{
 		Vector: []float64{1}, SearchMode: vectorstore.SearchModeVector, Limit: 1000,

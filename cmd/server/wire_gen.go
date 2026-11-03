@@ -91,11 +91,22 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
+	embedderResolver, cleanup7, err := pg_sqlc.NewEmbedderResolver(confVector, pg_sqlcData)
+	if err != nil {
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
 	runtimeMetrics := ops.NewRuntimeMetrics()
 	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
 	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
-	stack, cleanup7, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, runtimeMetrics, auditUsecase)
+	stack, cleanup8, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, embedderResolver, runtimeMetrics, auditUsecase)
 	if err != nil {
+		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -117,6 +128,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	webHandler := server.NewWebHandler(agentService)
 	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
 	if err != nil {
+		cleanup8()
 		cleanup7()
 		cleanup6()
 		cleanup5()
@@ -131,6 +143,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup8()
 		cleanup7()
 		cleanup6()
 		cleanup5()

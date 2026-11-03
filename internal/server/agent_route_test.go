@@ -62,11 +62,19 @@ func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) 
 // 返回单位向量，检索工具装配需要非 nil 实现而路由用例不触达它。
 type agentStubEmbedder struct{}
 
-func (*agentStubEmbedder) Embed(context.Context, string) ([]float32, error) {
+func (*agentStubEmbedder) Embed(context.Context, string, string) ([]float32, error) {
 	return make([]float32, 4), nil
 }
 
-func (*agentStubEmbedder) Dimensions() int { return 4 }
+func (*agentStubEmbedder) Dimension(string) (int, error) { return 4, nil }
+
+// agentStubEmbedderResolver 是 server 路由测试的替身默认空间解析器：
+// 固定解析空间键与维度，路由用例不触达检索。
+type agentStubEmbedderResolver struct{}
+
+func (*agentStubEmbedderResolver) ResolveDefaultEmbedder(context.Context) (string, int, error) {
+	return "bge-m3@v1", 4, nil
+}
 
 // agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
 // 用例非 nil（业务工具的依赖），但路由用例不触发工具执行，任何方法
@@ -124,7 +132,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索。
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{}, agent.WithModelOverride(llm))
+		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

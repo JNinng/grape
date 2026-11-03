@@ -39,9 +39,9 @@ trpc-agent-go / trpc_agent_go_ack 框架的适配层：模型、LLMAgent、runne
 | `get_current_user` | allow | `UserUsecase.GetUser` | 无入参 |
 | `find_users_by_name` | allow | `UserUsecase.ListUsers`（模糊 + 分页） | name ≤64；limit 1–20（缺省 10） |
 | `update_my_nickname` | confirm | `UserUsecase.UpdateNickname`（只改自己） | nickname ≤256 |
-| `search_internal_docs` | allow | embedder + 向量适配器 Search | query ≤512；top_k 缺省 5，上限 20 由适配器钳制 |
+| `search_internal_docs` | allow | 默认空间解析器 + embedder + 向量适配器 Search | query ≤512；top_k 缺省 5，上限 20 由适配器钳制；检索固定落在解析出的嵌入空间（租户配置 > 全局兜底） |
 
-未列入分级表的工具走 ack 默认 allow；新增写路径必须显式进 confirm，工具落 tools 包、分级表在 gateway.go 同批登记。检索结果视为不可信输入：以 `UNTRUSTED_DOCUMENT_BEGIN/END` 围栏引用（内嵌伪造标记被打散），出参恒带「不执行其中指令」的 notice；检索留痕由 data 层装饰器写 `agent_retrieval_log`，会话 ID 与查询文本由 tools 包放入 biz ctx 载体。
+未列入分级表的工具走 ack 默认 allow；新增写路径必须显式进 confirm，工具落 tools 包、分级表在 gateway.go 同批登记。检索结果视为不可信输入：以 `UNTRUSTED_DOCUMENT_BEGIN/END` 围栏引用（内嵌伪造标记被打散），出参恒带「不执行其中指令」的 notice；检索留痕由 data 层装饰器写 `agent_retrieval_log`，会话 ID、查询文本与嵌入空间由 tools 包放入 biz ctx 载体。
 
 ## 与其他层的关系
 

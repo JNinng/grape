@@ -90,7 +90,7 @@ func TestPGPermissionAudit_when_allow_tier_tool_runs_records_auto_row(t *testing
 		acktest.Step{ToolCalls: []acktest.ToolCallSpec{{ID: callID, Name: tools.GetCurrentUserToolName, Args: `{}`}}},
 	)
 	stack, err := agent.NewStackWithOptions(testsupport.StackConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4},
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4},
 		agent.WithModelOverride(llm), agent.WithAuditHook(hook))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)

@@ -22,7 +22,8 @@ import (
 // 与替身引用供断言。
 func newSearchToolForTest(fake *fakeVectorStore) (tool.Tool, *fakeVectorStore, *testsupport.SearchTestEmbedder) {
 	embedder := &testsupport.SearchTestEmbedder{Dims: 4}
-	tl := NewSearchTool(embedder, NewVectorStoreAdapter(fake))
+	resolver := &testsupport.SearchTestResolver{Dims: 4}
+	tl := NewSearchTool(embedder, resolver, NewVectorStoreAdapter(fake))
 	return tl, fake, embedder
 }
 
@@ -167,9 +168,49 @@ func TestSearchTool_when_facility_disabled_error_propagates(t *testing.T) {
 
 func TestSearchTool_when_embedder_fails_error_propagates(t *testing.T) {
 	embedder := &testsupport.SearchTestEmbedder{Dims: 4, Err: errors.New("endpoint down")}
-	tl := NewSearchTool(embedder, NewVectorStoreAdapter(searchHitFixture()))
+	resolver := &testsupport.SearchTestResolver{Dims: 4}
+	tl := NewSearchTool(embedder, resolver, NewVectorStoreAdapter(searchHitFixture()))
 	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7})
 	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund"}`); err == nil {
 		t.Fatal("search with failing embedder = nil error, want error")
 	}
+}
+
+func TestSearchTool_when_resolver_fails_error_propagates(t *testing.T) {
+	// 默认空间解析失败（设施未启用/租户配置指向未知空间）：检索拒绝，
+	// 查询不触 embedder 与存储。
+	embedder := &testsupport.SearchTestEmbedder{Dims: 4}
+	resolver := &testsupport.SearchTestResolver{Err: biz.ErrEmbedderDisabled}
+	tl, fake := newSearchToolForTestWithResolver(embedder, resolver)
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7})
+	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund"}`); !errors.Is(err, biz.ErrEmbedderDisabled) {
+		t.Fatalf("search with failing resolver = %v, want ErrEmbedderDisabled", err)
+	}
+	if len(embedder.Calls) != 0 || fake.searchF != nil {
+		t.Fatalf("resolver failure must not reach embedder/store: embeds=%d store=%+v", len(embedder.Calls), fake.searchF)
+	}
+}
+
+func TestSearchTool_when_embedded_searches_in_resolved_space(t *testing.T) {
+	// 空间事实链路：resolver 解析的空间经 ctx 载体进入适配器，落契约
+	// 过滤的 Embedder/Dimension 成对字段（与 embedder 调用同空间）。
+	fixture := searchHitFixture()
+	tl, fake, embedder := newSearchToolForTest(fixture)
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7})
+	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund"}`); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if embedder.Spaces[0] != testsupport.SearchTestSpace {
+		t.Fatalf("embed space = %s, want %s", embedder.Spaces[0], testsupport.SearchTestSpace)
+	}
+	if fake.searchF == nil || fake.searchF.Embedder != testsupport.SearchTestSpace || fake.searchF.Dimension != 4 {
+		t.Fatalf("search filter space = %+v, want %s/4", fake.searchF, testsupport.SearchTestSpace)
+	}
+}
+
+// newSearchToolForTestWithResolver 组装工具并显式指定 resolver 替身
+// （失败路径用例注入解析错误）。
+func newSearchToolForTestWithResolver(embedder biz.Embedder, resolver biz.EmbedderResolver) (tool.Tool, *fakeVectorStore) {
+	fake := &fakeVectorStore{}
+	return NewSearchTool(embedder, resolver, NewVectorStoreAdapter(fake)), fake
 }

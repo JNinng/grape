@@ -74,7 +74,7 @@ func confirmSessionServiceTTL(t *testing.T, grapeUDSN string, ttl time.Duration)
 func confirmNewStack(t *testing.T, sessionSvc session.Service, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo) *Stack {
 	t.Helper()
 	stack, err := NewStackWithOptions(testsupport.StackConf(), nil, sessionSvc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, WithModelOverride(llm))
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4}, WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}

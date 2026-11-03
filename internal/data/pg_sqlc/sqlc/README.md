@@ -35,7 +35,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
-| — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表、HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、2 个索引、2 条授权 |
+| — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
 
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
@@ -88,8 +88,13 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 - **HNSW 建索引参数不进 conf（决策说明）**：度量（vector_cosine_ops）与
   m / ef_construction 属物理 DDL，固化于 [agent_vector.sql](agent_vector.sql)
   ——索引结构是部署面资产，改参数即改 DDL 重建索引，不是运行期可调项；
-  conf.vector 只持检索面参数（enabled / dimension / table_name），
-  ef_search 等检索期调参归检索配置另议（会话级 SET，不落表定义）。
+  conf.vector 只持检索面参数（enabled / table_name / default_embedder /
+  embedders 空间清单），ef_search 等检索期调参归检索配置另议（会话级
+  SET，不落表定义）。索引以**每维度一个表达式部分索引**形态存在
+  （`(embedding::vector(N)) vector_cosine_ops WHERE embed_dim = N`——裸
+  vector 列只能表达式索引，查询侧重复同一 cast 才命中；同维度多空间
+  共享一个索引）：新增嵌入维度 = conf.vector.embedders 加条目 + DDL 加
+  对应索引，装配期探针逐维度对账，缺索引启动即失败。
 - 再生成：在本目录执行 `sqlc generate -f sqlc.yaml`（或项目根
   `make sqlc`），产物写入 `../gen/`（禁止手改）。
 

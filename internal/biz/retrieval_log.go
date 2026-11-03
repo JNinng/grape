@@ -71,6 +71,9 @@ type RetrievalLogRecord struct {
 	SessionID string
 	// Source 是检索来源（RetrievalSource* 常量）。
 	Source string
+	// Embedder 是本次向量操作的嵌入空间键（模型[@版本]）：检索行取过滤
+	// 声明、摄取行取文档归属；未知/未声明为空，落库 NULL（不伪造）。
+	Embedder string
 	// QueryText 是已脱敏的查询文本；无查询事实（摄取侧）为空，落库 NULL。
 	QueryText string
 	// RequestedTopK 是请求的 top_k（调用方过滤条件传入值）；0 表示未
@@ -102,6 +105,7 @@ type RetrievalLog struct {
 	TraceID       string
 	SessionID     string
 	Source        string
+	Embedder      string
 	QueryText     string
 	RequestedTopK int32
 	EffectiveTopK int32

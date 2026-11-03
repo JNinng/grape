@@ -46,22 +46,25 @@ message Telemetry {
   string service_version = 6;
 }
 
-// Vector 是向量检索设施（pgvector）的配置：表结构与维度由部署 DDL
-// （sqlc/agent_vector.sql）定，本段必须与之保持一致，装配期探针校验
-// 不一致即拒绝启动。由 internal/data/pg_sqlc 的向量仓储构造函数消费。
+// Vector 是向量检索设施（pgvector）的配置：表结构与每维度索引由部署
+// DDL（sqlc/agent_vector.sql）定，本段必须与之保持一致，装配期探针
+// 校验不一致即拒绝启动。由 internal/data/pg_sqlc 的向量仓储与
+// internal/data/openaiembedder 共同消费。
 message Vector {
   // 是否启用向量存储设施。启用前须先完成 agent_vector.sql 部署；
   // 未启用时向量仓储按设施缺失拒绝所有调用，不触库。
   bool enabled = 1;
-  // embedding 维度，必须与 DDL 列类型 vector(维度) 一致（默认部署为
-  // 1024），同时必须与 embedding 模型的产出维度一致（embedding 段）；
-  // 两处不一致分别在装配期失败。启用时必填。
-  int32 dimension = 2;
   // 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   // 留空取默认 agent_document。
-  string table_name = 3;
-  // Embedding 是 embedding 服务的配置（OpenAI 兼容 embeddings 端点，
-  // 与 LLM provider 同口径），由 internal/data/openaiembedder 消费。
+  string table_name = 2;
+  // 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 vector.embedder
+  // 键）时的兜底。必须引用 embedders 中已声明的键，装配期校验，未知键
+  // 拒绝启动。启用时必填。
+  string default_embedder = 3;
+  // Embedding 是一个嵌入空间的配置（OpenAI 兼容 embeddings 端点，与
+  // LLM provider 同口径）。空间键 = model（version 留空）或
+  // model@version，即落库 embedder 列与检索过滤用的身份；多空间可并存
+  // 以支撑多模型与版本迭代（换版本即新空间，存量经重摄取迁移）。
   message Embedding {
     // provider 变体（预留位）：当前仅支持 OpenAI 兼容端点，留空或
     // 其他取值一律按兼容端点处理。
@@ -71,13 +74,23 @@ message Vector {
     string base_url = 2;
     // API key，经 ${ENV:...} 占位注入，不落默认配置。
     string api_key = 3;
-    // embedding 模型名。启用时必填；模型产出维度必须与上层 dimension
-    // 一致，运行期每次响应按 dimension 校验，漂移即报错。
+    // embedding 模型名（空间身份的组成部分）。启用时必填；模型产出
+    // 维度必须与本条 dimension 一致，运行期每次响应按 dimension 校验，
+    // 漂移即报错。
     string model = 4;
+    // 版本后缀（可空）：迭代标识（如 v1、v2），非空时空间键为
+    // model@version。同一模型换维度/换端点必须换版本号开新空间，
+    // 禁止在原键下变更语义。
+    string version = 5;
+    // 该模型产出向量的维度。必须与 DDL 的表达式部分 HNSW 索引维度
+    // （agent_vector.sql 内 vector(N) cast 与 embed_dim 谓词）一致，
+    // 装配期探针逐维度校验；同时落库 embed_dim 列。启用时必填。
+    int32 dimension = 6;
     // 单次 embedding 调用超时；未设置取 30s。
-    google.protobuf.Duration timeout = 5;
+    google.protobuf.Duration timeout = 7;
   }
-  Embedding embedding = 4;
+  // 嵌入空间清单（≥1 条）：键重复在装配期拒绝。
+  repeated Embedding embedders = 4;
 }
 
 // Agent 是 Agent 服务（AG-UI + ack）的配置：应用名、LLM provider 与

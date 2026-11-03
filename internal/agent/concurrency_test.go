@@ -39,7 +39,7 @@ func newConcurrencyTestStack(t *testing.T, maxRuns int32, llm *acktest.ScriptedM
 	}
 	t.Cleanup(closeSessions)
 	stack, err := NewStackWithOptions(concurrencyStackConf(maxRuns), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4},
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4},
 		append([]StackOption{WithModelOverride(llm)}, opts...)...)
 	if err != nil {
 		t.Fatalf("build stack: %v", err)

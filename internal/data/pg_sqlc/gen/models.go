@@ -56,6 +56,8 @@ type AgentRetrievalLog struct {
 	SessionID *string `db:"session_id" json:"session_id"`
 	// 检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
 	Source string `db:"source" json:"source"`
+	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，未知/未声明为 NULL（不伪造）
+	Embedder *string `db:"embedder" json:"embedder"`
 	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
 	QueryText *string `db:"query_text" json:"query_text"`
 	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/tools/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL

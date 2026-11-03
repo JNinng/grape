@@ -8,21 +8,50 @@ import (
 	"testing"
 )
 
+// testEmbedderSpace 是管线单测的固定嵌入空间键（stubResolver 解析产出）。
+const testEmbedderSpace = "bge-m3@v1"
+
 // stubEmbedder 是管线单测的替身 embedder：按文本长度派生确定性向量
-// （首元素为 rune 数，其余补零），维度可指定。
+// （首元素为 rune 数，其余补零），维度可指定；记录每次调用的空间键；
+// stubErr 注入端点故障。
 type stubEmbedder struct {
-	dims  int
-	calls []string
+	dims    int
+	stubErr error
+	calls   []string
+	spaces  []string
 }
 
-func (s *stubEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+func (s *stubEmbedder) Embed(_ context.Context, embedder string, text string) ([]float32, error) {
+	if s.stubErr != nil {
+		return nil, s.stubErr
+	}
 	s.calls = append(s.calls, text)
+	s.spaces = append(s.spaces, embedder)
 	vec := make([]float32, s.dims)
 	vec[0] = float32(len([]rune(text)))
 	return vec, nil
 }
 
-func (s *stubEmbedder) Dimensions() int { return s.dims }
+func (s *stubEmbedder) Dimension(embedder string) (int, error) {
+	if embedder == "" {
+		return 0, ErrEmbedderUnknown
+	}
+	return s.dims, nil
+}
+
+// stubResolver 是管线单测的替身解析器：返回固定空间或注入错误。
+type stubResolver struct {
+	space string
+	dim   int
+	err   error
+}
+
+func (r *stubResolver) ResolveDefaultEmbedder(context.Context) (string, int, error) {
+	if r.err != nil {
+		return "", 0, r.err
+	}
+	return r.space, r.dim, nil
+}
 
 // mockVectorStore 是管线单测的向量存储替身：记录调用序列与入参，行为
 // 可编程。
@@ -66,26 +95,26 @@ func (*mockVectorStore) GetMetadata(context.Context, *VectorFilter) (map[string]
 }
 
 func newDocumentUsecaseForTest(store VectorStore, embedder Embedder) (*DocumentUsecase, error) {
-	return NewDocumentUsecase(store, embedder, embedder.Dimensions())
+	dim, err := embedder.Dimension(testEmbedderSpace)
+	if err != nil {
+		return nil, err
+	}
+	return NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: dim})
 }
 
 func ingestCtx() context.Context {
 	return WithIdentity(context.Background(), Identity{TenantID: "t-doc", UserID: 5})
 }
 
-func TestDocumentUsecase_when_constructed_with_mismatched_dimension_fails(t *testing.T) {
-	// 维度链路对账：embedder 声明 4 维而 conf 传 1024 → 构造期拒绝
-	//（启动即失败，与 conf vs DDL 探针同口径）。
-	_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, 1024)
-	if err == nil || !strings.Contains(err.Error(), "dimension") {
-		t.Fatalf("NewDocumentUsecase(mismatched dims) = %v, want dimension error", err)
-	}
+func TestDocumentUsecase_when_constructed_with_missing_dependency_fails(t *testing.T) {
+	// 构造期只做依赖齐全性与切分参数校验：空间与维度的对账在写路径
+	// 逐次执行（解析空间 → embedder 声明 → 存储注册表三方一致才落库）。
 	for name, fn := range map[string]func() error{
-		"nil store":      func() error { _, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, 4); return err },
-		"nil embedder":   func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, nil, 4); return err },
-		"zero dimension": func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, 0); return err },
+		"nil store":    func() error { _, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}); return err },
+		"nil embedder": func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, nil, &stubResolver{space: testEmbedderSpace, dim: 4}); return err },
+		"nil resolver": func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, nil); return err },
 		"bad chunking": func() error {
-			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, 4, WithChunking(10, 10))
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(10, 10))
 			return err
 		},
 	} {
@@ -99,7 +128,7 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 	store := &mockVectorStore{}
 	embedder := &stubEmbedder{dims: 8}
 	// 小块切分：20 rune 内容按 size 8 / overlap 2 切 3 块。
-	u, err := NewDocumentUsecase(store, embedder, 8, WithChunking(8, 2))
+	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 8}, WithChunking(8, 2))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -122,6 +151,13 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 		if doc.ID != fmt.Sprintf("kb-1#%d", i) {
 			t.Fatalf("chunk id = %s, want kb-1#%d", doc.ID, i)
 		}
+		// 嵌入空间身份与维度成对落在每个切片上，embedder 调用同空间。
+		if doc.Embedder != testEmbedderSpace || doc.Dimension != 8 {
+			t.Fatalf("chunk %d space = %s/%d, want %s/8", i, doc.Embedder, doc.Dimension, testEmbedderSpace)
+		}
+		if embedder.spaces[i] != testEmbedderSpace {
+			t.Fatalf("embed call %d space = %s, want %s", i, embedder.spaces[i], testEmbedderSpace)
+		}
 		if doc.Content == "" || doc.Embedding[0] == 0 {
 			t.Fatalf("chunk %d content/embedding not populated: %+v", i, doc)
 		}
@@ -136,9 +172,13 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 			t.Fatalf("chunk %d must keep caller metadata, got %v", i, doc.Metadata)
 		}
 	}
-	// 覆盖锚点先于写入：DeleteByFilter 以 source_id 为条件。
+	// 覆盖锚点先于写入：DeleteByFilter 以 source_id 为条件（跨空间清除，
+	// 不限嵌入空间——换默认空间的重摄取正是迁移路径）。
 	if store.deleted == nil || store.deleted.Metadata["source_id"] != "kb-1" {
 		t.Fatalf("delete filter = %+v, want source_id kb-1", store.deleted)
+	}
+	if store.deleted.Embedder != "" {
+		t.Fatalf("delete filter embedder = %s, want empty (cross-space)", store.deleted.Embedder)
 	}
 }
 
@@ -192,10 +232,44 @@ func TestDocumentUsecase_when_identity_missing_fails_closed(t *testing.T) {
 	}
 }
 
+func TestDocumentUsecase_when_resolver_fails_ingest_rejected_and_store_untouched(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 4}
+	resolver := &stubResolver{err: ErrEmbedderDisabled}
+	u, err := NewDocumentUsecase(store, embedder, resolver)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "content"}); !errors.Is(err, ErrEmbedderDisabled) {
+		t.Fatalf("Ingest with failing resolver = %v, want ErrEmbedderDisabled", err)
+	}
+	// 空间解析先于删旧写新：解析失败不触存储。
+	if len(store.added) != 0 || store.deleted != nil {
+		t.Fatalf("store touched on resolver failure: added=%d deleted=%+v", len(store.added), store.deleted)
+	}
+}
+
+func TestDocumentUsecase_when_embed_dimension_drifts_ingest_rejected(t *testing.T) {
+	// 维度对账：resolver 声明 4 维而 embedder 产出 8 维向量 → 调用点
+	// 显式报错（端点维度漂移不落库）。
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "content"}); err == nil || !strings.Contains(err.Error(), "dimension") {
+		t.Fatalf("Ingest with drifting embedder = %v, want dimension error", err)
+	}
+	if len(store.added) != 0 || store.deleted != nil {
+		t.Fatalf("store touched on dimension drift: added=%d deleted=%+v", len(store.added), store.deleted)
+	}
+}
+
 func TestDocumentUsecase_when_embed_fails_keeps_store_untouched(t *testing.T) {
 	store := &mockVectorStore{}
-	embedder := &failingEmbedder{dims: 4}
-	u, err := NewDocumentUsecase(store, embedder, 4)
+	embedder := &stubEmbedder{dims: 4, stubErr: errors.New("endpoint down")}
+	u, err := newDocumentUsecaseForTest(store, embedder)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -211,7 +285,7 @@ func TestDocumentUsecase_when_embed_fails_keeps_store_untouched(t *testing.T) {
 func TestDocumentUsecase_when_add_fails_midway_reports(t *testing.T) {
 	store := &mockVectorStore{addErrAt: 2}
 	// 小块切分保证多块写入，第 2 次 Add 失败。
-	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, 4, WithChunking(4, 1))
+	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -219,13 +293,6 @@ func TestDocumentUsecase_when_add_fails_midway_reports(t *testing.T) {
 		t.Fatal("Ingest with mid-way Add failure = nil error, want error")
 	}
 }
-
-type failingEmbedder struct{ dims int }
-
-func (f *failingEmbedder) Embed(context.Context, string) ([]float32, error) {
-	return nil, errors.New("endpoint down")
-}
-func (f *failingEmbedder) Dimensions() int { return f.dims }
 
 func TestChunkText_boundaries_overlap_and_multibyte(t *testing.T) {
 	// 短文本：单块且保留原文。

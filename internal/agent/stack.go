@@ -126,9 +126,10 @@ func WithRunObserver(observer biz.AgentRunObserver) StackOption {
 // grants 是工具授权用例（许可存储：非 nil 时 ack 网关接入
 // agent_tool_grant 表，remember 生效、吊销后重新确认；nil 仅供不触达
 // 授权面的测试装配，维持无许可源形态）。embedder 供检索工具做
-// 查询向量化（向量设施未启用时为禁用占位实现，必填校验只拒 nil——
-// 那是装配错误）。
-func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, opts ...StackOption) (*Stack, error) {
+// 查询向量化，resolver 解析默认嵌入空间（租户配置 > 全局兜底），两者
+// 都以禁用占位实现随向量设施未启用降级，必填校验只拒 nil——那是装配
+// 错误。
+func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, resolver biz.EmbedderResolver, opts ...StackOption) (*Stack, error) {
 	o := &stackOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -148,6 +149,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	if embedder == nil {
 		return nil, fmt.Errorf("agent: embedder is required")
 	}
+	if resolver == nil {
+		return nil, fmt.Errorf("agent: embedder resolver is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -160,7 +164,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	// echo 打通框架链路；业务工具经 biz 用户用例访问数据；
 	// 检索工具经向量适配器访问向量。
 	tools := append([]tool.Tool{agenttools.NewEchoTool()}, agenttools.NewUserTools(users)...)
-	tools = append(tools, agenttools.NewSearchTool(embedder, vectors))
+	tools = append(tools, agenttools.NewSearchTool(embedder, resolver, vectors))
 	// 审计接线与运行观测：挂点非 nil 时给全量工具清单包上
 	// 终态审计 wrapper（echo 是链路验证工具，同样留痕保持全量），包装后的
 	// 清单同时进 LLMAgent 与 ack 网关——恢复路径的网关代执行经同一 wrapper

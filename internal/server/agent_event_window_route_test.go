@@ -40,7 +40,7 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 	confServer := agentHTTPConf()
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc,
 		agent.NewVectorStore(nil), biz.NewUserUsecase(&agentStubUserRepo{}), nil,
-		&agentStubEmbedder{}, agent.WithModelOverride(acktest.NewScriptedModel("stub")))
+		&agentStubEmbedder{}, &agentStubEmbedderResolver{}, agent.WithModelOverride(acktest.NewScriptedModel("stub")))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

@@ -30,7 +30,7 @@ import (
 func newAuditTestStackOnService(t *testing.T, svc session.Service, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo, hook audit.Hook) *confirmTestStack {
 	t.Helper()
 	stack, err := NewStackWithOptions(testsupport.StackConf(), nil, svc, NewVectorStore(nil),
-		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4},
+		biz.NewUserUsecase(repo), nil, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4},
 		WithModelOverride(llm), WithAuditHook(hook))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
