@@ -29,19 +29,29 @@ func TestEmbedderSpaceKey_derivation(t *testing.T) {
 }
 
 func TestVectorSpaces_valid_config_resolves_registry(t *testing.T) {
+	// 键恰好 128 字符是白名单与列宽的公共上界（接受侧边界）。
+	longKey := strings.Repeat("a", 128)
 	spaces, def, err := VectorSpaces(spacesConf([]*Vector_Embedding{
 		{Model: "bge-m3", Version: "v1", Dimension: 1024},
 		{Model: "bge-m3", Version: "v2", Dimension: 1024},
 		{Model: "other-model", Dimension: 4},
-	}, "bge-m3@v1"))
+		{Model: longKey, Dimension: 8},
+	}, longKey))
 	if err != nil {
 		t.Fatalf("VectorSpaces(valid) = %v, want nil", err)
 	}
-	if def != "bge-m3@v1" {
-		t.Fatalf("default = %q, want bge-m3@v1", def)
+	if def != longKey {
+		t.Fatalf("default = %q, want the 128-char key", def)
 	}
-	if len(spaces) != 3 || spaces["bge-m3@v1"] != 1024 || spaces["bge-m3@v2"] != 1024 || spaces["other-model"] != 4 {
-		t.Fatalf("spaces = %v, want three keys with declared dimensions", spaces)
+	if len(spaces) != 4 || spaces["bge-m3@v1"] != 1024 || spaces["bge-m3@v2"] != 1024 || spaces["other-model"] != 4 || spaces[longKey] != 8 {
+		t.Fatalf("spaces = %v, want four keys with declared dimensions", spaces)
+	}
+	// 维度恰好 VectorMaxDimension 是存储上界的接受侧。
+	atCap, _, err := VectorSpaces(spacesConf([]*Vector_Embedding{
+		{Model: "m", Dimension: VectorMaxDimension},
+	}, "m"))
+	if err != nil || atCap["m"] != VectorMaxDimension {
+		t.Fatalf("VectorSpaces(dimension at cap) = (%v, %v), want accepted at %d", atCap, err, VectorMaxDimension)
 	}
 }
 

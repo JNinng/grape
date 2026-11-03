@@ -110,9 +110,18 @@ func TestDocumentUsecase_when_constructed_with_missing_dependency_fails(t *testi
 	// 构造期只做依赖齐全性与切分参数校验：空间与维度的对账在写路径
 	// 逐次执行（解析空间 → embedder 声明 → 存储注册表三方一致才落库）。
 	for name, fn := range map[string]func() error{
-		"nil store":    func() error { _, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}); return err },
-		"nil embedder": func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, nil, &stubResolver{space: testEmbedderSpace, dim: 4}); return err },
-		"nil resolver": func() error { _, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, nil); return err },
+		"nil store": func() error {
+			_, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4})
+			return err
+		},
+		"nil embedder": func() error {
+			_, err := NewDocumentUsecase(&mockVectorStore{}, nil, &stubResolver{space: testEmbedderSpace, dim: 4})
+			return err
+		},
+		"nil resolver": func() error {
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, nil)
+			return err
+		},
 		"bad chunking": func() error {
 			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(10, 10))
 			return err

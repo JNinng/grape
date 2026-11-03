@@ -334,6 +334,108 @@ func TestVectorStore_search_only_hits_declared_space(t *testing.T) {
 	}
 }
 
+func TestVectorStore_update_across_spaces_reembeds_explicitly(t *testing.T) {
+	// 空间变更即显式重嵌入：Update 改写行的空间身份与维度，旧空间检索
+	// 不再命中（无隐式换形——身份列随行变更）。
+	d := setupVectorTestDB(t)
+	store := newMultiSpaceStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	addVectorDocument(t, store, vectorTenantA, spaceDoc(&biz.VectorDocument{
+		ID: "doc-mv", Content: "before move", Embedding: unitVector(int(vectorDimension), 0),
+	}))
+	moved := &biz.VectorDocument{
+		ID:        "doc-mv",
+		Content:   "after move",
+		Embedding: unitVector(int(vectorDimension), 1),
+	}
+	moved.Embedder, moved.Dimension = vectorTestSpaceV2, int(vectorDimension)
+	if err := store.Update(ctx, moved); err != nil {
+		t.Fatalf("update across spaces: %v", err)
+	}
+	got, err := store.Get(ctx, "doc-mv")
+	if err != nil {
+		t.Fatalf("get after cross-space update: %v", err)
+	}
+	if got.Embedder != vectorTestSpaceV2 || got.Dimension != int(vectorDimension) || got.Content != "after move" {
+		t.Fatalf("row after move = (%s/%d/%q), want v2 space with new content", got.Embedder, got.Dimension, got.Content)
+	}
+	v1Hits, err := store.Search(ctx, unitVector(int(vectorDimension), 0), spaceFilter())
+	if err != nil || len(v1Hits) != 0 {
+		t.Fatalf("v1 search after move = (%d hits, %v), want 0 (row left the space)", len(v1Hits), err)
+	}
+	v2Filter := &biz.VectorFilter{Embedder: vectorTestSpaceV2, Dimension: int(vectorDimension), Limit: 5}
+	v2Hits, err := store.Search(ctx, unitVector(int(vectorDimension), 1), v2Filter)
+	if err != nil || len(v2Hits) != 1 || v2Hits[0].Document.ID != "doc-mv" {
+		t.Fatalf("v2 search after move = (%v, %v), want doc-mv top1", searchIDs(v2Hits), err)
+	}
+}
+
+func TestVectorStore_delete_by_filter_scopes_to_declared_space(t *testing.T) {
+	// Embedder 过滤把条件删除收敛到单空间：其余空间的同条件行存活
+	//（跨空间清理必须不带 Embedder，见空间隔离用例的覆盖清除）。
+	d := setupVectorTestDB(t)
+	store := newMultiSpaceStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	addVectorDocument(t, store, vectorTenantA, spaceDoc(&biz.VectorDocument{
+		ID:        "doc-del-v1",
+		Content:   "v1 row",
+		Embedding: unitVector(int(vectorDimension), 0),
+		Metadata:  map[string]any{"group": "shared"},
+	}))
+	v2Doc := &biz.VectorDocument{
+		ID:        "doc-del-v2",
+		Content:   "v2 row",
+		Embedding: unitVector(int(vectorDimension), 0),
+		Metadata:  map[string]any{"group": "shared"},
+	}
+	v2Doc.Embedder, v2Doc.Dimension = vectorTestSpaceV2, int(vectorDimension)
+	addVectorDocument(t, store, vectorTenantA, v2Doc)
+
+	deleted, err := store.DeleteByFilter(ctx, &biz.VectorFilter{
+		Embedder: vectorTestSpace, Metadata: map[string]any{"group": "shared"},
+	})
+	if err != nil || deleted != 1 {
+		t.Fatalf("scoped delete = (%d, %v), want (1, nil)", deleted, err)
+	}
+	v1Left, err := store.Count(ctx, &biz.VectorFilter{Embedder: vectorTestSpace})
+	if err != nil || v1Left != 0 {
+		t.Fatalf("Count(v1) after scoped delete = (%d, %v), want (0, nil)", v1Left, err)
+	}
+	v2Left, err := store.Count(ctx, &biz.VectorFilter{Embedder: vectorTestSpaceV2})
+	if err != nil || v2Left != 1 {
+		t.Fatalf("Count(v2) after scoped delete = (%d, %v), want (1, nil) — other space untouched", v2Left, err)
+	}
+}
+
+func TestVectorStore_get_metadata_scopes_to_declared_space(t *testing.T) {
+	// GetMetadata 的 Embedder 过滤收敛到单空间：返回值只含该空间的行。
+	d := setupVectorTestDB(t)
+	store := newMultiSpaceStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	addVectorDocument(t, store, vectorTenantA, spaceDoc(&biz.VectorDocument{
+		ID: "doc-meta-v1", Content: "v1", Embedding: unitVector(int(vectorDimension), 0),
+	}))
+	v2Doc := &biz.VectorDocument{
+		ID: "doc-meta-v2", Content: "v2", Embedding: unitVector(int(vectorDimension), 1),
+	}
+	v2Doc.Embedder, v2Doc.Dimension = vectorTestSpaceV2, int(vectorDimension)
+	addVectorDocument(t, store, vectorTenantA, v2Doc)
+
+	metadata, err := store.GetMetadata(ctx, &biz.VectorFilter{Embedder: vectorTestSpaceV2})
+	if err != nil {
+		t.Fatalf("get metadata v2: %v", err)
+	}
+	if len(metadata) != 1 {
+		t.Fatalf("metadata rows = %d, want 1 (scoped to v2)", len(metadata))
+	}
+	if _, ok := metadata["doc-meta-v2"]; !ok {
+		t.Fatalf("metadata = %v, want exactly doc-meta-v2", pageIDs(metadata))
+	}
+}
+
 func TestVectorStore_search_rejects_undeclared_space(t *testing.T) {
 	// 未声明空间（conf 之外）检索：调用点显式拒绝，不静默换空间。
 	d := setupVectorTestDB(t)
@@ -370,10 +472,21 @@ VALUES ('bad-dim', 't-vec-a', 11, 'bge-m3@v1', 4, 'c', $1, 11, 11)`,
 
 func TestVectorStore_search_plan_uses_expression_partial_index(t *testing.T) {
 	// 检索计划断言：与仓储同形状的 SQL 必须命中表达式部分 HNSW 索引
-	//（查询侧 cast 与索引表达式逐字一致才可命中）。
+	//（查询侧 cast 与索引表达式逐字一致才可命中）。先播种 200 行——
+	// 空表/极小表上优化器对 ORDER BY+LIMIT 的选计划随统计与版本波动，
+	// 批量原生 SQL 单语句插入（数据合法，与 Store 写入同形状）保持断言
+	// 快且稳。
 	d := setupVectorTestDB(t)
 	newVectorStoreForTest(t, d)
 	ctx := context.Background()
+	seed := fmt.Sprintf(`INSERT INTO agent.agent_document
+(id, tenant_id, user_id, embedder, embed_dim, content, embedding, created_by, updated_by)
+SELECT 'plan-'||g, 't-vec-a', 11, 'bge-m3@v1', %[1]d, 'seed',
+       array_fill(0.1::float4, ARRAY[%[1]d])::vector, 11, 11
+FROM generate_series(1, 200) g`, vectorDimension)
+	if _, err := d.Pool().Exec(ctx, seed); err != nil {
+		t.Fatalf("seed rows for plan assertion: %v", err)
+	}
 	planSQL := fmt.Sprintf(`EXPLAIN (COSTS OFF) SELECT id FROM agent.agent_document
 WHERE tenant_id = $2 AND embedder = $3 AND embed_dim = %d
 ORDER BY (embedding::vector(%d)) <=> $1::vector(%d) LIMIT 5`, vectorDimension, vectorDimension, vectorDimension)

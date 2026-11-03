@@ -20,8 +20,8 @@ func TestEmbedderSpaceCarrier_when_injected_roundtrips_pair(t *testing.T) {
 func TestEmbedderSpaceCarrier_when_blank_or_nonpositive_not_injected(t *testing.T) {
 	// 空白键或非正维度不注入：消费点 fail-closed，不伪造空间事实。
 	for name, fn := range map[string]func(context.Context) context.Context{
-		"blank embedder":  func(ctx context.Context) context.Context { return WithEmbedderSpace(ctx, "  ", 1024) },
-		"zero dimension":  func(ctx context.Context) context.Context { return WithEmbedderSpace(ctx, "bge-m3", 0) },
+		"blank embedder":     func(ctx context.Context) context.Context { return WithEmbedderSpace(ctx, "  ", 1024) },
+		"zero dimension":     func(ctx context.Context) context.Context { return WithEmbedderSpace(ctx, "bge-m3", 0) },
 		"negative dimension": func(ctx context.Context) context.Context { return WithEmbedderSpace(ctx, "bge-m3", -1) },
 	} {
 		if _, _, ok := EmbedderSpaceFromContext(fn(context.Background())); ok {

@@ -3,6 +3,7 @@ package pg_sqlc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"grape/internal/biz"
@@ -127,6 +128,58 @@ func TestEmbedderResolver_unauthenticated_and_disabled_fail(t *testing.T) {
 	defer cleanup2()
 	if _, _, err := disabled.ResolveDefaultEmbedder(context.Background()); !errors.Is(err, biz.ErrEmbedderDisabled) {
 		t.Fatalf("disabled resolve = %v, want ErrEmbedderDisabled", err)
+	}
+}
+
+// seedRawTenantEmbedder 写入任意形态的配置行（status / 软删可控），供
+// 解析口径的边界用例使用：活行 id 取 990002、软删行 990003（主键不冲突，
+// 软删行不占 (tenant_id, config_key) 的部分唯一索引）。
+func seedRawTenantEmbedder(t *testing.T, d *Data, tenantID, value string, status int64, deleteRow bool) {
+	t.Helper()
+	auth, err := NewIdentity(biz.Identity{TenantID: tenantID, UserID: 1})
+	if err != nil {
+		t.Fatalf("map identity: %v", err)
+	}
+	id := int64(990002)
+	deletedAt := "NULL"
+	if deleteRow {
+		id = 990003
+		deletedAt = "CURRENT_TIMESTAMP"
+	}
+	seedSQL := fmt.Sprintf(`INSERT INTO public.sys_tenant_config
+(id, status, name, config_key, value, value_type, tenant_id, created_by, updated_by, deleted_at)
+VALUES (%[1]d, %[2]d, 'raw embedder row', 'vector.embedder', $1, 'string',
+        current_setting('app.tenant_id'), 1, 1, %[3]s)`, id, status, deletedAt)
+	err = d.IdentityTx(context.Background(), auth, func(s *IdentityTx) error {
+		_, err := s.Tx().Exec(context.Background(), seedSQL, value)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("seed raw tenant config: %v", err)
+	}
+}
+
+func TestEmbedderResolver_disabled_or_deleted_config_rows_fall_back_to_global(t *testing.T) {
+	// 解析只认启用的活配置行：status=0 的禁用行与软删除行都等价于
+	// 「未配置」，回落全局默认。
+	d := setupTestDB(t)
+	resolver, cleanup, err := NewEmbedderResolver(resolverTestConf(), d)
+	if err != nil {
+		t.Fatalf("NewEmbedderResolver: %v", err)
+	}
+	defer cleanup()
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-reslv-d", UserID: 4})
+
+	seedRawTenantEmbedder(t, d, "t-reslv-d", "bge-m3@v2", 0, false)
+	space, _, err := resolver.ResolveDefaultEmbedder(ctx)
+	if err != nil || space != "bge-m3@v1" {
+		t.Fatalf("resolve with disabled config row = (%s, %v), want global default", space, err)
+	}
+
+	seedRawTenantEmbedder(t, d, "t-reslv-d", "bge-m3@v2", 1, true)
+	space, _, err = resolver.ResolveDefaultEmbedder(ctx)
+	if err != nil || space != "bge-m3@v1" {
+		t.Fatalf("resolve with soft-deleted config row = (%s, %v), want global default", space, err)
 	}
 }
 

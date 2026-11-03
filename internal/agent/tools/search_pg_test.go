@@ -9,7 +9,7 @@ package tools
 // 环境变量门控（未设置时跳过）：
 //
 //	GRAPE_SEARCH_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent -run TestPGDocumentSearch -count=1 -v
+//	go test ./internal/agent/tools -run TestPGDocumentSearch -count=1 -v
 //
 // 装载取舍与会话/确认集成测试一致：DeployFiles 全清单部署 + 跨包部署
 // 锁互斥，绝不触碰其他套件的测试库。

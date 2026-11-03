@@ -407,10 +407,14 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	if err != nil || list.Total != 3 {
 		t.Fatalf("pipeline rows = (%d total, %v), want 3 (one clear + two adds)", list.Total, err)
 	}
-	// 时间倒序：最先落库的覆盖清除行在末尾；两行 Add 在前。
+	// 时间倒序：最先落库的覆盖清除行在末尾；两行 Add 在前。清除行不带
+	// 空间声明（跨空间清理），embedder 落 NULL。
 	clear := list.Items[list.Total-1]
 	if clear.Status != biz.RetrievalStatusSuccess || clear.Hits != nil {
 		t.Fatalf("clear row = (%s, hits %v), want success without hits", clear.Status, clear.Hits)
+	}
+	if clear.Embedder != "" {
+		t.Fatalf("clear row embedder = %q, want empty (no space declaration on the cross-space purge)", clear.Embedder)
 	}
 	summary := map[string]any{}
 	if err := json.Unmarshal(clear.FilterSummary, &summary); err != nil {

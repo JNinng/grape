@@ -9,9 +9,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // embeddingConf 构造启用态单空间配置：dimension 4 便于小向量断言。
@@ -220,6 +223,41 @@ func TestEmbedder_when_multi_space_routes_to_own_endpoint(t *testing.T) {
 	}
 	if !strings.Contains(modelB, `"model":"model-b"`) {
 		t.Fatalf("space b request = %s, want model-b", modelB)
+	}
+}
+
+func TestEmbedder_when_space_timeout_expires_request_fails(t *testing.T) {
+	// 每空间独立超时的行为验证：慢端点（500ms 才响应）配 50ms 空间超时
+	// 必失败，另一空间 2s 超时正常返回——超时随空间持有、互不牵连。
+	// 50ms ≪ 500ms，用例确定性成立。
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": make([]float64, 4)}}})
+	}))
+	defer slow.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": make([]float64, 4)}}})
+	}))
+	defer fast.Close()
+	e, cleanup, err := New(&conf.Vector{
+		Enabled:         true,
+		DefaultEmbedder: "slow-model",
+		Embedders: []*conf.Vector_Embedding{
+			{Model: "slow-model", BaseUrl: slow.URL, Dimension: 4, Timeout: durationpb.New(50 * time.Millisecond)},
+			{Model: "fast-model", BaseUrl: fast.URL, Dimension: 4, Timeout: durationpb.New(2 * time.Second)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("New(multi-space with timeouts): %v", err)
+	}
+	defer cleanup()
+	ctx := context.Background()
+	if _, err := e.Embed(ctx, "slow-model", "text"); err == nil || !strings.Contains(err.Error(), "call embeddings endpoint") {
+		t.Fatalf("Embed on slow endpoint with 50ms timeout = %v, want transport error", err)
+	}
+	got, err := e.Embed(ctx, "fast-model", "text")
+	if err != nil || len(got) != 4 {
+		t.Fatalf("Embed on fast endpoint = (%d dims, %v), want 4 dims untouched by the slow space", len(got), err)
 	}
 }
 

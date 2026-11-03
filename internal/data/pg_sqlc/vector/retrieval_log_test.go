@@ -137,6 +137,8 @@ func TestLoggedVectorStore_search_forwards_and_records_row(t *testing.T) {
 		t.Fatalf("status = %q, want success", rec.Status)
 	case rec.SessionID != "sess-d3":
 		t.Fatalf("session id = %q, want sess-d3", rec.SessionID)
+	case rec.Embedder != "":
+		t.Fatalf("embedder = %q, want empty (filter declares no space)", rec.Embedder)
 	case rec.QueryText != "what is grape":
 		t.Fatalf("query text = %q, want original (short text untouched by standard registry)", rec.QueryText)
 	case rec.RequestedTopK != 3 || rec.EffectiveTopK != 3:
@@ -304,6 +306,39 @@ func TestLoggedVectorStore_add_failure_records_error_row_and_propagates(t *testi
 	}
 	if repo.rows[0].Status != biz.RetrievalStatusError {
 		t.Fatalf("row status = %q, want error", repo.rows[0].Status)
+	}
+}
+
+func TestLoggedVectorStore_embedder_recorded_from_operation_declaration(t *testing.T) {
+	// 留痕行 embedder 按操作现场的声明原样记录：检索行取过滤声明、摄取
+	// 行取文档归属、清除行取过滤声明；未声明落空（NULL 口径，roundtrip
+	// 由集成测试背书）。留痕面不做注册表对账——带未声明键的失败尝试
+	// 原样留证。
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
+
+	searchFilter := &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 4}
+	if _, err := store.Search(context.Background(), nil, searchFilter); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	doc := &biz.VectorDocument{ID: "doc#0", Embedder: "bge-m3@v2", Dimension: 4}
+	if err := store.Add(context.Background(), doc); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := store.DeleteByFilter(context.Background(), &biz.VectorFilter{Embedder: "ghost@v9"}); err != nil {
+		t.Fatalf("delete by filter: %v", err)
+	}
+	if len(repo.rows) != 3 {
+		t.Fatalf("recorded rows = %d, want 3", len(repo.rows))
+	}
+	if repo.rows[0].Embedder != "bge-m3@v1" {
+		t.Fatalf("search row embedder = %q, want the filter declaration", repo.rows[0].Embedder)
+	}
+	if repo.rows[1].Embedder != "bge-m3@v2" {
+		t.Fatalf("add row embedder = %q, want the document declaration", repo.rows[1].Embedder)
+	}
+	if repo.rows[2].Embedder != "ghost@v9" {
+		t.Fatalf("delete row embedder = %q, want the raw declaration (undeclared keys are recorded as-is)", repo.rows[2].Embedder)
 	}
 }
 
