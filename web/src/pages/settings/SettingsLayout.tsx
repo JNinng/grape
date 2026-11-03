@@ -29,7 +29,7 @@ interface SettingsModule {
 // 拒绝兜底。
 const SETTINGS_MODULES: SettingsModule[] = [
   { key: 'users', label: '用户', icon: UsersIcon, path: '/settings/users' },
-  { key: 'depts', label: '部门', icon: FolderTreeIcon },
+  { key: 'depts', label: '部门', icon: FolderTreeIcon, path: '/settings/depts' },
   { key: 'user-groups', label: '用户组', icon: ShapesIcon },
   { key: 'roles', label: '角色', icon: KeyRoundIcon },
   { key: 'menus', label: '菜单', icon: ListTreeIcon },

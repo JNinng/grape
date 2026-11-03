@@ -44,11 +44,11 @@ go build ./cmd/server
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
 | [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
 | [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 22 个经 hex 兼容改写的官方组件（new-york-v4 口径，见「UI 组件与主题」节）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
 | [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 仅保留 GrapeMark 品牌标；通用线性图标一律用 lucide-react，加载态用 `ui/spinner`。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，静态全量展示后续模块，未接入的禁用占位）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，静态全量展示后续模块，未接入的禁用占位）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）、`DeptManagePage.tsx`（部门管理页：组织树展示/新建/编辑/移动/删除）。 |
 
 ## UI 组件与主题
 
@@ -151,10 +151,10 @@ index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化
 ## 管理页（/settings）
 
 对话页头部设置图标进入；`ProtectedRoute` + `PageTransition` 包裹，
-`SettingsLayout` 左侧模块导航 + 右侧子路由内容区（`/settings/users`，索引
-重定向到首个已实现模块）。导航静态全量展示后续模块（部门/用户组/角色/
-菜单/字典/审计日志/会话/配置/租户以禁用项占位），权限码过滤待 M3-6 接入，
-越权由 API 拒绝兜底。
+`SettingsLayout` 左侧模块导航 + 右侧子路由内容区（`/settings/users`、
+`/settings/depts`，索引重定向到首个已实现模块）。导航静态全量展示后续
+模块（用户组/角色/菜单/字典/审计日志/会话/配置/租户以禁用项占位），权
+限码过滤待 M3-6 接入，越权由 API 拒绝兜底。
 
 - 数据形态：List 端点走 query.v1 动态查询协议——`api/query.ts` 声明
   `DynamicQuery`（where 条件恒 AND / sort / pagination），`QuerySet` 分页
@@ -169,6 +169,15 @@ index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化
   （三元组整组替换，留空即清掉该归属）、删除（软删除，二次确认）。动作成
   败反馈走 toast（成功）与弹窗内联错误（失败保弹窗），列表加载失败在表格
   内给出可重试横幅。
+- 部门管理页：主视图为组织树（`GET /v1/depts/tree` 一次返回租户内全部未删
+  除部门，无分页，不接 data-table；节点行缩进呈现、带子节点可展开/收起，
+  缺省全展开）。新建（上级部门下拉可选任意部门或根，部门管理员用户 ID 必
+  填、状态缺省启用，「新建子部门」预选父级）、编辑（仅 name/status，更新
+  语义下 status 必填）、移动（新上级部门下拉排除被移动部门自身，选「无（根
+  部门）」移为根即不发送 parentId；成环/未知父级由后端拒绝并透传提示）、
+  删除（软删除，二次确认；后端 409 DEPT_HAS_CHILDREN 时提示先删子级）。动
+  作成功后整树重查；错误按 org/v1 的 reason 消息映射为可读英文提示，词表
+  外透传原始消息；树加载失败给可重试横幅。
 
 ## 运维复现视图
 

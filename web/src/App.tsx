@@ -7,6 +7,7 @@ import { Toaster } from './components/ui/toast'
 import { ChatPage } from './pages/ChatPage'
 import { LoginPage } from './pages/LoginPage'
 import { ReplayPage } from './pages/replay/ReplayPage'
+import { DeptManagePage } from './pages/settings/DeptManagePage'
 import { SettingsLayout } from './pages/settings/SettingsLayout'
 import { UserManagePage } from './pages/settings/UserManagePage'
 
@@ -64,6 +65,7 @@ export default function App() {
           {/* 管理页子路由：未实现模块不注册，路由表保持与已交付页面一致。 */}
           <Route index element={<Navigate to="/settings/users" replace />} />
           <Route path="users" element={<UserManagePage />} />
+          <Route path="depts" element={<DeptManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
