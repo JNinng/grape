@@ -1,14 +1,9 @@
 -- grape 数据权限体系 schema（sqlc 输入，单一事实源；按序号分域拆分，
 -- sqlc.yaml 全量按序加载，部署执行顺序见 ../README.md）。
 --
--- 配置域：sys_config（全局 key-value，不绑定租户、无 RLS）、
--- sys_tenant_config（租户配置）、sys_feature_flag（功能开关）、
--- sys_translation（通用翻译，BCP-47 locale）。
--- ============================================================================
--- 4. 系统全局配置
---    全局 key-value 配置，不绑定租户，无 RLS。
---    由平台超级管理员维护，应用层启动时读取。
--- ============================================================================
+-- 配置域：sys_config（全局 key-value，不绑定租户、无 RLS，由平台超级
+-- 管理员维护）、sys_tenant_config（租户配置）、sys_feature_flag（功能
+-- 开关）、sys_translation（通用翻译，BCP-47 locale）。
 
 -- sys_config — 系统全局配置
 CREATE TABLE public.sys_config
@@ -164,7 +159,7 @@ CREATE INDEX idx_translation_lookup ON public.sys_translation USING btree (table
 COMMENT ON TABLE public.sys_translation IS '通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_translation.id IS '翻译 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_translation.status IS '数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值） [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_translation.status IS '数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值） [@dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_translation.table_name IS '来源表名，如 sys_menu、sys_dict_data、sys_dept [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_translation.row_id IS '来源行主键 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_translation.column_name IS '来源列名，如 name、label [@dynamic: exact, in @hideable]';

@@ -1,4 +1,3 @@
-// Package utils 提供与业务无关的通用工具函数。
 package utils
 
 import (

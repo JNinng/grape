@@ -19,8 +19,8 @@ const userKeySeparator = ":"
 var userKeyDecodeErr = errors.New("agent: invalid user key")
 
 // EncodeUserKey 把认证身份编码为框架会话存储的 userKey（tenant_id:user_id，
-// 数字 user_id）。它是 AG-UI UserIDResolver、ack WithUserFunc 与后续审计
-// 写入共用的唯一起点：会话归属与许可归属都锚定在这个编码上，禁止任何
+// 数字 user_id）。它是 AG-UI UserIDResolver、ack WithUserFunc 与审计写入
+// 共用的唯一起点：会话归属与许可归属都锚定在这个编码上，禁止任何
 // 调用方自行拼接或回落框架默认的 "user"。租户段含分隔符即拒绝：编码侧
 // 放行会让解码侧无法定位用户段边界，与解码 fail-closed 口径对齐。
 func EncodeUserKey(tenantID string, userID int64) (string, error) {

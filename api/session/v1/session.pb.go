@@ -26,17 +26,15 @@ const (
 // LoginRequest 是 SessionService.Login 的输入。
 type LoginRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 租户 ID。为空时回落服务端默认租户（过渡策略，多租户登录形态
-	// 确定后由服务端解析替代）。
+	// 租户 ID。为空时回落服务端默认租户（默认租户由装配层配置注入）。
 	TenantId string `protobuf:"bytes,1,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	// 用户名，租户内唯一。
 	UserName string `protobuf:"bytes,2,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
 	// 明文口令，仅用于本次校验，不落日志。
 	Password string `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
-	// 登录设备信息（OS/浏览器/型号等）。过渡期由客户端声明，审计采集
-	// 切面落地后改为服务端收集。
+	// 登录设备信息（OS/浏览器/型号等），由客户端声明。
 	DeviceInfo *string `protobuf:"bytes,4,opt,name=device_info,json=deviceInfo,proto3,oneof" json:"device_info,omitempty"`
-	// 登录来源 IP。过渡期由客户端声明，审计采集切面落地后改为服务端收集。
+	// 登录来源 IP，由客户端声明。
 	IpAddress     *string `protobuf:"bytes,5,opt,name=ip_address,json=ipAddress,proto3,oneof" json:"ip_address,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

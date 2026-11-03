@@ -83,7 +83,7 @@ func (m *RuntimeMetrics) Collect(ch chan<- prometheus.Metric) {
 }
 
 // RunActive 调整活跃 SSE 运行数；nil 接收者安全（no-op），agent 侧测试
-// 装配省observer 时无需判空。
+// 装配省略 observer 时无需判空。
 func (m *RuntimeMetrics) RunActive(delta int) {
 	if m == nil {
 		return

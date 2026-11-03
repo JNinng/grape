@@ -119,8 +119,8 @@ func (a *vectorStoreAdapter) Delete(ctx context.Context, id string) error {
 // Search 只落向量检索（SearchModeVector）：keyword/hybrid 需要 tsvector
 // 列与 embedder 管线配合，filter-only 检索没有相似度语义，
 // 其余模式显式拒绝，不静默降级成纯向量而改变检索行为。searchfilter 的
-// UniversalFilterCondition 翻译尚未实现（检索工具当前只传向量与 Limit），
-// 需要时按需映射。
+// UniversalFilterCondition 翻译未实现（检索工具当前只传向量与 Limit），
+// 无消费方，不预设映射。
 func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.SearchQuery) (*vectorstore.SearchResult, error) {
 	store, err := a.requireStore()
 	if err != nil {
@@ -183,8 +183,7 @@ func (a *vectorStoreAdapter) DeleteByFilter(ctx context.Context, opts ...vectors
 }
 
 // UpdateByFilter 不适配：框架的批量更新语义依赖 searchfilter 条件 DSL
-// 与 metadata.* 局部更新，当前无消费方；为不囤积未经使用的复杂度，
-// 待检索工具给出真实需求时按需映射。
+// 与 metadata.* 局部更新，当前无消费方，不预设映射。
 func (a *vectorStoreAdapter) UpdateByFilter(ctx context.Context, opts ...vectorstore.UpdateByFilterOption) (int64, error) {
 	if _, err := a.requireStore(); err != nil {
 		return 0, err

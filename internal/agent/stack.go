@@ -33,12 +33,12 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// agentDefault* 是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
-// 对将来未决确认的结算过宽；心跳不开则空闲长流可能被中间设备掐断。
+// default* 常量是配置缺省时的骨架默认值：AG-UI 运行超时的框架默认 1h
+// 对未决确认的结算过宽；心跳不开则空闲长流可能被中间设备掐断。
 // MaxToolIterations 是单次运行的工具调用轮数上限：
 // 被拒绝的确认会把「不得重试」的工具结果返回给模型，模型仍无视而循环
-// 重试时由该上限终止运行（框架默认 0 = 不限，必须显式设置）；conf 化
-// 暂缓。压缩两项与框架缺省对齐（processor.DefaultContextCompaction*）：
+// 重试时由该上限终止运行（框架默认 0 = 不限，必须显式设置）。压缩两项
+// 与框架缺省对齐（processor.DefaultContextCompaction*）：
 // conf 0 值回落到这里，而非框架零值语义（0 会关掉对应 Pass）。
 const (
 	defaultBasePath       = "/agui"
@@ -343,7 +343,7 @@ func basePathOf(c *conf.Agent) string {
 	return base
 }
 
-// runTimeoutOf 取单次运行超时（服务端兜底，将来未决确认由它结算）。
+// runTimeoutOf 取单次运行超时（服务端兜底，未决确认由它结算为拒绝）。
 func runTimeoutOf(c *conf.Agent) time.Duration {
 	if d := c.GetAgui().GetTimeout().AsDuration(); d > 0 {
 		return d

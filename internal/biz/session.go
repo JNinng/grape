@@ -33,7 +33,7 @@ const (
 	SessionStatusEnabled  int32 = 1
 )
 
-// 会话有效期缺省值。接入配置后由调用方经 SessionOptions 覆盖。
+// 会话有效期缺省值，可由调用方经 SessionOptions 覆盖。
 const (
 	DefaultSessionAccessTTL  = 30 * time.Minute
 	DefaultSessionRefreshTTL = 7 * 24 * time.Hour
@@ -174,7 +174,7 @@ func (o SessionOptions) withDefaults() SessionOptions {
 }
 
 // SessionUsecase 是会话用例：令牌生成与哈希的唯一入口，仓储只接收
-// 哈希。登录（密码校验）与认证中间件（令牌校验）落地时复用本用例。
+// 哈希。登录（密码校验）与认证中间件（令牌校验）复用本用例。
 type SessionUsecase struct {
 	repo SessionRepo
 }

@@ -51,8 +51,8 @@ type sessionMeta struct {
 }
 
 // listSessions 是会话列表的程序化取用点：按 userKey 列出会话元数据
-// （框架 WithListSessionOnlyMeta + offset 分页）。HTTP 形态与后续非
-// HTTP 消费方都经此取用，不直触框架会话存储。
+// （框架 WithListSessionOnlyMeta + offset 分页）。HTTP 形态经此取用，
+// 不直触框架会话存储。
 func (s *SessionList) listSessions(ctx context.Context, userKey string, offset, limit int) ([]sessionMeta, error) {
 	sessions, err := s.sessions.ListSessions(ctx,
 		session.UserKey{AppName: s.appName, UserID: userKey},
@@ -107,7 +107,7 @@ func (s *SessionList) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 	metas, err := s.listSessions(r.Context(), userKey, offset, limit)
 	if err != nil {
 		// 500 固定文案：内部错误细节（驱动/SQL 文本）只进服务端日志，
-		// 不透传给已认证客户端（与生成端点的 reason 枚举语义对齐）。
+		// 不透传给已认证客户端（与 proto 生成端点的 reason 枚举语义对齐）。
 		slog.ErrorContext(r.Context(), "list agent sessions failed", "error", err)
 		writeSessionListJSON(w, nethttp.StatusInternalServerError, map[string]string{"message": "internal error"})
 		return

@@ -19,7 +19,7 @@ const SearchToolName = "search_internal_docs"
 // 检索工具入参边界：查询限短（embedding 输入无必要过长）；top_k 缺省
 // 与范围校验在本层，硬上限（maxSearchTopK）由向量适配器强制——工具与
 // 其他框架侧消费方都无法绕过（见 vectorstore.go）。默认值不进 conf：
-// 检索质量参数属代码级默认，conf 化留待真实调优需求再评估。
+// 检索质量参数属代码级默认。
 const (
 	defaultSearchTopK   = 5
 	maxSearchQueryChars = 512

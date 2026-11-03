@@ -12,8 +12,7 @@ import (
 )
 
 // ProviderSet 是 data 层的 Wire 依赖注入集合，也是存储后端选择点：
-// 当前按编译期静态方式选定 pg_sqlc 关系存储后端，引入第二个后端时
-// 再定切换方案（多 injector / build tag / 运行时按 conf 分支）。
+// 当前按编译期静态方式选定 pg_sqlc 关系存储后端。
 var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, vector.ProviderSet, openidembedder.ProviderSet, NewFacilityDiagnostics, NewFacilityMaintenance)
 
 // NewFacilityDiagnostics 聚合各能力目录的诊断面实现（biz.FacilityDiagnostics）。

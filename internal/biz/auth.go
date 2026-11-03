@@ -39,7 +39,7 @@ type LoginResult struct {
 
 // LoginInput 是登录用例的入参。
 type LoginInput struct {
-	// TenantID 是登录目标租户；为空时回落用例构造时的过渡期默认租户。
+	// TenantID 是登录目标租户；为空时回落用例构造时的默认租户。
 	TenantID string
 	// UserName 是租户内唯一的用户名。
 	UserName string
@@ -59,12 +59,12 @@ type LoginInput struct {
 type AuthUsecase struct {
 	users    UserRepo
 	sessions *SessionUsecase
-	// defaultTenantID 是过渡期登录默认租户（多租户登录形态确定前，
-	// 请求未指明租户时回落到这里；来源是装配层的 auth 配置）。
+	// defaultTenantID 是登录默认租户：请求未指明租户时回落到这里；
+	// 来源是装配层的 auth 配置。
 	defaultTenantID string
 }
 
-// NewAuthUsecase 构造登录用例；defaultTenantID 为过渡期缺省租户，
+// NewAuthUsecase 构造登录用例；defaultTenantID 为缺省租户，
 // 可为空（此时请求必须显式携带租户）。
 func NewAuthUsecase(users UserRepo, sessions *SessionUsecase, defaultTenantID string) *AuthUsecase {
 	return &AuthUsecase{users: users, sessions: sessions, defaultTenantID: defaultTenantID}

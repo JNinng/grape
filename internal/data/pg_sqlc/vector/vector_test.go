@@ -27,7 +27,7 @@ import (
 //
 //	GRAPE_VECTOR_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_test \
-//	go test ./internal/data/pg_sqlc/vector -run "TestVectorStore|TestNewVectorStore"|TestNewVectorStore" -count=1 -v
+//	go test ./internal/data/pg_sqlc/vector -run "TestVectorStore|TestNewVectorStore" -count=1 -v
 //
 // 隔离口径：agent_document 不启用 RLS，租户边界由 vector_repo 的应用层
 // 过滤强制——用例显式断言 RLS 关闭（relrowsecurity=false）时跨租户仍
@@ -70,7 +70,7 @@ func setupVectorTestDB(t *testing.T) *pgsqlc.Data {
 	adminDSN := os.Getenv("GRAPE_VECTOR_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_VECTOR_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_VECTOR_TEST_ADMIN_DSN / GRAPE_VECTOR_TEST_DSN 未设置，跳过向量存储集成测试")
+		t.Skip("GRAPE_VECTOR_TEST_ADMIN_DSN / GRAPE_VECTOR_TEST_DSN not set; skipping vector store integration tests")
 	}
 	ctx := context.Background()
 

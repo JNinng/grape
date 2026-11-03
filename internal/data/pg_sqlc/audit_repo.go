@@ -96,7 +96,8 @@ func (r *auditRepo) AppendConfirmation(ctx context.Context, rec *biz.Confirmatio
 // AppendBatch 在同一身份事务内原子写入批量组合：工具调用与其授权确认
 // 成对产生，要么都落库要么都不落库；两参至少一个非空（用例已校验，
 // 仓储再守一道）。唯一约束冲突（重复写入同一 tool_call_id /
-// confirmation_id）按已存在错误上抛，暴露重复埋点缺陷而非静默吞并。
+// confirmation_id）原样上抛（SQLSTATE 23505，不映射领域错误），暴露
+// 重复埋点缺陷而非静默吞并。
 func (r *auditRepo) AppendBatch(ctx context.Context, tool *biz.ToolCallAudit, confirmation *biz.ConfirmationAudit) error {
 	if tool == nil && confirmation == nil {
 		return errors.New("pg_sqlc: audit batch requires at least one record")

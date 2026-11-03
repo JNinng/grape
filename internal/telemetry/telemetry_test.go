@@ -326,7 +326,7 @@ func Test_bridge_sugar_logger_interface_levels(t *testing.T) {
 }
 
 // Test_bridge_ctx_var_family_levels 覆盖 ctx 形态函数变量的级别映射：
-// Info/Warn/Error 三级各一条，防桥接遗漏某个框架调用面。
+// Info/Warn/Error 三级各两条（无格式与格式化形态），防桥接遗漏某个框架调用面。
 func Test_bridge_ctx_var_family_levels(t *testing.T) {
 	restoreFramework(t)
 	h := &captureHandler{}

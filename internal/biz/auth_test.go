@@ -33,7 +33,7 @@ func (f *fakeAuthUsers) SetPassword(_ context.Context, auth Identity, id int64, 
 }
 
 // newAuthUsecase 组装被测用例：登录签发复用既有 fakeSessionRepo，
-// 过渡期默认租户为 t-1。
+// 默认租户为 t-1。
 func newAuthUsecase(t *testing.T, users *fakeAuthUsers) (*AuthUsecase, *fakeSessionRepo) {
 	t.Helper()
 	sessionsRepo := &fakeSessionRepo{session: &Session{ID: 77, TenantID: "t-1", UserID: 1}}
@@ -71,7 +71,7 @@ func TestAuthLoginSuccessAndRehash(t *testing.T) {
 		t.Fatalf("issue = (%d calls, owner %+v), want 1 call for user 1", sessionsRepo.issueCalls, sessionsRepo.issueOwner)
 	}
 
-	// 过渡期默认租户：请求未指明租户时回落用例构造值
+	// 默认租户：请求未指明租户时回落用例构造值
 	out, err = uc.Login(ctx, &LoginInput{UserName: "admin", Password: "pw-plain"})
 	if err != nil {
 		t.Fatalf("login with default tenant: %v", err)

@@ -352,9 +352,7 @@ components:
             properties:
                 tenantId:
                     type: string
-                    description: |-
-                        租户 ID。为空时回落服务端默认租户（过渡策略，多租户登录形态
-                         确定后由服务端解析替代）。
+                    description: 租户 ID。为空时回落服务端默认租户（默认租户由装配层配置注入）。
                 userName:
                     type: string
                     description: 用户名，租户内唯一。
@@ -363,12 +361,10 @@ components:
                     description: 明文口令，仅用于本次校验，不落日志。
                 deviceInfo:
                     type: string
-                    description: |-
-                        登录设备信息（OS/浏览器/型号等）。过渡期由客户端声明，审计采集
-                         切面落地后改为服务端收集。
+                    description: 登录设备信息（OS/浏览器/型号等），由客户端声明。
                 ipAddress:
                     type: string
-                    description: 登录来源 IP。过渡期由客户端声明，审计采集切面落地后改为服务端收集。
+                    description: 登录来源 IP，由客户端声明。
             description: LoginRequest 是 SessionService.Login 的输入。
         session.v1.LogoutReply:
             type: object

@@ -74,7 +74,7 @@ func setupTestDB(t *testing.T) *Data {
 	adminDSN := os.Getenv("GRAPE_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_TEST_ADMIN_DSN / GRAPE_TEST_DSN 未设置，跳过存储边界集成测试")
+		t.Skip("GRAPE_TEST_ADMIN_DSN / GRAPE_TEST_DSN not set; skipping storage boundary integration tests")
 	}
 	ctx := context.Background()
 

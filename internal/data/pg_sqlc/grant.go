@@ -11,9 +11,10 @@ import (
 )
 
 // grantRepo 是 biz.GrantRepo 的 PostgreSQL 实现（agent_tool_grant）。
-// 全部操作经会话门面在租户事务内执行（RLS）；每条查询显式
+// 全部操作经会话门面在租户事务内执行（RLS）；数据行查询每条显式
 // 携带认证租户过滤——tenant_id 参数取自认证身份而非请求侧输入，RLS
-// 被关闭时跨租户仍不可见（应用层兜底，与向量层隔离口径一致）。
+// 被关闭时跨租户仍不可见（应用层兜底，与向量层隔离口径一致）；
+// 权限判定（HasPermission）走库内 fn_has_permission，租户边界由 RLS 保证。
 type grantRepo struct {
 	data *Data
 }

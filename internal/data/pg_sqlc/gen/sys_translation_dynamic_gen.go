@@ -54,7 +54,7 @@ var sys_translationRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值）",
+			Label:      "数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值）",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
@@ -1391,7 +1391,7 @@ type SysTranslationUpdateOption = dynq.UpdateOption[SysTranslationTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值））列值，无 nil。
+// SetStatus 设置 status（数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值））列值，无 nil。
 func (SysTranslationTable) SetStatus(v int64) SysTranslationUpdateOption {
 	return func(st *dynq.UpdateState[SysTranslationTable]) error {
 		return st.Set("status", "status", "", v)

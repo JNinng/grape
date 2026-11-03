@@ -54,7 +54,7 @@ func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 	adminDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_RETRIEVAL_TEST_ADMIN_DSN / GRAPE_RETRIEVAL_TEST_DSN 未设置，跳过检索留痕集成测试")
+		t.Skip("GRAPE_RETRIEVAL_TEST_ADMIN_DSN / GRAPE_RETRIEVAL_TEST_DSN not set; skipping retrieval log integration tests")
 	}
 	ctx := context.Background()
 

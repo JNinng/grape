@@ -138,7 +138,7 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "locale",
 			Column:     "locale",
-			Label:      "用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言和查询回退优先级",
+			Label:      "用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
@@ -160,7 +160,7 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "failedCount",
 			Column:     "failed_count",
-			Label:      "连续密码错误次数，达到 sys_config 的 auth.lockout-threshold 后锁定，登录成功清零（不依赖扫日志统计）",
+			Label:      "连续密码错误次数",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
@@ -171,7 +171,7 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "lockedUntil",
 			Column:     "locked_until",
-			Label:      "账号锁定截止时间，NULL 表示未锁定，登录时 CURRENT_TIMESTAMP >= locked_until 视为已解锁",
+			Label:      "账号锁定截止时间，NULL 表示未锁定",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween, dynq.OpIsNull, dynq.OpNotNull},
@@ -2070,7 +2070,7 @@ func (SysUserTable) SetRemark(v *string) SysUserUpdateOption {
 	}
 }
 
-// SetLocale 设置 locale（用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言和查询回退优先级）列值，无 nil。
+// SetLocale 设置 locale（用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言）列值，无 nil。
 func (SysUserTable) SetLocale(v string) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("locale", "locale", "", v)
@@ -2084,14 +2084,14 @@ func (SysUserTable) SetLastLoginAt(v *time.Time) SysUserUpdateOption {
 	}
 }
 
-// SetFailedCount 设置 failedCount（连续密码错误次数，达到 sys_config 的 auth.lockout-threshold 后锁定，登录成功清零（不依赖扫日志统计））列值，无 nil。
+// SetFailedCount 设置 failedCount（连续密码错误次数）列值，无 nil。
 func (SysUserTable) SetFailedCount(v int64) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("failedCount", "failed_count", "", v)
 	}
 }
 
-// SetLockedUntil 设置 lockedUntil（账号锁定截止时间，NULL 表示未锁定，登录时 CURRENT_TIMESTAMP >= locked_until 视为已解锁）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+// SetLockedUntil 设置 lockedUntil（账号锁定截止时间，NULL 表示未锁定）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (SysUserTable) SetLockedUntil(v *time.Time) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("lockedUntil", "locked_until", "", v)

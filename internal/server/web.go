@@ -92,7 +92,7 @@ func serveFile(w nethttp.ResponseWriter, r *nethttp.Request, files fs.FS, name s
 		return false
 	}
 	if strings.HasPrefix(r.URL.Path, assetsPathPrefix) {
-		// Vite 产物带内容哈希，文件名与内容一一对应，可immutable长缓存。
+		// Vite 产物带内容哈希，文件名与内容一一对应，可 immutable 长缓存。
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	if seeker, ok := f.(io.ReadSeeker); ok {

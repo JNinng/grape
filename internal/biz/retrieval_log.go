@@ -20,7 +20,7 @@ import (
 //   - source：检索来源。tool-检索工具链路（Search 的唯一消费方是检索
 //     工具，经框架适配器访问）；pipeline-摄取管线（Add/Update/
 //     DeleteByFilter）；管理面（索引重建/过滤策略调整，super 路径占位）
-//     落地时扩展取值，触发点见 sqlc/schema/97_agent_retrieval_log.sql
+//     的扩展取值与触发点见 sqlc/schema/97_agent_retrieval_log.sql
 //     的头注释；
 //   - status：操作终态，成功 / 失败（失败行同样留痕——尝试即证据，
 //     与工具调用审计的终态口径一致）。
@@ -36,7 +36,7 @@ const (
 // 审计的分页惯例一致（默认 20、单页上限 200、offset 非负）。
 const (
 	retrievalSessionColumnWidth = 255
-	retriealLogDefaultPageSize  = 20
+	retrievalLogDefaultPageSize = 20
 	retrievalLogMaxPageSize     = 200
 )
 
@@ -184,7 +184,7 @@ func retrievalFilterOf(filter *RetrievalLogFilter) (*RetrievalLogFilter, error) 
 		return nil, ErrRetrievalLogInvalidArgument
 	}
 	if f.Limit == 0 {
-		f.Limit = retriealLogDefaultPageSize
+		f.Limit = retrievalLogDefaultPageSize
 	}
 	if f.Limit < 0 || f.Limit > retrievalLogMaxPageSize || f.Offset < 0 {
 		return nil, ErrRetrievalLogInvalidArgument

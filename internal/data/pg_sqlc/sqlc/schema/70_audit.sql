@@ -3,11 +3,6 @@
 --
 -- 审计域：登录/操作日志。追加写入（append-only），永不更新，因此
 -- 省略 updated_by/updated_at/deleted_at；日志量较大，bigserial 自增主键。
--- ============================================================================
--- 2. 审计日志
---    日志表为追加写入（append-only），永不更新，因此省略 updated_by/updated_at/deleted_at。
---    日志量较大，使用 bigserial 自增主键。
--- ============================================================================
 
 -- 2a. sys_login_log — 登录日志
 CREATE TABLE public.sys_login_log

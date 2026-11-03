@@ -58,9 +58,6 @@ func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) 
 	return nil, biz.ErrSessionInvalid
 }
 
-// agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
-// 用例非 nil（业务工具的依赖），但路由用例不触发工具执行，任何方法
-// 被调用都属用例越界，按非法入参失败暴露。
 // agentStubEmbedder 是 server 路由测试的替身 embedder：固定维度、恒
 // 返回单位向量，检索工具装配需要非 nil 实现而路由用例不触达它。
 type agentStubEmbedder struct{}
@@ -71,6 +68,9 @@ func (*agentStubEmbedder) Embed(context.Context, string) ([]float32, error) {
 
 func (*agentStubEmbedder) Dimensions() int { return 4 }
 
+// agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
+// 用例非 nil（业务工具的依赖），但路由用例不触发工具执行，任何方法
+// 被调用都属用例越界，按非法入参失败暴露。
 type agentStubUserRepo struct{}
 
 func (*agentStubUserRepo) GetByID(context.Context, biz.Identity, int64) (*biz.User, error) {
@@ -139,8 +139,9 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		NewRouteTimeoutMiddleware(confServer, agentService),
 		authMiddleware, ops.NewMetricsHandler(nil, nil), nil, nil, agentService,
 		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
-		// 不触达该路由；挂载顺序（sessions 先于 agent 前缀通配、agent
-		// 先于静态兜底）在 agent_sessions_route_test.go 守卫。
+		// 不触达该路由；挂载顺序守卫分属两处——sessions 先于 agent 前缀
+		// 通配在 agent_sessions_route_test.go，agent 先于静态兜底在
+		// web_route_test.go。
 		nil,
 		// 事件窗口、审计与检索留痕查询端点本文件用例不触达，传 nil。
 		nil,

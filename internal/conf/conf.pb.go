@@ -386,8 +386,7 @@ func (x *Agent) GetSummarization() *Agent_Summarization {
 	return nil
 }
 
-// Auth 是登录的过渡期配置：请求未指明租户时的回落租户（多租户登录
-// 形态确定后由服务端解析替代）。
+// Auth 是登录配置：请求未指明租户时的回落租户。
 type Auth struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 登录未指明租户时的回落租户。
@@ -1669,13 +1668,13 @@ func (x *Server_Trace) GetTrustedNetworks() []string {
 	return nil
 }
 
-// PostgreSQL 数据库连接配置，按用途分槽位；过渡期各槽指向同一实例，
+// PostgreSQL 数据库连接配置，按用途分槽位；当前各槽指向同一实例，
 // 连接选择收在 wire 装配层，按用途注入对应句柄。
 type Data_Database struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 业务主库槽位：领域数据的唯一读写点。
 	Master *Data_Database_Slot `protobuf:"bytes,1,opt,name=master,proto3" json:"master,omitempty"`
-	// 系统库槽位：平台级设施（将来全局配置/任务状态等）；过渡期与
+	// 系统库槽位：平台级设施；当前与
 	// master 指向同一实例。
 	System        *Data_Database_Slot `protobuf:"bytes,2,opt,name=system,proto3" json:"system,omitempty"`
 	unknownFields protoimpl.UnknownFields

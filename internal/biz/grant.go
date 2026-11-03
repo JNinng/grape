@@ -21,8 +21,7 @@ var (
 
 // Agent 工具授权管理的功能权限码（种子菜单 252/253，角色经菜单关联获
 // 得）。本人授权列表与本人吊销不设码——认证身份即凭据；跨人视角才验码。
-// reason 字符串暂不进 proto ErrorReason 枚举：管理端点为手写 HTTP 形态，
-// 走 proto 化（ErrorReason + openapi）时随该批变更补枚举。
+// reason 字符串不进 proto ErrorReason 枚举：管理端点为手写 HTTP 形态。
 const (
 	// PermAgentGrantQuery 放行全租户授权列表（scope=tenant）。
 	PermAgentGrantQuery = "agent:grant:query"

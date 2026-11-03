@@ -19,7 +19,7 @@ const (
 )
 
 // SessionService 是登录/刷新的传输层适配器：DTO ↔ DO 转换，委托给
-// biz 用例，不实现业务规则。过渡期默认租户的解析在 AuthUsecase
+// biz 用例，不实现业务规则。默认租户的解析在 AuthUsecase
 // （装配层注入），本层只透传请求事实。
 type SessionService struct {
 	sessionv1.UnimplementedSessionServiceServer
@@ -32,8 +32,7 @@ func NewSessionService(auth *biz.AuthUsecase, sessions *biz.SessionUsecase) *Ses
 	return &SessionService{auth: auth, sessions: sessions}
 }
 
-// Login 校验用户名与口令并签发会话。device_info/ip_address 为过渡期
-// 客户端声明，审计采集切面落地后改为服务端收集。
+// Login 校验用户名与口令并签发会话。device_info/ip_address 由客户端声明。
 func (s *SessionService) Login(ctx context.Context, req *sessionv1.LoginRequest) (*sessionv1.LoginReply, error) {
 	out, err := s.auth.Login(ctx, &biz.LoginInput{
 		TenantID:   strings.TrimSpace(req.GetTenantId()),

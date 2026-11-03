@@ -15,10 +15,11 @@ import (
 
 // Agent 业务审计：工具调用审计与授权确认审计的领域
 // 契约。写入侧（RecordToolCall / RecordConfirmation / 组合批量）供 Agent
-// 运行面（internal/agent 的工具执行与 ack 决定路径，挂点见 agent.AuditHook）调用；查询侧供运维复现视图
+// 运行面（internal/agent 的工具执行与 ack 决定路径，挂点见 agent/audit.Hook，
+// 经 agent.WithAuditHook 装配）调用；查询侧供运维复现视图
 // 的手写端点消费。摘要脱敏在用例内完成：参数摘要走 pkg/redact 的
-// tool_param 类别、结果摘要走 retrieval 类别，与日志、复现视图共用同一
-// 注册表（单一代码点）。
+// tool_param 类别、结果摘要走 retrieval 类别，与检索留痕装饰器共用同一
+// 注册表（wire 单例；data 层 debug 日志 tracer 自建同默认值实例）。
 
 // 审计记录的领域取值。与 ack / 框架语义一一对应：
 //   - 工具调用终态：成功 / 失败（一次调用一行，重试只记最终态与次数）；
@@ -137,8 +138,8 @@ const (
 	AuditSummaryMaxRunes = 4096
 )
 
-// 审计查询的分页口径：默认页大小与单页上限对齐表注释的 @page 惯例
-// （20/200）；offset 非负。
+// 审计查询的分页口径：默认页大小与单页上限取 @page 的全局缺省
+// （sqlc.yaml 的 page_default/page_max：20/200）；offset 非负。
 const (
 	auditDefaultPageSize = 20
 	auditMaxPageSize     = 200
@@ -169,7 +170,7 @@ type ToolCallRecordInput struct {
 	// ResultSummary 是结果摘要原文（写入前脱敏 + 截断）。
 	ResultSummary string
 	// RetryCount 是重试次数：框架可采集时记实际值，不可采集时记 0
-	//（框架不暴露重试计数，最终口径见根目录 operations.md）。
+	//（框架不暴露重试计数，口径见根目录 operations.md）。
 	RetryCount int32
 	// DurationMS 是最终一次执行的耗时（毫秒）；未知留 0，落库为 NULL。
 	DurationMS int64
@@ -295,8 +296,9 @@ type AuditUsecase struct {
 	registry *redact.Registry
 }
 
-// NewAuditUsecase 构造审计用例：registry 是与日志/复现视图共用的脱敏
-// 注册表（单一代码点，经 wire 提供同一实例）。
+// NewAuditUsecase 构造审计用例：registry 是与检索留痕装饰器共用的脱敏
+// 注册表（单一代码点，经 wire 提供同一实例；data 层 debug 日志 tracer
+// 自建同默认值实例，非同一实例）。
 func NewAuditUsecase(repo AuditRepo, registry *redact.Registry) *AuditUsecase {
 	return &AuditUsecase{repo: repo, registry: registry}
 }

@@ -51,7 +51,7 @@ func toBizSession(po *gen.SysSession) *biz.Session {
 }
 
 // Issue 写入会话：租户取自门面的 app.tenant_id，审计列记所有者；主键
-// 由应用层发号（发号能力目录落地前的过渡方案，同用户仓储）。
+// 由应用层发号（newID，见 id.go）。
 func (r *sessionRepo) Issue(ctx context.Context, owner biz.Identity, in *biz.IssueSessionInput) (*biz.Session, error) {
 	refreshHash := in.RefreshTokenHash
 	var out *biz.Session

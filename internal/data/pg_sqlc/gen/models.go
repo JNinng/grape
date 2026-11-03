@@ -58,7 +58,7 @@ type AgentRetrievalLog struct {
 	Source string `db:"source" json:"source"`
 	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
 	QueryText *string `db:"query_text" json:"query_text"`
-	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL
+	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/tools/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL
 	RequestedTopK *int32 `db:"requested_top_k" json:"requested_top_k"`
 	// 实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL
 	EffectiveTopK *int32 `db:"effective_top_k" json:"effective_top_k"`
@@ -591,7 +591,7 @@ type SysTenant struct {
 	ExpiredAt pgtype.Timestamp `db:"expired_at" json:"expired_at"`
 	// 最大用户数 [@dynamic: exact, in, range @sortable @updatable: set]
 	MaxUserCount *int32 `db:"max_user_count" json:"max_user_count"`
-	// 租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值 [@dynamic: exact @hideable @updatable: set]
+	// 租户默认语言（BCP-47），如 zh-CN、en-US [@dynamic: exact @hideable @updatable: set]
 	DefaultLocale string `db:"default_locale" json:"default_locale"`
 	// 创建人 [@dynamic: exact, in]
 	CreatedBy int64 `db:"created_by" json:"created_by"`
@@ -641,7 +641,7 @@ type SysTenantConfig struct {
 type SysTranslation struct {
 	// 翻译 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用（可暂未翻译时禁用，前端回退原始值） [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值） [@dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 来源表名，如 sys_menu、sys_dict_data、sys_dept [@dynamic: exact, in @hideable]
 	TableName string `db:"table_name" json:"table_name"`
@@ -687,13 +687,13 @@ type SysUser struct {
 	Phone *string `db:"phone" json:"phone"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
-	// 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言和查询回退优先级 [@dynamic: exact @hideable @updatable: set]
+	// 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言 [@dynamic: exact @hideable @updatable: set]
 	Locale string `db:"locale" json:"locale"`
 	// 最后登录时间 [@dynamic: range, is_null, not_null @sortable @updatable: set]
 	LastLoginAt pgtype.Timestamp `db:"last_login_at" json:"last_login_at"`
-	// 连续密码错误次数，达到 sys_config 的 auth.lockout-threshold 后锁定，登录成功清零（不依赖扫日志统计） [@dynamic: exact, in, range @sortable @updatable: set]
+	// 连续密码错误次数 [@dynamic: exact, in, range @sortable @updatable: set]
 	FailedCount int32 `db:"failed_count" json:"failed_count"`
-	// 账号锁定截止时间，NULL 表示未锁定，登录时 CURRENT_TIMESTAMP >= locked_until 视为已解锁 [@dynamic: range, is_null, not_null @updatable: set]
+	// 账号锁定截止时间，NULL 表示未锁定 [@dynamic: range, is_null, not_null @updatable: set]
 	LockedUntil pgtype.Timestamp `db:"locked_until" json:"locked_until"`
 	// 创建人 [@dynamic: exact, in]
 	CreatedBy int64 `db:"created_by" json:"created_by"`

@@ -131,8 +131,8 @@ func (l *frameworkLogger) Fatalf(format string, args ...any) {
 }
 
 // bridgeFrameworkTracer 把框架的 Tracer 全局变量桥到 grape 注入的全局
-// TracerProvider：LLM / 工具 / agent 的框架 span（经 internal/trace
-// StartSpan 读该变量）随之真实产生并导出。OTel 关闭时框架变量保持其
+// TracerProvider：LLM / 工具 / agent 的框架 span（经框架 trpc-agent-go
+// internal/trace 的 StartSpan 读该变量）随之真实产生并导出。OTel 关闭时框架变量保持其
 // 自带 no-op 默认值，本函数不被调用。
 //
 // 框架在自身 telemetry/trace.Start 里也会重设该变量（其自有 SDK 接入

@@ -68,7 +68,7 @@ func setupAuditTestDB(t *testing.T) *Data {
 	adminDSN := os.Getenv("GRAPE_AUDIT_TEST_ADMIN_DSN")
 	testDSN := os.Getenv("GRAPE_AUDIT_TEST_DSN")
 	if adminDSN == "" || testDSN == "" {
-		t.Skip("GRAPE_AUDIT_TEST_ADMIN_DSN / GRAPE_AUDIT_TEST_DSN 未设置，跳过审计集成测试")
+		t.Skip("GRAPE_AUDIT_TEST_ADMIN_DSN / GRAPE_AUDIT_TEST_DSN not set; skipping audit integration tests")
 	}
 	ctx := context.Background()
 

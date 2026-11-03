@@ -56,7 +56,7 @@ func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server, mt *task.Main
 	)
 }
 
-// defaultTenantID 提供过渡期登录默认租户（auth.default_tenant_id）。
+// defaultTenantID 提供登录默认租户（auth.default_tenant_id）。
 // 配置到领域的映射收在装配点：biz 与 service 均不导入 conf。
 func defaultTenantID(c *conf.Auth) string {
 	return c.GetDefaultTenantId()

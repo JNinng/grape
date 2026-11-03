@@ -75,7 +75,7 @@ func TestPGPermissionAudit_when_allow_tier_tool_runs_records_auto_row(t *testing
 	defer cleanupSvc()
 	// 审计面走生产装配：真实数据层（专属测试库）+ 标准脱敏注册表。
 	// system 槽与 master 同源（NewData 装配期校验两槽，与生产 conf 形态
-	// 一致——过渡期两槽指向同一实例）。
+	// 一致——当前两槽指向同一实例）。
 	data, cleanupData, err := pg_sqlc.NewData(&conf.Data{Database: &conf.Data_Database{
 		Master: &conf.Data_Database_Slot{Source: dsn},
 		System: &conf.Data_Database_Slot{Source: dsn},

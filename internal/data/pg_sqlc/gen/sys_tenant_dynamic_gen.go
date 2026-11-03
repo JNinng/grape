@@ -144,7 +144,7 @@ var sys_tenantRegistry = dynq.TableMeta{
 		{
 			Key:        "defaultLocale",
 			Column:     "default_locale",
-			Label:      "租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值",
+			Label:      "租户默认语言（BCP-47），如 zh-CN、en-US",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
@@ -1661,7 +1661,7 @@ func (SysTenantTable) SetMaxUserCount(v *int64) SysTenantUpdateOption {
 	}
 }
 
-// SetDefaultLocale 设置 defaultLocale（租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值）列值，无 nil。
+// SetDefaultLocale 设置 defaultLocale（租户默认语言（BCP-47），如 zh-CN、en-US）列值，无 nil。
 func (SysTenantTable) SetDefaultLocale(v string) SysTenantUpdateOption {
 	return func(st *dynq.UpdateState[SysTenantTable]) error {
 		return st.Set("defaultLocale", "default_locale", "", v)

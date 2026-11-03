@@ -125,7 +125,7 @@ func searchSetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 	t.Helper()
 	dsn := testsupport.SetupSuiteDatabase(t, searchSuite)
 	data, cleanup, err := pg_sqlc.NewData(&conf.Data{Database: &conf.Data_Database{
-		// 过渡期两槽同源（与 configs 注释口径一致）。
+		// 两槽同源（与 configs 注释口径一致）。
 		Master: &conf.Data_Database_Slot{Source: dsn},
 		System: &conf.Data_Database_Slot{Source: dsn},
 	}})

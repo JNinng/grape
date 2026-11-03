@@ -40,7 +40,7 @@ COMMENT ON COLUMN public.sys_tenant.contact_name IS '联系人 [@dynamic: fuzzy 
 COMMENT ON COLUMN public.sys_tenant.contact_phone IS '联系电话 [@dynamic: exact, prefix @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_tenant.expired_at IS '到期时间 [@dynamic: range, is_null, not_null @sortable @updatable: set]';
 COMMENT ON COLUMN public.sys_tenant.max_user_count IS '最大用户数 [@dynamic: exact, in, range @sortable @updatable: set]';
-COMMENT ON COLUMN public.sys_tenant.default_locale IS '租户默认语言（BCP-47），如 zh-CN、en-US，新建用户时继承此值 [@dynamic: exact @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_tenant.default_locale IS '租户默认语言（BCP-47），如 zh-CN、en-US [@dynamic: exact @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';

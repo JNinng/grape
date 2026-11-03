@@ -21,15 +21,15 @@ type Data struct {
 }
 
 // Pool 暴露底层连接池，仅供无认证身份的装配期系统面取用（如 vector 包
-// 的维度探针查 information_schema）；业务读写一律经 IdentityTx /
+// 的维度探针查 pg_catalog）；业务读写一律经 IdentityTx /
 // TokenTx / TenantTx 门面，绕过门面即绕过 RLS 会话变量注入。零值 Data
 // 返回 nil。
 func (d *Data) Pool() *pgxpool.Pool { return d.db }
 
-// SystemData 是系统库句柄，平台级设施（将来全局配置/任务状态等）专用。
-// 底层与业务主库句柄 *Data 同构，以命名类型承载是为了在 wire 装配层与
+// SystemData 是系统库句柄，供平台级设施使用。底层与业务主库句柄 *Data
+// 同构，以命名类型承载是为了在 wire 装配层与
 // *Data 区分——wire 按参数类型装配，同型双参无法区分（同 TraceMiddleware
-// 的处理）；按用途注入对应句柄，将来两库拆分时消费方零改动。
+// 的处理）；按用途注入对应句柄，两库拆分时消费方零改动。
 type SystemData struct {
 	*Data
 }
@@ -37,7 +37,7 @@ type SystemData struct {
 // NewData 建立业务主库（data.database.master）连接池，返回客户端与清理
 // 函数。装配期一并校验 system 槽：系统库句柄（NewSystemData）暂无消费者，
 // wire 不实例化、不建池，其配置错误仍须在启动期暴露，fail-fast 不带病
-// 启动。过渡期两槽指向同一实例，拆分时只改配置。
+// 启动。当前两槽指向同一实例，拆分时只改配置。
 func NewData(c *conf.Data) (*Data, func(), error) {
 	if err := validateSlots(c); err != nil {
 		return nil, nil, err

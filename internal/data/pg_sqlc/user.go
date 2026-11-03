@@ -116,7 +116,7 @@ func (r *userRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (
 	return out, nil
 }
 
-// Create 创建用户：主键由应用层发号（newID，发号能力目录落地前过渡），
+// Create 创建用户：主键由应用层发号（newID，见 id.go），
 // 租户取自会话，审计列记操作者；租户内 name/email/phone 唯一冲突映射
 // 为 ErrUserAlreadyExists。
 func (r *userRepo) Create(ctx context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {

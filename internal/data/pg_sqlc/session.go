@@ -93,8 +93,10 @@ func (d *Data) runInTx(ctx context.Context, gucs []txGuC, fn func(tx pgx.Tx) err
 // IdentityTx 是绑定完整身份的事务门面：app.tenant_id 以 local=true 注入，
 // 事务结束自动失效，连接归还池后不残留上一请求的租户上下文。所有经
 // 普通数据库角色（grape_u）建立的连接都必须经 IdentityTx 访问数据库，
-// 禁止绕过租户注入直连。身份尚未成立的两类只读例外走 TenantTx
-// （登录点查）与 TokenTx（会话校验/刷新）。
+// 禁止绕过租户注入直连。身份成立前的例外走 TenantTx（登录点查，只读）
+// 与 TokenTx（会话校验/刷新/登出撤销，限令牌哈希命中的单行读写）；
+// 介质维护经池直连调 SECURITY DEFINER 函数，是文档化的另一例外——
+// 绕过路径清单见 permission.md。
 type IdentityTx struct {
 	txHandle
 	auth Identity
@@ -163,8 +165,8 @@ func (l TokenLookup) gucs() []txGuC {
 
 // TokenTx 是令牌维度的事务句柄：不绑定租户身份，RLS 只对
 // app.session_* 变量命中的会话行放行（见 rls.sql 的
-// sys_session_token_* 策略）。只用于会话校验/刷新——其他任何数据
-// 访问都必须走 IdentityTx。
+// sys_session_token_* 策略）。只用于会话校验/刷新/登出撤销——凭令牌
+// 哈希定位的会话单行读写；会话行之外的任何数据访问都必须走 IdentityTx。
 type TokenTx struct {
 	txHandle
 }

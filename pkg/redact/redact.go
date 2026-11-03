@@ -216,7 +216,7 @@ func (f keyFilter) walk(node any, depth int) any {
 }
 
 // marshalCompact 把任意已解码 JSON 值编码为紧凑文本，作为整段值的脱敏
-// 输入；编码失败时以 Go 默认格式兜底（fmt 语义），保证不 panic。
+// 输入；编码失败时返回空串（由内层脱敏器按空值处理），保证不 panic。
 func marshalCompact(v any) string {
 	b, err := json.Marshal(v)
 	if err != nil {

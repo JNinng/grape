@@ -9,7 +9,7 @@ import (
 
 // ErrMissingIdentity 是认证身份缺失的统一错误：AG-UI UserIDResolver、
 // ack WithUserFunc 与业务工具都以它 fail-closed，禁止回落框架默认用户
-// "user"。文案保持拆包前形态（端点 401 响应体与测试断言依赖）。
+// "user"。文案是既有契约：端点 401 响应体与测试断言依赖。
 var ErrMissingIdentity = errors.New("agent: missing identity in context")
 
 // UserKeyFromContext 把认证身份编码为框架会话存储键（单一代码点）：

@@ -1,7 +1,8 @@
 // Package testsupport 是 agent 树各包测试共享的替身与夹具：内存用户
 // 仓储、审计挂点替身、embedder 替身、运行观测替身、骨架配置、PG 套件
 // 专属库部署助手。本包只依赖 biz / conf / identity / pg_sqlc 与框架类型，
-// 绝不 import agent 树的任何生产包——否则引入「包内测试 → testsupport →
+// 绝不 import 根包与 tools / audit / httpapi 等被测生产包（identity 是
+// 无环叶子，仅复用其 userKey 编码）——否则引入「包内测试 → testsupport →
 // 被测包」的导入环。仅供 _test.go 文件导入。
 package testsupport
 

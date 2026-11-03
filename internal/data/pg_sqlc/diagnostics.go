@@ -15,8 +15,9 @@ const metricPrefix = "grape_pg_"
 
 // Diagnostics 是 PostgreSQL 诊断面（biz.FacilityDiagnostics）：输出
 // 连接池与库内活动的原始压力指标。可见性边界：应用角色未授予 pg_monitor，
-// pg_stat_activity 只能看见自身后端的行——应用级诊断只见自身查询属预期，
-// 不视为配置缺陷；全库视角归监控侧的超级用户查询。
+// pg_stat_activity 的其他会话行仍可见，但查询文本、等待事件等敏感列不可
+// 见（显示为占位）——应用级诊断的会话计数覆盖全实例、查询文本只见自身
+// 属预期，不视为配置缺陷；全库视角归监控侧的超级用户查询。
 type Diagnostics struct {
 	pool *pgxpool.Pool
 }
@@ -198,8 +199,7 @@ func appendTableSamples(ctx context.Context, conn *pgxpool.Conn, samples []biz.M
 }
 
 // appendIndexSamples 采集逐索引体积：pg_stat_user_indexes 提供表到索引
-// 的归属，体积经 pg_relation_size(indexrelid) 取得（比 PG16 才有的
-// idx_size 列兼容更老版本）。
+// 的归属；统计视图不含体积列，体积经 pg_relation_size(indexrelid) 现算。
 func appendIndexSamples(ctx context.Context, conn *pgxpool.Conn, samples []biz.MetricSample) ([]biz.MetricSample, error) {
 	rows, err := conn.Query(ctx,
 		`SELECT t.relname AS table, i.indexrelname AS index,

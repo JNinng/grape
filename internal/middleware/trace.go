@@ -53,8 +53,9 @@ type TraceMiddleware middleware.Middleware
 //     不进 errors.Metadata。跨域暴露（Access-Control-Expose-Headers 含
 //     x-trace-id）归 [cors.go](cors.go) 的 CORS 中间件，本中间件不感知。
 //
-// 本实现自研生成；接入 otel SDK 时只需把 NewTraceID/NewSpanID 换成真实
-// tracer 的生成实现，中间件形态不变。对端取不到传输上下文时原样放行
+// 本实现自研生成，与 SDK 解耦（OTel 全局 provider 由 telemetry 层装配，
+// 本中间件在构造 otel SpanContext 时使用）；如需换用 tracer 的生成实现，
+// 只动 NewTraceID/NewSpanID，中间件形态不变。对端取不到传输上下文时原样放行
 // （无头可回、无链路可标，与 auth 的 fail-closed 不同）。
 func NewTraceMiddleware(c *conf.Server) (TraceMiddleware, error) {
 	// 网段在启动期解析一次：配置项非法属配置错误，返回错误不带病启动。
