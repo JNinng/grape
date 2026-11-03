@@ -143,8 +143,9 @@ vector:
       base_url: ${VECTOR_EMBEDDING_BASE_URL:}
       api_key: ${VECTOR_EMBEDDING_API_KEY:}
       model: ${VECTOR_EMBEDDING_MODEL:text-embedding-3-small}
-      # 版本后缀（可空）：迭代标识（如 v1、v2），非空时空间键为
-      # model@version。
+      # 版本后缀（可空）：迭代标识（如 v1、v2），非空时空间键派生为
+      # model@version——放开本项须同步修改上方 default_embedder 为派生
+      # 键，否则装配期校验拒绝启动。
       # version: v1
       dimension: 1024
       # 单次 embedding 调用超时；未设置取 30s。

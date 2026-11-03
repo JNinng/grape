@@ -56,7 +56,7 @@ type AgentRetrievalLog struct {
 	SessionID *string `db:"session_id" json:"session_id"`
 	// 检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
 	Source string `db:"source" json:"source"`
-	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，未知/未声明为 NULL（不伪造）
+	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，声明为空时为 NULL；留痕面只记录事实、不做注册表对账——带未声明键的调用（含失败尝试的原始声明）原样落库留证
 	Embedder *string `db:"embedder" json:"embedder"`
 	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
 	QueryText *string `db:"query_text" json:"query_text"`

@@ -71,8 +71,11 @@ type RetrievalLogRecord struct {
 	SessionID string
 	// Source 是检索来源（RetrievalSource* 常量）。
 	Source string
-	// Embedder 是本次向量操作的嵌入空间键（模型[@版本]）：检索行取过滤
-	// 声明、摄取行取文档归属；未知/未声明为空，落库 NULL（不伪造）。
+	// Embedder 是本次向量操作的嵌入空间键（模型@版本）：按操作现场的
+	// 声明原样留痕——检索行取过滤声明、摄取行取文档归属，声明为空落
+	// NULL。留痕面只记录事实、不做注册表对账：带未声明键的调用（含
+	// 失败尝试的原始声明）原样落库留证，失败行正是排查换空间事故的
+	// 证据面。
 	Embedder string
 	// QueryText 是已脱敏的查询文本；无查询事实（摄取侧）为空，落库 NULL。
 	QueryText string

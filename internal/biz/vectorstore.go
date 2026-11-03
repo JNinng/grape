@@ -42,9 +42,12 @@ type VectorDocument struct {
 
 // VectorFilter 是向量读面共用的过滤与分页参数。IDs 与 Metadata 叠加时
 // 取交集；均空表示不过滤（Count/GetMetadata 视为租户全量，DeleteByFilter
-// 拒绝执行，见各方法注释）。MinScore/Embedder/Dimension 仅 Search 消费
-// （见 Search 注释）；Limit 为 0 时由实现取默认页大小；Offset 仅
-// GetMetadata 消费（分页枚举）。
+// 拒绝执行，见各方法注释）。Embedder 为可空过滤：Search 必填（与
+// Dimension 成对声明检索空间并三方对账），Count/DeleteByFilter/
+// GetMetadata 非空时收敛到该空间、空即跨空间操作；Dimension 与 MinScore
+// 仅 Search 消费。Limit 在 Search 为 0 时由实现取默认页大小、在
+// GetMetadata 非正为不限量（此时 Offset 必须为 0）；Offset 仅 GetMetadata
+// 消费（分页枚举）。
 type VectorFilter struct {
 	IDs       []string
 	Embedder  string

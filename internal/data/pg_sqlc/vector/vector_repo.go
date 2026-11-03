@@ -97,9 +97,9 @@ var vectorTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 // vectorStore 是向量存储的介质实现。
 type vectorStore struct {
 	data   *pgsqlc.Data
-	table  string              // 已过白名单校验的表名（agent schema 内）
-	spaces map[string]int32    // 空间键 → 声明维度（conf.VectorSpaces 单一解析源）
-	dims   map[int32]struct{}  // 注册表内去重维度集合（启动探针逐维度核索引）
+	table  string             // 已过白名单校验的表名（agent schema 内）
+	spaces map[string]int32   // 空间键 → 声明维度（conf.VectorSpaces 单一解析源）
+	dims   map[int32]struct{} // 注册表内去重维度集合（启动探针逐维度核索引）
 }
 
 var _ biz.VectorStore = (*vectorStore)(nil)
@@ -414,7 +414,11 @@ func (r *vectorStore) Search(ctx context.Context, embedding []float32, filter *b
 		limit = filter.Limit
 	}
 
-	plan, err := planVectorFilter(4, filter)
+	// 过滤计划跳过 embedder 子句：检索的空间等值已由手写条件承担
+	//（$3，必填且经 resolveSpace 对账），plan 只翻译 IDs/Metadata。
+	stripped := *filter
+	stripped.Embedder = ""
+	plan, err := planVectorFilter(4, &stripped)
 	if err != nil {
 		return nil, err
 	}
@@ -614,7 +618,7 @@ func (row *vectorDocRow) fields() []any {
 }
 
 // toBiz 转换为领域文档。metadata 里携带仓储写入的 tenant_id/user_id/
-// embedder，一并原样返回给调用方（框架侧过滤语义可回读）。
+// embedder/embed_dim，一并原样返回给调用方（框架侧过滤语义可回读）。
 func (row *vectorDocRow) toBiz() (*biz.VectorDocument, error) {
 	metadata := map[string]any{}
 	if len(row.Metadata) > 0 {

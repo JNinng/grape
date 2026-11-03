@@ -40,12 +40,15 @@ type Embedder interface {
 	Dimension(embedder string) (int, error)
 }
 
-// EmbedderResolver 解析默认嵌入空间：请求显式指定 > 租户配置
-// （sys_tenant_config 的 vector.embedder 键）> 全局 conf 兜底。默认
-// 空间决定摄取入库与默认检索落在哪个空间——切换默认不迁移存量，旧
-// 文档留在原空间，重摄取（source_id 幂等覆盖）即迁移路径。
-// 实现在 data 层（租户配置读取），biz 只声明形状；设施未启用返回
-// ErrEmbedderDisabled，租户配置指向未声明空间返回 ErrEmbedderUnknown。
+// EmbedderResolver 解析默认嵌入空间：租户配置（sys_tenant_config 的
+// vector.embedder 键）优先，未配置回落全局 conf 兜底；更高一级的请求侧
+// 显式指定由调用方入参面承担（当前生产链路恒走解析器，入口扩展时在
+// 解析之上叠加）。默认空间决定摄取入库与默认检索落在哪个空间——切换
+// 默认不迁移存量，旧文档留在原空间，重摄取（source_id 幂等覆盖）即
+// 迁移路径。实现在 data 层（租户配置读取），biz 只声明形状；设施未启用
+// 返回 ErrEmbedderDisabled，租户配置指向未声明空间返回
+// ErrEmbedderUnknown（不静默回落全局——静默换空间会让摄取/检索悄悄
+// 失配）。
 type EmbedderResolver interface {
 	// ResolveDefaultEmbedder 返回当前身份的默认空间键与维度，身份与
 	// 维度成对出现；身份缺失 fail-closed（实现从认证 ctx 提取）。
