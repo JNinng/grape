@@ -46,6 +46,8 @@
 | [retrieval_log.go](retrieval_log.go) | Agent 检索留痕：留痕记录与完整行 DO（命中 `RetrievalHit` 的 json 标签即落库 jsonb 元素键）、`RetrievalLogRepo` 契约（Append/List，追加写无更新面）与 `RetrievalLogUsecase`（查询侧分页归一与来源取值校验；写入侧不经用例——留痕行由 data 层 VectorStore 留痕装饰器在操作现场构造直写，脱敏在装饰器落库前完成）；会话 ID / 查询文本的 ctx 事实载体（`WithSessionID` / `WithRetrievalQuery` 及读取函数，agent 层注入、装饰器消费，事实缺失如实留空）；`ErrRetrievalLogInvalidArgument`。 |
 | [embedder.go](embedder.go)        | 文本向量化设施契约 `Embedder`（Embed/Dimensions，框架无关最小面）：维度纪律——声明维度须与 conf.vector.dimension 对账（摄取管线装配期校验），实现须在每次响应复核；`ErrEmbedderDisabled` 类型化错误。                      |
 | [document.go](document.go)        | 摄取管线 `DocumentUsecase`：简版固定长度 + 重叠切分（rune 窗口，可替换点）→ 逐块 embed → 经 VectorStore 契约写入；幂等取「同来源覆盖」（切片 ID 确定性派生 `#index`，摄取前按 source_id 锚点清旧行）；切片元数据含来源标识与原文 rune 区间锚点；装配期校验 embedder 维度与 conf 一致（不一致拒绝构造）。`ErrDocumentSourceTooLong` 类型化错误。 |
+| [grant.go](grant.go)              | Agent 工具授权：`ToolGrant` DO 与 `GrantRepo` 契约（许可评估原语 FindActive* 的 miss 以 (nil, nil) 表达正常控制流，管理原语按 id 定位）；`GrantUsecase` 编排会话级先于全局级的许可解析（Resolve/Remember，agent 适配层消费）与管理面（ListOwn/ListTenant/Revoke，手写端点消费，功能权限码在用例层判定）；功能权限码常量与类型化错误。 |
+| [metrics.go](metrics.go)          | Agent 运行观测契约 `AgentRunObserver`（RunActive/RunRejected/ToolCallObserved）：agent 适配层推运行事实、ops 的 RuntimeMetrics 实现，依赖反转接缝与 FacilityDiagnostics 同型。 |
 | [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewGrantUsecase`、`NewRetrievalLogUsecase`、`NewRedactRegistry`（审计表/检索留痕与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
 
 
@@ -62,5 +64,5 @@
 
 ## 测试
 
-现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed。
+现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发、授权用例（[grant_test.go](grant_test.go)：Resolve 会话级优先/回退/两级 miss、Remember 幂等与会话/全局作用域、ListTenant/Revoke 的权限码 403 与归属 404 边界）；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed。
 

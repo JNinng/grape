@@ -53,7 +53,6 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 | [agent_audit_route_test.go](agent_audit_route_test.go) | 守卫 Agent 业务审计查询端点：无令牌 401、带令牌空页信封（items 空数组而非 null）。 |
 | [agent_retrieval_route_test.go](agent_retrieval_route_test.go) | 守卫检索留痕查询端点：无令牌 401（端点在册且经 ctx.Middleware 入链的语义不因手写路由放宽）。 |
 | [web_route_test.go](web_route_test.go) | 守卫静态托管语义：SPA 路由刷新不 404、未知 API 路径（含方法失配）不回页面壳、`/metrics` 与 `/agui/*` 不被静态吞、无令牌 API 仍 401、assets 缓存头、占位产物可服务。 |
-
 | [telemetry_route_test.go](telemetry_route_test.go) | 守卫 OTel 接入：enabled 时经内存导出器断言 agent 路由产生并导出 server span。 |
 | [cors_route_test.go](cors_route_test.go) | 守卫 CORS 挂载行为：agent 路由预检链内短路（204 + 回显 + Max-Age）、生成路由预检经 405 兜底、白名单外来源不带 Allow-Origin、关闭时零 CORS 头、配置缺白名单装配期拒绝。 |
 | [sse_trace_test.go](sse_trace_test.go) | 守卫 SSE 分片阶段 `x-trace-id` 中途可见（门控模型 + 原子首次写标志，无数据竞争）。 |

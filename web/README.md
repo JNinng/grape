@@ -194,7 +194,7 @@ trace_id 串联；确认决定属独立 ack 请求，live 路径的确认行与�
   context_compact 的字面形状识别占位符（elided 引用行、方括号截断标记
   含紧凑与裸变体、策略占位），提取 event_id 恢复引用；带引用的经
   GET `/agui/event-window`（`api/agentEventWindow.ts`，后端见
-  `internal/agent/eventwindow.go`）懒加载会话事件原文并排对照，失败可
+  `internal/agent/httpapi/eventwindow.go`）懒加载会话事件原文并排对照，失败可
   重试；无引用的只标注「已压缩（不可反查）」。识别以形状特征为准、不
   假设必然出现（占位符产生在请求投影副本，回放原文里通常不出现）。
 - 数据组装（trace 汇总/过滤/高亮/hits 解析）与占位符识别均为纯函数，

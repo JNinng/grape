@@ -101,7 +101,7 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 
 | 操作 | 判定与写入 |
 |---|---|
-| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID`。请求可携带归属三元组，按约束应校验新归属可达（口径同 `fn_can_transfer_owner` 的新归属部分）；`CreateUser` 尚未接入该判定，属待补约束 |
+| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID`。请求可携带归属三元组，按约束应校验新归属可达（口径同 `fn_can_transfer_owner` 的新归属部分）；`CreateUser` 尚未接入该判定 |
 | 修改 `UpdateUser` | `LockSysUserPermitted` 锁定并判定 → `UpdateSysUser`；不可见返回 NotFound |
 | 删除 `DeleteUser` | `LockSysUserPermitted` 锁定并判定 → `SoftDeleteSysUser` 置 `deleted_at` |
 | 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |
@@ -176,7 +176,7 @@ WHERE id = sqlc.arg('id')
 7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。
 8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）是仅有的绕过路径，不得扩展到其他读写。
 9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设 `app.tenant_id` 全拒。
-10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询 `ListAllTenantsSuper`），并配审计日志、受限端点与跨范围测试。
+10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询），并配审计日志、受限端点与跨范围测试。
     - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询与令牌维度撤销（`GetCredentialForLogin`、`SessionRepo.Validate` / `RevokeByAccessTokenHash`（登出）/ `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。
     - SQL 命名查询不参与该约定；内部回读靠使用边界注释约束，不在 biz 接口上暴露。
 

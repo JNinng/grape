@@ -4,7 +4,7 @@
 
 ## 现有能力
 
-- [pg_sqlc](pg_sqlc/)：关系存储（PostgreSQL，pgx/v5）。根包是存储门面与关系仓储（`Data` / `IdentityTx` 等会话门面、用户/会话/授权/审计/检索留痕仓储、诊断面与维护面），声明资产在 [pg_sqlc/sqlc](pg_sqlc/sqlc/)（schema 按业务域拆分于 `sqlc/schema/`，另有 role/rls/operate/expose/queries/seed 与 sqlc.yaml），生成产物在 `pg_sqlc/gen/`（禁止手改，单 catalog 不随子包拆分）；SQL 对象索引、权限模型与生成命令见 [sqlc/README.md](pg_sqlc/sqlc/README.md)。两个子包只依赖根包、根包不反向引用：
+- [pg_sqlc](pg_sqlc/)：关系存储（PostgreSQL，pgx/v5）。根包是存储门面与关系仓储（`Data` / `IdentityTx` 等会话门面、用户/会话/授权/审计/检索留痕仓储、诊断面与维护面），声明资产在 [pg_sqlc/sqlc](pg_sqlc/sqlc/)（schema 按业务域拆分于 `sqlc/schema/`，另有 role/rls/operate/expose、Agent 域声明文件 96_agent_grant.sql 与 agent_session.sql/agent_vector.sql、queries/seed 与 sqlc.yaml），生成产物在 `pg_sqlc/gen/`（禁止手改，单 catalog 不随子包拆分）；SQL 对象索引、权限模型与生成命令见 [sqlc/README.md](pg_sqlc/sqlc/README.md)。两个子包只依赖根包、根包不反向引用：
   - [pg_sqlc/deploy](pg_sqlc/deploy/)：声明资产的部署面（执行清单 `DeployFiles`、口令占位符替换、跨进程部署锁、清单校验），dbdeploy 命令与各包 PG 集成测试共用，不依赖运行期门面。
   - [pg_sqlc/vector](pg_sqlc/vector/)：向量存储设施（biz.VectorStore 契约的 pgvector 介质，[vector_repo.go](pg_sqlc/vector/vector_repo.go)）：DDL 是超级用户面 [pg_sqlc/sqlc/agent_vector.sql](pg_sqlc/sqlc/agent_vector.sql)（不进 sqlc catalog，存取 SQL 手写参数化），租户隔离由应用层强制（每条 SQL 带租户过滤、缺认证身份拒绝，读写经根包 IdentityTx），装配期探针校验 conf.vector.dimension 与部署列一致。向量仓储经检索留痕装饰器（[retrieval_log.go](pg_sqlc/vector/retrieval_log.go)）包装后对外供给：Search 记 query/top_k/命中（来源 tool）、Add/Update/DeleteByFilter 记摄取侧（来源 pipeline），留痕失败只记日志不中断检索，检索内容与过滤摘要落库前经 pkg/redact 脱敏（wire 组合：`NewVectorStoreSupply` → `NewLoggedVectorStore` → 框架适配器与摄取管线；本子包的 ProviderSet 由 data 与根包集合并列聚合）。
 

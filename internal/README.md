@@ -83,7 +83,7 @@ task 入口（定时 / 事件 / 手动触发），与 service 同构但无 DTO /
 规则：
 
 - 同一个 DO 类型贯穿 service（或 task）→ biz → data，禁止中途换形或引入第四种对象形态；
-- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约与运行观测契约；`telemetry` 只导入 `conf`、otel SDK 与 trpc-agent-go 的观测门面（`log` / `telemetry/trace`，仅桥接赋值，不装配框架对象）；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）、`middleware` / `ops` / `telemetry`（otel 中间件开关的时序锚点）与 `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`）；`agent` 根包是唯一装配点，只导入 `conf` 与 `biz`（读认证身份、业务工具调用的用例——查询协议 `dynq` 随 `biz` 仓储接口跨界，与 `service` 的查询转换同角色）、自身子包（`agent/identity` 身份与 userKey 单一代码点、`agent/tools` 业务工具与向量适配器、`agent/audit` 审计写入面、`agent/httpapi` 手写 HTTP 端点与 ack 路由防护；子包依赖方向单向无环，见 [agent/README.md](agent/README.md) 的包结构导览）及框架包，子包只依赖 `biz`/`conf`/框架、不反向 import 根包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），第三方依赖仅 `go.opentelemetry.io/otel/trace`（审计经 ctx SpanContext 读 trace_id，与 [telemetry](telemetry/) README 的消费口径一致），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；`pkg/` 与 internal 各层解耦，仅 `pkg/redact`（脱敏单一代码点）被 `data` 的 debug tracer 与检索留痕装饰器消费，审计表与复现视图沿用同一注册表；
+- 各层禁止的依赖方向：`service` 只导入 `api/...` 与 `biz`（手写端点可额外导入 `transport/http` 与 `agent`——Agent 手写路由需要其挂载物；`Logout` 因免认证幂等语义自取 Authorization 头，额外导入 `transport`；`query` 服务为构造查询协议额外导入 `dynq`）；`task` 只导入 `biz`（不经 `api/...`，无 DTO）；`middleware` 只导入 `api/...`（免认证操作名）、`biz`、`conf` 与 `pkg/utils`；`ops` 只导入 `biz` 设施只读契约与运行观测契约；`telemetry` 只导入 `conf`、otel SDK 与 trpc-agent-go 的观测门面（`log` / `telemetry/trace`，仅桥接赋值，不装配框架对象）；`server` 只导入 `conf`、`service`、生成代码的注册函数（`api/...`）、`middleware` / `telemetry`（otel 中间件开关的时序锚点）与 `web`（仅静态托管的 `fs.FS` 导出，见根目录 `web/embed.go`；ops 的指标 Handler 以 `net/http.Handler` 参数注入，不直接 import）；`agent` 根包是唯一装配点，只导入 `conf` 与 `biz`（读认证身份、业务工具调用的用例——查询协议 `dynq` 随 `biz` 仓储接口跨界，与 `service` 的查询转换同角色）、自身子包（`agent/identity` 身份与 userKey 单一代码点、`agent/tools` 业务工具与向量适配器、`agent/audit` 审计写入面、`agent/httpapi` 手写 HTTP 端点与 ack 路由防护；子包依赖方向单向无环，见 [agent/README.md](agent/README.md) 的包结构导览）及框架包，子包只依赖 `biz`/`conf`/框架、不反向 import 根包；`biz` 仅允许为错误 reason 枚举导入 `api/...`（`dynq.Query` 作为查询协议随仓储接口跨界），第三方依赖限装配与基础库：wire（ProviderSet 标注）、`dynq`（查询协议）、kratos errors（类型化错误）、`golang.org/x/crypto`（口令哈希）、`go.opentelemetry.io/otel/trace`（审计经 ctx SpanContext 读 trace_id，与 [telemetry](telemetry/) README 的消费口径一致），**禁止导入 `agent` 与任何 Agent 框架包**；`data` 只为仓储接口与设施契约导入 `biz`；`pkg/` 与 internal 各层解耦：`pkg/redact`（脱敏单一代码点）被 `data`（debug tracer、检索留痕装饰器）、`biz`（审计用例的注册表单点）与 `agent`（LLM 日志脱敏）消费——data 层 debug tracer 自建同默认值实例，非 wire 同一实例；`pkg/utils` 仅被 `middleware` 消费；
 - 跨箭头的错误引用即为分层 bug，应修正设计而不是添加 import。
 
 ## 手写端点归属
@@ -131,7 +131,7 @@ data 按存储能力分目录：一能力一子目录，目录内自包含（装
 
 ### 客户端热更换
 
-热更换是能力目录的可选机制，以 `reloader.go` 承载（文件存在即声明该能力可热换），wire 仅注入稳定句柄；细则待引入 reloader 时按实际需求补充。
+热更换是能力目录的可选机制：目录内出现 `reloader.go` 即声明该能力可热换，wire 仅注入稳定句柄。
 
 ## 新增资源速查
 

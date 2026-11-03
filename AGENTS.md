@@ -5,7 +5,7 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 ## 常用命令
 
 - `make api` / `make config` — 从 proto 生成 `api/` 契约代码与根目录 `openapi.yaml`、生成 `internal/conf/conf.pb.go`
-- `make sqlc` — 生成存储代码；改了 sqlc 输入（`schema/`、`rls/operate/expose`、`queries/`）后必须执行并连同产物提交
+- `make sqlc` — 生成存储代码；改了 sqlc 输入（`schema/`、`rls/operate/expose`、`96_agent_grant.sql`、`queries/`）后必须执行并连同产物提交
 - `make generate`（含 wire + tidy）— 改依赖注入后必须重跑以刷新 `cmd/server/wire_gen.go`
 - `make all` — 上述全部
 - `go test ./...` — 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控，未设置时自动跳过
@@ -13,7 +13,7 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 
 ## 生成物禁止手改
 
-`api/**/*.pb.go`、`internal/conf/conf.pb.go`、`internal/data/pg_sqlc/gen/`、`cmd/server/wire_gen.go`、`openapi.yaml` 一律经 make 目标再生成。`internal/data/pg_sqlc/sqlc/`（schema 九个域文件 + rls/operate/expose/queries/seed）是单一事实源，动态查询能力由列注释 DSL（@dynamic/@scope 等）声明。
+`api/**/*.pb.go`、`internal/conf/conf.pb.go`、`internal/data/pg_sqlc/gen/`、`cmd/server/wire_gen.go`、`openapi.yaml` 一律经 make 目标再生成。`internal/data/pg_sqlc/sqlc/`（schema 十一个文件 + rls/operate/expose + 96_agent_grant.sql + queries/）是单一事实源，动态查询能力由列注释 DSL（@dynamic/@scope 等）声明。
 
 ## 分层
 

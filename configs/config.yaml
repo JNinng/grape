@@ -24,7 +24,7 @@ server:
       - ::1/128
 data:
   database:
-    # 槽位按用途分层：master 业务主库、system 系统库。过渡期各槽指向
+    # 槽位按用途分层：master 业务主库、system 系统库。当前各槽指向
     # 同一实例，DSN 收敛到 data.database.<用途>.source。
     master:
       # 运行角色 grape_u（非超级用户，真实承受 RLS；授权见 sqlc/rls.sql）。
@@ -33,12 +33,11 @@ data:
       # Log every executed statement. Development only.
       debug: true
     system:
-      # 过渡期与 master 同实例；拆分时只改此处。
+      # 当前与 master 同实例；拆分时只改此处。
       source: ${DATABASE_SOURCE:postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape}
       debug: true
 auth:
-  # default_tenant_id：登录未指明租户时的回落租户（过渡策略，多租户
-  # 登录形态确定后由服务端解析替代）。指向种子数据里的全租户管理员。
+  # default_tenant_id：登录未指明租户时的回落租户。指向种子数据里的全租户管理员。
   default_tenant_id: t-super-01
 agent:
   # app_name：core runner / AG-UI / ack 三者共用的会话存储键组成部分，
@@ -87,7 +86,7 @@ agent:
     # base_path：AG-UI 与 ack 的共同路由前缀；chat 在前缀根，
     # /history、/cancel 与 /ack/confirmations 同前缀。
     base_path: /agui
-    # 单次运行超时（服务端兜底；将来未决确认最终由它结算为拒绝）。
+    # 单次运行超时（服务端兜底；超时的未决确认由它结算为拒绝）。
     timeout: 1800s
     # SSE 心跳间隔，保持中间设备不掐空闲流。
     heartbeat_interval: 15s

@@ -112,9 +112,10 @@ ack 的已知限制：**确认决定与运行必须同进程**。live 路径的
    不丢决定，但 live 等待被拆成「拒绝 + 恢复续跑」两段，前端表现为一次
    额外的工具执行或拒绝结算；这是粘性失效时的既定降级语义，不是缺陷。
 3. 故障诊断备案：ack live 决定路径不校验决定者与会话归属，grape 在挂载
-   点以归属守卫（internal/agent/ack_guard.go）强制 404；上游缺陷备案
-   （等待者消失后属主会话状态里的待确认指针无人清理）见 agent/README.md
-   「ack 路由归属守卫」一节，排查「合法决定被误路由到恢复路径」时引用。
+   点以归属守卫（internal/agent/httpapi/ack_guard.go）强制 404；上游缺陷
+   备案（等待者消失后属主会话状态里的待确认指针无人清理）见
+   internal/agent/README.md「ack 归属守卫」条目，排查「合法决定被误路由
+   到恢复路径」时引用。
 
 ## 优雅停机
 
@@ -132,8 +133,8 @@ ack 的已知限制：**确认决定与运行必须同进程**。live 路径的
 
 ## 保留期与归档统一口径
 
-各数据面的保留期策略与执行机制（统一裁定；**归档/清理任务不在本期
-实现**，执行归运维——cron 定时或手动 SQL，口径如下）：
+各数据面的保留期策略与执行机制（统一裁定；**归档/清理任务不随应用
+交付**，执行归运维——cron 定时或手动 SQL，口径如下）：
 
 | 数据面 | 保留策略 | 执行口径 |
 | --- | --- | --- |
@@ -201,7 +202,7 @@ SQL），否则将产生真孤儿。
 
 trpc-agent-go / trpc_agent_go_ack / pgx 升级时逐项核对（当前基线：
 trpc-agent-go v1.11.2 + server/agui v1.11.0 + session/postgres v1.11.0 +
-ack e0d2276 + pgx v5.11.0；对照各上游 tag 仓库）：
+ack v0.2.1 + pgx v5.11.0；对照各上游 tag 仓库）：
 
 1. **session schema diff 义务**：框架版本升级时以新版本 session/postgres
    建表模板 diff [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql)
@@ -209,7 +210,7 @@ ack e0d2276 + pgx v5.11.0；对照各上游 tag 仓库）：
    名规则由框架内部 builder 计算、改名即断）；历史库另出迁移脚本，运行期
    `WithSkipDBInit(true)` 不做 DDL。漏 diff 的症状是启动后首个会话读写报
    结构错误。
-2. **ack decide 响应形状**：grape 的决定审计面（internal/agent/ack_audit.go）
+2. **ack decide 响应形状**：grape 的决定审计面（internal/agent/httpapi/ack_audit.go）
    解析 200 响应体取生效路径（`{"path": ...}` 字段），ackhttp 的 decide
    响应结构变更（字段改名/形态变化）会让审计面静默放弃确认行（记日志）。
    升级 ack 后必跑 internal/agent/audit_wire_test.go 全套。
@@ -226,7 +227,7 @@ ack e0d2276 + pgx v5.11.0；对照各上游 tag 仓库）：
 6. **框架观测面**：trpc-agent-go 日志门面与 Tracer 桥接在
    internal/telemetry（进程级全局桥接），上游观测 API 变更时只动该层。
 
-## 工具重试次数口径（最终）
+## 工具重试次数口径
 
 审计与复现视图的工具重试次数（`agent_tool_call_log.retry_count`）恒记 0：
 工具重试在框架执行面内部收敛，终态只见最终一次调用，框架不对外暴露重试
