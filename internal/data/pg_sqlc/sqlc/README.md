@@ -31,7 +31,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD 与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 9 个文件、57 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 10 个文件、67 条命名查询 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
@@ -46,9 +46,9 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `sqlc.yaml` 的 schema 列表 = schema/ 十个域文件（10–90 九个域 +
   95_agent_audit）+ rls/operate/expose + 96_agent_grant.sql +
   schema/97_agent_retrieval_log.sql（收尾），queries 列表 =
-  queries/ 九个文件（operate/basic/perm、业务表固定 CRUD
-  sys_user/sys_dept/sys_session 与 Agent 审计 agent_audit、工具授权
-  agent_grant、检索留痕 agent_retrieval_log）。加 rls/operate/expose 是为了让 queries 里的查
+  queries/ 十个文件（operate/basic/perm、业务表固定 CRUD
+  sys_user/sys_dept/sys_user_group/sys_session 与 Agent 审计
+  agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。加 rls/operate/expose 是为了让 queries 里的查
   询能调用这些文件里的函数（GetScope 调三件套、判断类调 fn_can_* /
   fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
   业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
@@ -271,6 +271,30 @@ parent_id 重写路径并校验父级与防环），本文件不写闭包表的�
 | UpdateSysDept | :one | name/status + 操作者 + id → SysDept | 更新可变字段（不含 parent_id 与 owner_*——结构与归属变更走专项口径）；updated_at 由触发器刷新 |
 | MoveSysDept | :one | 新父级（可空）+ 操作者 + id → SysDept | 移动部门；NULL 表示移为根部门，闭包路径由触发器重写（父级/防环校验兜底） |
 | SoftDeleteSysDept | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝 |
+
+### sys_user_group.sql（用户组固定 CRUD 与成员映射）
+
+用户组是租户内资源（表无 @scope，租户内全可见）；动态查询能力由
+schema/30_user.sql 的列注释 DSL 声明（ParseSysUserGroupQuery 等顶层
+函数为生成物）。成员映射 sys_user_group_mapping 不单独立资源，随宿主
+用户组的管理面维护：映射行无可变业务字段，移除成员走物理删除；映射表
+无外键级联，组软删后映射行物理残留，消费侧（fn_accessible_* 权限推导
+与成员列表的活跃联结）都以组表/用户表 deleted_at IS NULL 过滤，残留行
+不产生可见副作用。code 与 name 的部分唯一索引限定未删除组间，软删后
+可复用。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysUserGroupByID | :one | id → SysUserGroup | 按 id 读取未软删的用户组（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| LockSysUserGroupByID | :one | id → SysUserGroup | 按 id 锁定未软删的用户组（FOR UPDATE，组与成员映射的写路径先锁后写） |
+| InsertSysUserGroup | :one | 组字段 + 操作者 → SysUserGroup | 插入用户组记录；租户取会话 app.tenant_id；code/name 唯一冲突映射 AlreadyExists |
+| UpdateSysUserGroup | :one | name/status/remark + 操作者 + id → SysUserGroup | 更新可变字段（不含 code 与 owner_user_id——身份与归属列不经本路径变更）；updated_at 由触发器刷新 |
+| SoftDeleteSysUserGroup | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除用户组（成员映射行物理残留，消费侧活跃过滤排除） |
+| ListSysUserGroupMembers | :many | group_id/limit/offset → 行集 | 分页返回组成员（联结用户表展示 name/nickname/status；按添加时间 ASC、user_id ASC 稳定排序；已软删用户被活跃联结过滤不出现在结果中） |
+| CountSysUserGroupMembers | :one | group_id → 行数 | 与 List 同条件统计成员数，供分页信封 |
+| CountSysUserGroupMemberCandidates | :one | 用户 ID 数组 → 行数 | 统计候选成员中租户内未软删用户数（添加成员前的存在性判定：命中数与请求数不等即存在未知/跨租户/已删除用户，整批拒绝不写入） |
+| AddSysUserGroupMembers | :execrows | group_id/用户 ID 数组/操作者 → 新增条数 | 批量写入成员映射；租户取会话 app.tenant_id，重复添加经主键冲突跳过（幂等） |
+| RemoveSysUserGroupMembers | :execrows | group_id/用户 ID 数组 → 移除条数 | 批量物理删除成员映射；移除非成员更新 0 行（幂等，不报错） |
 
 ### sys_session.sql（会话固定 CRUD）
 

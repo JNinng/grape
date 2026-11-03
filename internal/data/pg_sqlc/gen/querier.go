@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	// 批量写入成员映射；租户取会话 app.tenant_id，重复添加跳过
+	AddSysUserGroupMembers(ctx context.Context, arg AddSysUserGroupMembersParams) (int64, error)
 	// 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过
 	AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error
 	// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过
@@ -35,6 +37,12 @@ type Querier interface {
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 统计部门未软删的直接子部门数（删除前置校验；触发器兜底同口径）
 	CountSysDeptActiveChildren(ctx context.Context, id *int64) (int64, error)
+	// 统计候选成员中租户内未软删用户数（添加成员前的存在性判定：命中数与
+	// 请求数不等即存在未知用户，整批拒绝不写入；跨租户用户经 RLS 不命中，
+	// 等同不存在）
+	CountSysUserGroupMemberCandidates(ctx context.Context, userIds []int64) (int64, error)
+	// 统计组成员数（与 List 同条件，供分页信封）
+	CountSysUserGroupMembers(ctx context.Context, groupID int64) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
 	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
 	GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error)
@@ -61,6 +69,15 @@ type Querier interface {
 	GetSysDeptByID(ctx context.Context, id int64) (SysDept, error)
 	// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
+	// 用户组固定 CRUD（sys_user_group）与成员映射读写（sys_user_group_mapping）。
+	// 用户组是租户内资源：表无 @scope，租户边界由 RLS 承担，行级无范围；
+	// 动态查询能力由 schema/30_user.sql 的列注释 DSL 声明，本文件只写固定
+	// 命名查询。成员映射不单独立资源，随宿主用户组的管理面维护：映射行无可
+	// 变业务字段，移除成员走物理删除；映射表无外键级联，组软删后映射行物理
+	// 残留，消费侧（权限推导函数与成员列表）都以组表/用户表活跃过滤联结，
+	// 残留行不产生可见副作用。
+	// 按 id 读取未软删的用户组（租户边界由 RLS 承担；表无 @scope，租户内全可见）
+	GetSysUserGroupByID(ctx context.Context, id int64) (SysUserGroup, error)
 	// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	GetSysUserPermitted(ctx context.Context, arg GetSysUserPermittedParams) (SysUser, error)
 	// 登录路径专用：按用户名读取口令哈希与状态（仅未软删行）
@@ -103,6 +120,8 @@ type Querier interface {
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
+	// 插入用户组记录；租户取会话 app.tenant_id
+	InsertSysUserGroup(ctx context.Context, arg InsertSysUserGroupParams) (SysUserGroup, error)
 	// 租户内全部用户的活跃授权列表（管理视图，入口侧验 agent:grant:query）
 	ListActiveAgentToolGrantsByTenant(ctx context.Context, tenantID string) ([]AgentToolGrant, error)
 	// 指定用户的活跃授权列表（本人视图），新授权在前；id 为同秒 tie-break
@@ -116,15 +135,23 @@ type Querier interface {
 	// 读取租户内全部未软删部门（组织树装配与环检测的专用列表，租户规模内
 	// 全量返回；created_at ASC、id ASC 稳定排序）
 	ListSysDeptAll(ctx context.Context) ([]SysDept, error)
+	// 分页返回组成员（联结用户表展示字段；按添加时间升序、user_id 升序稳定
+	// 排序）。已软删用户不出现在结果中（残留映射行被联结过滤）
+	ListSysUserGroupMembers(ctx context.Context, arg ListSysUserGroupMembersParams) ([]ListSysUserGroupMembersRow, error)
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
+	// 按 id 锁定未软删的用户组（FOR UPDATE，写路径先锁后写；行级无 @scope，
+	// 租户边界由 RLS 承担）
+	LockSysUserGroupByID(ctx context.Context, id int64) (SysUserGroup, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
 	// 移动部门到新父级；parent_id 为 NULL 表示移为根部门。闭包路径由
 	// trg_maintain_dept_closure 在同事务内重写（父级合法性/防环由触发器
 	// 校验兜底，调用方已在用例层预检）
 	MoveSysDept(ctx context.Context, arg MoveSysDeptParams) (SysDept, error)
+	// 批量物理删除成员映射；移除非成员更新 0 行（幂等）
+	RemoveSysUserGroupMembers(ctx context.Context, arg RemoveSysUserGroupMembersParams) (int64, error)
 	// 管理吊销：调用方（GrantUsecase.Revoke）已验 agent:grant:revoke 权限
 	// 码；已吊销或不存在更新 0 行
 	RevokeAgentToolGrantManaged(ctx context.Context, arg RevokeAgentToolGrantManagedParams) (int64, error)
@@ -151,6 +178,8 @@ type Querier interface {
 	SoftDeleteSysDept(ctx context.Context, arg SoftDeleteSysDeptParams) (int64, error)
 	// 置位 deleted_at 软删除用户
 	SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error)
+	// 置位 deleted_at 软删除用户组（成员映射行物理残留，消费侧活跃过滤排除）
+	SoftDeleteSysUserGroup(ctx context.Context, arg SoftDeleteSysUserGroupParams) (int64, error)
 	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
 	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
@@ -159,6 +188,9 @@ type Querier interface {
 	UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error)
 	// 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 	UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error)
+	// 更新可变字段（name/status/remark；不含 code 与 owner_user_id——身份与
+	// 归属列不经本路径变更）；updated_at 由触发器刷新
+	UpdateSysUserGroup(ctx context.Context, arg UpdateSysUserGroupParams) (SysUserGroup, error)
 	// 更新用户归属三元组；归属参数为 NULL 表示清空该归属
 	UpdateSysUserOwner(ctx context.Context, arg UpdateSysUserOwnerParams) error
 }

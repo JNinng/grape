@@ -37,6 +37,7 @@
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [user.go](user.go)                | 用户 DO `User`、分页信封 `UserList`、归属三元组 `OwnerTriple`；`UserRepo`（CRUD、角色分配、归属转移、登录凭据点查）与 `UserUsecase`；name/nickname 必填与 status 校验、创建缺省值、角色 ID 去重排序。                     |
 | [dept.go](dept.go)                | 部门 DO `Dept`、分页信封 `DeptList` 与树节点 `DeptNode`；`DeptRepo`（CRUD、租户内全量列表、移动、软删）与 `DeptUsecase`：name/owner 必填与 status 校验、创建缺省启用、父级存在性校验（引用无效 INVALID_ARGUMENT）、移动的防环检测（沿新父级祖先链上溯）、树装配（孤儿行防御性按根挂载）；闭包表是派生数据不进领域模型。 |
+| [usergroup.go](usergroup.go)      | 用户组 DO `UserGroup`、分页信封 `UserGroupList` 与成员条目 `UserGroupMember`（映射行联结用户展示字段的只读视图）；`UserGroupRepo`（CRUD、成员列表分页、批量增删成员）与 `UserGroupUsecase`：name 必填与 status/remark 列宽校验、创建缺省启用（code 仅创建路径必填，身份列创建后不变）、成员 ID 去重排序、成员分页归一（页码下限 1、页大小 20/200）；组删除为软删，成员映射行物理残留并由消费侧活跃过滤排除。 |
 | [auth.go](auth.go)                | 登录用例：`LoginInput` / `LoginResult`、`UserCredential` 与账号摘要 `UserSummary`；租户回落、防枚举（不存在与口令错同因）、口令校验通过后判禁用、透明重哈希、委托 `SessionUsecase` 签发会话。                          |
 | [session.go](session.go)          | 会话 DO `Session` 与状态/TTL/元数据列宽常量；`SessionRepo` 的 Issue / Validate / Revoke / RevokeByAccessTokenHash（登出）/ Refresh 动作及入参出参；`SessionUsecase` 负责令牌生成、sha256 哈希、元数据截断；会话与登录相关类型化错误也定义于此。          |
 | [password.go](password.go)        | 口令哈希单点：`HashPassword`（argon2id PHC）与 `VerifyPassword`（按行内算法标识分发 argon2id/argon2i、bcrypt、种子 scrypt），返回是否需重哈希；`ErrPasswordHashUnsupported` 表示库内哈希格式异常。                      |
@@ -49,7 +50,7 @@
 | [document.go](document.go)        | 摄取管线 `DocumentUsecase`：简版固定长度 + 重叠切分（rune 窗口，可替换点）→ 解析默认嵌入空间 → 逐块 embed（响应长度与声明维度对账）→ 经 VectorStore 契约写入（切片携带空间键与维度）；幂等取「同来源覆盖」（切片 ID 确定性派生 `#index`，摄取前按 source_id 锚点跨空间清旧行——换默认空间的重摄取即迁移路径）；切片元数据含来源标识与原文 rune 区间锚点；`ErrDocumentSourceTooLong` 类型化错误。 |
 | [grant.go](grant.go)              | Agent 工具授权：`ToolGrant` DO 与 `GrantRepo` 契约（许可评估原语 FindActive* 的 miss 以 (nil, nil) 表达正常控制流，管理原语按 id 定位）；`GrantUsecase` 编排会话级先于全局级的许可解析（Resolve/Remember，agent 适配层消费）与管理面（ListOwn/ListTenant/Revoke，手写端点消费，功能权限码在用例层判定）；功能权限码常量与类型化错误。 |
 | [metrics.go](metrics.go)          | Agent 运行观测契约 `AgentRunObserver`（RunActive/RunRejected/ToolCallObserved）：agent 适配层推运行事实、ops 的 RuntimeMetrics 实现，依赖反转接缝与 FacilityDiagnostics 同型。 |
-| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewDeptUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewGrantUsecase`、`NewRetrievalLogUsecase`、`NewRedactRegistry`（审计表/检索留痕与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
+| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewDeptUsecase`、`NewUserGroupUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewGrantUsecase`、`NewRetrievalLogUsecase`、`NewRedactRegistry`（审计表/检索留痕与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
 
 
 ## 关键约束
@@ -65,5 +66,5 @@
 
 ## 测试
 
-现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发、授权用例（[grant_test.go](grant_test.go)：Resolve 会话级优先/回退/两级 miss、Remember 幂等与会话/全局作用域、ListTenant/Revoke 的权限码 403 与归属 404 边界）；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed；部门用例（[dept_test.go](dept_test.go)，mock 仓储）：创建校验与缺省启用、父级存在性与点查失败透传、移动防环（自父/未知父/移入自身子树拒、跨枝与移根放行）、更新/删除/树装配（嵌套顺序、孤儿按根、总数）。
+现有覆盖：口令多算法校验与重哈希、会话令牌边界、登录编排与防枚举、审计用例的脱敏消费（类别命中/未登记放行但截断）、写入校验与批量转发、授权用例（[grant_test.go](grant_test.go)：Resolve 会话级优先/回退/两级 miss、Remember 幂等与会话/全局作用域、ListTenant/Revoke 的权限码 403 与归属 404 边界）；摄取管线（[document_test.go](document_test.go)，替身 embedder + 契约替身）：切分边界（短文/恰界/重叠窗/零重叠/多字节/空白）、维度失配构造期拒绝、同来源覆盖幂等与删除先行、来源标识与锚点元数据、身份缺失 fail-closed、embed 失败不触库、中途 Add 失败上报；检索留痕查询用例（[retrieval_log_test.go](retrieval_log_test.go)，替身仓储）：分页缺省与上限、来源/会话/offset 校验 fail-closed、身份缺失 fail-closed；部门用例（[dept_test.go](dept_test.go)，mock 仓储）：创建校验与缺省启用、父级存在性与点查失败透传、移动防环（自父/未知父/移入自身子树拒、跨枝与移根放行）、更新/删除/树装配（嵌套顺序、孤儿按根、总数）；用户组用例（[usergroup_test.go](usergroup_test.go)，mock 仓储）：创建校验（name/code 列宽、remark 超长、status 取值、组长正 ID）与缺省启用、更新转发与缺 id 拒绝、成员增删的去重排序/空集与缺组拒绝、仓储错误透传、成员分页归一（页码下限、页大小上下限）。
 

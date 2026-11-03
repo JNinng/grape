@@ -7,7 +7,8 @@ option java_multiple_files = true;
 option java_package = "io.grpc.examples.org.v1";
 option objc_class_prefix = "APIOrgV1";
 
-// ErrorReason 是部门资源的错误原因枚举，用于 Kratos 错误的 reason 字段。
+// ErrorReason 是组织域资源（部门、用户组）的错误原因枚举，用于 Kratos
+// 错误的 reason 字段。
 enum ErrorReason {
   // 缺省值，不使用。
   DEPT_UNSPECIFIED = 0;
@@ -19,4 +20,10 @@ enum ErrorReason {
   DEPT_ALREADY_EXISTS = 3;
   // 部门存在未删除的子部门，禁止删除。
   DEPT_HAS_CHILDREN = 4;
+  // 目标用户组不存在（含跨租户不可见）。
+  USER_GROUP_NOT_FOUND = 5;
+  // 用户组请求参数非法（成员引用未知用户等）。
+  USER_GROUP_INVALID_ARGUMENT = 6;
+  // 唯一约束冲突（租户内组编码或组名已被占用）。
+  USER_GROUP_ALREADY_EXISTS = 7;
 }

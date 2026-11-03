@@ -21,7 +21,8 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// ErrorReason 是部门资源的错误原因枚举，用于 Kratos 错误的 reason 字段。
+// ErrorReason 是组织域资源（部门、用户组）的错误原因枚举，用于 Kratos
+// 错误的 reason 字段。
 type ErrorReason int32
 
 const (
@@ -35,6 +36,12 @@ const (
 	ErrorReason_DEPT_ALREADY_EXISTS ErrorReason = 3
 	// 部门存在未删除的子部门，禁止删除。
 	ErrorReason_DEPT_HAS_CHILDREN ErrorReason = 4
+	// 目标用户组不存在（含跨租户不可见）。
+	ErrorReason_USER_GROUP_NOT_FOUND ErrorReason = 5
+	// 用户组请求参数非法（成员引用未知用户等）。
+	ErrorReason_USER_GROUP_INVALID_ARGUMENT ErrorReason = 6
+	// 唯一约束冲突（租户内组编码或组名已被占用）。
+	ErrorReason_USER_GROUP_ALREADY_EXISTS ErrorReason = 7
 )
 
 // Enum value maps for ErrorReason.
@@ -45,13 +52,19 @@ var (
 		2: "DEPT_INVALID_ARGUMENT",
 		3: "DEPT_ALREADY_EXISTS",
 		4: "DEPT_HAS_CHILDREN",
+		5: "USER_GROUP_NOT_FOUND",
+		6: "USER_GROUP_INVALID_ARGUMENT",
+		7: "USER_GROUP_ALREADY_EXISTS",
 	}
 	ErrorReason_value = map[string]int32{
-		"DEPT_UNSPECIFIED":      0,
-		"DEPT_NOT_FOUND":        1,
-		"DEPT_INVALID_ARGUMENT": 2,
-		"DEPT_ALREADY_EXISTS":   3,
-		"DEPT_HAS_CHILDREN":     4,
+		"DEPT_UNSPECIFIED":            0,
+		"DEPT_NOT_FOUND":              1,
+		"DEPT_INVALID_ARGUMENT":       2,
+		"DEPT_ALREADY_EXISTS":         3,
+		"DEPT_HAS_CHILDREN":           4,
+		"USER_GROUP_NOT_FOUND":        5,
+		"USER_GROUP_INVALID_ARGUMENT": 6,
+		"USER_GROUP_ALREADY_EXISTS":   7,
 	}
 )
 
@@ -86,13 +99,16 @@ var File_org_v1_error_reason_proto protoreflect.FileDescriptor
 
 const file_org_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
-	"\x19org/v1/error_reason.proto\x12\x06org.v1*\x82\x01\n" +
+	"\x19org/v1/error_reason.proto\x12\x06org.v1*\xdc\x01\n" +
 	"\vErrorReason\x12\x14\n" +
 	"\x10DEPT_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eDEPT_NOT_FOUND\x10\x01\x12\x19\n" +
 	"\x15DEPT_INVALID_ARGUMENT\x10\x02\x12\x17\n" +
 	"\x13DEPT_ALREADY_EXISTS\x10\x03\x12\x15\n" +
-	"\x11DEPT_HAS_CHILDREN\x10\x04B;\n" +
+	"\x11DEPT_HAS_CHILDREN\x10\x04\x12\x18\n" +
+	"\x14USER_GROUP_NOT_FOUND\x10\x05\x12\x1f\n" +
+	"\x1bUSER_GROUP_INVALID_ARGUMENT\x10\x06\x12\x1d\n" +
+	"\x19USER_GROUP_ALREADY_EXISTS\x10\aB;\n" +
 	"\x17io.grpc.examples.org.v1P\x01Z\x13grape/api/org/v1;v1\xa2\x02\bAPIOrgV1b\x06proto3"
 
 var (

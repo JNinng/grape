@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+package org.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/org/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.org.v1";
+option java_outer_classname = "UserGroupProto";
+
+// UserGroupService 提供用户组管理。用户组是租户内资源：租户边界由数据库
+// RLS 强制，租户内全部用户组对持有令牌的成员可见（表无 @scope，行级无
+// 范围）。List 走动态查询协议，过滤/排序/投影/分页能力由存储层 schema
+// 注释 DSL 声明。成员映射 sys_user_group_mapping 不单独立资源：随宿主
+// 用户组的管理面维护（成员列表/添加/移除），映射行无可变业务字段，移除
+// 成员走物理删除。组删除为软删除，映射行残留但权限推导侧全部联结组表
+// deleted_at IS NULL 过滤，残留行不起作用。
+service UserGroupService {
+  // CreateUserGroup 创建用户组。租户内 code 与 name 各自唯一（未删除组间），
+  // 冲突返回 ALREADY_EXISTS。组长 owner_user_id 可省略。
+  rpc CreateUserGroup (CreateUserGroupRequest) returns (UserGroup) {
+    option (google.api.http) = {
+      post: "/v1/user-groups/create"
+      body: "*"
+    };
+  }
+
+  // GetUserGroup 按 id 查询单个用户组。跨租户不可见等同不存在（NOT_FOUND）。
+  rpc GetUserGroup (GetUserGroupRequest) returns (UserGroup) {
+    option (google.api.http) = {
+      get: "/v1/user-groups/{id}"
+    };
+  }
+
+  // ListUserGroups 按动态查询协议返回一页用户组（平铺列表，供检索与
+  // 分页表格）。过滤表达式非法、字段未知、操作符不允许、条件冲突、
+  // 跨表游标均返回 INVALID_ARGUMENT。
+  rpc ListUserGroups (ListUserGroupsRequest) returns (UserGroupSet) {
+    option (google.api.http) = {
+      post: "/v1/user-groups/list"
+      body: "query"
+    };
+  }
+
+  // UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
+  // owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
+  // 组长变更走部署面专项口径（本批不提供）。
+  rpc UpdateUserGroup (UpdateUserGroupRequest) returns (UserGroup) {
+    option (google.api.http) = {
+      put: "/v1/user-groups/update"
+      body: "group"
+    };
+  }
+
+  // DeleteUserGroup 软删除用户组（deleted_at 置位）。成员映射行随物理
+  // 保留：映射表无外键级联，残留行被权限推导与成员列表的组表/用户表
+  // 活跃过滤排除，不产生可见副作用；code 与 name 的唯一约束限定未删除
+  // 组间，软删后可复用。
+  rpc DeleteUserGroup (DeleteUserGroupRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/user-groups/{id}"
+    };
+  }
+
+  // ListUserGroupMembers 分页返回组成员（联结用户表展示姓名/昵称/状态，
+  // 按添加时间升序、user_id 升序稳定排序）。组不存在或跨租户返回
+  // NOT_FOUND；已软删用户不出现在成员列表。
+  rpc ListUserGroupMembers (ListUserGroupMembersRequest) returns (UserGroupMemberSet) {
+    option (google.api.http) = {
+      get: "/v1/user-groups/{id}/members"
+    };
+  }
+
+  // AddUserGroupMembers 批量添加成员：目标用户必须存在且未删除（含跨
+  // 租户用户——RLS 之外等同不存在），任一未知返回 INVALID_ARGUMENT 且
+  // 整批不写入。已是成员的用户跳过（幂等），返回实际新增条数。
+  rpc AddUserGroupMembers (AddUserGroupMembersRequest) returns (AddUserGroupMembersReply) {
+    option (google.api.http) = {
+      post: "/v1/user-groups/add-members"
+      body: "*"
+    };
+  }
+
+  // RemoveUserGroupMembers 批量移除成员（物理删除映射行）。目标组必须
+  // 存在（NOT_FOUND）；移除非成员或已不存在的用户不算错误（幂等），
+  // 返回实际移除条数。
+  rpc RemoveUserGroupMembers (RemoveUserGroupMembersRequest) returns (RemoveUserGroupMembersReply) {
+    option (google.api.http) = {
+      post: "/v1/user-groups/remove-members"
+      body: "*"
+    };
+  }
+}
+
+// UserGroup 是用户组的规范表示。审计列与时间戳只读。
+message UserGroup {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 组名，租户内未删除用户组间唯一。
+  string name = 3;
+  // 组编码，租户内未删除用户组间唯一；创建后不可变。
+  string code = 4;
+  // 备注，可空。
+  optional string remark = 5;
+  // 组长/归属用户 ID，可空。创建时生效，更新时忽略。
+  optional int64 owner_user_id = 6;
+  // 创建人。只读。
+  int64 created_by = 7;
+  // 更新人。只读。
+  int64 updated_by = 8;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 9;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 10;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 11;
+}
+
+// UserGroupSet 是 ListUserGroups 返回的分页集合。
+message UserGroupSet {
+  // 本页用户组，顺序遵循查询中的 sort。
+  repeated UserGroup items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// UserGroupMember 是组成员条目：映射行与成员用户的展示字段的联结视图。
+// 全部字段只读；成员的增删走 Add/RemoveUserGroupMembers。
+message UserGroupMember {
+  // 成员用户 ID。
+  int64 user_id = 1;
+  // 用户名（sys_user.name）。
+  string name = 2;
+  // 用户昵称。
+  string nickname = 3;
+  // 用户数据状态：0 禁用、1 启用。
+  int32 status = 4;
+  // 添加人。只读。
+  int64 added_by = 5;
+  // 添加时间。只读。
+  google.protobuf.Timestamp added_at = 6;
+}
+
+// UserGroupMemberSet 是 ListUserGroupMembers 返回的分页集合。
+message UserGroupMemberSet {
+  // 本页成员，按添加时间升序（同刻按 user_id 升序）。
+  repeated UserGroupMember items = 1;
+  // 匹配的总成员数。
+  int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+}
+
+// CreateUserGroupRequest 是 UserGroupService.CreateUserGroup 的输入。
+message CreateUserGroupRequest {
+  // 要创建的用户组。id、created_by/updated_by 与时间戳在输入中被忽略。
+  UserGroup group = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetUserGroupRequest 是 UserGroupService.GetUserGroup 的输入。
+message GetUserGroupRequest {
+  // 目标用户组的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListUserGroupsRequest 是 UserGroupService.ListUserGroups 的输入。
+message ListUserGroupsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateUserGroupRequest 是 UserGroupService.UpdateUserGroup 的输入。
+message UpdateUserGroupRequest {
+  // 携带新字段值的用户组。id 标识目标记录，必须设置；code 与
+  // owner_user_id 在输入中被忽略。
+  UserGroup group = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteUserGroupRequest 是 UserGroupService.DeleteUserGroup 的输入。
+message DeleteUserGroupRequest {
+  // 目标用户组的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListUserGroupMembersRequest 是 UserGroupService.ListUserGroupMembers 的
+// 输入。成员分页为固定 offset 模式（映射表无动态查询协议）。
+message ListUserGroupMembersRequest {
+  // 目标用户组的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 页码，缺省 1；小于 1 归一化为 1。
+  int32 page = 2;
+  // 每页条数，缺省 20；上限 200，越界归一化为 200。
+  int32 page_size = 3;
+}
+
+// AddUserGroupMembersRequest 是 UserGroupService.AddUserGroupMembers 的输入。
+message AddUserGroupMembersRequest {
+  // 目标用户组的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 要添加的用户 ID 列表；重复项去重。
+  repeated int64 user_ids = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// AddUserGroupMembersReply 是 UserGroupService.AddUserGroupMembers 的输出。
+message AddUserGroupMembersReply {
+  // 实际新增的映射条数（已是成员的用户跳过）。
+  int64 added = 1;
+}
+
+// RemoveUserGroupMembersRequest 是 UserGroupService.RemoveUserGroupMembers
+// 的输入。
+message RemoveUserGroupMembersRequest {
+  // 目标用户组的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 要移除的用户 ID 列表；重复项去重。
+  repeated int64 user_ids = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// RemoveUserGroupMembersReply 是 UserGroupService.RemoveUserGroupMembers
+// 的输出。
+message RemoveUserGroupMembersReply {
+  // 实际移除的映射条数（非成员返回 0，不报错）。
+  int64 removed = 1;
+}

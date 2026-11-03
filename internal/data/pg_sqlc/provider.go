@@ -8,4 +8,4 @@ import "github.com/google/wire"
 // 装饰器）在 vector 子包，其 ProviderSet 由 data 层与本集合并列聚合；
 // 本包提供它依赖的 *Data、检索留痕仓储（NewRetrievalLogRepo）与默认
 // 嵌入空间解析器（NewEmbedderResolver，读 sys_tenant_config）。
-var ProviderSet = wire.NewSet(NewData, NewSystemData, NewUserRepo, NewDeptRepo, NewSessionRepo, NewRetrievalLogRepo, NewAuditRepo, NewGrantRepo, NewDiagnostics, NewSessionMaintenance, NewEmbedderResolver)
+var ProviderSet = wire.NewSet(NewData, NewSystemData, NewUserRepo, NewDeptRepo, NewUserGroupRepo, NewSessionRepo, NewRetrievalLogRepo, NewAuditRepo, NewGrantRepo, NewDiagnostics, NewSessionMaintenance, NewEmbedderResolver)
