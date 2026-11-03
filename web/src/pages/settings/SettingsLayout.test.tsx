@@ -30,7 +30,8 @@ describe('SettingsLayout navigation', () => {
 
     expect(screen.getByRole('link', { name: '用户' })).toHaveAttribute('href', '/settings/users')
     expect(screen.getByRole('link', { name: '部门' })).toHaveAttribute('href', '/settings/depts')
-    for (const label of ['用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']) {
+    expect(screen.getByRole('link', { name: '用户组' })).toHaveAttribute('href', '/settings/user-groups')
+    for (const label of ['角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']) {
       const item = screen.getByText(label).closest('[aria-disabled]')
       expect(item).not.toBeNull()
       expect(item).toHaveAttribute('aria-disabled', 'true')
@@ -47,5 +48,11 @@ describe('SettingsLayout navigation', () => {
     renderLayout('/settings/depts')
 
     expect(screen.getByRole('link', { name: '部门' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('marks_the_user_group_module_active_on_the_user_group_page', () => {
+    renderLayout('/settings/user-groups')
+
+    expect(screen.getByRole('link', { name: '用户组' })).toHaveAttribute('aria-current', 'page')
   })
 })

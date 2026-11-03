@@ -9,6 +9,7 @@ import { LoginPage } from './pages/LoginPage'
 import { ReplayPage } from './pages/replay/ReplayPage'
 import { DeptManagePage } from './pages/settings/DeptManagePage'
 import { SettingsLayout } from './pages/settings/SettingsLayout'
+import { UserGroupManagePage } from './pages/settings/UserGroupManagePage'
 import { UserManagePage } from './pages/settings/UserManagePage'
 
 // App 是路由表与全局装配点：网络层会话失效（401 且刷新失败）时回到
@@ -66,6 +67,7 @@ export default function App() {
           <Route index element={<Navigate to="/settings/users" replace />} />
           <Route path="users" element={<UserManagePage />} />
           <Route path="depts" element={<DeptManagePage />} />
+          <Route path="user-groups" element={<UserGroupManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
