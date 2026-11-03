@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package org.v1;
+
+option go_package = "grape/api/org/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.org.v1";
+option objc_class_prefix = "APIOrgV1";
+
+// ErrorReason 是部门资源的错误原因枚举，用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  DEPT_UNSPECIFIED = 0;
+  // 目标部门不存在（含跨租户不可见）。
+  DEPT_NOT_FOUND = 1;
+  // 请求参数非法（父子引用无效、移入自身子树等）。
+  DEPT_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户内部门名已被占用）。
+  DEPT_ALREADY_EXISTS = 3;
+  // 部门存在未删除的子部门，禁止删除。
+  DEPT_HAS_CHILDREN = 4;
+}

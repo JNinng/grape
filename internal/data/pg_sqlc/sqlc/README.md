@@ -31,7 +31,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD 与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 8 个文件、49 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD 与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 9 个文件、57 条命名查询 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
@@ -46,9 +46,9 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `sqlc.yaml` 的 schema 列表 = schema/ 十个域文件（10–90 九个域 +
   95_agent_audit）+ rls/operate/expose + 96_agent_grant.sql +
   schema/97_agent_retrieval_log.sql（收尾），queries 列表 =
-  queries/ 八个文件（operate/basic/perm、业务表固定 CRUD
-  sys_user/sys_session 与 Agent 审计 agent_audit、工具授权 agent_grant、
-  检索留痕 agent_retrieval_log）。加 rls/operate/expose 是为了让 queries 里的查
+  queries/ 九个文件（operate/basic/perm、业务表固定 CRUD
+  sys_user/sys_dept/sys_session 与 Agent 审计 agent_audit、工具授权
+  agent_grant、检索留痕 agent_retrieval_log）。加 rls/operate/expose 是为了让 queries 里的查
   询能调用这些文件里的函数（GetScope 调三件套、判断类调 fn_can_* /
   fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
   业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
@@ -252,6 +252,25 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | SoftDeleteSysUser | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除用户 |
 | UpdateSysUserOwner | :exec | 新归属三元组 + 操作者 + id | 更新用户归属三元组；归属参数为 NULL 表示清空该归属 |
 | GetUserCredentialByName | :one | 用户名 → 凭据行（含口令哈希） | 登录路径专用：按用户名读取口令哈希与状态（仅未软删行） |
+
+### sys_dept.sql（部门固定 CRUD）
+
+闭包表 sys_dept_closure 是派生数据，全部路径由 trg_maintain_dept_closure
+触发器在写事务内自动维护（INSERT/恢复建路径、软删/物理删清路径、改
+parent_id 重写路径并校验父级与防环），本文件不写闭包表的任何查询；
+触发器的拒绝（父级不存在/已删除/跨租户、移入自身子树、有未删除子部门）
+是并发窗口的兜底防线。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysDeptByID | :one | id → SysDept | 按 id 读取未软删的部门（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| LockSysDeptByID | :one | id → SysDept | 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写） |
+| ListSysDeptAll | :many | → 行集 | 读取租户内全部未软删部门（组织树装配与环检测的专用列表；created_at ASC、id ASC 稳定排序） |
+| CountSysDeptActiveChildren | :one | id → 行数 | 统计未软删的直接子部门数（删除前置校验，触发器兜底同口径） |
+| InsertSysDept | :one | 部门字段 + 操作者 → SysDept | 插入部门记录；租户取会话 app.tenant_id，闭包路径由触发器建立 |
+| UpdateSysDept | :one | name/status + 操作者 + id → SysDept | 更新可变字段（不含 parent_id 与 owner_*——结构与归属变更走专项口径）；updated_at 由触发器刷新 |
+| MoveSysDept | :one | 新父级（可空）+ 操作者 + id → SysDept | 移动部门；NULL 表示移为根部门，闭包路径由触发器重写（父级/防环校验兜底） |
+| SoftDeleteSysDept | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝 |
 
 ### sys_session.sql（会话固定 CRUD）
 

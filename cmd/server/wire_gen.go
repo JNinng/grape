@@ -52,10 +52,13 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	userRepo := pg_sqlc.NewUserRepo(pg_sqlcData)
 	userUsecase := biz.NewUserUsecase(userRepo)
 	userService := service.NewUserService(userUsecase)
+	deptRepo := pg_sqlc.NewDeptRepo(pg_sqlcData)
+	deptUsecase := biz.NewDeptUsecase(deptRepo)
+	deptService := service.NewDeptService(deptUsecase)
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, userService, sessionService)
+	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, userService, deptService, sessionService)
 	service2, cleanup3, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
 		cleanup2()
@@ -126,7 +129,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, sessionService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, handler, userService, deptService, sessionService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
 	if err != nil {
 		cleanup8()
 		cleanup7()

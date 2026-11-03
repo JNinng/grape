@@ -36,10 +36,11 @@
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewSessionService` / `NewAgentService` / `NewAgentSessionsService` / `NewAgentEventWindowService` / `NewAgentAuditService` / `NewAgentRetrievalService`，由 cmd 的 Wire 统一装配。 |
+| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewDeptService` / `NewSessionService` / `NewAgentService` / `NewAgentSessionsService` / `NewAgentEventWindowService` / `NewAgentAuditService` / `NewAgentRetrievalService`，由 cmd 的 Wire 统一装配。 |
 | [query.go](query.go) | 跨资源查询转换：`convertQuery` 把 `queryv1.Query` 转 `dynq.Query`；`normalizeEnumValue` 归一化枚举过滤值（仅 `eq` / `neq` / `in` / `not_in` 且字段已登记别名时生效）；`invalidQueryError` 包装转换错误；`pageOf` 计算分页信封页码。 |
 | [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`Logout` 免认证（幂等语义，见认证中间件白名单），自取 `Authorization: Bearer` 头交用例按哈希撤销；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
 | [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`、`TransferUserOwner`；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
+| [dept.go](dept.go) | `DeptService`：部门 CRUD、`ListDepts`（动态查询平铺分页）、`GetDeptTree`（树形，节点嵌套 `DeptTreeNode`）、`MoveDept`（parent_id 缺省移为根）与 `DeleteDept`（有子部门拒绝）；`parent_id` 与 `owner_*` 在 UpdateDept 输入中被忽略（移动走 MoveDept）；`toProtoDept` / `toProtoDeptNodes` / `normalizeDeptStatus` 转换辅助。 |
 | [agent_http.go](agent_http.go) | `AgentService`：Agent 手写端点（非 proto 生成）。把 [agent](../agent/) Stack 的外层 ServeMux 经 `srv.Route` + `ctx.Middleware` 入 Kratos 链，注册精确路径与前缀通配两条路由，认证后的 ctx 回绑请求交给框架直写 SSE；`BasePath` 供 server 的路由级超时跳过名单使用。 |
 | [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：agent 会话列表手写端点（非 proto 生成）的路由注册面。GET `{agui 前缀}/sessions` 的列表装配与 HTTP 形态收在 [agent](../agent/)（`Stack.SessionsHandler`：按认证身份编码的 userKey 列出会话元数据，`WithListSessionOnlyMeta` + offset 分页，非法参数 400，归属过滤只认服务端身份、跨用户不可见），本类型只负责注册精确路径并入 Kratos 链（先于 agent 前缀通配）。 |
 | [agent_event_window.go](agent_event_window.go) | `AgentEventWindowService`：会话事件窗口手写端点（非 proto 生成，供运维复现视图做压缩占位符原文对照）的路由注册面。GET `{agui 前缀}/event-window` 的窗口装配与 HTTP 形态收在 [agent](../agent/)（`Stack.EventWindowHandler`：按 threadId + eventId 取锚点事件窗口，before/after 各上限 50，参数非法 400、身份缺失 fail-closed 401、跨用户锚点统一 404），本类型只负责注册精确路径并入 Kratos 链（与 agent_sessions.go 同序，先于 agent 前缀通配）。 |

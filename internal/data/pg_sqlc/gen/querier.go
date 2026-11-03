@@ -33,6 +33,8 @@ type Querier interface {
 	CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRetrievalLogsParams) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 统计部门未软删的直接子部门数（删除前置校验；触发器兜底同口径）
+	CountSysDeptActiveChildren(ctx context.Context, id *int64) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
 	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
 	GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error)
@@ -55,6 +57,8 @@ type Querier interface {
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
 	// 读取租户级与用户级范围版本；行不存在时返回 0
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
+	// 按 id 读取未软删的部门（租户边界由 RLS 承担；表无 @scope，租户内全可见）
+	GetSysDeptByID(ctx context.Context, id int64) (SysDept, error)
 	// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
 	// 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
@@ -91,6 +95,10 @@ type Querier interface {
 	// 许可已存在时幂等跳过（部分唯一索引 agent_tool_grant_active_un，
 	// ON CONFLICT 不带目标以覆盖表达式部分索引），返回实际写入行数
 	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
+	// 插入部门记录；租户取会话 app.tenant_id。闭包路径由
+	// trg_maintain_dept_closure 在同事务内自动建立（父级合法性一并由触发器
+	// 校验兜底）
+	InsertSysDept(ctx context.Context, arg InsertSysDeptParams) (SysDept, error)
 	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
 	// 插入用户记录；租户取会话 app.tenant_id
@@ -105,8 +113,18 @@ type Querier interface {
 	ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetrievalLogsParams) ([]AgentRetrievalLog, error)
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
+	// 读取租户内全部未软删部门（组织树装配与环检测的专用列表，租户规模内
+	// 全量返回；created_at ASC、id ASC 稳定排序）
+	ListSysDeptAll(ctx context.Context) ([]SysDept, error)
+	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
+	// 租户边界由 RLS 承担）
+	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
+	// 移动部门到新父级；parent_id 为 NULL 表示移为根部门。闭包路径由
+	// trg_maintain_dept_closure 在同事务内重写（父级合法性/防环由触发器
+	// 校验兜底，调用方已在用例层预检）
+	MoveSysDept(ctx context.Context, arg MoveSysDeptParams) (SysDept, error)
 	// 管理吊销：调用方（GrantUsecase.Revoke）已验 agent:grant:revoke 权限
 	// 码；已吊销或不存在更新 0 行
 	RevokeAgentToolGrantManaged(ctx context.Context, arg RevokeAgentToolGrantManagedParams) (int64, error)
@@ -128,11 +146,17 @@ type Querier interface {
 	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)
 	// 替换口令哈希
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
+	// 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝
+	//（仓储先经 CountSysDeptActiveChildren 前置校验映射为类型化错误）
+	SoftDeleteSysDept(ctx context.Context, arg SoftDeleteSysDeptParams) (int64, error)
 	// 置位 deleted_at 软删除用户
 	SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error)
 	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
 	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
+	// 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
+	// 走专项口径）；updated_at 由触发器刷新
+	UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error)
 	// 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 	UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error)
 	// 更新用户归属三元组；归属参数为 NULL 表示清空该归属

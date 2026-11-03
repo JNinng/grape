@@ -4,6 +4,7 @@ import (
 	nethttp "net/http"
 
 	sessionv1 "grape/api/session/v1"
+	orgv1 "grape/api/org/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
 	entrymw "grape/internal/middleware"
@@ -44,6 +45,7 @@ func NewHTTPServer(
 	authMiddleware middleware.Middleware,
 	metrics nethttp.Handler,
 	user *service.UserService,
+	dept *service.DeptService,
 	session *service.SessionService,
 	agent *service.AgentService,
 	agentSessions *service.AgentSessionsService,
@@ -95,6 +97,7 @@ func NewHTTPServer(
 	srv := http.NewServer(opts...)
 	srv.Handle("/metrics", metrics)
 	userv1.RegisterUserServiceHTTPServer(srv, user)
+	orgv1.RegisterDeptServiceHTTPServer(srv, dept)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
 	// agentSessions 为 nil 仅出现在不触达业务路由的测试装配里；生产装配
 	// 恒非 nil。必须先于 agent 注册：gorilla/mux 按注册顺序匹配，

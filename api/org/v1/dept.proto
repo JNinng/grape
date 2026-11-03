@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+package org.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/org/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.org.v1";
+option java_outer_classname = "DeptProto";
+
+// DeptService 提供部门管理。组织树是租户内资源：租户边界由数据库 RLS
+// 强制，租户内全部部门对持有令牌的成员可见（表无 @scope，行级无范围）。
+// List 走动态查询协议，过滤/排序/投影/分页能力由存储层 schema 注释 DSL
+// 声明。闭包表 sys_dept_closure 是派生数据，由数据库触发器随部门增删改
+// 自动维护（校验父级/防环/软删等价删除），不跨越 API 边界。
+service DeptService {
+  // GetDeptTree 返回租户内全部部门的树形结构。声明在 GetDept 之前：
+  // HTTP 路由按声明顺序注册，静态路径 /v1/depts/tree 必须先于
+  // /v1/depts/{id} 的路径参数路由，否则 "tree" 会被当作 id 解析。
+  rpc GetDeptTree (GetDeptTreeRequest) returns (DeptTreeReply) {
+    option (google.api.http) = {
+      get: "/v1/depts/tree"
+    };
+  }
+
+  // CreateDept 创建部门。parent_id 缺省表示创建根部门；父部门不存在、
+  // 已删除或跨租户返回 INVALID_ARGUMENT；租户内部门名唯一，冲突返回
+  // ALREADY_EXISTS。闭包路径由触发器自动建立。
+  rpc CreateDept (CreateDeptRequest) returns (Dept) {
+    option (google.api.http) = {
+      post: "/v1/depts/create"
+      body: "*"
+    };
+  }
+
+  // GetDept 按 id 查询单个部门。跨租户不可见等同不存在（NOT_FOUND）。
+  rpc GetDept (GetDeptRequest) returns (Dept) {
+    option (google.api.http) = {
+      get: "/v1/depts/{id}"
+    };
+  }
+
+  // ListDepts 按动态查询协议返回一页部门（平铺列表，供检索与分页表格）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。树形展示请用 GetDeptTree。
+  rpc ListDepts (ListDeptsRequest) returns (DeptSet) {
+    option (google.api.http) = {
+      post: "/v1/depts/list"
+      body: "query"
+    };
+  }
+
+  // UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
+  // 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
+  // 专项口径（本批不提供）。
+  rpc UpdateDept (UpdateDeptRequest) returns (Dept) {
+    option (google.api.http) = {
+      put: "/v1/depts/update"
+      body: "dept"
+    };
+  }
+
+  // MoveDept 移动部门到新父级：校验父级有效且不在被移动部门的子树内
+  //（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
+  // 重写。parent_id 传 null（缺省）表示移为根部门。
+  rpc MoveDept (MoveDeptRequest) returns (Dept) {
+    option (google.api.http) = {
+      post: "/v1/depts/move"
+      body: "*"
+    };
+  }
+
+  // DeleteDept 软删除部门（deleted_at 置位）。存在未删除的直接子部门时
+  // 拒绝（HAS_CHILDREN），需自叶向根逐层删除；软删除同时移除该部门的
+  // 闭包路径（触发器维护），子树内部关系保留。
+  rpc DeleteDept (DeleteDeptRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/depts/{id}"
+    };
+  }
+}
+
+// Dept 是部门的规范表示。审计列与时间戳只读；闭包路径不出现在任何接口。
+message Dept {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 部门名，租户内未删除部门间唯一。
+  string name = 3;
+  // 父部门 ID；根部门为 null。创建时生效，更新时忽略（移动走 MoveDept）。
+  optional int64 parent_id = 4;
+  // 部门管理员用户 ID，必填。
+  int64 owner_user_id = 5;
+  // 归属用户组 ID，可空。创建时生效，更新时忽略。
+  optional int64 owner_user_group_id = 6;
+  // 创建人。只读。
+  int64 created_by = 7;
+  // 更新人。只读。
+  int64 updated_by = 8;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 9;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 10;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 11;
+}
+
+// DeptSet 是 ListDepts 返回的分页集合。
+message DeptSet {
+  // 本页部门，顺序遵循查询中的 sort。
+  repeated Dept items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// DeptTreeNode 是 GetDeptTree 返回的树节点：部门与其子树。children 按部门
+// 创建时间升序排列（同刻按 id 升序），与叶子平铺顺序一致。
+message DeptTreeNode {
+  // 本节点的部门。
+  Dept dept = 1;
+  // 直接子节点。
+  repeated DeptTreeNode children = 2;
+}
+
+// GetDeptTreeRequest 是 DeptService.GetDeptTree 的输入。租户内全部未删除
+// 部门都进入树，无分页。
+message GetDeptTreeRequest {
+}
+
+// DeptTreeReply 是 DeptService.GetDeptTree 的输出。
+message DeptTreeReply {
+  // 根节点集合（parent_id 为空的部门）。
+  repeated DeptTreeNode roots = 1;
+  // 树内节点总数（= 租户内未删除部门数），供前端提示。
+  int64 total = 2;
+}
+
+// CreateDeptRequest 是 DeptService.CreateDept 的输入。
+message CreateDeptRequest {
+  // 要创建的部门。id、created_by/updated_by 与时间戳在输入中被忽略。
+  Dept dept = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetDeptRequest 是 DeptService.GetDept 的输入。
+message GetDeptRequest {
+  // 目标部门的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListDeptsRequest 是 DeptService.ListDepts 的输入。
+message ListDeptsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateDeptRequest 是 DeptService.UpdateDept 的输入。
+message UpdateDeptRequest {
+  // 携带新字段值的部门。id 标识目标记录，必须设置；parent_id 与 owner_*
+  // 在输入中被忽略。
+  Dept dept = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MoveDeptRequest 是 DeptService.MoveDept 的输入。
+message MoveDeptRequest {
+  // 被移动部门的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新父部门 ID；null（缺省）表示移为根部门。不能是被移动部门自身或
+  // 其子树内的部门。
+  optional int64 parent_id = 2;
+}
+
+// DeleteDeptRequest 是 DeptService.DeleteDept 的输入。
+message DeleteDeptRequest {
+  // 目标部门的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
