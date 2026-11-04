@@ -43,7 +43,7 @@ go build ./cmd/server
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 与 Tailwind 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
 | [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
-| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 23 个经 hex 兼容改写的官方组件（new-york-v4 口径，见「UI 组件与主题」节）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
+| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 23 个经兼容改写的官方组件（new-york-v4 口径，组件清单、本地改写差异与兼容改写规则见 [ui/README.md](src/components/ui/README.md)）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
 | [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
@@ -52,35 +52,11 @@ go build ./cmd/server
 
 ## UI 组件与主题
 
-组件层取自 shadcn/ui 官方仓库 `new-york-v4`（依赖统一包 `radix-ui`、`cn`、
-`class-variance-authority`、`lucide-react`、`cmdk`、`tw-animate-css`），落地
-23 个够用即止的组件到 `src/components/ui/`：alert、alert-dialog、badge、
-button、card、checkbox、collapsible、command、dialog、dropdown-menu、empty、
-input、label、pagination、popover、select、separator、spinner、switch、
-table、textarea、toast、tooltip。其中 pagination 为按钮化本地改写（shadcn
-原版是链接版，管理页分页是页内状态切换）、toast 为零依赖本地实现（模块级
-store + `useSyncExternalStore`，`<Toaster/>` 全局挂载于 App，`toast.success/
-error/info` 命令式入口）；checkbox 以半选态（`checked='indeterminate'`）呈
-现减号指示，供角色页授权树表达「部分子节点已授权」。
-`components.json` 保留 shadcn
-CLI 配置，未来 `npx shadcn add <x>` 拉取新组件后须做一次 hex 兼容改写再提交。
-
-**hex 兼容改写规则**（官方组件默认依赖 oklch 与透明度修饰符，编译为
-`color-mix()`，需 Chrome 111+；本项目坚持全内核可解析的字面色值）：
-
-1. 语义 token（`--background`、`--primary`、`--border` 等）值一律字面
-   hex；半透明（遮罩、弱化底色）用 rgba() 形式的专用 token
-   （`--overlay`、`--destructive-soft`、`--soft`），rgba 全内核可解析。
-2. 组件内 `/NN` 透明度修饰符全部消除：悬停加深 → `--primary-hover` /
-   `--destructive-hover`；聚焦/校验环 → 实色 `ring-ring` /
-   `ring-destructive-soft`；弱化悬停面 → `bg-soft`。
-3. 组件内 `dark:` 分支若仅为补偿 alpha 删除，若为真实配色差异改写为
-   语义 token（两套主题在 `:root` / `.dark` 各自给值）。
-4. 定位不用 `translate-x-/-y-*` 工具类——Tailwind v4 将其编译为独立 CSS
-   `translate` 属性（需 Chrome 104+），旧内核整条丢弃会使定位失效（如
-   弹框偏右下）；居中一律用 `fixed inset-0 grid place-items-center` 容器
-   （alert-dialog 已如此实现），动画的 transform 关键帧（tw-animate-css
-   走传统 `transform`）不受影响。
+组件层取自 shadcn/ui 官方仓库 `new-york-v4`，落地 23 个本地改写组件到
+[src/components/ui/](src/components/ui/)。组件清单、各组件与官方版的行为
+差异、radix 的 jsdom 测试垫片，以及新组件落地必过的**兼容改写规则**（hex
+颜色与 transform 位移——oklch / `color-mix()` / CSS `translate` / `rotate`
+独立属性均超出兼容内核能力）见 [ui/README.md](src/components/ui/README.md)。
 
 **暗色模式**：`components/theme-provider.tsx`（移植自官方 vite-app 模板，
 零依赖）以 `theme`（dark/light/system）存 localStorage 并解析为 html 上的
@@ -101,10 +77,9 @@ index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化
 链路高亮、追踪按钮、审批与执行芯片一律走 `--brand-*` / `--success-*` /
 `--danger-*`），新色系须补齐浅深两套覆盖块。
 
-**测试**：radix 组件在 jsdom 下需要 `src/test/setup.ts` 的无操作垫片
-（pointer capture、scrollIntoView、ResizeObserver、matchMedia）；页面渲染
-需包 `ThemeProvider`（页头有 ModeToggle）；radix Select / Popover+Command
-的交互走「打开 → 点选选项」而非原生 selectOptions。
+**测试**：页面渲染需包 `ThemeProvider`（页头有 ModeToggle）；radix
+Select / Popover+Command 的交互走「打开 → 点选选项」而非原生
+selectOptions。
 
 ## 登录与令牌策略
 
