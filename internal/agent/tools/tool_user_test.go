@@ -100,7 +100,7 @@ func TestUserTool_when_find_users_by_name_builds_fuzzy_page_query(t *testing.T) 
 		t.Fatalf("List called %d times, want 1", len(qs))
 	}
 	q := qs[0]
-	if len(q.Where) != 1 || q.Where[0].Field != "name" || q.Where[0].Op != string(dynq.OpContains) || q.Where[0].Value != "ali" {
+	if len(q.Where) != 1 || q.Where[0].Field != "name" || q.Where[0].Op != dynq.OpContains || q.Where[0].Value != "ali" {
 		t.Fatalf("unexpected where clause: %+v", q.Where)
 	}
 	if q.Pagination == nil || q.Pagination.PageSize == nil || *q.Pagination.PageSize != 5 {

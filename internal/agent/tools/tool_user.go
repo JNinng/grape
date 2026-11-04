@@ -153,7 +153,7 @@ func usersFindByName(users *biz.UserUsecase) func(context.Context, findUsersByNa
 		// 模糊匹配在运行时对应 contains：@dynamic: fuzzy 在生成期展开为
 		// contains/prefix/suffix，协议门不接受 fuzzy 字面量。
 		list, err := users.ListUsers(ctx, auth, &dynq.Query{
-			Where: []dynq.Condition{{Field: "name", Op: string(dynq.OpContains), Value: name}},
+			Where: []dynq.Condition{{Field: "name", Op: dynq.OpContains, Value: name}},
 			Pagination: &dynq.Pagination{
 				Page:     ptr(1),
 				PageSize: ptr(limit),

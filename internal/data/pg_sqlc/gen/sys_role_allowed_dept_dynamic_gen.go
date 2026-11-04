@@ -299,10 +299,10 @@ func ParseSysRoleAllowedDeptQuery(q *dynq.Query, opts ...dynq.QueryOption) (List
 		}
 		op, err := dynq.ParseOp(c.Op)
 		if err != nil {
-			return out, dynq.NewErr(dynq.KindWhere, c.Field, "unknown op: "+c.Op, i)
+			return out, dynq.NewErr(dynq.KindWhere, c.Field, "unknown op: "+string(c.Op), i)
 		}
 		if !f.HasOp(op) {
-			return out, dynq.NewErr(dynq.KindWhere, c.Field, "op not allowed: "+c.Op, i)
+			return out, dynq.NewErr(dynq.KindWhere, c.Field, "op not allowed: "+string(c.Op), i)
 		}
 		if err := budget.Add(1); err != nil {
 			return out, dynq.AsError(err).At(dynq.KindWhere, i, c.Field)

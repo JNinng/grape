@@ -103,7 +103,7 @@ func convertQuery(in *queryv1.Query, aliases enumAliases) (*dynq.Query, error) {
 		}
 		q.Where = append(q.Where, dynq.Condition{
 			Field:      c.GetField(),
-			Op:         c.GetOp(),
+			Op:         dynq.Op(c.GetOp()),
 			Value:      value,
 			RightValue: valueOf(c.GetRightValue()),
 		})
