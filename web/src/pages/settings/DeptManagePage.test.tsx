@@ -7,6 +7,7 @@ import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
 import { DeptManagePage } from './DeptManagePage'
 import { createDept, deleteDept, fetchDeptTree, moveDept, updateDept } from '@/api/depts'
+import { fetchMyPermissions } from '@/api/permissions'
 
 vi.mock('@/api/depts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/depts')>()),
@@ -17,11 +18,16 @@ vi.mock('@/api/depts', async (importOriginal) => ({
   deleteDept: vi.fn(),
 }))
 
+vi.mock('@/api/permissions', () => ({
+  fetchMyPermissions: vi.fn(),
+}))
+
 const mockFetchTree = vi.mocked(fetchDeptTree)
 const mockCreateDept = vi.mocked(createDept)
 const mockUpdateDept = vi.mocked(updateDept)
 const mockMoveDept = vi.mocked(moveDept)
 const mockDeleteDept = vi.mocked(deleteDept)
+const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 
 // dept 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function dept(overrides: Partial<DeptDTO> = {}): DeptDTO {
@@ -58,6 +64,9 @@ function sampleTree(): DeptTreeReplyDTO {
 
 beforeEach(() => {
   clearToasts()
+  // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
+  // 不依赖 jsdom fetch 对相对地址抛错）。
+  mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
   mockFetchTree.mockResolvedValue(sampleTree())
 })
 

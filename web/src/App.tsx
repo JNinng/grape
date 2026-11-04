@@ -8,6 +8,8 @@ import { ChatPage } from './pages/ChatPage'
 import { LoginPage } from './pages/LoginPage'
 import { ReplayPage } from './pages/replay/ReplayPage'
 import { DeptManagePage } from './pages/settings/DeptManagePage'
+import { MenuManagePage } from './pages/settings/MenuManagePage'
+import { RoleManagePage } from './pages/settings/RoleManagePage'
 import { SettingsLayout } from './pages/settings/SettingsLayout'
 import { UserGroupManagePage } from './pages/settings/UserGroupManagePage'
 import { UserManagePage } from './pages/settings/UserManagePage'
@@ -68,6 +70,8 @@ export default function App() {
           <Route path="users" element={<UserManagePage />} />
           <Route path="depts" element={<DeptManagePage />} />
           <Route path="user-groups" element={<UserGroupManagePage />} />
+          <Route path="roles" element={<RoleManagePage />} />
+          <Route path="menus" element={<MenuManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

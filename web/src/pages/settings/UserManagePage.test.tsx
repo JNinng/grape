@@ -15,6 +15,7 @@ import {
   transferUserOwner,
   updateUser,
 } from '@/api/users'
+import { fetchMyPermissions } from '@/api/permissions'
 
 vi.mock('@/api/users', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/users')>()),
@@ -27,6 +28,10 @@ vi.mock('@/api/users', async (importOriginal) => ({
   transferUserOwner: vi.fn(),
 }))
 
+vi.mock('@/api/permissions', () => ({
+  fetchMyPermissions: vi.fn(),
+}))
+
 const mockListUsers = vi.mocked(listUsers)
 const mockCreateUser = vi.mocked(createUser)
 const mockUpdateUser = vi.mocked(updateUser)
@@ -34,6 +39,7 @@ const mockSetPassword = vi.mocked(setUserPassword)
 const mockDeleteUser = vi.mocked(deleteUser)
 const mockAssignRoles = vi.mocked(assignRoles)
 const mockTransferOwner = vi.mocked(transferUserOwner)
+const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 
 // user 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function user(overrides: Partial<UserDTO> = {}): UserDTO {
@@ -55,6 +61,9 @@ function bob(): UserDTO {
 
 beforeEach(() => {
   clearToasts()
+  // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
+  // 不依赖 jsdom fetch 对相对地址抛错）。
+  mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
   mockListUsers.mockResolvedValue({ items: [user(), bob()], total: '2', hasMore: false, nextCursor: '', page: 1 })
 })
 

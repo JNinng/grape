@@ -43,24 +43,25 @@ go build ./cmd/server
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 与 Tailwind 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
 | [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
-| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 22 个经 hex 兼容改写的官方组件（new-york-v4 口径，见「UI 组件与主题」节）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
+| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 23 个经 hex 兼容改写的官方组件（new-york-v4 口径，见「UI 组件与主题」节）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
 | [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 仅保留 GrapeMark 品牌标；通用线性图标一律用 lucide-react，加载态用 `ui/spinner`。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，静态全量展示后续模块，未接入的禁用占位）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）、`DeptManagePage.tsx`（部门管理页：组织树展示/新建/编辑/移动/删除）、`UserGroupManagePage.tsx`（用户组管理页：列表/筛选/新建/编辑/删除/成员管理）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，导航按当前用户权限码过滤、拉取失败回落全量，未接入的禁用占位）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）、`DeptManagePage.tsx`（部门管理页：组织树展示/新建/编辑/移动/删除）、`UserGroupManagePage.tsx`（用户组管理页：列表/筛选/新建/编辑/删除/成员管理）、`RoleManagePage.tsx`（角色管理页：列表/筛选/新建/编辑/删除/数据范围配置/菜单授权树）、`MenuManagePage.tsx`（菜单管理页：权限码树展示/新建/编辑/移动/删除）。 |
 
 ## UI 组件与主题
 
 组件层取自 shadcn/ui 官方仓库 `new-york-v4`（依赖统一包 `radix-ui`、`cn`、
 `class-variance-authority`、`lucide-react`、`cmdk`、`tw-animate-css`），落地
-22 个够用即止的组件到 `src/components/ui/`：alert、alert-dialog、badge、
-button、card、collapsible、command、dialog、dropdown-menu、empty、input、
-label、pagination、popover、select、separator、spinner、switch、table、
-textarea、toast、tooltip。其中 pagination 为按钮化本地改写（shadcn 原版是
-链接版，管理页分页是页内状态切换）、toast 为零依赖本地实现（模块级 store +
-`useSyncExternalStore`，`<Toaster/>` 全局挂载于 App，`toast.success/error/info`
-命令式入口）。
+23 个够用即止的组件到 `src/components/ui/`：alert、alert-dialog、badge、
+button、card、checkbox、collapsible、command、dialog、dropdown-menu、empty、
+input、label、pagination、popover、select、separator、spinner、switch、
+table、textarea、toast、tooltip。其中 pagination 为按钮化本地改写（shadcn
+原版是链接版，管理页分页是页内状态切换）、toast 为零依赖本地实现（模块级
+store + `useSyncExternalStore`，`<Toaster/>` 全局挂载于 App，`toast.success/
+error/info` 命令式入口）；checkbox 以半选态（`checked='indeterminate'`）呈
+现减号指示，供角色页授权树表达「部分子节点已授权」。
 `components.json` 保留 shadcn
 CLI 配置，未来 `npx shadcn add <x>` 拉取新组件后须做一次 hex 兼容改写再提交。
 
@@ -152,9 +153,18 @@ index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化
 
 对话页头部设置图标进入；`ProtectedRoute` + `PageTransition` 包裹，
 `SettingsLayout` 左侧模块导航 + 右侧子路由内容区（`/settings/users`、
-`/settings/depts`、`/settings/user-groups`，索引重定向到首个已实现模块）。
-导航静态全量展示后续模块（角色/菜单/字典/审计日志/会话/配置/租户以禁用
-项占位），权限码过滤待 M3-6 接入，越权由 API 拒绝兜底。
+`/settings/depts`、`/settings/user-groups`、`/settings/roles`、
+`/settings/menus`，索引重定向到首个已实现模块）。
+
+- 导航按权限码过滤（M3-6）：每个导航项声明其页面级权限码（对齐部署面
+  菜单种子的 sys:* 页面码——用户 `sys:user`、部门 `sys:dept`、用户组
+  `sys:user-group`、角色 `sys:role`、菜单 `sys:menu`、字典 `sys:dict`、
+  审计日志 `sys:audit`、会话 `sys:session`、配置 `sys:config`、租户
+  `sys:tenant`），挂载时经 `GET /v1/permissions/mine`（`api/
+  permissions.ts`）拉取当前用户功能权限码后按集合过滤展示，未实现模块的
+  禁用占位项同样参与过滤；加载完成前导航留空（避免先展示无权模块再移除
+  的闪烁），拉取失败（含 403/网络错误）回落静态全量展示（M0 口径，越权
+  由 API 拒绝兜底）。
 
 - 数据形态：List 端点走 query.v1 动态查询协议——`api/query.ts` 声明
   `DynamicQuery`（where 条件恒 AND / sort / pagination），`QuerySet` 分页
@@ -189,6 +199,39 @@ index.css 的覆盖块，`ThemeProvider` 以 localStorage 键 `accent` 持久化
   aria-hidden 子树内，相关测试断言显式带 `hidden: true`）。错误词表与部门
   页同模式：org/v1 的 USER_GROUP_* reason 消息映射为可读英文提示，词表外
   透传原始消息。
+- 角色管理页：data-table 列表（角色名 contains + 编码 prefix + 状态 eq 筛
+  选，创建时间排序分页；编码列的动态查询能力为 exact/prefix，故用 prefix）。
+  新建（编码与角色名租户内唯一且创建后不可变，409 冲突映射为可读提示），
+  编辑（仅 name/status/remark，status 更新语义必填；编码、类型与数据范围
+  不经更新面），删除（软删除，二次确认；系统预置角色
+  ROLE_PRESET_UNDELETABLE 映射为不可删提示）。数据范围配置：弹窗先
+  `GET /v1/roles/{id}/data-scope` 加载配置再渲染表单（加载失败给可重试横
+  幅）——数据范围规则下拉 1-7；规则为 4 指定人/5 指定部门/6 用户组时渲
+  染对应类型的 ID 集合输入面（其余规则无 ID 面），规则切换时输入面随之
+  重填；分配层级限定部门 ID 留空即 NULL（全租户可分配）；分发部门集合整
+  组替换、留空即遵循通用分配逻辑。保存整组替换：ID 范围明细只替换当前规
+  则对应类型的条目（其余类型的惰性条目原样透传），全部 ID 校验正整数口径
+  与后端一致；未知引用由后端 ROLE_INVALID_ARGUMENT 拒绝并映射文案。菜单
+  授权：弹窗并行加载菜单树（`GET /v1/menus/tree`）与当前有效授权集合
+  （`GET /v1/roles/{id}/menus`，停用/软删菜单不在回显集合），带 checkbox
+  的树渲染（停用菜单 checkbox 禁用），勾选目录级联勾选/取消整棵子树，父
+  节点按部分子授权呈半选态；保存按勾选集合整组差量替换（空集合合法即收
+  回全部授权），树未成功加载（或授权未回显）前保存按钮禁用——没有回显
+  基线不能构造完整集合，防止误清空授权。错误词表同模式：perm/v1 的
+  ROLE_* reason 消息映射为可读英文提示，词表外透传原始消息。
+- 菜单管理页：主视图为权限码树（`GET /v1/menus/tree` 一次返回租户内全部
+  未删除菜单，无分页，不接 data-table；节点行缩进呈现、带子节点可展开/
+  收起，缺省全展开，行内尾随类型徽标、权限编码、排序号与状态）。新建
+  （上级菜单下拉可选任意菜单或根；权限编码与菜单类型为创建后不可变列、
+  仅在创建表单出现；排序号校验整数口径），编辑（仅可变字段 name/status/
+  icon/routePath/component/permissionExpr/sortOrder/remark，权限编码与类
+  型以只读文案展示），移动（新上级菜单下拉**排除被移动菜单自身及其整棵
+  子树**，在前端挡掉明显成环的选项；未知父级与其余成环路径仍由后端
+  MENU_INVALID_ARGUMENT 拒绝并透传提示；选「无（根菜单）」移为根即不发
+  送 parentId；move 端点为 PUT），删除（软删除，二次确认；后端 409
+  MENU_HAS_CHILDREN 时提示先删子级）。动作成功后整树重查；错误按 perm/v1
+  的 MENU_* reason 消息映射为可读英文提示，词表外透传原始消息；树加载失
+  败给可重试横幅。
 
 ## 运维复现视图
 

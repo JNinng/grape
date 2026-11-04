@@ -15,6 +15,7 @@ import {
   removeMembers,
   updateUserGroup,
 } from '@/api/userGroups'
+import { fetchMyPermissions } from '@/api/permissions'
 
 vi.mock('@/api/userGroups', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/userGroups')>()),
@@ -27,6 +28,10 @@ vi.mock('@/api/userGroups', async (importOriginal) => ({
   removeMembers: vi.fn(),
 }))
 
+vi.mock('@/api/permissions', () => ({
+  fetchMyPermissions: vi.fn(),
+}))
+
 const mockListGroups = vi.mocked(listUserGroups)
 const mockCreateGroup = vi.mocked(createUserGroup)
 const mockUpdateGroup = vi.mocked(updateUserGroup)
@@ -34,6 +39,7 @@ const mockDeleteGroup = vi.mocked(deleteUserGroup)
 const mockListMembers = vi.mocked(listUserGroupMembers)
 const mockAddMembers = vi.mocked(addMembers)
 const mockRemoveMembers = vi.mocked(removeMembers)
+const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 
 // group 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function group(overrides: Partial<UserGroupDTO> = {}): UserGroupDTO {
@@ -68,6 +74,9 @@ function member(overrides: Partial<UserGroupMemberDTO> = {}): UserGroupMemberDTO
 
 beforeEach(() => {
   clearToasts()
+  // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
+  // 不依赖 jsdom fetch 对相对地址抛错）。
+  mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
   mockListGroups.mockResolvedValue({
     items: [group(), secondGroup()],
     total: '2',
