@@ -104,7 +104,8 @@ export async function fetchUserGroup(id: string): Promise<UserGroupDTO> {
 }
 
 // listUserGroups 调用 POST /v1/user-groups/list（body: "query"，Query 消息
-// 即体，平铺分页列表）。
+// 即体，平铺分页列表）。后端 protojson 省略未填充字段，零命中时响应没有
+// items 键；页面与表格组件假定数组恒存在，此处补齐为空数组。
 export async function listUserGroups(query?: DynamicQuery): Promise<UserGroupSetDTO> {
   const res = await authFetch('/v1/user-groups/list', {
     method: 'POST',
@@ -114,7 +115,8 @@ export async function listUserGroups(query?: DynamicQuery): Promise<UserGroupSet
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as UserGroupSetDTO
+  const set = (await res.json()) as UserGroupSetDTO
+  return { ...set, items: set.items ?? [] }
 }
 
 // updateUserGroup 调用 PUT /v1/user-groups/update（body: "group"，覆盖
@@ -142,13 +144,15 @@ export async function deleteUserGroup(id: string): Promise<void> {
 
 // listUserGroupMembers 调用 GET /v1/user-groups/{id}/members：固定 offset
 // 分页（page 缺省 1；page_size 缺省 20、上限 200，越界由服务端归一）。
+// 空组没有 items 键（protojson 省略未填充字段），补齐为空数组。
 export async function listUserGroupMembers(id: string, page = 1, pageSize = 20): Promise<UserGroupMemberSetDTO> {
   const search = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
   const res = await authFetch(`/v1/user-groups/${encodeURIComponent(id)}/members?${search}`)
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as UserGroupMemberSetDTO
+  const set = (await res.json()) as UserGroupMemberSetDTO
+  return { ...set, items: set.items ?? [] }
 }
 
 // AddMembersReplyDTO 对齐 org.v1.AddUserGroupMembersReply：added 为实际

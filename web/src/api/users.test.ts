@@ -167,6 +167,15 @@ describe('listUsers', () => {
     expect(sentBody(fetchMock.mock.calls[0])).toEqual({})
   })
 
+  it('defaults_items_to_an_empty_array_when_the_set_omits_the_key', async () => {
+    // 筛选零命中时 protojson 省略 items 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { hasMore: false, nextCursor: '', page: 1 }))
+
+    const page = await listUsers()
+
+    expect(page.items).toEqual([])
+  })
+
   it('propagates_the_invalid_query_reason', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { message: 'unknown field badField' }))
 

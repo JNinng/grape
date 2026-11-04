@@ -99,6 +99,8 @@ export async function fetchUser(id: string): Promise<UserDTO> {
 }
 
 // listUsers 调用 POST /v1/users/list（body: "query"，Query 消息即体）。
+// 后端 protojson 省略未填充字段，零命中时响应没有 items 键；页面与表格
+// 组件假定数组恒存在，此处补齐为空数组（对齐 agentAudit 系客户端的兜底）。
 export async function listUsers(query?: DynamicQuery): Promise<UserSetDTO> {
   const res = await authFetch('/v1/users/list', {
     method: 'POST',
@@ -108,7 +110,8 @@ export async function listUsers(query?: DynamicQuery): Promise<UserSetDTO> {
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as UserSetDTO
+  const set = (await res.json()) as UserSetDTO
+  return { ...set, items: set.items ?? [] }
 }
 
 // updateUser 调用 PUT /v1/users/update（body: "user"，User 消息即体）。

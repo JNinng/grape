@@ -151,6 +151,15 @@ describe('listUserGroups', () => {
     expect(sentBody(fetchMock.mock.calls[0])).toEqual({})
   })
 
+  it('defaults_items_to_an_empty_array_when_the_set_omits_the_key', async () => {
+    // 筛选零命中时 protojson 省略 items 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { hasMore: false, nextCursor: '', page: 1 }))
+
+    const page = await listUserGroups()
+
+    expect(page.items).toEqual([])
+  })
+
   it('propagates_the_invalid_query_reason', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { message: 'unknown field badField' }))
 
@@ -227,6 +236,17 @@ describe('listUserGroupMembers', () => {
     await listUserGroupMembers('5')
 
     expect(fetchMock.mock.calls[0][0]).toBe('/v1/user-groups/5/members?page=1&page_size=20')
+  })
+
+  it('defaults_items_to_an_empty_array_when_an_empty_group_omits_the_key', async () => {
+    // 空组没有成员：protojson 省略 items 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { total: '0', hasMore: false }))
+
+    const set = await listUserGroupMembers('5')
+
+    expect(set.items).toEqual([])
+    expect(set.total).toBe('0')
+    expect(set.hasMore).toBe(false)
   })
 
   it('propagates_the_not_found_message_when_the_group_is_unknown', async () => {

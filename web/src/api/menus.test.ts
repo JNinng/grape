@@ -79,6 +79,38 @@ describe('fetchMenuTree', () => {
     expect(tree.roots[0].menu.id).toBe('214')
     expect(tree.roots[0].children[0].menu.parentId).toBe('214')
   })
+
+  it('normalizes_leaf_nodes_without_the_children_key_to_empty_arrays', async () => {
+    // 真实 protojson 形状：叶子节点的 children 未填充即省略该键（而非空
+    // 数组），客户端归一化后必须可安全遍历。
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        roots: [
+          {
+            menu: menuReply(),
+            children: [
+              { menu: { ...menuReply(), id: '215', permissionCode: 'sys:menu:query', menuType: 3, parentId: '214', sortOrder: 1 } },
+            ],
+          },
+        ],
+        total: '2',
+      }),
+    )
+
+    const tree = await fetchMenuTree()
+
+    expect(tree.roots[0].children).toHaveLength(1)
+    expect(tree.roots[0].children[0].children).toEqual([])
+  })
+
+  it('defaults_roots_to_an_empty_array_when_the_empty_tree_omits_the_key', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { total: '0' }))
+
+    const tree = await fetchMenuTree()
+
+    expect(tree.roots).toEqual([])
+    expect(tree.total).toBe('0')
+  })
 })
 
 describe('createMenu', () => {

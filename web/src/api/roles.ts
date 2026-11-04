@@ -123,7 +123,8 @@ export async function fetchRole(id: string): Promise<RoleDTO> {
 }
 
 // listRoles 调用 POST /v1/roles/list（body: "query"，Query 消息即体，
-// 平铺分页列表）。
+// 平铺分页列表）。零命中时响应没有 items 键（protojson 省略未填充字段），
+// 页面与表格组件假定数组恒存在，此处补齐为空数组。
 export async function listRoles(query?: DynamicQuery): Promise<RoleSetDTO> {
   const res = await authFetch('/v1/roles/list', {
     method: 'POST',
@@ -133,7 +134,8 @@ export async function listRoles(query?: DynamicQuery): Promise<RoleSetDTO> {
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as RoleSetDTO
+  const set = (await res.json()) as RoleSetDTO
+  return { ...set, items: set.items ?? [] }
 }
 
 // updateRole 调用 PUT /v1/roles/update（body: "role"，覆盖 name/status/
@@ -186,13 +188,15 @@ export async function setRoleDataScope(id: string, input: SetRoleDataScopeInput)
 }
 
 // listRoleMenus 调用 GET /v1/roles/{id}/menus：当前有效授权菜单 ID 升序
-// 集合，可直接作 setRoleMenus 的回显输入（提交回显集合恒幂等）。
+// 集合，可直接作 setRoleMenus 的回显输入（提交回显集合恒幂等）。无授权时
+// 响应没有 menuIds 键（protojson 省略未填充字段），补齐为空数组。
 export async function listRoleMenus(id: string): Promise<RoleMenuSetDTO> {
   const res = await authFetch(`/v1/roles/${encodeURIComponent(id)}/menus`)
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as RoleMenuSetDTO
+  const set = (await res.json()) as RoleMenuSetDTO
+  return { menuIds: set.menuIds ?? [] }
 }
 
 // setRoleMenus 调用 PUT /v1/roles/{id}/menus（body: "*"）：整组差量替换

@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { RoleDTO, RoleDataScopeDTO } from '@/api/roles'
+import type { RoleDTO, RoleDataScopeDTO, RoleMenuSetDTO } from '@/api/roles'
 import type { MenuTreeReplyDTO, MenuTreeNodeDTO, MenuDTO } from '@/api/menus'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
@@ -11,22 +11,38 @@ import { createRole, deleteRole, fetchRoleDataScope, listRoleMenus, listRoles, s
 import { fetchMenuTree } from '@/api/menus'
 import { fetchMyPermissions } from '@/api/permissions'
 
-vi.mock('@/api/roles', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/roles')>()),
-  listRoles: vi.fn(),
-  createRole: vi.fn(),
-  updateRole: vi.fn(),
-  deleteRole: vi.fn(),
-  fetchRoleDataScope: vi.fn(),
-  setRoleDataScope: vi.fn(),
-  listRoleMenus: vi.fn(),
-  setRoleMenus: vi.fn(),
+// realApi.listRoleMenus / realApi.fetchMenuTree 保留被 vi.mock 替换前的真
+// 实实现，供「真实 protojson 形状」回归用例经 stub 的全局 fetch 走客户端
+// 归一化全链路。vi.hoisted 使存放处先于被提升的 vi.mock 工厂初始化。
+const realApi = vi.hoisted(() => ({
+  listRoleMenus: null as null | ((id: string) => Promise<RoleMenuSetDTO>),
+  fetchMenuTree: null as null | (() => Promise<MenuTreeReplyDTO>),
 }))
 
-vi.mock('@/api/menus', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/menus')>()),
-  fetchMenuTree: vi.fn(),
-}))
+vi.mock('@/api/roles', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/roles')>()
+  realApi.listRoleMenus = actual.listRoleMenus
+  return {
+    ...actual,
+    listRoles: vi.fn(),
+    createRole: vi.fn(),
+    updateRole: vi.fn(),
+    deleteRole: vi.fn(),
+    fetchRoleDataScope: vi.fn(),
+    setRoleDataScope: vi.fn(),
+    listRoleMenus: vi.fn(),
+    setRoleMenus: vi.fn(),
+  }
+})
+
+vi.mock('@/api/menus', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/menus')>()
+  realApi.fetchMenuTree = actual.fetchMenuTree
+  return {
+    ...actual,
+    fetchMenuTree: vi.fn(),
+  }
+})
 
 vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
@@ -61,8 +77,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   clearToasts()
+  vi.unstubAllGlobals()
   vi.resetAllMocks()
 })
+
+// jsonResponse 构造 protojson 口径的 200 响应（真实形状：未填充字段缺键）。
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
 
 // role 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function role(overrides: Partial<RoleDTO> = {}): RoleDTO {
@@ -439,6 +464,54 @@ describe('RoleManagePage menu grants', () => {
     expect(within(dialog).getByRole('checkbox', { name: '用户管理' })).toBeInTheDocument()
     // 停用菜单不可授权。
     expect(within(dialog).getByRole('checkbox', { name: '用户编辑' })).toBeDisabled()
+  })
+
+  it('renders_the_grant_dialog_from_the_raw_protojson_tree_without_children_keys', async () => {
+    // 真实后端形状：授权树叶子节点（用户查询/用户新增）没有 children 键，
+    // 无授权角色回显响应没有 menuIds 键。经真实客户端（stub 全局 fetch +
+    // 原实现）归一化后，授权弹窗不得因缺键崩溃。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+        if (path === '/v1/menus/tree') {
+          return jsonResponse(200, {
+            roots: [
+              {
+                menu: { id: '201', status: 1, name: '系统管理', permissionCode: 'sys:manage', menuType: 1, sortOrder: 1, createdBy: '1', updatedBy: '1', createdAt: '2026-01-01T08:00:00Z' },
+                children: [
+                  {
+                    menu: { id: '202', status: 1, name: '用户管理', permissionCode: 'sys:user', menuType: 2, parentId: '201', sortOrder: 1, createdBy: '1', updatedBy: '1', createdAt: '2026-01-02T08:00:00Z' },
+                    children: [
+                      { menu: { id: '203', status: 1, name: '用户查询', permissionCode: 'sys:user:query', menuType: 3, parentId: '202', sortOrder: 1, createdBy: '1', updatedBy: '1', createdAt: '2026-01-03T08:00:00Z' } },
+                      { menu: { id: '204', status: 1, name: '用户新增', permissionCode: 'sys:user:create', menuType: 3, parentId: '202', sortOrder: 2, createdBy: '1', updatedBy: '1', createdAt: '2026-01-04T08:00:00Z' } },
+                    ],
+                  },
+                ],
+              },
+            ],
+            total: '4',
+          })
+        }
+        if (path === '/v1/roles/5/menus') {
+          return jsonResponse(200, {})
+        }
+        throw new Error(`unexpected fetch: ${path}`)
+      }),
+    )
+    mockFetchMenuTree.mockImplementation(() => realApi.fetchMenuTree!())
+    mockListRoleMenus.mockImplementation(() => realApi.listRoleMenus!('5'))
+    const user2 = userEvent.setup()
+    renderPage()
+    const actions = await openRowActions(user2, '运营')
+
+    await user2.click(actions.getByRole('menuitem', { name: '菜单授权' }))
+    const dialog = await screen.findByRole('dialog')
+
+    // 无授权回显：全部节点呈现为未勾选。
+    expect(await within(dialog).findByRole('checkbox', { name: '系统管理' })).not.toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: '用户查询' })).not.toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: '用户新增' })).not.toBeChecked()
   })
 
   it('shows_the_parent_as_indeterminate_when_only_a_leaf_of_its_subtree_is_granted', async () => {

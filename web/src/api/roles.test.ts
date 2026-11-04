@@ -127,6 +127,15 @@ describe('listRoles', () => {
     expect(set.items).toHaveLength(1)
     expect(set.total).toBe('1')
   })
+
+  it('defaults_items_to_an_empty_array_when_the_set_omits_the_key', async () => {
+    // 筛选零命中时 protojson 省略 items 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { hasMore: false, nextCursor: '', page: 1 }))
+
+    const set = await listRoles()
+
+    expect(set.items).toEqual([])
+  })
 })
 
 describe('updateRole', () => {
@@ -255,6 +264,15 @@ describe('role menu grants', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('/v1/roles/5/menus')
     expect(set.menuIds).toEqual(['201', '202', '210'])
+  })
+
+  it('listRoleMenus_defaults_menuIds_to_an_empty_array_when_the_key_is_omitted', async () => {
+    // 无授权角色：protojson 省略 menuIds 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+
+    const set = await listRoleMenus('5')
+
+    expect(set.menuIds).toEqual([])
   })
 
   it('setRoleMenus_puts_the_full_selected_set_verbatim', async () => {

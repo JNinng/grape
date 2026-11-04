@@ -9,14 +9,25 @@ import { MenuManagePage } from './MenuManagePage'
 import { createMenu, deleteMenu, fetchMenuTree, moveMenu, updateMenu } from '@/api/menus'
 import { fetchMyPermissions } from '@/api/permissions'
 
-vi.mock('@/api/menus', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/menus')>()),
-  fetchMenuTree: vi.fn(),
-  createMenu: vi.fn(),
-  updateMenu: vi.fn(),
-  moveMenu: vi.fn(),
-  deleteMenu: vi.fn(),
+// realApi.fetchMenuTree 保留被 vi.mock 替换前的真实实现，供「真实 protojson
+// 形状」回归用例经 stub 的全局 fetch 走客户端归一化全链路。vi.hoisted 使
+// 存放处先于被提升的 vi.mock 工厂初始化。
+const realApi = vi.hoisted(() => ({
+  fetchMenuTree: null as null | (() => Promise<MenuTreeReplyDTO>),
 }))
+
+vi.mock('@/api/menus', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/menus')>()
+  realApi.fetchMenuTree = actual.fetchMenuTree
+  return {
+    ...actual,
+    fetchMenuTree: vi.fn(),
+    createMenu: vi.fn(),
+    updateMenu: vi.fn(),
+    moveMenu: vi.fn(),
+    deleteMenu: vi.fn(),
+  }
+})
 
 vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
@@ -39,8 +50,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   clearToasts()
+  vi.unstubAllGlobals()
   vi.resetAllMocks()
 })
+
+// jsonResponse 构造 protojson 口径的 200 响应（真实形状：未填充字段缺键）。
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
 
 // menu 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function menu(overrides: Partial<MenuDTO> = {}): MenuDTO {
@@ -108,6 +128,39 @@ describe('MenuManagePage tree rendering', () => {
     expect(treeScope.getByText('菜单查询')).toBeInTheDocument()
     expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 3 个菜单')
     expect(mockFetchTree).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders_leaves_without_the_children_key_from_the_raw_protojson_tree', async () => {
+    // 真实后端形状：叶子节点（菜单查询）的 children 未填充即省略该键。
+    // 经真实客户端（stub 全局 fetch + 原实现）归一化后，页面不得因缺键崩溃。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse(200, {
+          roots: [
+            {
+              menu: { id: '201', status: 1, name: '系统管理', permissionCode: 'sys:manage', menuType: 1, sortOrder: 1, createdBy: '1', updatedBy: '1', createdAt: '2026-01-01T08:00:00Z' },
+              children: [
+                {
+                  menu: { id: '214', status: 1, name: '菜单管理', permissionCode: 'sys:menu', menuType: 2, parentId: '201', sortOrder: 3, createdBy: '1', updatedBy: '1', createdAt: '2026-01-02T08:00:00Z' },
+                  children: [
+                    { menu: { id: '215', status: 1, name: '菜单查询', permissionCode: 'sys:menu:query', menuType: 3, parentId: '214', sortOrder: 1, createdBy: '1', updatedBy: '1', createdAt: '2026-01-03T08:00:00Z' } },
+                  ],
+                },
+              ],
+            },
+          ],
+          total: '3',
+        }),
+      ),
+    )
+    mockFetchTree.mockImplementation(() => realApi.fetchMenuTree!())
+    renderPage()
+
+    const treeScope = within(await screen.findByLabelText('菜单树'))
+    expect(treeScope.getByText('系统管理')).toBeInTheDocument()
+    expect(treeScope.getByText('菜单查询')).toBeInTheDocument()
+    expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 3 个菜单')
   })
 
   it('collapses_and_expands_a_subtree_without_unmounting_the_parent_row', async () => {

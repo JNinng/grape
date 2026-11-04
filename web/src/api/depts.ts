@@ -72,13 +72,25 @@ function compact(body: object): string {
   return JSON.stringify(body)
 }
 
+// normalizeDeptNode 递归归一化树节点：后端 protojson 默认编组省略一切未
+// 填充字段——叶子节点的 children 为空即没有该键，而页面摊平/遍历子树时
+// 假定数组恒存在（缺键直接崩溃）。逐节点把缺失的 children 补为空数组。
+function normalizeDeptNode(node: DeptTreeNodeDTO): DeptTreeNodeDTO {
+  return { dept: node.dept, children: (node.children ?? []).map(normalizeDeptNode) }
+}
+
+// normalizeDeptTreeReply 归一化树响应：空树没有 roots 键，同样补为空数组。
+function normalizeDeptTreeReply(reply: DeptTreeReplyDTO): DeptTreeReplyDTO {
+  return { roots: (reply.roots ?? []).map(normalizeDeptNode), total: reply.total }
+}
+
 // fetchDeptTree 调用 GET /v1/depts/tree：租户全量树（roots 嵌套 + total）。
 export async function fetchDeptTree(): Promise<DeptTreeReplyDTO> {
   const res = await authFetch('/v1/depts/tree')
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as DeptTreeReplyDTO
+  return normalizeDeptTreeReply((await res.json()) as DeptTreeReplyDTO)
 }
 
 // createDept 调用 POST /v1/depts/create（body: "*"，整个请求消息即体）；
@@ -105,7 +117,8 @@ export async function fetchDept(id: string): Promise<DeptDTO> {
 }
 
 // listDepts 调用 POST /v1/depts/list（body: "query"，Query 消息即体，
-// 平铺分页列表）；树形展示请用 fetchDeptTree。
+// 平铺分页列表）；树形展示请用 fetchDeptTree。零命中时响应没有 items 键
+// （protojson 省略未填充字段），补齐为空数组。
 export async function listDepts(query?: DynamicQuery): Promise<DeptSetDTO> {
   const res = await authFetch('/v1/depts/list', {
     method: 'POST',
@@ -115,7 +128,8 @@ export async function listDepts(query?: DynamicQuery): Promise<DeptSetDTO> {
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as DeptSetDTO
+  const set = (await res.json()) as DeptSetDTO
+  return { ...set, items: set.items ?? [] }
 }
 
 // updateDept 调用 PUT /v1/depts/update（body: "dept"，User 同款覆盖语义）。

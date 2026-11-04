@@ -97,6 +97,18 @@ function compact(body: object): string {
   return JSON.stringify(body)
 }
 
+// normalizeMenuNode 递归归一化树节点：后端 protojson 默认编组省略一切未
+// 填充字段——叶子节点的 children 为空即没有该键，而页面摊平/遍历子树时
+// 假定数组恒存在（缺键直接崩溃）。逐节点把缺失的 children 补为空数组。
+function normalizeMenuNode(node: MenuTreeNodeDTO): MenuTreeNodeDTO {
+  return { menu: node.menu, children: (node.children ?? []).map(normalizeMenuNode) }
+}
+
+// normalizeMenuTreeReply 归一化树响应：空树没有 roots 键，同样补为空数组。
+function normalizeMenuTreeReply(reply: MenuTreeReplyDTO): MenuTreeReplyDTO {
+  return { roots: (reply.roots ?? []).map(normalizeMenuNode), total: reply.total }
+}
+
 // fetchMenuTree 调用 GET /v1/menus/tree：租户内全部未删除菜单的树
 // （roots 嵌套 + total；父引用缺失的行由后端按根兜底挂载）。
 export async function fetchMenuTree(): Promise<MenuTreeReplyDTO> {
@@ -104,7 +116,7 @@ export async function fetchMenuTree(): Promise<MenuTreeReplyDTO> {
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as MenuTreeReplyDTO
+  return normalizeMenuTreeReply((await res.json()) as MenuTreeReplyDTO)
 }
 
 // createMenu 调用 POST /v1/menus/create（body: "*"，整个请求消息即体）；

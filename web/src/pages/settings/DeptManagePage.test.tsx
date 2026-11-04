@@ -9,14 +9,25 @@ import { DeptManagePage } from './DeptManagePage'
 import { createDept, deleteDept, fetchDeptTree, moveDept, updateDept } from '@/api/depts'
 import { fetchMyPermissions } from '@/api/permissions'
 
-vi.mock('@/api/depts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/api/depts')>()),
-  fetchDeptTree: vi.fn(),
-  createDept: vi.fn(),
-  updateDept: vi.fn(),
-  moveDept: vi.fn(),
-  deleteDept: vi.fn(),
+// realApi.fetchDeptTree 保留被 vi.mock 替换前的真实实现，供「真实 protojson
+// 形状」回归用例经 stub 的全局 fetch 走客户端归一化全链路。vi.hoisted 使
+// 存放处先于被提升的 vi.mock 工厂初始化。
+const realApi = vi.hoisted(() => ({
+  fetchDeptTree: null as null | (() => Promise<DeptTreeReplyDTO>),
 }))
+
+vi.mock('@/api/depts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/depts')>()
+  realApi.fetchDeptTree = actual.fetchDeptTree
+  return {
+    ...actual,
+    fetchDeptTree: vi.fn(),
+    createDept: vi.fn(),
+    updateDept: vi.fn(),
+    moveDept: vi.fn(),
+    deleteDept: vi.fn(),
+  }
+})
 
 vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
@@ -73,8 +84,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   clearToasts()
+  vi.unstubAllGlobals()
   vi.resetAllMocks()
 })
+
+// jsonResponse 构造 protojson 口径的 200 响应（真实形状：未填充字段缺键）。
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
 
 // renderPage 以真实布局挂载部门页：顺带覆盖子路由经 Outlet 的装配。
 function renderPage() {
@@ -128,6 +148,34 @@ describe('DeptManagePage tree rendering', () => {
     expect(await screen.findByText('暂无部门')).toBeInTheDocument()
     expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 0 个部门')
     expect(screen.getByRole('button', { name: '新建部门' })).toBeInTheDocument()
+  })
+
+  it('renders_leaves_without_the_children_key_from_the_raw_protojson_tree', async () => {
+    // 真实后端形状：叶子节点的 children 未填充即省略该键。经真实客户端
+    //（stub 全局 fetch + 原实现）归一化后，页面不得因缺键崩溃。
+    const rawLeaf = {
+      dept: { id: '2', status: 1, name: '研发部', parentId: '1', ownerUserId: '7', createdBy: '7', updatedBy: '7', createdAt: '2026-01-02T08:00:00Z' },
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse(200, {
+          roots: [
+            {
+              dept: { id: '1', status: 1, name: '总公司', ownerUserId: '7', createdBy: '7', updatedBy: '7', createdAt: '2026-01-01T08:00:00Z' },
+              children: [rawLeaf],
+            },
+          ],
+          total: '2',
+        }),
+      ),
+    )
+    mockFetchTree.mockImplementation(() => realApi.fetchDeptTree!())
+    renderPage()
+
+    expect(await screen.findByText('总公司')).toBeInTheDocument()
+    expect(screen.getByText('研发部')).toBeInTheDocument()
+    expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 2 个部门')
   })
 })
 

@@ -81,6 +81,40 @@ describe('fetchDeptTree', () => {
     expect(tree.roots[0]?.children[0]?.dept.parentId).toBe('1')
   })
 
+  it('normalizes_leaf_nodes_without_the_children_key_to_empty_arrays', async () => {
+    // 真实 protojson 形状：叶子节点的 children 未填充即省略该键（而非空
+    // 数组），客户端归一化后必须可安全遍历。
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        roots: [
+          {
+            dept: { id: '1', status: 1, name: 'hq', ownerUserId: '7', createdBy: '7', updatedBy: '7', createdAt: '2026-01-01T00:00:00Z' },
+            children: [
+              {
+                dept: { id: '2', status: 1, name: 'eng', parentId: '1', ownerUserId: '7', createdBy: '7', updatedBy: '7', createdAt: '2026-01-02T00:00:00Z' },
+              },
+            ],
+          },
+        ],
+        total: '2',
+      }),
+    )
+
+    const tree = await fetchDeptTree()
+
+    expect(tree.roots[0]?.children).toHaveLength(1)
+    expect(tree.roots[0]?.children[0]?.children).toEqual([])
+  })
+
+  it('defaults_roots_to_an_empty_array_when_the_empty_tree_omits_the_key', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { total: '0' }))
+
+    const tree = await fetchDeptTree()
+
+    expect(tree.roots).toEqual([])
+    expect(tree.total).toBe('0')
+  })
+
   it('propagates_the_backend_error_message_when_the_tree_fails', async () => {
     fetchMock.mockResolvedValue(jsonResponse(500, { message: 'tree unavailable' }))
 
@@ -198,6 +232,15 @@ describe('listDepts', () => {
     await listDepts()
 
     expect(sentBody(fetchMock.mock.calls[0])).toEqual({})
+  })
+
+  it('defaults_items_to_an_empty_array_when_the_set_omits_the_key', async () => {
+    // 筛选零命中时 protojson 省略 items 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { hasMore: false, nextCursor: '', page: 1 }))
+
+    const page = await listDepts()
+
+    expect(page.items).toEqual([])
   })
 
   it('propagates_the_invalid_query_reason', async () => {
