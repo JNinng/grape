@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package perm.v1;
+
+option go_package = "grape/api/perm/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.perm.v1";
+option objc_class_prefix = "APIPermV1";
+
+// ErrorReason 是权限域资源（角色、菜单）的错误原因枚举，
+// 用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  ROLE_UNSPECIFIED = 0;
+  // 目标角色不存在（含跨租户不可见、软删后不可见）。
+  ROLE_NOT_FOUND = 1;
+  // 请求参数非法（数据范围取值越界、明细引用未知对象等）。
+  ROLE_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户内角色编码或角色名已被未删除角色占用）。
+  ROLE_ALREADY_EXISTS = 3;
+  // 系统预置角色不可删除。
+  ROLE_PRESET_UNDELETABLE = 4;
+  // 目标菜单不存在（含跨租户不可见、软删后不可见）。
+  MENU_NOT_FOUND = 5;
+  // 菜单请求参数非法（名称/权限码缺失或超长、菜单类型越界、父级引用无效、移入自身子树等）。
+  MENU_INVALID_ARGUMENT = 6;
+  // 唯一约束冲突（租户内权限编码已被未删除菜单占用）。
+  MENU_ALREADY_EXISTS = 7;
+  // 菜单存在未删除的直接子菜单，禁止删除。
+  MENU_HAS_CHILDREN = 8;
+  // 功能权限码不通过：入口层判定当前用户不持有端点声明的权限码
+  //（角色 → 菜单 → 权限码链未命中）。
+  PERM_ACCESS_DENIED = 9;
+}

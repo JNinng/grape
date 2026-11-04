@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package perm.v1;
+
+import "google/api/annotations.proto";
+
+option go_package = "grape/api/perm/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.perm.v1";
+option java_outer_classname = "PermissionProto";
+
+// PermissionService 提供当前认证用户的功能权限码查询（前端导航过滤的
+// 数据源）。功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链
+// （fn_has_permission 同源推导），集合为空表示当前用户不持有任何权限码。
+// 本端点只受认证约束，不设权限码——权限码集合本身是用户界面的引导数据，
+// 入口层判定不应对它设门槛。
+service PermissionService {
+  // GetMyPermissions 返回当前认证用户持有的全部功能权限码（去重升序，
+  // 如 sys:user:create）。用户无效（会话存续期间被禁用/删除）时返回
+  // 空集合，不报错——判定函数对无效用户恒返回不持有。
+  rpc GetMyPermissions (GetMyPermissionsRequest) returns (GetMyPermissionsReply) {
+    option (google.api.http) = {
+      get: "/v1/permissions/mine"
+    };
+  }
+}
+
+// GetMyPermissionsRequest 是 PermissionService.GetMyPermissions 的输入。
+// 目标用户恒取认证身份，请求不携带任何定位参数。
+message GetMyPermissionsRequest {
+}
+
+// GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
+message GetMyPermissionsReply {
+  // 当前用户持有的功能权限码集合（去重升序）。
+  repeated string codes = 1;
+}

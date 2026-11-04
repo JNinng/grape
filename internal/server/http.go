@@ -4,6 +4,7 @@ import (
 	nethttp "net/http"
 
 	orgv1 "grape/api/org/v1"
+	permv1 "grape/api/perm/v1"
 	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
@@ -43,10 +44,14 @@ func NewHTTPServer(
 	traceMiddleware entrymw.TraceMiddleware,
 	routeTimeout RouteTimeoutMiddleware,
 	authMiddleware middleware.Middleware,
+	permMiddleware entrymw.PermissionMiddleware,
 	metrics nethttp.Handler,
 	user *service.UserService,
 	dept *service.DeptService,
 	userGroup *service.UserGroupService,
+	role *service.RoleService,
+	menu *service.MenuService,
+	perm *service.PermissionService,
 	session *service.SessionService,
 	agent *service.AgentService,
 	agentSessions *service.AgentSessionsService,
@@ -70,7 +75,7 @@ func NewHTTPServer(
 	if tele.Enabled() {
 		mws = append(mws, tracing.Server())
 	}
-	mws = append(mws, authMiddleware)
+	mws = append(mws, authMiddleware, middleware.Middleware(permMiddleware))
 	var opts = []http.ServerOption{
 		http.Middleware(mws...),
 		// 关闭全局尾斜杠规整：kratos 默认 StrictSlash 会把 agent 前缀的
@@ -100,6 +105,9 @@ func NewHTTPServer(
 	userv1.RegisterUserServiceHTTPServer(srv, user)
 	orgv1.RegisterDeptServiceHTTPServer(srv, dept)
 	orgv1.RegisterUserGroupServiceHTTPServer(srv, userGroup)
+	permv1.RegisterRoleServiceHTTPServer(srv, role)
+	permv1.RegisterMenuServiceHTTPServer(srv, menu)
+	permv1.RegisterPermissionServiceHTTPServer(srv, perm)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
 	// agentSessions 为 nil 仅出现在不触达业务路由的测试装配里；生产装配
 	// 恒非 nil。必须先于 agent 注册：gorilla/mux 按注册顺序匹配，

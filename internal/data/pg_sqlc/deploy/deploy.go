@@ -60,6 +60,22 @@ var DeployFiles = []string{
 	// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认
 	// 权限覆盖（文件内不含授权语句）。
 	"schema/97_agent_retrieval_log.sql",
+	// 菜单受控写面（D2）：sys_menu 的 SECURITY
+	// DEFINER 固定口径写函数（fn_menu_create/update/move/delete——建/
+	// 改/移/软删，租户边界复位、父级校验、防环与软删口径收在函数内）；
+	// 入 sqlc catalog（函数签名，命名查询见 queries/menu.sql），尾部
+	// 独立追加不改既有顺序，只依赖 schema/40_rbac.sql 的 sys_menu 存在。
+	// grape_u 对 sys_menu 的直写 REVOKE 在 role.sql，本文件不动授权：
+	// EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions
+	// 同款）。
+	"98_menu_write.sql",
+	// 管理面功能权限码种子（M3-6）：sys_menu 操作权限点
+	//（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点）
+	// 与超级管理员（101）的角色-菜单映射；不入 sqlc catalog，尾部独立
+	// 追加不改既有顺序，只依赖 seed.sql 的租户/角色/既有菜单树存在。
+	// 全量 ON CONFLICT DO NOTHING（seed.sql 同款幂等口径），超级用户/
+	// 表 owner 执行。
+	"99_perm_seed.sql",
 }
 
 // role.sql 中的口令占位符：部署方（dbdeploy）在执行前对文件内容做

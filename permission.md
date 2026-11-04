@@ -12,7 +12,7 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 |---|---|---|---|
 | 租户边界 | 数据属于哪个租户 | PostgreSQL RLS（26 张租户表，ENABLE + FORCE：21 张基线在 rls.sql、范围版本表在 expose.sql、Agent 工具授权表在 96_agent_grant.sql、Agent 审计两表在 schema/95_agent_audit.sql、检索留痕表在 schema/97_agent_retrieval_log.sql——策略随域文件走） | 未设 `app.tenant_id` → 默认全拒 |
 | 行级数据范围 | 用户能看见、操作哪些行 | 读：`@scope`（列表）与 `fn_check_visible`（单行）；写：`fn_can_*` | 缺 Scope → 生成代码报错；判定 false → 拒绝 |
-| 功能权限码 | 用户能否调用某个操作 | 入口层（service / middleware）调 `fn_has_permission` | 未接入；接入后判定 false → 拒绝 |
+| 功能权限码 | 用户能否调用某个操作 | 入口层判定中间件按操作名查码表调 `fn_has_permission` | 判定 false → 拒绝（403，`ErrPermissionDenied`） |
 
 - 租户边界由数据库兜底，应用层不重复检查。RLS 只承担租户这个绝对边界，不承担行级数据范围。
 - 行级数据范围依赖目标行数据与用户权限关系，写侧判定必须在库内、与写入同一事务完成。
@@ -153,9 +153,9 @@ WHERE id = sqlc.arg('id')
 
 功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链，不管能看见哪些行。
 
-落点：入口层（service 或 auth 中间件）按 `tr.Operation()` 映射权限码，再透传给 `GetXxxPermitted` / `LockXxxPermitted`，在库内随行判定一起校验；需要 403 的入口在透传前单独判 `fn_has_permission`。
+落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单五个管理服务的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
 
-已落地的入口：Agent 工具授权管理（手写端点，无 proto 操作名，码在 `biz` 常量声明）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据）。判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
+已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单五个管理服务（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。
@@ -163,7 +163,7 @@ WHERE id = sqlc.arg('id')
 - 取行查询内的权限码拒绝表现为 NotFound。
 - 不与 `@scope` 合并成一层。
 
-在入口层映射权限码之前，RPC 只受令牌校验与行级判定约束。
+码表外的端点（认证生命周期、agent 业务面与权限码查询端点）只受令牌校验与行级判定约束。
 
 ## 新增资源 / 操作速查
 
@@ -173,8 +173,8 @@ WHERE id = sqlc.arg('id')
 4. **修改 / 删除 / 改密**：`LockXxxPermitted`（`fn_can_operate_row` + `FOR UPDATE`，权限码可空）→ 写入；业务授权另判。
 5. **修改归属**：`LockXxxPermitted`（旧归属可操作）+ `fn_can_transfer_owner`（新归属可达）→ 写入。
 6. **批量写**：单事务内逐行锁 + 判，或新增批量判定函数；外部批量读过滤用 `fn_filter_visible_rows`。
-7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。
-8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）是仅有的绕过路径，不得扩展到其他读写。
+7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。`sys_menu` 的管理端写入经部署面 SECURITY DEFINER 固定口径写函数（`fn_menu_create/update/move/delete`，见 [98_menu_write.sql](internal/data/pg_sqlc/sqlc/98_menu_write.sql)）：DEFINER 机械绕过该表 RLS 与直写禁令，函数内以 `app.tenant_id` 复位租户边界（未设置即拒绝），调用方事务纪律不变——API 写方法名按 `super` 约定命名（`CreateMenuSuper` 等），读方法（树查询/点查）不带。
+8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）与菜单受控写面（`fn_menu_*`，绕过 sys_menu 的 RLS 与直写禁令、租户边界在函数内复位）是仅有的绕过路径，不得扩展到其他读写。
 9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设 `app.tenant_id` 全拒。
 10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询），并配审计日志、受限端点与跨范围测试。
     - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询与令牌维度撤销（`GetCredentialForLogin`、`SessionRepo.Validate` / `RevokeByAccessTokenHash`（登出）/ `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。

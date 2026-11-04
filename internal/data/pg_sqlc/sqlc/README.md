@@ -31,9 +31,11 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 10 个文件、67 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 12 个文件、94 条命名查询 |
+| 17 | 98_menu_write.sql | 定义 sys_menu 受控写面（D2 结论）：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
+| — | 99_perm_seed.sql | 管理面功能权限码种子（M3-6）：sys_menu 操作权限点（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点）与超级管理员（101）的角色-菜单映射 | 否 | 7 条菜单、7 条角色-菜单映射 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
 
@@ -45,20 +47,25 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/schema.md)（前端 Schema 契约）。
   `sqlc.yaml` 的 schema 列表 = schema/ 十个域文件（10–90 九个域 +
   95_agent_audit）+ rls/operate/expose + 96_agent_grant.sql +
-  schema/97_agent_retrieval_log.sql（收尾），queries 列表 =
-  queries/ 十个文件（operate/basic/perm、业务表固定 CRUD
-  sys_user/sys_dept/sys_user_group/sys_session 与 Agent 审计
-  agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。加 rls/operate/expose 是为了让 queries 里的查
+  schema/97_agent_retrieval_log.sql + 98_menu_write.sql（收尾），queries 列表 =
+  queries/ 十二个文件（operate/basic/perm、业务表固定 CRUD
+  sys_user/sys_dept/sys_user_group/sys_role/sys_menu/sys_session 与 Agent 审计
+  agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。加
+  98_menu_write.sql 是为了让 queries/menu.sql 的写调用能解析受控写函数的
+  签名（sqlc 只看签名，函数体是否存在于库里由执行顺序保证）。加 rls/operate/expose 是为了让 queries 里的查
   询能调用这些文件里的函数（GetScope 调三件套、判断类调 fn_can_* /
   fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
   业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
-- 数据库部署按固定顺序执行 19 个文件：`schema/10_basic.sql` →
+- 数据库部署按固定顺序执行 21 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
   `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
   `rls.sql` → `operate.sql` → `expose.sql` → `seed.sql` →
   `agent_session.sql` 与 `agent_vector.sql` → `schema/95_agent_audit.sql`
-  → `96_agent_grant.sql` → `schema/97_agent_retrieval_log.sql`。单一事实源是
+  → `96_agent_grant.sql` → `schema/97_agent_retrieval_log.sql` →
+  `98_menu_write.sql`（只依赖 40_rbac 的 sys_menu 存在，尾部独立追加）→
+  `99_perm_seed.sql`（管理面功能权限码种子，只依赖 seed.sql 的租户/角色/
+  既有菜单树存在，尾部独立追加）。单一事实源是
   `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
   与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
   授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
@@ -176,6 +183,25 @@ data_scope 推导（内外同源）。预留给权限查询服务层（宿主侧
 | fn_check_visible | (用户, 维度掩码, 归属人, 归属部门, 归属组) → boolean | S | 能否看见/操作一条数据（读写同权）。维度掩码：1 人、2 部门、4 组，按位组合 OR 并集；等价于 fn_can_operate_row（掩码 7）。未选中 1/2/4 中任何位时恒 false，其余位忽略 |
 | fn_filter_visible_rows | (用户, 维度掩码, 归属人数组, 归属部门数组, 归属组数组) → 归属三元组行集 | S | 上面那条的批量版：三个数组按下标对齐，只返回可见子集（保持传入顺序）。数组元素可为 NULL（无该归属） |
 | fn_has_permission | (用户, 权限码) → boolean | S | 功能权限轴：用户的有效角色是否关联了携带该权限码的有效菜单（角色→菜单→权限码，与数据范围正交） |
+
+### 受控写函数（98_menu_write.sql，sys_menu 管理端）
+
+sys_menu 是功能入口表：role.sql 对运行角色 REVOKE 直写授权，全部写入经
+本组 SECURITY DEFINER 固定口径写函数（D2 结论，API super 方法调用）。
+DEFINER 以属主（部署超级用户）执行绕过 sys_menu 的 ENABLE+FORCE 租户
+RLS 与直写禁令，函数内一律以 `current_setting('app.tenant_id')` 复位
+租户边界（未设置即拒绝，fail-closed）——调用方事务纪律不变（每事务仍
+设 app.tenant_id）。EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（无显式
+GRANT，fn_cleanup_expired_sessions 同款）：任何角色都能调用，但只能以
+函数内固定口径在自身租户内写入，不构成跨租户扩权面。写路径经
+trg_bump_perm_version_tenant 自动 bump 租户级权限版本。
+
+| 函数 | 签名 | 属性 | 作用描述 |
+|---|---|---|---|
+| fn_menu_create | (id, status, name, permission_code, parent_id, menu_type, icon, route_path, component, permission_expr, sort_order, remark, 操作者) → sys_menu | SECURITY DEFINER，`SET search_path = public` | 新建菜单；父菜单须同租户存在且未删除（父级停用不拦，口径同 fn_maintain_dept_closure），拒绝自身为父；permission_code 租户内未删除菜单间唯一由部分唯一索引兜底 |
+| fn_menu_update | (id, status, name, icon, route_path, component, permission_expr, sort_order, remark, 操作者) → sys_menu | 同上 | 覆盖可变字段；permission_code/menu_type/parent_id 身份/类型/结构列不经本路径变更；目标未命中返回 NULL（命名查询以 id IS NOT NULL 过滤成空集，映射 NotFound） |
+| fn_menu_move | (id, parent_id, 操作者) → sys_menu | 同上 | 移动菜单（parent_id 为 NULL 表示移为根）；新父级须同租户存在且未删除，沿 parent_id 祖先链上溯命中被移动菜单即拒绝（防环，迭代上限防数据损坏死循环）；目标未命中返回 NULL |
+| fn_menu_delete | (id, 操作者) → bigint | 同上 | 软删除菜单（deleted_at 置位）；存在未删除直接子菜单时拒绝（自叶向根逐层删）；角色-菜单映射行物理残留，fn_has_permission 活跃联结使其不再产生功能权限；返回删除行数（0=目标未命中） |
 
 ### 触发器函数
 
@@ -295,6 +321,66 @@ schema/30_user.sql 的列注释 DSL 声明（ParseSysUserGroupQuery 等顶层
 | CountSysUserGroupMemberCandidates | :one | 用户 ID 数组 → 行数 | 统计候选成员中租户内未软删用户数（添加成员前的存在性判定：命中数与请求数不等即存在未知/跨租户/已删除用户，整批拒绝不写入） |
 | AddSysUserGroupMembers | :execrows | group_id/用户 ID 数组/操作者 → 新增条数 | 批量写入成员映射；租户取会话 app.tenant_id，重复添加经主键冲突跳过（幂等） |
 | RemoveSysUserGroupMembers | :execrows | group_id/用户 ID 数组 → 移除条数 | 批量物理删除成员映射；移除非成员更新 0 行（幂等，不报错） |
+
+### sys_role.sql（角色固定 CRUD 与数据范围/菜单授权映射）
+
+角色是租户内资源（表无 @scope，租户内全可见）；动态查询能力由
+schema/40_rbac.sql 的列注释 DSL 声明（ParseSysRoleQuery 等顶层函数为
+生成物）。数据范围明细 sys_role_id_scope、分发部门
+sys_role_allowed_dept 与角色-菜单映射 sys_role_menu 不单独立资源，随
+宿主角色的管理面维护：设置走差量同步——事务内先锁角色行、读活跃行
+集合、在应用层算差后逐行增删（Add* 记配置/授权人，既有命中行保留原
+审计，Delete* 物理删除避免重复配置堆积软删残留）；明细/映射引用的对象
+（用户/部门/用户组/菜单）必须存在且启用（Count*Refs 判定，口径同
+fn_accessible_* / fn_has_permission 的活跃联结），整批拒绝不写入。角色
+软删后明细/映射行物理残留，消费侧（fn_accessible_* /
+fn_can_assign_role / fn_has_permission）都以角色表 status=1 且未删除
+活跃过滤，残留行不产生可见副作用；code/name 唯一约束限定未删除行间，
+软删后可复用。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysRoleByID | :one | id → SysRole | 按 id 读取未软删的角色（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| LockSysRoleByID | :one | id → SysRole | 按 id 锁定未软删的角色（FOR UPDATE，角色与其明细/映射的写路径先锁后写） |
+| InsertSysRole | :one | 角色字段 + 操作者 → SysRole | 插入角色记录；租户取会话 app.tenant_id；code/name 唯一冲突映射 AlreadyExists |
+| UpdateSysRole | :one | name/status/remark + 操作者 + id → SysRole | 更新可变字段（不含 code/role_type 与 data_scope/scope_dept_id——身份列与数据范围配置不经本路径变更）；updated_at 由触发器刷新 |
+| UpdateSysRoleDataScope | :one | data_scope/scope_dept_id + 操作者 + id → SysRole | 更新数据范围配置标量（SetRoleDataScope 专项口径；scope_dept_id 为 NULL 表示全租户可分配） |
+| SoftDeleteSysRole | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除角色（明细/映射行物理残留，消费侧活跃过滤排除） |
+| ListSysRoleIDScopes | :many | role_id → (type, data_id) 行集 | 读取数据范围明细活跃行（按 type、data_id 升序） |
+| ListSysRoleAllowedDepts | :many | role_id → dept_id 行集 | 读取分发部门活跃行（升序） |
+| ListSysRoleMenus | :many | role_id → menu_id 行集 | 读取有效授权菜单 ID（联结菜单表 status=1 且未删除活跃过滤——停用/软删菜单的残留映射不出现在回显集合，与 fn_has_permission 同口径；升序） |
+| ListSysRoleMenuGrantsAll | :many | role_id → menu_id 行集 | 读取角色-菜单映射物理行（不过滤菜单活跃性，供设置的差量对账——不在新集合内的行删除，含失活菜单残留授权；升序） |
+| CountSysRoleScopeUserRefs | :one | 用户 ID 数组 → 行数 | 统计引用中租户内启用且未删除用户数（明细 type=1 存在性判定） |
+| CountSysRoleScopeDeptRefs | :one | 部门 ID 数组 → 行数 | 统计引用中租户内启用且未删除部门数（明细 type=2、分发部门与 scope_dept_id 共用） |
+| CountSysRoleScopeGroupRefs | :one | 用户组 ID 数组 → 行数 | 统计引用中租户内启用且未删除用户组数（明细 type=3 存在性判定） |
+| CountSysRoleMenuRefs | :one | 菜单 ID 数组 → 行数 | 统计引用中租户内启用且未删除菜单数（角色-菜单授权存在性判定） |
+| DeleteSysRoleIDScope | :execrows | role_id/type/data_id → 行数 | 移除一条数据范围明细（物理删除） |
+| AddSysRoleIDScope | :execrows | id/role_id/type/data_id + 操作者 → 行数 | 补建一条数据范围明细；租户取会话 app.tenant_id |
+| DeleteSysRoleAllowedDept | :execrows | role_id/dept_id → 行数 | 移除一条分发部门映射（物理删除） |
+| AddSysRoleAllowedDept | :execrows | id/role_id/dept_id + 操作者 → 行数 | 补建一条分发部门映射；租户取会话 app.tenant_id |
+| DeleteSysRoleMenu | :execrows | role_id/menu_id → 行数 | 移除一条角色-菜单映射（物理删除） |
+| AddSysRoleMenu | :execrows | role_id/menu_id + 操作者 → 行数 | 补建一条角色-菜单授权；租户取会话 app.tenant_id，主键冲突跳过（保留原授权人） |
+
+### menu.sql（菜单固定读查询与受控写调用）
+
+sys_menu 是功能权限码链的宿主树：读面为租户内普通读（表无 @scope，租户
+边界由 RLS 承担，行级无范围）；写面运行角色无直写权限（role.sql 对
+sys_menu REVOKE 写授权），四个写查询即调用 98_menu_write.sql 受控写函数
+的 SELECT——固定口径收在函数内（租户边界复位、父级校验、防环、软删），
+事务纪律与普通写一致（调用方事务每事务设 app.tenant_id，函数内读取并
+落值）。动态查询能力由 schema/40_rbac.sql 的列注释 DSL 声明
+（ParseSysMenuQuery 等顶层函数为生成物），树查询走专用列表（全量装配，
+不做分页）。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysMenuByID | :one | id → SysMenu | 按 id 读取未软删的菜单（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| ListSysMenuAll | :many | → 行集 | 读取租户内全部未软删菜单（菜单树装配与环检测的专用列表；sort_order ASC、id ASC 稳定排序） |
+| CountSysMenuActiveChildren | :one | id → 行数 | 统计未软删的直接子菜单数（删除前置校验，受控写函数兜底同口径） |
+| InsertSysMenu | :one | 菜单字段 + 操作者 → SysMenu | 新建菜单：调用 fn_menu_create（SECURITY DEFINER 固定口径）；租户由函数内会话 app.tenant_id 落值，permission_code 唯一冲突映射 AlreadyExists |
+| UpdateSysMenu | :one | 可变字段 + 操作者 + id → SysMenu | 覆盖可变字段（不含 permission_code/menu_type/parent_id——身份/类型/结构列）：调用 fn_menu_update；目标未命中函数返回 NULL 复合行，查询以 id IS NOT NULL 过滤成空集（映射 NotFound） |
+| MoveSysMenu | :one | 新父级（可空）+ 操作者 + id → SysMenu | 移动菜单：调用 fn_menu_move（父级/防环校验兜底，调用方已在用例层预检）；NULL 表示移为根；未命中同上过滤成空集 |
+| SoftDeleteSysMenu | :one | 操作者 + id → 删除行数 | 软删除菜单：调用 fn_menu_delete（存在未软删直接子菜单时函数内拒绝）；返回行数 0 即目标未命中（映射 NotFound） |
 
 ### sys_session.sql（会话固定 CRUD）
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	orgv1 "grape/api/org/v1"
+	permv1 "grape/api/perm/v1"
 	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
@@ -18,7 +19,7 @@ import (
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
 // 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
 // server span。
-func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, session *service.SessionService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, perm *service.PermissionService, session *service.SessionService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),
 		middleware.Middleware(traceMiddleware),
@@ -26,7 +27,7 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	if tele.Enabled() {
 		mws = append(mws, tracing.Server())
 	}
-	mws = append(mws, authMiddleware)
+	mws = append(mws, authMiddleware, middleware.Middleware(permMiddleware))
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(mws...),
 	}
@@ -43,6 +44,9 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	userv1.RegisterUserServiceServer(srv, user)
 	orgv1.RegisterDeptServiceServer(srv, dept)
 	orgv1.RegisterUserGroupServiceServer(srv, userGroup)
+	permv1.RegisterRoleServiceServer(srv, role)
+	permv1.RegisterMenuServiceServer(srv, menu)
+	permv1.RegisterPermissionServiceServer(srv, perm)
 	sessionv1.RegisterSessionServiceServer(srv, session)
 	return srv
 }

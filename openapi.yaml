@@ -217,6 +217,359 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/menus/create:
+        post:
+            tags:
+                - MenuService
+            description: |-
+                CreateMenuSuper 创建菜单（super 面：经部署面受控写函数写入）。父
+                 菜单不存在/已删除/跨租户返回 INVALID_ARGUMENT 且不写入；permission_code
+                 租户内未删除菜单间唯一，冲突返回 ALREADY_EXISTS。id、created_by/
+                 updated_by 与时间戳在输入中被忽略。
+            operationId: MenuService_CreateMenuSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.CreateMenuSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Menu'
+    /v1/menus/move:
+        put:
+            tags:
+                - MenuService
+            description: |-
+                MoveMenuSuper 移动菜单到新父级（parent_id 未设置表示移为根）。
+                 新父级不存在/已删除/跨租户返回 INVALID_ARGUMENT；移入自身子树
+                （成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
+            operationId: MenuService_MoveMenuSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.MoveMenuSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Menu'
+    /v1/menus/tree:
+        get:
+            tags:
+                - MenuService
+            description: |-
+                GetMenuTree 返回当前租户内全部未删除菜单的树形结构：parent_id 为
+                 空的是根，子节点顺序与平铺列表一致（sort_order 升序，同序按 id
+                 升序）；父引用缺失的行按根挂载（防御性兜底）。total 为节点总数。
+            operationId: MenuService_GetMenuTree
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.MenuTreeReply'
+    /v1/menus/update:
+        put:
+            tags:
+                - MenuService
+            description: |-
+                UpdateMenuSuper 覆盖可变字段（name、status、icon、route_path、
+                 component、permission_expr、sort_order、remark）。permission_code、
+                 menu_type 与 parent_id 是身份/类型/结构列，在输入中被忽略：
+                 结构变更走 MoveMenuSuper。目标不存在或跨租户返回 NOT_FOUND。
+            operationId: MenuService_UpdateMenuSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.Menu'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Menu'
+    /v1/menus/{id}:
+        get:
+            tags:
+                - MenuService
+            description: GetMenu 按 id 查询单个菜单。跨租户不可见等同不存在（NOT_FOUND）。
+            operationId: MenuService_GetMenu
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标菜单的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Menu'
+        delete:
+            tags:
+                - MenuService
+            description: |-
+                DeleteMenuSuper 软删除菜单（deleted_at 置位）。存在未删除直接子
+                 菜单返回 HAS_CHILDREN（自叶向根逐层删）；目标不存在或跨租户返回
+                 NOT_FOUND。已授权该菜单的角色映射行物理残留，不再产生功能权限。
+            operationId: MenuService_DeleteMenuSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标菜单的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/permissions/mine:
+        get:
+            tags:
+                - PermissionService
+            description: |-
+                GetMyPermissions 返回当前认证用户持有的全部功能权限码（去重升序，
+                 如 sys:user:create）。用户无效（会话存续期间被禁用/删除）时返回
+                 空集合，不报错——判定函数对无效用户恒返回不持有。
+            operationId: PermissionService_GetMyPermissions
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.GetMyPermissionsReply'
+    /v1/roles/create:
+        post:
+            tags:
+                - RoleService
+            description: |-
+                CreateRole 创建角色。租户内 code 与 name 各自唯一（未删除角色间），
+                 冲突返回 ALREADY_EXISTS。role_type 由服务端定为租户自定义（2）；
+                 data_scope 与 scope_dept_id 不在输入中生效（数据范围配置走
+                 SetRoleDataScope，缺省 data_scope=1 仅本人）。
+            operationId: RoleService_CreateRole
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.CreateRoleRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Role'
+    /v1/roles/list:
+        post:
+            tags:
+                - RoleService
+            description: |-
+                ListRoles 按动态查询协议返回一页角色（平铺列表，供检索与分页表格）。
+                 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+                 INVALID_ARGUMENT。
+            operationId: RoleService_ListRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.RoleSet'
+    /v1/roles/update:
+        put:
+            tags:
+                - RoleService
+            description: |-
+                UpdateRole 覆盖可变字段（name、status、remark）。code、role_type、
+                 data_scope 与 scope_dept_id 在输入中被忽略：编码与类型是身份列，
+                 数据范围配置走 SetRoleDataScope。
+            operationId: RoleService_UpdateRole
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.Role'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Role'
+    /v1/roles/{id}:
+        get:
+            tags:
+                - RoleService
+            description: GetRole 按 id 查询单个角色。跨租户不可见等同不存在（NOT_FOUND）。
+            operationId: RoleService_GetRole
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.Role'
+        delete:
+            tags:
+                - RoleService
+            description: |-
+                DeleteRole 软删除角色（deleted_at 置位）。系统预置角色（role_type=1）
+                 返回 PRESET_UNDELETABLE。数据范围明细、分发部门与角色-菜单映射行随
+                 物理保留：消费侧（数据范围推导、分配判定、功能权限判定）都联结角色表
+                 启用且未删除过滤，残留行不产生可见副作用。
+            operationId: RoleService_DeleteRole
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/roles/{id}/data-scope:
+        get:
+            tags:
+                - RoleService
+            description: |-
+                GetRoleDataScope 读取角色的数据范围配置（data_scope、scope_dept_id、
+                 ID 范围明细与分发部门集合）。角色不存在或跨租户返回 NOT_FOUND。
+            operationId: RoleService_GetRoleDataScope
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.RoleDataScope'
+        put:
+            tags:
+                - RoleService
+            description: |-
+                SetRoleDataScope 设置角色的数据范围配置，整组替换：data_scope 与
+                 scope_dept_id 随角色行更新；ID 范围明细与分发部门按传入集合差量同步
+                 （移除不在集合内的行——物理删除，补建缺失条目，既有命中行保留原审计）。
+                 明细与分发部门引用的对象必须存在且启用（跨租户等同不存在），任一未知
+                 返回 INVALID_ARGUMENT 且整组不写入。scope_dept_id 引用的部门同样校验。
+                 返回归一化（去重升序）后的配置。
+            operationId: RoleService_SetRoleDataScope
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.SetRoleDataScopeRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.RoleDataScope'
+    /v1/roles/{id}/menus:
+        get:
+            tags:
+                - RoleService
+            description: |-
+                ListRoleMenus 返回角色当前的有效授权菜单 ID 集合（升序）：已停用/
+                 软删菜单的残留映射不出现在回显集合，与功能权限判定的活跃口径一致，
+                 回显集合可原样作为 SetRoleMenus 的输入（整组替换按有效授权对账，
+                 失活授权随差量清除）。菜单本身的管理归菜单服务。
+            operationId: RoleService_ListRoleMenus
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.RoleMenuSet'
+        put:
+            tags:
+                - RoleService
+            description: |-
+                SetRoleMenus 设置角色的菜单授权，整组替换（差量同步：移除不在集合内
+                 的映射行——物理删除，补建缺失授权，既有授权行保留授权人/授权时间）。
+                 空集合合法（清空全部授权）。菜单必须存在且启用（跨租户等同不存在），
+                 任一未知返回 INVALID_ARGUMENT 且整组不写入。返回设置后的授权集合
+                 （升序）。语义幂等：重复提交同一集合不改变结果。
+            operationId: RoleService_SetRoleMenus
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标角色的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/perm.v1.SetRoleMenusRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/perm.v1.RoleMenuSet'
     /v1/user-groups/add-members:
         post:
             tags:
@@ -842,6 +1195,321 @@ components:
                     description: offset 模式下的当前页码；游标模式下为 0。
                     format: int32
             description: UserGroupSet 是 ListUserGroups 返回的分页集合。
+        perm.v1.CreateMenuSuperRequest:
+            required:
+                - menu
+            type: object
+            properties:
+                menu:
+                    allOf:
+                        - $ref: '#/components/schemas/perm.v1.Menu'
+                    description: |-
+                        要创建的菜单。id、created_by/updated_by 与时间戳在输入中被忽略；
+                         parent_id 引用的父菜单必须存在且未删除。
+            description: CreateMenuSuperRequest 是 MenuService.CreateMenuSuper 的输入。
+        perm.v1.CreateRoleRequest:
+            required:
+                - role
+            type: object
+            properties:
+                role:
+                    allOf:
+                        - $ref: '#/components/schemas/perm.v1.Role'
+                    description: |-
+                        要创建的角色。id、role_type、data_scope、scope_dept_id、created_by/
+                         updated_by 与时间戳在输入中被忽略。
+            description: CreateRoleRequest 是 RoleService.CreateRole 的输入。
+        perm.v1.GetMyPermissionsReply:
+            type: object
+            properties:
+                codes:
+                    type: array
+                    items:
+                        type: string
+                    description: 当前用户持有的功能权限码集合（去重升序）。
+            description: GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
+        perm.v1.Menu:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: |-
+                        数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                         停用的菜单不再产生功能权限。
+                    format: int32
+                name:
+                    type: string
+                    description: 菜单/权限名称。
+                permissionCode:
+                    type: string
+                    description: |-
+                        权限编码，租户内未删除菜单间唯一（如 sys:user:create）；创建后
+                         不可变，更新输入中被忽略。
+                parentId:
+                    type: string
+                    description: |-
+                        父级菜单 ID，未设置表示根菜单/顶级权限分组；更新输入中被忽略
+                        （结构变更走 MoveMenuSuper）。
+                menuType:
+                    type: integer
+                    description: |-
+                        菜单类型：1 目录、2 菜单、3 按钮（操作权限点）。创建后不可变，
+                         更新输入中被忽略。
+                    format: int32
+                icon:
+                    type: string
+                    description: 菜单图标，可空。
+                routePath:
+                    type: string
+                    description: 前端路由路径，可空。
+                component:
+                    type: string
+                    description: 前端组件路径，可空。
+                permissionExpr:
+                    type: string
+                    description: 权限表达式（应用层匹配用），可空。
+                sortOrder:
+                    type: integer
+                    description: 排序号，树内同级按其升序排列。
+                    format: int32
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+            description: Menu 是菜单/权限点的规范表示。审计列与时间戳只读。
+        perm.v1.MenuTreeNode:
+            type: object
+            properties:
+                menu:
+                    allOf:
+                        - $ref: '#/components/schemas/perm.v1.Menu'
+                    description: 本节点菜单。
+                children:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/perm.v1.MenuTreeNode'
+                    description: 直接子节点，顺序与平铺列表一致。
+            description: MenuTreeNode 是菜单树节点：菜单与其直接子节点。
+        perm.v1.MenuTreeReply:
+            type: object
+            properties:
+                roots:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/perm.v1.MenuTreeNode'
+                    description: 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+                total:
+                    type: string
+                    description: 树内节点总数（未删除菜单总数）。
+            description: MenuTreeReply 是 GetMenuTree 返回的树形集合。
+        perm.v1.MoveMenuSuperRequest:
+            required:
+                - id
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 目标菜单的服务端标识。
+                parentId:
+                    type: string
+                    description: |-
+                        新父级菜单 ID；未设置表示移为根。引用的父菜单必须存在且未删除，
+                         且不得位于被移动菜单的子树内（防环）。
+            description: MoveMenuSuperRequest 是 MenuService.MoveMenuSuper 的输入。
+        perm.v1.Role:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: |-
+                        数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                         停用的角色失去分配资格与数据范围推导效力。
+                    format: int32
+                name:
+                    type: string
+                    description: 角色名，租户内未删除角色间唯一。
+                code:
+                    type: string
+                    description: 角色编码，租户内未删除角色间唯一；创建后不可变。
+                roleType:
+                    type: integer
+                    description: |-
+                        角色类型：1 系统预置（不可删除）、2 租户自定义。服务端定值，
+                         创建与更新输入中均被忽略。
+                    format: int32
+                dataScope:
+                    type: integer
+                    description: |-
+                        数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门
+                         6-用户组 7-全租户。由 SetRoleDataScope 维护，创建与更新输入中被忽略。
+                    format: int32
+                scopeDeptId:
+                    type: string
+                    description: |-
+                        组织可见范围：限定角色可分配的部门层级（NULL=全租户可分配，具体部门
+                         ID=仅该部门及子部门可分配）。由 SetRoleDataScope 维护，输入中被忽略。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+            description: Role 是角色的规范表示。审计列与时间戳只读。
+        perm.v1.RoleDataScope:
+            type: object
+            properties:
+                roleId:
+                    type: string
+                    description: 所属角色 ID。
+                dataScope:
+                    type: integer
+                    description: 数据范围规则：1-7，取值见 Role.data_scope。
+                    format: int32
+                scopeDeptId:
+                    type: string
+                    description: 组织可见范围（分配层级限定），可空。
+                idScopes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
+                    description: ID 范围明细集合。
+                allowedDeptIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 分发部门 ID 集合（升序）。
+            description: |-
+                RoleDataScope 是角色的数据范围配置视图。data_scope 决定 id_scopes 的
+                 消费方式（4 指定人/5 指定部门/6 用户组分别只读对应 type 的明细）；
+                 allowed_dept_ids 只参与角色分配判定（fn_can_assign_role），不影响
+                 持有者的数据可见范围——用户最终数据边界由 data_scope 及其明细决定。
+        perm.v1.RoleIDScopeEntry:
+            type: object
+            properties:
+                type:
+                    type: integer
+                    description: |-
+                        明细类型：1 用户 ID、2 部门 ID、3 用户组 ID。仅在角色 data_scope
+                         为 4/5/6 时分别被数据范围推导消费，其余取值下为惰性配置。
+                    format: int32
+                dataId:
+                    type: string
+                    description: 指向的数据 ID。
+            description: RoleIDScopeEntry 是数据范围明细条目：type 决定 data_id 的指向。
+        perm.v1.RoleMenuSet:
+            type: object
+            properties:
+                menuIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 已授权菜单 ID，升序。
+            description: |-
+                RoleMenuSet 是角色当前的有效授权菜单 ID 集合（升序）：已停用/软删菜单
+                 的残留映射不出现在本集合。
+        perm.v1.RoleSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/perm.v1.Role'
+                    description: 本页角色，顺序遵循查询中的 sort。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0。
+                    format: int32
+            description: RoleSet 是 ListRoles 返回的分页集合。
+        perm.v1.SetRoleDataScopeRequest:
+            required:
+                - id
+                - dataScope
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 目标角色的服务端标识。
+                dataScope:
+                    type: integer
+                    description: 数据范围规则：1-7。
+                    format: int32
+                scopeDeptId:
+                    type: string
+                    description: 组织可见范围（分配层级限定），可空；非空时引用的部门必须存在且启用。
+                idScopes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
+                    description: ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+                allowedDeptIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+            description: SetRoleDataScopeRequest 是 RoleService.SetRoleDataScope 的输入。
+        perm.v1.SetRoleMenusRequest:
+            required:
+                - id
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 目标角色的服务端标识。
+                menuIds:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
+                         必须存在且启用。
+            description: SetRoleMenusRequest 是 RoleService.SetRoleMenus 的输入。
         query.v1.Condition:
             type: object
             properties:
@@ -1161,6 +1829,50 @@ tags:
          List 走动态查询协议，过滤/排序/投影/分页能力由存储层 schema 注释 DSL
          声明。闭包表 sys_dept_closure 是派生数据，由数据库触发器随部门增删改
          自动维护（校验父级/防环/软删等价删除），不跨越 API 边界。
+    - name: MenuService
+      description: |-
+        MenuService 提供菜单/权限点树的管理。sys_menu 承载功能权限码链的
+         宿主树（角色 → 菜单 → 权限码，与数据范围正交），是功能入口表：
+         运行角色对它只读（数据库直写已 REVOKE），写面经部署面 SECURITY
+         DEFINER 固定口径写函数（租户边界复位、父级校验、防环、软删口径
+         收在函数内）。
+
+         读写形态：读端点（GetMenuTree / GetMenu）按权限默认处理——租户边界
+         由 RLS 承担（表无 @scope，租户内全可见），方法名不带 super；写端点
+         是有意绕过默认权限处理的受控写路径（SECURITY DEFINER 函数），按
+         permission.md 口径在方法名带 super。
+
+         软删除口径：菜单删除为软删除（deleted_at 置位），存在未删除直接
+         子菜单时拒绝（自叶向根逐层删）；permission_code 在租户内未删除
+         菜单间唯一，软删后可复用；已软删/停用菜单不再产生功能权限
+         （fn_has_permission 活跃联结过滤），角色-菜单映射行物理残留、
+         由 RoleService.SetMenus 的存在性判定排除。
+    - name: PermissionService
+      description: |-
+        PermissionService 提供当前认证用户的功能权限码查询（前端导航过滤的
+         数据源）。功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链
+         （fn_has_permission 同源推导），集合为空表示当前用户不持有任何权限码。
+         本端点只受认证约束，不设权限码——权限码集合本身是用户界面的引导数据，
+         入口层判定不应对它设门槛。
+    - name: RoleService
+      description: |-
+        RoleService 提供角色管理。角色是租户内资源：租户边界由数据库 RLS 强制，
+         租户内全部角色对持有令牌的成员可见（表无 @scope，行级无范围）。List 走
+         动态查询协议，过滤/排序/投影/分页能力由存储层 schema 注释 DSL 声明。
+
+         数据范围是一组随角色读写的配置：sys_role.data_scope（1-7）与明细表
+         sys_role_id_scope（type 1 用户/2 部门/3 用户组，分别只在 data_scope
+         4/5/6 下被消费）与 sys_role_allowed_dept（分发部门，只参与角色分配判定，
+         不影响持有者的数据可见范围）由 GetRoleDataScope / SetRoleDataScope 读写，
+         设置为整组替换语义。角色-菜单授权（sys_role_menu）承载功能权限码链
+         （角色 → 菜单 → 权限码，与数据范围正交），由 ListRoleMenus /
+         SetRoleMenus 维护，解除授权走物理删除，整组设置为差量同步（保留行的
+         授权人/授权时间不变）。
+
+         软删除口径：角色删除为软删除（deleted_at 置位），code 与 name 的唯一
+         约束限定未删除行间，软删后可复用；停用或软删的角色立即失去分配资格与
+         数据范围推导效力（判定函数按 status=1 且未删除过滤），已分配的用户
+         映射残留但不生效。系统预置角色（role_type=1）不可删除。
     - name: SessionService
       description: |-
         SessionService 提供登录与会话令牌生命周期。令牌是随机不透明值，

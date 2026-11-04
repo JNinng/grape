@@ -1,0 +1,272 @@
+syntax = "proto3";
+
+package perm.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/perm/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.perm.v1";
+option java_outer_classname = "RoleProto";
+
+// RoleService 提供角色管理。角色是租户内资源：租户边界由数据库 RLS 强制，
+// 租户内全部角色对持有令牌的成员可见（表无 @scope，行级无范围）。List 走
+// 动态查询协议，过滤/排序/投影/分页能力由存储层 schema 注释 DSL 声明。
+//
+// 数据范围是一组随角色读写的配置：sys_role.data_scope（1-7）与明细表
+// sys_role_id_scope（type 1 用户/2 部门/3 用户组，分别只在 data_scope
+// 4/5/6 下被消费）与 sys_role_allowed_dept（分发部门，只参与角色分配判定，
+// 不影响持有者的数据可见范围）由 GetRoleDataScope / SetRoleDataScope 读写，
+// 设置为整组替换语义。角色-菜单授权（sys_role_menu）承载功能权限码链
+// （角色 → 菜单 → 权限码，与数据范围正交），由 ListRoleMenus /
+// SetRoleMenus 维护，解除授权走物理删除，整组设置为差量同步（保留行的
+// 授权人/授权时间不变）。
+//
+// 软删除口径：角色删除为软删除（deleted_at 置位），code 与 name 的唯一
+// 约束限定未删除行间，软删后可复用；停用或软删的角色立即失去分配资格与
+// 数据范围推导效力（判定函数按 status=1 且未删除过滤），已分配的用户
+// 映射残留但不生效。系统预置角色（role_type=1）不可删除。
+service RoleService {
+  // CreateRole 创建角色。租户内 code 与 name 各自唯一（未删除角色间），
+  // 冲突返回 ALREADY_EXISTS。role_type 由服务端定为租户自定义（2）；
+  // data_scope 与 scope_dept_id 不在输入中生效（数据范围配置走
+  // SetRoleDataScope，缺省 data_scope=1 仅本人）。
+  rpc CreateRole (CreateRoleRequest) returns (Role) {
+    option (google.api.http) = {
+      post: "/v1/roles/create"
+      body: "*"
+    };
+  }
+
+  // GetRole 按 id 查询单个角色。跨租户不可见等同不存在（NOT_FOUND）。
+  rpc GetRole (GetRoleRequest) returns (Role) {
+    option (google.api.http) = {
+      get: "/v1/roles/{id}"
+    };
+  }
+
+  // ListRoles 按动态查询协议返回一页角色（平铺列表，供检索与分页表格）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListRoles (ListRolesRequest) returns (RoleSet) {
+    option (google.api.http) = {
+      post: "/v1/roles/list"
+      body: "query"
+    };
+  }
+
+  // UpdateRole 覆盖可变字段（name、status、remark）。code、role_type、
+  // data_scope 与 scope_dept_id 在输入中被忽略：编码与类型是身份列，
+  // 数据范围配置走 SetRoleDataScope。
+  rpc UpdateRole (UpdateRoleRequest) returns (Role) {
+    option (google.api.http) = {
+      put: "/v1/roles/update"
+      body: "role"
+    };
+  }
+
+  // DeleteRole 软删除角色（deleted_at 置位）。系统预置角色（role_type=1）
+  // 返回 PRESET_UNDELETABLE。数据范围明细、分发部门与角色-菜单映射行随
+  // 物理保留：消费侧（数据范围推导、分配判定、功能权限判定）都联结角色表
+  // 启用且未删除过滤，残留行不产生可见副作用。
+  rpc DeleteRole (DeleteRoleRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/roles/{id}"
+    };
+  }
+
+  // GetRoleDataScope 读取角色的数据范围配置（data_scope、scope_dept_id、
+  // ID 范围明细与分发部门集合）。角色不存在或跨租户返回 NOT_FOUND。
+  rpc GetRoleDataScope (GetRoleDataScopeRequest) returns (RoleDataScope) {
+    option (google.api.http) = {
+      get: "/v1/roles/{id}/data-scope"
+    };
+  }
+
+  // SetRoleDataScope 设置角色的数据范围配置，整组替换：data_scope 与
+  // scope_dept_id 随角色行更新；ID 范围明细与分发部门按传入集合差量同步
+  // （移除不在集合内的行——物理删除，补建缺失条目，既有命中行保留原审计）。
+  // 明细与分发部门引用的对象必须存在且启用（跨租户等同不存在），任一未知
+  // 返回 INVALID_ARGUMENT 且整组不写入。scope_dept_id 引用的部门同样校验。
+  // 返回归一化（去重升序）后的配置。
+  rpc SetRoleDataScope (SetRoleDataScopeRequest) returns (RoleDataScope) {
+    option (google.api.http) = {
+      put: "/v1/roles/{id}/data-scope"
+      body: "*"
+    };
+  }
+
+  // ListRoleMenus 返回角色当前的有效授权菜单 ID 集合（升序）：已停用/
+  // 软删菜单的残留映射不出现在回显集合，与功能权限判定的活跃口径一致，
+  // 回显集合可原样作为 SetRoleMenus 的输入（整组替换按有效授权对账，
+  // 失活授权随差量清除）。菜单本身的管理归菜单服务。
+  rpc ListRoleMenus (ListRoleMenusRequest) returns (RoleMenuSet) {
+    option (google.api.http) = {
+      get: "/v1/roles/{id}/menus"
+    };
+  }
+
+  // SetRoleMenus 设置角色的菜单授权，整组替换（差量同步：移除不在集合内
+  // 的映射行——物理删除，补建缺失授权，既有授权行保留授权人/授权时间）。
+  // 空集合合法（清空全部授权）。菜单必须存在且启用（跨租户等同不存在），
+  // 任一未知返回 INVALID_ARGUMENT 且整组不写入。返回设置后的授权集合
+  // （升序）。语义幂等：重复提交同一集合不改变结果。
+  rpc SetRoleMenus (SetRoleMenusRequest) returns (RoleMenuSet) {
+    option (google.api.http) = {
+      put: "/v1/roles/{id}/menus"
+      body: "*"
+    };
+  }
+}
+
+// Role 是角色的规范表示。审计列与时间戳只读。
+message Role {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  // 停用的角色失去分配资格与数据范围推导效力。
+  optional int32 status = 2;
+  // 角色名，租户内未删除角色间唯一。
+  string name = 3;
+  // 角色编码，租户内未删除角色间唯一；创建后不可变。
+  string code = 4;
+  // 角色类型：1 系统预置（不可删除）、2 租户自定义。服务端定值，
+  // 创建与更新输入中均被忽略。
+  int32 role_type = 5;
+  // 数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门
+  // 6-用户组 7-全租户。由 SetRoleDataScope 维护，创建与更新输入中被忽略。
+  int32 data_scope = 6;
+  // 组织可见范围：限定角色可分配的部门层级（NULL=全租户可分配，具体部门
+  // ID=仅该部门及子部门可分配）。由 SetRoleDataScope 维护，输入中被忽略。
+  optional int64 scope_dept_id = 7;
+  // 备注，可空。
+  optional string remark = 8;
+  // 创建人。只读。
+  int64 created_by = 9;
+  // 更新人。只读。
+  int64 updated_by = 10;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 11;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 12;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 13;
+}
+
+// RoleSet 是 ListRoles 返回的分页集合。
+message RoleSet {
+  // 本页角色，顺序遵循查询中的 sort。
+  repeated Role items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// RoleIDScopeEntry 是数据范围明细条目：type 决定 data_id 的指向。
+message RoleIDScopeEntry {
+  // 明细类型：1 用户 ID、2 部门 ID、3 用户组 ID。仅在角色 data_scope
+  // 为 4/5/6 时分别被数据范围推导消费，其余取值下为惰性配置。
+  int32 type = 1;
+  // 指向的数据 ID。
+  int64 data_id = 2;
+}
+
+// RoleDataScope 是角色的数据范围配置视图。data_scope 决定 id_scopes 的
+// 消费方式（4 指定人/5 指定部门/6 用户组分别只读对应 type 的明细）；
+// allowed_dept_ids 只参与角色分配判定（fn_can_assign_role），不影响
+// 持有者的数据可见范围——用户最终数据边界由 data_scope 及其明细决定。
+message RoleDataScope {
+  // 所属角色 ID。
+  int64 role_id = 1;
+  // 数据范围规则：1-7，取值见 Role.data_scope。
+  int32 data_scope = 2;
+  // 组织可见范围（分配层级限定），可空。
+  optional int64 scope_dept_id = 3;
+  // ID 范围明细集合。
+  repeated RoleIDScopeEntry id_scopes = 4;
+  // 分发部门 ID 集合（升序）。
+  repeated int64 allowed_dept_ids = 5;
+}
+
+// RoleMenuSet 是角色当前的有效授权菜单 ID 集合（升序）：已停用/软删菜单
+// 的残留映射不出现在本集合。
+message RoleMenuSet {
+  // 已授权菜单 ID，升序。
+  repeated int64 menu_ids = 1;
+}
+
+// CreateRoleRequest 是 RoleService.CreateRole 的输入。
+message CreateRoleRequest {
+  // 要创建的角色。id、role_type、data_scope、scope_dept_id、created_by/
+  // updated_by 与时间戳在输入中被忽略。
+  Role role = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetRoleRequest 是 RoleService.GetRole 的输入。
+message GetRoleRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListRolesRequest 是 RoleService.ListRoles 的输入。
+message ListRolesRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateRoleRequest 是 RoleService.UpdateRole 的输入。
+message UpdateRoleRequest {
+  // 携带新字段值的角色。id 标识目标记录，必须设置；code、role_type、
+  // data_scope 与 scope_dept_id 在输入中被忽略。
+  Role role = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteRoleRequest 是 RoleService.DeleteRole 的输入。
+message DeleteRoleRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetRoleDataScopeRequest 是 RoleService.GetRoleDataScope 的输入。
+message GetRoleDataScopeRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SetRoleDataScopeRequest 是 RoleService.SetRoleDataScope 的输入。
+message SetRoleDataScopeRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 数据范围规则：1-7。
+  int32 data_scope = 2 [(google.api.field_behavior) = REQUIRED];
+  // 组织可见范围（分配层级限定），可空；非空时引用的部门必须存在且启用。
+  optional int64 scope_dept_id = 3;
+  // ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+  repeated RoleIDScopeEntry id_scopes = 4;
+  // 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+  repeated int64 allowed_dept_ids = 5;
+}
+
+// ListRoleMenusRequest 是 RoleService.ListRoleMenus 的输入。
+message ListRoleMenusRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SetRoleMenusRequest 是 RoleService.SetRoleMenus 的输入。
+message SetRoleMenusRequest {
+  // 目标角色的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
+  // 必须存在且启用。
+  repeated int64 menu_ids = 2;
+}

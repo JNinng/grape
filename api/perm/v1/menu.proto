@@ -1,0 +1,185 @@
+syntax = "proto3";
+
+package perm.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "grape/api/perm/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.perm.v1";
+option java_outer_classname = "MenuProto";
+
+// MenuService 提供菜单/权限点树的管理。sys_menu 承载功能权限码链的
+// 宿主树（角色 → 菜单 → 权限码，与数据范围正交），是功能入口表：
+// 运行角色对它只读（数据库直写已 REVOKE），写面经部署面 SECURITY
+// DEFINER 固定口径写函数（租户边界复位、父级校验、防环、软删口径
+// 收在函数内）。
+//
+// 读写形态：读端点（GetMenuTree / GetMenu）按权限默认处理——租户边界
+// 由 RLS 承担（表无 @scope，租户内全可见），方法名不带 super；写端点
+// 是有意绕过默认权限处理的受控写路径（SECURITY DEFINER 函数），按
+// permission.md 口径在方法名带 super。
+//
+// 软删除口径：菜单删除为软删除（deleted_at 置位），存在未删除直接
+// 子菜单时拒绝（自叶向根逐层删）；permission_code 在租户内未删除
+// 菜单间唯一，软删后可复用；已软删/停用菜单不再产生功能权限
+// （fn_has_permission 活跃联结过滤），角色-菜单映射行物理残留、
+// 由 RoleService.SetMenus 的存在性判定排除。
+service MenuService {
+  // GetMenuTree 返回当前租户内全部未删除菜单的树形结构：parent_id 为
+  // 空的是根，子节点顺序与平铺列表一致（sort_order 升序，同序按 id
+  // 升序）；父引用缺失的行按根挂载（防御性兜底）。total 为节点总数。
+  rpc GetMenuTree (GetMenuTreeRequest) returns (MenuTreeReply) {
+    option (google.api.http) = {
+      get: "/v1/menus/tree"
+    };
+  }
+
+  // GetMenu 按 id 查询单个菜单。跨租户不可见等同不存在（NOT_FOUND）。
+  rpc GetMenu (GetMenuRequest) returns (Menu) {
+    option (google.api.http) = {
+      get: "/v1/menus/{id}"
+    };
+  }
+
+  // CreateMenuSuper 创建菜单（super 面：经部署面受控写函数写入）。父
+  // 菜单不存在/已删除/跨租户返回 INVALID_ARGUMENT 且不写入；permission_code
+  // 租户内未删除菜单间唯一，冲突返回 ALREADY_EXISTS。id、created_by/
+  // updated_by 与时间戳在输入中被忽略。
+  rpc CreateMenuSuper (CreateMenuSuperRequest) returns (Menu) {
+    option (google.api.http) = {
+      post: "/v1/menus/create"
+      body: "*"
+    };
+  }
+
+  // UpdateMenuSuper 覆盖可变字段（name、status、icon、route_path、
+  // component、permission_expr、sort_order、remark）。permission_code、
+  // menu_type 与 parent_id 是身份/类型/结构列，在输入中被忽略：
+  // 结构变更走 MoveMenuSuper。目标不存在或跨租户返回 NOT_FOUND。
+  rpc UpdateMenuSuper (UpdateMenuSuperRequest) returns (Menu) {
+    option (google.api.http) = {
+      put: "/v1/menus/update"
+      body: "menu"
+    };
+  }
+
+  // MoveMenuSuper 移动菜单到新父级（parent_id 未设置表示移为根）。
+  // 新父级不存在/已删除/跨租户返回 INVALID_ARGUMENT；移入自身子树
+  //（成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
+  rpc MoveMenuSuper (MoveMenuSuperRequest) returns (Menu) {
+    option (google.api.http) = {
+      put: "/v1/menus/move"
+      body: "*"
+    };
+  }
+
+  // DeleteMenuSuper 软删除菜单（deleted_at 置位）。存在未删除直接子
+  // 菜单返回 HAS_CHILDREN（自叶向根逐层删）；目标不存在或跨租户返回
+  // NOT_FOUND。已授权该菜单的角色映射行物理残留，不再产生功能权限。
+  rpc DeleteMenuSuper (DeleteMenuSuperRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/menus/{id}"
+    };
+  }
+}
+
+// Menu 是菜单/权限点的规范表示。审计列与时间戳只读。
+message Menu {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  // 停用的菜单不再产生功能权限。
+  optional int32 status = 2;
+  // 菜单/权限名称。
+  string name = 3;
+  // 权限编码，租户内未删除菜单间唯一（如 sys:user:create）；创建后
+  // 不可变，更新输入中被忽略。
+  string permission_code = 4;
+  // 父级菜单 ID，未设置表示根菜单/顶级权限分组；更新输入中被忽略
+  //（结构变更走 MoveMenuSuper）。
+  optional int64 parent_id = 5;
+  // 菜单类型：1 目录、2 菜单、3 按钮（操作权限点）。创建后不可变，
+  // 更新输入中被忽略。
+  int32 menu_type = 6;
+  // 菜单图标，可空。
+  optional string icon = 7;
+  // 前端路由路径，可空。
+  optional string route_path = 8;
+  // 前端组件路径，可空。
+  optional string component = 9;
+  // 权限表达式（应用层匹配用），可空。
+  optional string permission_expr = 10;
+  // 排序号，树内同级按其升序排列。
+  int32 sort_order = 11;
+  // 备注，可空。
+  optional string remark = 12;
+  // 创建人。只读。
+  int64 created_by = 13;
+  // 更新人。只读。
+  int64 updated_by = 14;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 15;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 16;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 17;
+}
+
+// MenuTreeNode 是菜单树节点：菜单与其直接子节点。
+message MenuTreeNode {
+  // 本节点菜单。
+  Menu menu = 1;
+  // 直接子节点，顺序与平铺列表一致。
+  repeated MenuTreeNode children = 2;
+}
+
+// MenuTreeReply 是 GetMenuTree 返回的树形集合。
+message MenuTreeReply {
+  // 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+  repeated MenuTreeNode roots = 1;
+  // 树内节点总数（未删除菜单总数）。
+  int64 total = 2;
+}
+
+// GetMenuTreeRequest 是 MenuService.GetMenuTree 的输入。
+message GetMenuTreeRequest {
+}
+
+// GetMenuRequest 是 MenuService.GetMenu 的输入。
+message GetMenuRequest {
+  // 目标菜单的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateMenuSuperRequest 是 MenuService.CreateMenuSuper 的输入。
+message CreateMenuSuperRequest {
+  // 要创建的菜单。id、created_by/updated_by 与时间戳在输入中被忽略；
+  // parent_id 引用的父菜单必须存在且未删除。
+  Menu menu = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// UpdateMenuSuperRequest 是 MenuService.UpdateMenuSuper 的输入。
+message UpdateMenuSuperRequest {
+  // 携带新字段值的菜单。id 标识目标记录，必须设置；permission_code、
+  // menu_type 与 parent_id 在输入中被忽略。
+  Menu menu = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// MoveMenuSuperRequest 是 MenuService.MoveMenuSuper 的输入。
+message MoveMenuSuperRequest {
+  // 目标菜单的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新父级菜单 ID；未设置表示移为根。引用的父菜单必须存在且未删除，
+  // 且不得位于被移动菜单的子树内（防环）。
+  optional int64 parent_id = 2;
+}
+
+// DeleteMenuSuperRequest 是 MenuService.DeleteMenuSuper 的输入。
+message DeleteMenuSuperRequest {
+  // 目标菜单的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

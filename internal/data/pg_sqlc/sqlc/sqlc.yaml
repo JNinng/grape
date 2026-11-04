@@ -35,6 +35,7 @@ sql:
       - "expose.sql"
       - "96_agent_grant.sql"
       - "schema/97_agent_retrieval_log.sql"
+      - "98_menu_write.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -42,6 +43,8 @@ sql:
       - "queries/sys_user.sql"
       - "queries/sys_dept.sql"
       - "queries/sys_user_group.sql"
+      - "queries/sys_role.sql"
+      - "queries/menu.sql"
       - "queries/sys_session.sql"
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
@@ -73,6 +76,7 @@ sql:
       - "expose.sql"
       - "96_agent_grant.sql"
       - "schema/97_agent_retrieval_log.sql"
+      - "98_menu_write.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -80,6 +84,8 @@ sql:
       - "queries/sys_user.sql"
       - "queries/sys_dept.sql"
       - "queries/sys_user_group.sql"
+      - "queries/sys_role.sql"
+      - "queries/menu.sql"
       - "queries/sys_session.sql"
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
