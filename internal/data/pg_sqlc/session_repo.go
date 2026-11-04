@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 // sessionRepo 是 biz.SessionRepo 的 PostgreSQL 实现。签发/按 id 撤销经
@@ -150,6 +151,59 @@ func (r *sessionRepo) Refresh(ctx context.Context, in *biz.RefreshSessionInput) 
 	})
 	if err != nil {
 		return nil, r.mapErr(err)
+	}
+	return out, nil
+}
+
+// List 是会话管理面（治理面）的租户内动态查询：解析动态查询协议并返回
+// 分页信封。表无 @scope，无需注入守卫；令牌哈希列为 @internal，协议不可
+// 查、领域模型不携带。协议错误映射为 ErrSessionInvalidArgument（proto 契
+// 约承诺的 INVALID_ARGUMENT，非 Kratos 错误的 *dynq.Error 不得透传成 500）。
+func (r *sessionRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.SessionAdminList, error) {
+	var out *biz.SessionAdminList
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		params, err := gen.ParseSysSessionQuery(q)
+		if err != nil {
+			return biz.ErrSessionInvalidArgument
+		}
+		res, err := gen.ListSysSession(ctx, s.Tx(), params)
+		if err != nil {
+			// List 阶段同样产协议错误（畸形/篡改游标的解码失败、指纹不
+			// 匹配、seek 谓词非法等）：按契约映射为 INVALID_ARGUMENT 而非
+			// 透传成 500。会话行 id 超出 2^53 的大主键游标自 dynq v0.5.0
+			// 起以十进制字符串精确解码，正常翻页不受影响。
+			if isDynqError(err) {
+				return biz.ErrSessionInvalidArgument
+			}
+			return err
+		}
+		list := &biz.SessionAdminList{
+			Items:      make([]*biz.Session, 0, len(res.Items)),
+			HasMore:    res.HasMore,
+			NextCursor: res.NextCursor,
+		}
+		for i := range res.Items {
+			list.Items = append(list.Items, toBizSession(&res.Items[i]))
+		}
+		// total 与翻页位置无关，计数前剥离游标：游标会把行集收窄到
+		// 某一页位置之后，导致各页 total 递减。
+		if dynq.IncludeTotalOf(q.Pagination) {
+			countParams := params
+			countParams.After = nil
+			total, err := gen.CountSysSession(ctx, s.Tx(), countParams)
+			if err != nil {
+				if isDynqError(err) {
+					return biz.ErrSessionInvalidArgument
+				}
+				return err
+			}
+			list.Total = &total
+		}
+		out = list
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

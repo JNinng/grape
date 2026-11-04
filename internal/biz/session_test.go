@@ -2,11 +2,14 @@ package biz
 
 import (
 	"context"
+
 	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 // fakeSessionRepo 记录用例交给仓储的入参，用于断言明文令牌从不跨越
@@ -53,6 +56,10 @@ func (f *fakeSessionRepo) RevokeByAccessTokenHash(_ context.Context, accessToken
 	f.logoutCalls++
 	f.logoutHash = accessTokenHash
 	return f.err
+}
+
+func (f *fakeSessionRepo) List(context.Context, Identity, *dynq.Query) (*SessionAdminList, error) {
+	return &SessionAdminList{}, nil
 }
 
 func (f *fakeSessionRepo) Refresh(_ context.Context, in *RefreshSessionInput) (*Session, error) {

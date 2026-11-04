@@ -153,9 +153,9 @@ WHERE id = sqlc.arg('id')
 
 功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链，不管能看见哪些行。
 
-落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单五个管理服务的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
+落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单/字典六个管理服务与审计日志/会话治理面的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
 
-已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单五个管理服务（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
+已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单/字典六个管理服务与审计日志/会话治理面（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码；字典两级共用一组操作码、审计日志 List/点查并入各自页面码、会话治理查询/撤销单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。

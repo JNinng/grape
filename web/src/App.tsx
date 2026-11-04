@@ -7,9 +7,12 @@ import { Toaster } from './components/ui/toast'
 import { ChatPage } from './pages/ChatPage'
 import { LoginPage } from './pages/LoginPage'
 import { ReplayPage } from './pages/replay/ReplayPage'
+import { AuditLogManagePage } from './pages/settings/AuditLogManagePage'
 import { DeptManagePage } from './pages/settings/DeptManagePage'
+import { DictManagePage } from './pages/settings/DictManagePage'
 import { MenuManagePage } from './pages/settings/MenuManagePage'
 import { RoleManagePage } from './pages/settings/RoleManagePage'
+import { SessionManagePage } from './pages/settings/SessionManagePage'
 import { SettingsLayout } from './pages/settings/SettingsLayout'
 import { UserGroupManagePage } from './pages/settings/UserGroupManagePage'
 import { UserManagePage } from './pages/settings/UserManagePage'
@@ -72,6 +75,9 @@ export default function App() {
           <Route path="user-groups" element={<UserGroupManagePage />} />
           <Route path="roles" element={<RoleManagePage />} />
           <Route path="menus" element={<MenuManagePage />} />
+          <Route path="dicts" element={<DictManagePage />} />
+          <Route path="audit-logs" element={<AuditLogManagePage />} />
+          <Route path="sessions" element={<SessionManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

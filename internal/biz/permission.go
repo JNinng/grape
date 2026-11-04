@@ -59,6 +59,25 @@ const (
 	PermMenuCreate = "sys:menu:create"
 	PermMenuUpdate = "sys:menu:update"
 	PermMenuDelete = "sys:menu:delete"
+
+	// 字典管理（sys_dict_type / sys_dict_data，种子菜单 224 子树：操作级
+	// 权限点 225-228 由 seed.sql 预铺）。类型与数据两级共用同一组操作码
+	//（同一管理页内的两级维护，权限粒度不细分到级）。
+	PermDictQuery  = "sys:dict:query"
+	PermDictCreate = "sys:dict:create"
+	PermDictUpdate = "sys:dict:update"
+	PermDictDelete = "sys:dict:delete"
+
+	// 审计日志（sys_login_log / sys_operation_log，种子菜单 230/231）：两表
+	// append-only 只读面，沿用 seed.sql 预铺的页面级权限点，List 与点查
+	// 同码。
+	PermAuditOperationLog = "sys:audit:operation-log"
+	PermAuditLoginLog     = "sys:audit:login-log"
+
+	// 会话治理（sys_session，种子菜单 254 子树：查询/撤销两枚操作码
+	// 255/256 由 99_perm_seed.sql 预铺）。
+	PermSessionQuery  = "sys:session:query"
+	PermSessionRevoke = "sys:session:revoke"
 )
 
 // PermissionRepo 是功能权限码仓储接口：fn_has_permission / GetPermissionCodes

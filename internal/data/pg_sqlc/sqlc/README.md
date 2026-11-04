@@ -31,7 +31,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 12 个文件、94 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、字典两级、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 14 个文件、107 条命名查询 |
 | 17 | 98_menu_write.sql | 定义 sys_menu 受控写面（D2 结论）：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
@@ -48,9 +48,10 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `sqlc.yaml` 的 schema 列表 = schema/ 十个域文件（10–90 九个域 +
   95_agent_audit）+ rls/operate/expose + 96_agent_grant.sql +
   schema/97_agent_retrieval_log.sql + 98_menu_write.sql（收尾），queries 列表 =
-  queries/ 十二个文件（operate/basic/perm、业务表固定 CRUD
-  sys_user/sys_dept/sys_user_group/sys_role/sys_menu/sys_session 与 Agent 审计
-  agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。加
+  queries/ 十四个文件（operate/basic/perm、业务表固定 CRUD
+  sys_user/sys_dept/sys_user_group/sys_dict/sys_audit_log/sys_role/sys_menu/
+  sys_session 与 Agent 审计 agent_audit、工具授权 agent_grant、检索留痕
+  agent_retrieval_log）。加
   98_menu_write.sql 是为了让 queries/menu.sql 的写调用能解析受控写函数的
   签名（sqlc 只看签名，函数体是否存在于库里由执行顺序保证）。加 rls/operate/expose 是为了让 queries 里的查
   询能调用这些文件里的函数（GetScope 调三件套、判断类调 fn_can_* /
@@ -322,6 +323,31 @@ schema/30_user.sql 的列注释 DSL 声明（ParseSysUserGroupQuery 等顶层
 | AddSysUserGroupMembers | :execrows | group_id/用户 ID 数组/操作者 → 新增条数 | 批量写入成员映射；租户取会话 app.tenant_id，重复添加经主键冲突跳过（幂等） |
 | RemoveSysUserGroupMembers | :execrows | group_id/用户 ID 数组 → 移除条数 | 批量物理删除成员映射；移除非成员更新 0 行（幂等，不报错） |
 
+### sys_dict.sql（字典两级固定 CRUD）
+
+字典是租户内公共资源（sys_dict_type / sys_dict_data，表无 @scope，租户内
+全可见）；动态查询能力由 schema/60_dict.sql 的列注释 DSL 声明
+（ParseSysDictTypeQuery 等顶层函数为生成物），本文件只写固定命名查询。
+两级同置一文件：数据随宿主类型的管理面维护——数据创建先锁宿主类型行
+再插入（同事务内判定宿主存在且未删除，锁住类型行同时杜绝与类型软删的
+并发窗口），类型删除先统计未删除数据、大于 0 即拒绝（先清空该类型下的
+数据）；类型 code 与数据 value 的唯一约束限定未删除行间（部分唯一索引），
+软删后可复用；类型软删后数据行物理残留，消费侧按需过滤宿主活跃性。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysDictTypeByID | :one | id → SysDictType | 按 id 读取未软删的字典类型（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| LockSysDictTypeByID | :one | id → SysDictType | 按 id 锁定未软删的字典类型（FOR UPDATE，类型写路径与数据创建路径先锁后写） |
+| InsertSysDictType | :one | 类型字段 + 操作者 → SysDictType | 插入字典类型记录；租户取会话 app.tenant_id，code 唯一冲突映射 AlreadyExists |
+| UpdateSysDictType | :one | name/status/remark + 操作者 + id → SysDictType | 更新可变字段（不含 code——身份列不经本路径变更）；updated_at 由触发器刷新 |
+| CountSysDictDataByType | :one | dict_type_id → 行数 | 统计类型下未删除字典数据数（类型删除前置校验，大于 0 拒绝软删） |
+| SoftDeleteSysDictType | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除字典类型；活跃数据校验由调用方在同一事务内先行完成 |
+| GetSysDictDataByID | :one | id → SysDictData | 按 id 读取未软删的字典数据（租户边界由 RLS 承担） |
+| LockSysDictDataByID | :one | id → SysDictData | 按 id 锁定未软删的字典数据（FOR UPDATE，数据更新/删除路径先锁后写） |
+| InsertSysDictData | :one | 数据字段 + 操作者 → SysDictData | 插入字典数据记录；租户取会话 app.tenant_id，同类型下 value 唯一冲突映射 AlreadyExists（宿主存在性由调用方先锁类型行判定） |
+| UpdateSysDictData | :one | label/status/sort_order/remark + 操作者 + id → SysDictData | 更新可变字段（不含 value/value_type 与 dict_type_id——值语义列与宿主归属列不经本路径变更）；updated_at 由触发器刷新 |
+| SoftDeleteSysDictData | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除字典数据（宿主类型不受影响） |
+
 ### sys_role.sql（角色固定 CRUD 与数据范围/菜单授权映射）
 
 角色是租户内资源（表无 @scope，租户内全可见）；动态查询能力由
@@ -382,7 +408,24 @@ sys_menu REVOKE 写授权），四个写查询即调用 98_menu_write.sql 受控
 | MoveSysMenu | :one | 新父级（可空）+ 操作者 + id → SysMenu | 移动菜单：调用 fn_menu_move（父级/防环校验兜底，调用方已在用例层预检）；NULL 表示移为根；未命中同上过滤成空集 |
 | SoftDeleteSysMenu | :one | 操作者 + id → 删除行数 | 软删除菜单：调用 fn_menu_delete（存在未软删直接子菜单时函数内拒绝）；返回行数 0 即目标未命中（映射 NotFound） |
 
+### sys_audit_log.sql（审计日志固定点查）
+
+登录日志 sys_login_log 与操作日志 sys_operation_log 均 append-only 只读：
+无写入路径（日志行由业务现场写入）、无更新/删除面；动态查询能力由
+schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层函数为
+生成物），本文件只写管理面的按 id 点查。两表是租户内公共资源：表无
+@scope，租户边界由 RLS 承担，行级无范围。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysLoginLogByID | :one | id → SysLoginLog | 按 id 读取单条登录日志（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| GetSysOperationLogByID | :one | id → SysOperationLog | 按 id 读取单条操作日志（含操作前后数据快照；租户边界由 RLS 承担） |
+
 ### sys_session.sql（会话固定 CRUD）
+
+管理面（治理面）的租户内动态 List 由 schema/80_session.sql 的列注释 DSL
+声明（ParseSysSessionQuery 等顶层函数为生成物，令牌哈希列 @internal 协议
+不可查），本文件只写认证生命周期与介质维护的固定命名查询。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|

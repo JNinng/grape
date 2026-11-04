@@ -53,9 +53,25 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	// telemetry 位传 nil：本测试不涉 OTel（nil 接收者按未启用处理）。
-	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
+	srv, err := NewHTTPServer(confServer,
+		nil,
+		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, agentService,
+		authMiddleware,
+		permStubMiddleware(),
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		agentService,
 		sessionsService,
 		eventWindowService,
 		// 审计与检索留痕查询端点本文件用例不触达，传 nil。

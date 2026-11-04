@@ -135,8 +135,30 @@ func Test_new_http_server_rejects_enabled_cors_without_origins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build trace middleware: %v", err)
 	}
-	_, err = NewHTTPServer(confServer, nil, traceMiddleware,
-		NewRouteTimeoutMiddleware(confServer, nil), nil, nil, ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	_, err = NewHTTPServer(confServer,
+		nil,
+		traceMiddleware,
+		NewRouteTimeoutMiddleware(confServer, nil),
+		nil,
+		nil,
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil)
 	if err == nil || !strings.Contains(err.Error(), "allowed_origins") {
 		t.Fatalf("enabled cors without origins must fail with origins error, got %v", err)
 	}
@@ -172,9 +194,30 @@ func newCorsTestServer(t *testing.T, confServer *conf.Server) *agentTestServer {
 		t.Fatalf("build trace middleware: %v", err)
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
-	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
+	srv, err := NewHTTPServer(confServer,
+		nil,
+		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, agentService, nil, nil, nil, nil, nil)
+		authMiddleware,
+		permStubMiddleware(),
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		agentService,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

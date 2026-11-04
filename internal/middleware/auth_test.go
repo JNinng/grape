@@ -9,10 +9,12 @@ import (
 
 	sessionv1 "grape/api/session/v1"
 	userv1 "grape/api/user/v1"
+
 	"grape/internal/biz"
 
 	"github.com/go-kratos/kratos/v3/middleware"
 	"github.com/go-kratos/kratos/v3/transport"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 // fakeSessionRepo 只为 Validate 提供会话事实并记录哈希入参。
@@ -40,6 +42,10 @@ func (f *fakeSessionRepo) Revoke(context.Context, biz.Identity, int64) error {
 
 func (f *fakeSessionRepo) RevokeByAccessTokenHash(context.Context, string) error {
 	return biz.ErrSessionInvalidArgument
+}
+
+func (f *fakeSessionRepo) List(context.Context, biz.Identity, *dynq.Query) (*biz.SessionAdminList, error) {
+	return &biz.SessionAdminList{}, nil
 }
 
 func (f *fakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) (*biz.Session, error) {

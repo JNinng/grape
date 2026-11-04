@@ -1,0 +1,291 @@
+syntax = "proto3";
+
+package dict.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/dict/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.dict.v1";
+option java_outer_classname = "DictProto";
+
+// DictService 提供字典管理：字典类型（sys_dict_type）与字典数据
+//（sys_dict_data）两级。字典是租户内公共数据：租户边界由数据库 RLS
+// 强制，租户内全部字典对持有令牌的成员可见（表无 @scope，行级无范围）。
+// 两级 List 都走动态查询协议，过滤/排序/投影/分页能力由存储层 schema
+// 注释 DSL 声明。
+//
+// 身份列纪律：字典类型 code 与字典数据 value/value_type 参与唯一约束或
+// 值语义（同类型下 value 唯一、软删后可复用），创建后不可变，更新输入
+// 中被忽略；字典数据的宿主归属 dict_type_id 创建后不可变。字典类型删除
+// 为软删除，存在未删除字典数据时拒绝（先清空该类型下的数据）；删除数据
+// 不联动宿主，数据删除为软删除。
+service DictService {
+  // CreateDictType 创建字典类型。租户内 code 唯一（未删除类型间），冲突
+  // 返回 ALREADY_EXISTS。
+  rpc CreateDictType (CreateDictTypeRequest) returns (DictType) {
+    option (google.api.http) = {
+      post: "/v1/dict-types/create"
+      body: "*"
+    };
+  }
+
+  // GetDictType 按 id 查询单个字典类型。跨租户不可见等同不存在
+  //（NOT_FOUND）。
+  rpc GetDictType (GetDictTypeRequest) returns (DictType) {
+    option (google.api.http) = {
+      get: "/v1/dict-types/{id}"
+    };
+  }
+
+  // ListDictTypes 按动态查询协议返回一页字典类型（供检索与分页表格）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListDictTypes (ListDictTypesRequest) returns (DictTypeSet) {
+    option (google.api.http) = {
+      post: "/v1/dict-types/list"
+      body: "query"
+    };
+  }
+
+  // UpdateDictType 覆盖可变字段（name、status、remark）。code 是身份列，
+  // 在输入中被忽略。
+  rpc UpdateDictType (UpdateDictTypeRequest) returns (DictType) {
+    option (google.api.http) = {
+      put: "/v1/dict-types/update"
+      body: "dict_type"
+    };
+  }
+
+  // DeleteDictType 软删除字典类型（deleted_at 置位）。存在未删除字典数据
+  // 返回 HAS_DATA（先清空该类型下的数据）；目标不存在或跨租户返回
+  // NOT_FOUND。唯一约束限定未删除行间，软删后 code 可复用。
+  rpc DeleteDictType (DeleteDictTypeRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/dict-types/{id}"
+    };
+  }
+
+  // CreateDictData 创建字典数据。宿主字典类型必须存在且未删除，未知返回
+  // INVALID_ARGUMENT 且不写入；同类型下 value 唯一（未删除数据间），冲突
+  // 返回 ALREADY_EXISTS。value_type 限定 string/integer/boolean/float/json。
+  rpc CreateDictData (CreateDictDataRequest) returns (DictData) {
+    option (google.api.http) = {
+      post: "/v1/dict-data/create"
+      body: "*"
+    };
+  }
+
+  // GetDictData 按 id 查询单个字典数据。跨租户不可见等同不存在
+  //（NOT_FOUND）。
+  rpc GetDictData (GetDictDataRequest) returns (DictData) {
+    option (google.api.http) = {
+      get: "/v1/dict-data/{id}"
+    };
+  }
+
+  // ListDictDatas 按动态查询协议返回一页字典数据。协议错误返回
+  // INVALID_ARGUMENT。注意：整型过滤值是 JSON number，newID() 发号的主键
+  // 超出 JS 安全整数范围（2^53），按 dictTypeId 过滤大 id 宿主请改走
+  // ListDictTypeDatas（宿主 id 在路径参数，无数字精度问题）。
+  rpc ListDictDatas (ListDictDatasRequest) returns (DictDataSet) {
+    option (google.api.http) = {
+      post: "/v1/dict-data/list"
+      body: "query"
+    };
+  }
+
+  // ListDictTypeDatas 分页返回指定字典类型下的全部数据项（管理面子列表
+  // 专用端点，同用户组成员列表先例）：宿主类型 id 在路径参数、固定 offset
+  // 分页，按 sort_order 升序（同序按 id 升序）稳定排序，不接动态查询协议
+  //——动态协议的整型过滤值是 JSON number，对 newID() 发号的大 id 宿主有
+  // 精度限制。宿主不存在或跨租户返回 NOT_FOUND。
+  rpc ListDictTypeDatas (ListDictTypeDatasRequest) returns (DictDataSet) {
+    option (google.api.http) = {
+      get: "/v1/dict-types/{id}/data"
+    };
+  }
+
+  // UpdateDictData 覆盖可变字段（label、status、sort_order、remark）。
+  // value/value_type 与宿主归属 dict_type_id 是身份/值语义/归属列，在输入
+  // 中被忽略。
+  rpc UpdateDictData (UpdateDictDataRequest) returns (DictData) {
+    option (google.api.http) = {
+      put: "/v1/dict-data/update"
+      body: "dict_data"
+    };
+  }
+
+  // DeleteDictData 软删除字典数据（deleted_at 置位）。目标不存在或跨租户
+  // 返回 NOT_FOUND；宿主类型不受影响。同类型下 value 唯一约束限定未删除
+  // 行间，软删后可复用。
+  rpc DeleteDictData (DeleteDictDataRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/dict-data/{id}"
+    };
+  }
+}
+
+// DictType 是字典类型的规范表示。审计列与时间戳只读。
+message DictType {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 字典类型名。
+  string name = 3;
+  // 字典类型编码，租户内未删除类型间唯一；创建后不可变（如
+  // sys_user_status）。
+  string code = 4;
+  // 备注，可空。
+  optional string remark = 5;
+  // 创建人。只读。
+  int64 created_by = 6;
+  // 更新人。只读。
+  int64 updated_by = 7;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 8;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 9;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 10;
+}
+
+// DictTypeSet 是 ListDictTypes 返回的分页集合。
+message DictTypeSet {
+  // 本页字典类型，顺序遵循查询中的 sort。
+  repeated DictType items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// DictData 是字典数据的规范表示。审计列与时间戳只读。
+message DictData {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 宿主字典类型 ID。创建后不可变；引用的类型必须存在且未删除。
+  int64 dict_type_id = 3;
+  // 字典标签（展示文本）。
+  string label = 4;
+  // 字典值，同类型下未删除数据间唯一；创建后不可变。
+  string value = 5;
+  // 值类型：string/integer/boolean/float/json，系统获取值时按此预处理；
+  // 创建后不可变。
+  string value_type = 6;
+  // 排序号，同类型内按其升序展示。
+  int32 sort_order = 7;
+  // 备注，可空。
+  optional string remark = 8;
+  // 创建人。只读。
+  int64 created_by = 9;
+  // 更新人。只读。
+  int64 updated_by = 10;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 11;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 12;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 13;
+}
+
+// DictDataSet 是 ListDictDatas / ListDictTypeDatas 共用的分页集合：
+// 前者为动态协议信封（page/next_cursor 按 mode 填充），后者为固定 offset
+// 模式（page 填归一化后的实际页码，next_cursor 恒空）。
+message DictDataSet {
+  // 本页字典数据，顺序遵循查询中的 sort。
+  repeated DictData items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateDictTypeRequest 是 DictService.CreateDictType 的输入。
+message CreateDictTypeRequest {
+  // 要创建的字典类型。id、created_by/updated_by 与时间戳在输入中被忽略。
+  DictType dict_type = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetDictTypeRequest 是 DictService.GetDictType 的输入。
+message GetDictTypeRequest {
+  // 目标字典类型的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListDictTypesRequest 是 DictService.ListDictTypes 的输入。
+message ListDictTypesRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateDictTypeRequest 是 DictService.UpdateDictType 的输入。
+message UpdateDictTypeRequest {
+  // 携带新字段值的字典类型。id 标识目标记录，必须设置；code 在输入中
+  // 被忽略。
+  DictType dict_type = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteDictTypeRequest 是 DictService.DeleteDictType 的输入。
+message DeleteDictTypeRequest {
+  // 目标字典类型的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateDictDataRequest 是 DictService.CreateDictData 的输入。
+message CreateDictDataRequest {
+  // 要创建的字典数据。id、created_by/updated_by 与时间戳在输入中被忽略；
+  // dict_type_id 引用的宿主类型必须存在且未删除。
+  DictData dict_data = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetDictDataRequest 是 DictService.GetDictData 的输入。
+message GetDictDataRequest {
+  // 目标字典数据的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListDictDatasRequest 是 DictService.ListDictDatas 的输入。
+message ListDictDatasRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// ListDictTypeDatasRequest 是 DictService.ListDictTypeDatas 的输入。
+// 固定 offset 分页（页码缺省 1；页大小缺省 20、上限 200，越界归一化）。
+message ListDictTypeDatasRequest {
+  // 宿主字典类型的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 页码，缺省 1；小于 1 归一化为 1。
+  int32 page = 2;
+  // 每页条数，缺省 20；上限 200，越界归一化为 200。
+  int32 page_size = 3;
+}
+
+// UpdateDictDataRequest 是 DictService.UpdateDictData 的输入。
+message UpdateDictDataRequest {
+  // 携带新字段值的字典数据。id 标识目标记录，必须设置；value/value_type
+  // 与 dict_type_id 在输入中被忽略。
+  DictData dict_data = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteDictDataRequest 是 DictService.DeleteDictData 的输入。
+message DeleteDictDataRequest {
+  // 目标字典数据的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

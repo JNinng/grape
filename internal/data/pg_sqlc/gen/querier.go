@@ -46,6 +46,9 @@ type Querier interface {
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 统计部门未软删的直接子部门数（删除前置校验；触发器兜底同口径）
 	CountSysDeptActiveChildren(ctx context.Context, id *int64) (int64, error)
+	// 统计字典类型下未删除字典数据数（类型删除前置校验：计数大于 0 即拒绝软删，
+	// 先清空该类型下的数据）
+	CountSysDictDataByType(ctx context.Context, dictTypeID int64) (int64, error)
 	// 统计菜单未软删的直接子菜单数（删除前置校验；受控写函数兜底同口径）
 	CountSysMenuActiveChildren(ctx context.Context, id *int64) (int64, error)
 	// 统计引用菜单中租户内启用且未删除的菜单数（角色-菜单授权的存在性判定，
@@ -98,6 +101,25 @@ type Querier interface {
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
 	// 按 id 读取未软删的部门（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysDeptByID(ctx context.Context, id int64) (SysDept, error)
+	// 按 id 读取未软删的字典数据（租户边界由 RLS 承担；表无 @scope，租户内全可见）
+	GetSysDictDataByID(ctx context.Context, id int64) (SysDictDatum, error)
+	// 字典固定 CRUD（sys_dict_type / sys_dict_data）。字典是租户内公共资源：
+	// 表无 @scope，租户边界由 RLS 承担，行级无范围；动态查询能力由
+	// schema/60_dict.sql 的列注释 DSL 声明（ParseSysDictTypeQuery 等顶层函数
+	// 为生成物），本文件只写固定命名查询。两级同置一文件：数据随宿主类型的
+	// 管理面维护——数据创建路径先锁宿主类型行再写入（同事务内判定宿主存在
+	// 且未删除），类型删除路径在同一事务内校验活跃数据后软删。code（类型）
+	// 与 value（数据）的唯一约束限定未删除行间（部分唯一索引），软删后可复用；
+	// 类型软删后数据行物理残留，消费侧按需过滤宿主活跃性。
+	// 按 id 读取未软删的字典类型（租户边界由 RLS 承担；表无 @scope，租户内全可见）
+	GetSysDictTypeByID(ctx context.Context, id int64) (SysDictType, error)
+	// 审计日志固定点查（sys_login_log / sys_operation_log）。两表 append-only
+	// 只读：无写入路径（日志行由业务现场写入）、无更新/删除面，动态查询能力
+	// 由 schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层
+	// 函数为生成物），本文件只写管理面的按 id 点查。两表是租户内公共资源：
+	// 表无 @scope，租户边界由 RLS 承担，行级无范围。
+	// 按 id 读取单条登录日志（租户边界由 RLS 承担；表无 @scope，租户内全可见）
+	GetSysLoginLogByID(ctx context.Context, id int64) (SysLoginLog, error)
 	// 菜单固定读查询与受控写调用（sys_menu）。sys_menu 是功能权限码链的
 	// 宿主树：读面为租户内普通读（表无 @scope，租户边界由 RLS 承担，行级
 	// 无范围）；写面运行角色无直写权限（role.sql 对 sys_menu REVOKE 写授权，
@@ -109,6 +131,8 @@ type Querier interface {
 	// 生成物），树查询走本文件的专用列表（菜单树全量装配，不做分页）。
 	// 按 id 读取未软删的菜单（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysMenuByID(ctx context.Context, id int64) (SysMenu, error)
+	// 按 id 读取单条操作日志（含操作前后数据快照；租户边界由 RLS 承担）
+	GetSysOperationLogByID(ctx context.Context, id int64) (SysOperationLog, error)
 	// 角色固定 CRUD（sys_role）与数据范围明细、分发部门、角色-菜单映射的
 	// 读写（sys_role_id_scope / sys_role_allowed_dept / sys_role_menu）。
 	// 角色是租户内资源：表无 @scope，租户边界由 RLS 承担，行级无范围；动态
@@ -176,6 +200,12 @@ type Querier interface {
 	// trg_maintain_dept_closure 在同事务内自动建立（父级合法性一并由触发器
 	// 校验兜底）
 	InsertSysDept(ctx context.Context, arg InsertSysDeptParams) (SysDept, error)
+	// 插入字典数据记录；租户取会话 app.tenant_id，同类型下未删除数据间 value
+	// 唯一冲突映射 AlreadyExists（宿主存在性由调用方先锁类型行判定）
+	InsertSysDictData(ctx context.Context, arg InsertSysDictDataParams) (SysDictDatum, error)
+	// 插入字典类型记录；租户取会话 app.tenant_id，租户内未删除类型间 code 唯一
+	// 冲突映射 AlreadyExists
+	InsertSysDictType(ctx context.Context, arg InsertSysDictTypeParams) (SysDictType, error)
 	// 新建菜单：调用受控写函数 fn_menu_create（SECURITY DEFINER 固定口径：
 	// 函数内以 app.tenant_id 复位租户边界并校验父节点）；租户不取请求值，
 	// 由函数内会话变量落值
@@ -221,6 +251,10 @@ type Querier interface {
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
+	// 按 id 锁定未软删的字典数据（FOR UPDATE，数据更新/删除路径先锁后写）
+	LockSysDictDataByID(ctx context.Context, id int64) (SysDictDatum, error)
+	// 按 id 锁定未软删的字典类型（FOR UPDATE，类型写路径与数据创建路径先锁后写）
+	LockSysDictTypeByID(ctx context.Context, id int64) (SysDictType, error)
 	// 按 id 锁定未软删的角色（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysRoleByID(ctx context.Context, id int64) (SysRole, error)
@@ -264,6 +298,10 @@ type Querier interface {
 	// 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝
 	//（仓储先经 CountSysDeptActiveChildren 前置校验映射为类型化错误）
 	SoftDeleteSysDept(ctx context.Context, arg SoftDeleteSysDeptParams) (int64, error)
+	// 置位 deleted_at 软删除字典数据（宿主类型不受影响）
+	SoftDeleteSysDictData(ctx context.Context, arg SoftDeleteSysDictDataParams) (int64, error)
+	// 置位 deleted_at 软删除字典类型；活跃数据校验由调用方在同一事务内先行完成
+	SoftDeleteSysDictType(ctx context.Context, arg SoftDeleteSysDictTypeParams) (int64, error)
 	// 置位 deleted_at 软删除菜单：调用受控写函数 fn_menu_delete（存在未软删
 	// 直接子菜单时函数内拒绝）；返回删除行数，0 即目标未命中（映射 NotFound）
 	SoftDeleteSysMenu(ctx context.Context, arg SoftDeleteSysMenuParams) (int64, error)
@@ -280,6 +318,12 @@ type Querier interface {
 	// 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
 	// 走专项口径）；updated_at 由触发器刷新
 	UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error)
+	// 更新可变字段（label/status/sort_order/remark；不含 value/value_type 与
+	// dict_type_id——值语义列与宿主归属列不经本路径变更）；updated_at 由触发器刷新
+	UpdateSysDictData(ctx context.Context, arg UpdateSysDictDataParams) (SysDictDatum, error)
+	// 更新可变字段（name/status/remark；不含 code——身份列不经本路径变更）；
+	// updated_at 由触发器刷新
+	UpdateSysDictType(ctx context.Context, arg UpdateSysDictTypeParams) (SysDictType, error)
 	// 覆盖可变字段（status/name/icon/route_path/component/permission_expr/
 	// sort_order/remark）：调用受控写函数 fn_menu_update（身份/类型/结构列
 	// permission_code/menu_type/parent_id 不经本路径变更）；目标未命中函数

@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package audit.v1;
+
+option go_package = "grape/api/audit/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.audit.v1";
+option objc_class_prefix = "APIAuditV1";
+
+// ErrorReason 是审计域资源（登录/操作日志只读面）的错误原因枚举，用于
+// Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  AUDIT_UNSPECIFIED = 0;
+  // 目标日志行不存在（含跨租户不可见）。
+  AUDIT_LOG_NOT_FOUND = 1;
+  // 请求参数非法（动态查询协议非法、ID 非正等）。
+  AUDIT_LOG_INVALID_ARGUMENT = 2;
+}

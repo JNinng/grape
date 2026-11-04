@@ -36,10 +36,30 @@ func newAgentRetrievalTestServer(t *testing.T) *kratoshttp.Server {
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	retrievalService := service.NewAgentRetrievalService(biz.NewRetrievalLogUsecase(&retrievalRouteFakeRepo{}))
-	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
+	srv, err := NewHTTPServer(confServer,
+		nil,
+		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
-		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		retrievalService, nil)
+		authMiddleware,
+		permStubMiddleware(),
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		retrievalService,
+		nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

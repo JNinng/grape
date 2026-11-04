@@ -17,6 +17,9 @@ beforeEach(() => {
     'sys:user-group',
     'sys:role',
     'sys:menu',
+    'sys:dict',
+    'sys:audit',
+    'sys:session',
   ])
 })
 
@@ -40,14 +43,14 @@ describe('SettingsLayout navigation filtering', () => {
   it('keeps_only_the_modules_whose_page_code_is_granted_after_loading', async () => {
     renderLayout()
 
-    // 授权集合仅含五个已实现模块的页面码：其余模块（含未实现的禁用占位
+    // 授权集合仅含八个已实现模块的页面码：其余模块（含未实现的禁用占位
     // 项）一并隐藏。
     expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument()
     const nav = screen.getByLabelText('管理模块')
-    for (const label of ['用户', '部门', '用户组', '角色', '菜单']) {
+    for (const label of ['用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话']) {
       expect(within(nav).getByText(label)).toBeInTheDocument()
     }
-    for (const label of ['字典', '审计日志', '会话', '配置', '租户']) {
+    for (const label of ['配置', '租户']) {
       expect(within(nav).queryByText(label)).not.toBeInTheDocument()
     }
     expect(mockFetchMyPermissions).toHaveBeenCalledTimes(1)
@@ -94,7 +97,10 @@ describe('SettingsLayout navigation links', () => {
     expect(screen.getByRole('link', { name: '用户组' })).toHaveAttribute('href', '/settings/user-groups')
     expect(screen.getByRole('link', { name: '角色' })).toHaveAttribute('href', '/settings/roles')
     expect(screen.getByRole('link', { name: '菜单' })).toHaveAttribute('href', '/settings/menus')
-    for (const label of ['字典', '审计日志', '会话', '配置', '租户']) {
+    expect(screen.getByRole('link', { name: '字典' })).toHaveAttribute('href', '/settings/dicts')
+    expect(screen.getByRole('link', { name: '审计日志' })).toHaveAttribute('href', '/settings/audit-logs')
+    expect(screen.getByRole('link', { name: '会话' })).toHaveAttribute('href', '/settings/sessions')
+    for (const label of ['配置', '租户']) {
       const item = screen.getByText(label).closest('[aria-disabled]')
       expect(item).not.toBeNull()
       expect(item).toHaveAttribute('aria-disabled', 'true')

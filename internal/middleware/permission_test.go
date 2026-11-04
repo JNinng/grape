@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	auditv1 "grape/api/audit/v1"
+	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	userv1 "grape/api/user/v1"
@@ -161,8 +163,8 @@ func TestPermissionMiddleware_propagates_lookup_error(t *testing.T) {
 }
 
 // TestOperationPermissionCodes_cover_gated_endpoints 验证码表完整性：
-// 五个管理服务的全部 RPC 都在码表内（管理面无未声明端点），且码值与
-// 种子权限点形态一致（<资源>:<操作>）。
+// 六个管理服务与审计/会话治理面的全部 RPC 都在码表内（管理面无未声明
+// 端点），且码值与种子权限点形态一致（<资源>:<操作>）。
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 	covered := map[string]struct{}{
 		// 用户管理
@@ -208,6 +210,24 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		permv1.OperationMenuServiceUpdateMenuSuper: {},
 		permv1.OperationMenuServiceMoveMenuSuper:   {},
 		permv1.OperationMenuServiceDeleteMenuSuper: {},
+		// 字典管理
+		dictv1.OperationDictServiceGetDictType:    {},
+		dictv1.OperationDictServiceListDictTypes:  {},
+		dictv1.OperationDictServiceGetDictData:    {},
+		dictv1.OperationDictServiceListDictDatas:  {},
+		dictv1.OperationDictServiceCreateDictType: {},
+		dictv1.OperationDictServiceCreateDictData: {},
+		dictv1.OperationDictServiceUpdateDictType: {},
+		dictv1.OperationDictServiceUpdateDictData: {},
+		dictv1.OperationDictServiceDeleteDictType: {},
+		dictv1.OperationDictServiceDeleteDictData: {},
+		// 审计日志与会话治理
+		auditv1.OperationAuditServiceListLoginLogs:        {},
+		auditv1.OperationAuditServiceGetLoginLog:          {},
+		auditv1.OperationAuditServiceListOperationLogs:    {},
+		auditv1.OperationAuditServiceGetOperationLog:      {},
+		auditv1.OperationSessionAdminServiceListSessions:  {},
+		auditv1.OperationSessionAdminServiceRevokeSession: {},
 	}
 	for op := range covered {
 		code, ok := operationPermissionCodes[op]

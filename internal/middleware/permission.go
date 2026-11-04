@@ -3,6 +3,8 @@ package middleware
 import (
 	"context"
 
+	auditv1 "grape/api/audit/v1"
+	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	userv1 "grape/api/user/v1"
@@ -20,8 +22,8 @@ import (
 // 与前端导航过滤共用同一权限码集合。
 //
 // 覆盖面（D4/D5 结论：入口层按操作声明权限码）：用户/部门/用户组/角色/
-// 菜单五个管理服务的全部写端点与管理读端点；super 写端点（受控写面）
-// 同样在列。一个码可覆盖多个操作（读类并入 :query、结构移动并入
+// 菜单/字典六个管理服务与审计日志/会话治理面的全部写端点与管理读端点；
+// super 写端点（受控写面）同样在列。一个码可覆盖多个操作（读类并入 :query、结构移动并入
 // :update）——码的粒度对齐种子权限点，不为每个 RPC 各造一码。
 var operationPermissionCodes = map[string]string{
 	// 用户管理
@@ -67,6 +69,24 @@ var operationPermissionCodes = map[string]string{
 	permv1.OperationMenuServiceUpdateMenuSuper: biz.PermMenuUpdate,
 	permv1.OperationMenuServiceMoveMenuSuper:   biz.PermMenuUpdate,
 	permv1.OperationMenuServiceDeleteMenuSuper: biz.PermMenuDelete,
+	// 字典管理
+	dictv1.OperationDictServiceGetDictType:    biz.PermDictQuery,
+	dictv1.OperationDictServiceListDictTypes:  biz.PermDictQuery,
+	dictv1.OperationDictServiceGetDictData:    biz.PermDictQuery,
+	dictv1.OperationDictServiceListDictDatas:  biz.PermDictQuery,
+	dictv1.OperationDictServiceCreateDictType: biz.PermDictCreate,
+	dictv1.OperationDictServiceCreateDictData: biz.PermDictCreate,
+	dictv1.OperationDictServiceUpdateDictType: biz.PermDictUpdate,
+	dictv1.OperationDictServiceUpdateDictData: biz.PermDictUpdate,
+	dictv1.OperationDictServiceDeleteDictType: biz.PermDictDelete,
+	dictv1.OperationDictServiceDeleteDictData: biz.PermDictDelete,
+	// 审计日志与会话治理
+	auditv1.OperationAuditServiceListLoginLogs:        biz.PermAuditLoginLog,
+	auditv1.OperationAuditServiceGetLoginLog:          biz.PermAuditLoginLog,
+	auditv1.OperationAuditServiceListOperationLogs:    biz.PermAuditOperationLog,
+	auditv1.OperationAuditServiceGetOperationLog:      biz.PermAuditOperationLog,
+	auditv1.OperationSessionAdminServiceListSessions:  biz.PermSessionQuery,
+	auditv1.OperationSessionAdminServiceRevokeSession: biz.PermSessionRevoke,
 }
 
 // PermissionMiddleware 是功能权限码判定中间件的注入类型。它与认证、链路

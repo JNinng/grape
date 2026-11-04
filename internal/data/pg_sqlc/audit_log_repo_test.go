@@ -1,0 +1,348 @@
+package pg_sqlc
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"grape/internal/biz"
+
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
+)
+
+// 审计日志与会话管理面集成测试：以真实 PostgreSQL 验证 sys_login_log /
+// sys_operation_log 只读查询（点查 + 动态 List + RLS 租户隔离）与
+// sys_session 管理面 List（签发后可查、令牌哈希不出现、跨租户隔离）。
+// 复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql：
+// t-super-01 有登录日志 4 条与操作日志 5 条，t-demo-01 仅登录日志 1 条
+//（zhaoliu）；两表 append-only，种子即全部事实）。各用例经 setupTestDB
+// 重建数据库实现隔离。
+//
+// 运行（PostgreSQL 必需，未设环境变量时跳过）：
+//
+//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
+//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
+//	go test ./internal/data/pg_sqlc/ -run "TestAuditLogRepo|TestSessionAdminList" -count=1
+
+// auditLogQuery 构造按用户名精确过滤的动态查询（两表同名语义列）。
+func auditLogQuery(username string) *dynq.Query {
+	return &dynq.Query{
+		Where: []dynq.Condition{{Field: "username", Op: "eq", Value: username}},
+	}
+}
+
+func TestAuditLogRepoGetLoginLogByIDReturnsSeededRow(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	out, err := repo.GetLoginLogByID(context.Background(), dictAuth(dictTenantSeeded), 3)
+	if err != nil {
+		t.Fatalf("get login log 3: %v", err)
+	}
+	if out.Username != "lisi" || out.IsSuccess {
+		t.Fatalf("row = (%s, success %v), want (lisi, false)", out.Username, out.IsSuccess)
+	}
+	if out.FailureReason == nil || *out.FailureReason == "" {
+		t.Fatalf("failure_reason = %+v, want non-empty", out.FailureReason)
+	}
+	if out.LoginAt.IsZero() {
+		t.Fatal("login_at must be populated")
+	}
+}
+
+func TestAuditLogRepoGetLoginLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	// 种子日志 5 属 t-demo-01（zhaoliu）。
+	_, err := repo.GetLoginLogByID(context.Background(), dictAuth(dictTenantSeeded), 5)
+	if !errors.Is(err, biz.ErrAuditLogNotFound) {
+		t.Fatalf("err = %v, want ErrAuditLogNotFound", err)
+	}
+}
+
+func TestAuditLogRepoGetLoginLogByIDMissingRowReturnsNotFound(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	_, err := repo.GetLoginLogByID(context.Background(), dictAuth(dictTenantSeeded), 999999)
+	if !errors.Is(err, biz.ErrAuditLogNotFound) {
+		t.Fatalf("err = %v, want ErrAuditLogNotFound", err)
+	}
+}
+
+func TestAuditLogRepoListLoginLogsFiltersByUsernameAndIsolatesTenant(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	out, err := repo.ListLoginLogs(context.Background(), dictAuth(dictTenantSeeded), auditLogQuery("lisi"))
+	if err != nil {
+		t.Fatalf("list login logs: %v", err)
+	}
+	// 种子中 lisi 有两条（一败一成）。
+	if len(out.Items) != 2 || out.Total == nil || *out.Total != 2 {
+		t.Fatalf("items/total = %d/%+v, want 2/2", len(out.Items), out.Total)
+	}
+
+	empty, err := repo.ListLoginLogs(context.Background(), dictAuth(dictTenantEmpty), auditLogQuery("lisi"))
+	if err != nil {
+		t.Fatalf("list login logs in empty tenant: %v", err)
+	}
+	if len(empty.Items) != 0 {
+		t.Fatalf("items = %+v, want empty across tenant", empty.Items)
+	}
+}
+
+func TestAuditLogRepoListLoginLogsRejectsUnknownField(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	q := &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}
+	_, err := repo.ListLoginLogs(context.Background(), dictAuth(dictTenantSeeded), q)
+	if !errors.Is(err, biz.ErrAuditLogInvalidArgument) {
+		t.Fatalf("err = %v, want ErrAuditLogInvalidArgument", err)
+	}
+}
+
+func TestAuditLogRepoGetOperationLogByIDReturnsSnapshots(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	// 种子操作日志 2：UPDATE sys_role，old/new 快照均为 JSON 对象。
+	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(dictTenantSeeded), 2)
+	if err != nil {
+		t.Fatalf("get operation log 2: %v", err)
+	}
+	if out.OperationType != "UPDATE" || out.TargetTable == nil || *out.TargetTable != "sys_role" {
+		t.Fatalf("row = (%s, target %+v), want (UPDATE, sys_role)", out.OperationType, out.TargetTable)
+	}
+	if string(out.OldValue) == "" || string(out.NewValue) == "" {
+		t.Fatalf("snapshots = (%q, %q), want both populated", out.OldValue, out.NewValue)
+	}
+	if out.DurationMs == nil || *out.DurationMs != 30 {
+		t.Fatalf("duration_ms = %+v, want 30", out.DurationMs)
+	}
+}
+
+func TestAuditLogRepoGetOperationLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	// 种子操作日志全部属 t-super-01：无种子租户点查等同不存在。
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	_, err := repo.GetOperationLogByID(context.Background(), dictAuth(dictTenantEmpty), 1)
+	if !errors.Is(err, biz.ErrAuditLogNotFound) {
+		t.Fatalf("err = %v, want ErrAuditLogNotFound", err)
+	}
+}
+
+func TestAuditLogRepoGetOperationLogByIDNullSnapshotStaysNil(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+
+	// 种子操作日志 1：old_value 为 NULL，DO 侧保持 nil（非空字节串）。
+	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(dictTenantSeeded), 1)
+	if err != nil {
+		t.Fatalf("get operation log 1: %v", err)
+	}
+	if out.OldValue != nil {
+		t.Fatalf("old_value = %q, want nil for NULL snapshot", out.OldValue)
+	}
+	if out.NewValue == nil {
+		t.Fatal("new_value must stay populated")
+	}
+}
+
+func TestAuditLogRepoListOperationLogsCountsTotalIndependentOfPage(t *testing.T) {
+	// 种子操作日志共 5 条；第 2 页（页大小 3）的 total 不得随翻页位置递减。
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+	page := 2
+	pageSize := 3
+
+	q := &dynq.Query{Pagination: &dynq.Pagination{Page: &page, PageSize: &pageSize}}
+	out, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), q)
+	if err != nil {
+		t.Fatalf("list operation logs page 2: %v", err)
+	}
+	if len(out.Items) != 2 {
+		t.Fatalf("page 2 items = %d, want 2", len(out.Items))
+	}
+	if out.Total == nil || *out.Total != 5 {
+		t.Fatalf("total = %+v, want 5", out.Total)
+	}
+}
+
+func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T) {
+	// 游标模式下 total 与翻页位置无关：第二页（After 游标）的 total 仍为
+	// 全集 5，而非剩余行数。
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+	pageSize := 2
+	includeTotal := true
+
+	first := &dynq.Query{Pagination: &dynq.Pagination{PageSize: &pageSize, IncludeTotal: &includeTotal}}
+	out, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), first)
+	if err != nil {
+		t.Fatalf("list first cursor page: %v", err)
+	}
+	if len(out.Items) != 2 || out.NextCursor == "" {
+		t.Fatalf("first page = (%d items, cursor %q), want 2 items with a cursor", len(out.Items), out.NextCursor)
+	}
+
+	after := out.NextCursor
+	second := &dynq.Query{Pagination: &dynq.Pagination{After: &after, PageSize: &pageSize, IncludeTotal: &includeTotal}}
+	secondOut, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), second)
+	if err != nil {
+		t.Fatalf("list second cursor page: %v", err)
+	}
+	if len(secondOut.Items) != 2 {
+		t.Fatalf("second page items = %d, want 2", len(secondOut.Items))
+	}
+	if secondOut.Total == nil || *secondOut.Total != 5 {
+		t.Fatalf("second page total = %+v, want 5", secondOut.Total)
+	}
+}
+
+func TestSessionAdminListCursorPageKeepsTotalUnshifted(t *testing.T) {
+	// 会话行经 repo.Issue 以 newID() 发号（id ~1.1e17，超出 JS 安全整数
+	// 2^53）：dynq v0.5.0 起游标整型列值以十进制字符串编码、解码精确
+	// ParseInt（v0.3.0 经 float64 往返对超范围值直接拒绝），大主键的
+	// after 游标翻页自本版本恢复可用——本用例即以真实大 id 验证 total
+	// 与翻页位置无关的语义。（bigserial 的审计日志表 id 从小序列增长，
+	// TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted 直接
+	// 用种子行即可。）
+	d := setupTestDB(t)
+	repo := NewSessionRepo(d)
+	auth := dictAuth(dictTenantSeeded)
+
+	for i := 0; i < 3; i++ {
+		if _, err := repo.Issue(context.Background(), auth, &biz.IssueSessionInput{
+			AccessTokenHash:  fmt.Sprintf("cursor-total-access-%d", i),
+			RefreshTokenHash: fmt.Sprintf("cursor-total-refresh-%d", i),
+			AccessTTL:        30 * time.Minute,
+			RefreshTTL:       7 * 24 * time.Hour,
+		}); err != nil {
+			t.Fatalf("issue session %d: %v", i, err)
+		}
+	}
+
+	pageSize := 2
+	includeTotal := true
+	first := &dynq.Query{Pagination: &dynq.Pagination{PageSize: &pageSize, IncludeTotal: &includeTotal}}
+	out, err := repo.List(context.Background(), auth, first)
+	if err != nil {
+		t.Fatalf("list first cursor page: %v", err)
+	}
+	if len(out.Items) != 2 || out.NextCursor == "" {
+		t.Fatalf("first page = (%d items, cursor %q), want 2 items with a cursor", len(out.Items), out.NextCursor)
+	}
+
+	after := out.NextCursor
+	second := &dynq.Query{Pagination: &dynq.Pagination{After: &after, PageSize: &pageSize, IncludeTotal: &includeTotal}}
+	secondOut, err := repo.List(context.Background(), auth, second)
+	if err != nil {
+		t.Fatalf("list second cursor page: %v", err)
+	}
+	if len(secondOut.Items) != 1 {
+		t.Fatalf("second page items = %d, want 1", len(secondOut.Items))
+	}
+	if secondOut.Total == nil || *secondOut.Total != 3 {
+		t.Fatalf("second page total = %+v, want 3", secondOut.Total)
+	}
+}
+
+func TestSessionAdminListReturnsTheJustIssuedSessionFirst(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewSessionRepo(d)
+	auth := dictAuth(dictTenantSeeded)
+	now := time.Now()
+
+	issued, err := repo.Issue(context.Background(), auth, &biz.IssueSessionInput{
+		AccessTokenHash:  "aaaa-bbb-access-hash-1",
+		RefreshTokenHash: "aaaa-bbb-refresh-hash-1",
+		AccessTTL:        30 * time.Minute,
+		RefreshTTL:       7 * 24 * time.Hour,
+		DeviceInfo:       strPtrOf("Windows Chrome"),
+		IPAddress:        strPtrOf("192.168.1.100"),
+	})
+	if err != nil {
+		t.Fatalf("issue session: %v", err)
+	}
+
+	// 默认排序 updated_at DESC：刚签发的会话在首页。
+	page := 1
+	pageSize := 10
+	q := &dynq.Query{Pagination: &dynq.Pagination{Page: &page, PageSize: &pageSize}}
+	out, err := repo.List(context.Background(), auth, q)
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(out.Items) == 0 || out.Items[0].ID != issued.ID {
+		t.Fatalf("first item = %+v, want the just-issued session %d", out.Items, issued.ID)
+	}
+	row := out.Items[0]
+	if row.UserID != auth.UserID || row.IsRevoked {
+		t.Fatalf("row = (user %d, revoked %v), want (%d, false)", row.UserID, row.IsRevoked, auth.UserID)
+	}
+	if row.DeviceInfo == nil || *row.DeviceInfo != "Windows Chrome" {
+		t.Fatalf("device_info = %+v, want Windows Chrome", row.DeviceInfo)
+	}
+	if row.ExpiresAt.Before(now) {
+		t.Fatalf("expires_at %v must be in the future", row.ExpiresAt)
+	}
+	if out.Total == nil || *out.Total != 1 {
+		t.Fatalf("total = %+v, want 1", out.Total)
+	}
+}
+
+func TestSessionAdminListFiltersByUserAndIsolatesTenant(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewSessionRepo(d)
+	auth := dictAuth(dictTenantSeeded)
+
+	// token_hash 是全局唯一索引：每个会话用独立哈希。
+	for i, uid := range []int64{2, 2, 3} {
+		if _, err := repo.Issue(context.Background(), biz.Identity{TenantID: auth.TenantID, UserID: uid}, &biz.IssueSessionInput{
+			AccessTokenHash:  fmt.Sprintf("hash-for-user-%d-access", i),
+			RefreshTokenHash: fmt.Sprintf("hash-for-user-%d-refresh", i),
+			AccessTTL:        30 * time.Minute,
+			RefreshTTL:       7 * 24 * time.Hour,
+		}); err != nil {
+			t.Fatalf("issue session for user %d: %v", uid, err)
+		}
+	}
+
+	q := &dynq.Query{Where: []dynq.Condition{{Field: "userId", Op: "eq", Value: int64(2)}}}
+	out, err := repo.List(context.Background(), auth, q)
+	if err != nil {
+		t.Fatalf("list sessions filtered by user: %v", err)
+	}
+	if len(out.Items) != 2 || out.Total == nil || *out.Total != 2 {
+		t.Fatalf("items/total = %d/%+v, want 2/2", len(out.Items), out.Total)
+	}
+
+	// 同一查询在无种子租户内必须为空集（RLS 隔离），不报错。
+	empty, err := repo.List(context.Background(), dictAuth(dictTenantEmpty), q)
+	if err != nil {
+		t.Fatalf("list sessions in empty tenant: %v", err)
+	}
+	if len(empty.Items) != 0 {
+		t.Fatalf("items = %+v, want empty across tenant", empty.Items)
+	}
+}
+
+func TestSessionAdminListRejectsUnknownField(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewSessionRepo(d)
+
+	q := &dynq.Query{Where: []dynq.Condition{{Field: "tokenHash", Op: "eq", Value: "x"}}}
+	_, err := repo.List(context.Background(), dictAuth(dictTenantSeeded), q)
+	if !errors.Is(err, biz.ErrSessionInvalidArgument) {
+		t.Fatalf("err = %v, want ErrSessionInvalidArgument for @internal column query", err)
+	}
+}
+
+// strPtrOf 是集成测试的可空字符串辅助。
+func strPtrOf(s string) *string { return &s }

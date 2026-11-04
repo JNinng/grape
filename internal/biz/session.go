@@ -12,6 +12,7 @@ import (
 	sessionv1 "grape/api/session/v1"
 
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 var (
@@ -120,6 +121,15 @@ type RefreshSessionInput struct {
 	RefreshTTL time.Duration
 }
 
+// SessionAdminList 是会话管理面 List 返回的分页信封。行形态即 Session
+// （不含令牌的任何形态）。
+type SessionAdminList struct {
+	Items      []*Session
+	Total      *int64 // include_total=false 时为 nil
+	HasMore    bool
+	NextCursor string
+}
+
 // SessionRepo 是会话仓储接口。签发/校验/撤销/刷新/登出按领域建模，
 // 介质（数据库/缓存）差异收在实现之后；令牌哈希由 biz 用例计算后
 // 传入，仓储出入参只见哈希。校验/刷新/登出发生在身份成立前（以令牌
@@ -142,6 +152,10 @@ type SessionRepo interface {
 	// Refresh 按当前刷新令牌哈希轮换令牌：命中的行必须启用、未撤销、
 	// 刷新令牌未过期；旧刷新令牌随即失效。返回轮换后的会话。
 	Refresh(ctx context.Context, in *RefreshSessionInput) (*Session, error)
+	// List 是会话管理面（治理面）的租户内动态查询：按动态查询协议返回
+	// 分页集合，行形态与认证用例共享（不含令牌哈希——schema @internal
+	// 协议不可查，模型不携带）。
+	List(ctx context.Context, auth Identity, q *dynq.Query) (*SessionAdminList, error)
 }
 
 // IssuedSession 是签发/刷新结果：AccessToken/RefreshToken 是明文令牌，
@@ -267,6 +281,14 @@ func (uc *SessionUsecase) Refresh(ctx context.Context, refreshToken string, opts
 		return nil, err
 	}
 	return &IssuedSession{Session: session, AccessToken: accessToken, RefreshToken: newRefreshToken}, nil
+}
+
+// ListSessions 经动态查询协议列出租户内会话（治理面平铺分页视图）。
+func (uc *SessionUsecase) ListSessions(ctx context.Context, auth Identity, q *dynq.Query) (*SessionAdminList, error) {
+	if auth.TenantID == "" || auth.UserID <= 0 {
+		return nil, ErrSessionInvalidArgument
+	}
+	return uc.repo.List(ctx, auth, q)
 }
 
 // newSessionToken 生成 32 字节随机不透明令牌（base64url 无填充）。

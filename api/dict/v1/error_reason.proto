@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package dict.v1;
+
+option go_package = "grape/api/dict/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.dict.v1";
+option objc_class_prefix = "APIDictV1";
+
+// ErrorReason 是字典域资源（字典类型、字典数据）的错误原因枚举，用于
+// Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  DICT_UNSPECIFIED = 0;
+  // 目标字典类型不存在（含跨租户不可见）。
+  DICT_TYPE_NOT_FOUND = 1;
+  // 字典类型请求参数非法（必填缺失、列宽超限等）。
+  DICT_TYPE_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户内未删除字典类型间编码已被占用）。
+  DICT_TYPE_ALREADY_EXISTS = 3;
+  // 字典类型存在未删除的字典数据，禁止删除。
+  DICT_TYPE_HAS_DATA = 4;
+  // 目标字典数据不存在（含跨租户不可见）。
+  DICT_DATA_NOT_FOUND = 5;
+  // 字典数据请求参数非法（宿主类型未知、值类型不在白名单等）。
+  DICT_DATA_INVALID_ARGUMENT = 6;
+  // 唯一约束冲突（租户内未删除字典数据间同类型下字典值已被占用）。
+  DICT_DATA_ALREADY_EXISTS = 7;
+}

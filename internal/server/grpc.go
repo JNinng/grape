@@ -1,6 +1,8 @@
 package server
 
 import (
+	auditv1 "grape/api/audit/v1"
+	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	queryv1 "grape/api/query/v1"
@@ -20,7 +22,7 @@ import (
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
 // 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
 // server span。
-func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, perm *service.PermissionService, session *service.SessionService, query *service.QueryService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),
 		middleware.Middleware(traceMiddleware),
@@ -47,6 +49,9 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	orgv1.RegisterUserGroupServiceServer(srv, userGroup)
 	permv1.RegisterRoleServiceServer(srv, role)
 	permv1.RegisterMenuServiceServer(srv, menu)
+	dictv1.RegisterDictServiceServer(srv, dict)
+	auditv1.RegisterSessionAdminServiceServer(srv, sessionAdmin)
+	auditv1.RegisterAuditServiceServer(srv, auditLog)
 	permv1.RegisterPermissionServiceServer(srv, perm)
 	sessionv1.RegisterSessionServiceServer(srv, session)
 	queryv1.RegisterQueryServiceServer(srv, query)

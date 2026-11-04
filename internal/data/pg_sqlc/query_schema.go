@@ -14,10 +14,15 @@ type querySchemaFunc = func(opts ...dynq.QueryOption) dynq.ResourceSchema
 // 仅收录已暴露动态 List 的资源；新资源接入 List API 时在此追加一行。
 // 出口不传能力收窄 opts，与仓储 Parse/List 的调用形态保持同参。
 var querySchemaRegistry = map[string]querySchemaFunc{
-	"sys_dept":       gen.SysDeptQuerySchema,
-	"sys_role":       gen.SysRoleQuerySchema,
-	"sys_user":       gen.SysUserQuerySchema,
-	"sys_user_group": gen.SysUserGroupQuerySchema,
+	"sys_dept":          gen.SysDeptQuerySchema,
+	"sys_dict_data":     gen.SysDictDataQuerySchema,
+	"sys_dict_type":     gen.SysDictTypeQuerySchema,
+	"sys_login_log":     gen.SysLoginLogQuerySchema,
+	"sys_operation_log": gen.SysOperationLogQuerySchema,
+	"sys_role":          gen.SysRoleQuerySchema,
+	"sys_session":       gen.SysSessionQuerySchema,
+	"sys_user":          gen.SysUserQuerySchema,
+	"sys_user_group":    gen.SysUserGroupQuerySchema,
 }
 
 // querySchemaRepo 是 biz.QuerySchemaProvider 的实现：转发到生成代码出口。

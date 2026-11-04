@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package audit.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/audit/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.audit.v1";
+option java_outer_classname = "AuditProto";
+
+// AuditService 提供审计日志的只读查询面：登录日志（sys_login_log）与操作
+// 日志（sys_operation_log）两表均为追加写入（append-only），本服务无任何
+// 写端点。两表是租户内公共数据：租户边界由数据库 RLS 强制，表无 @scope
+// （行级无范围）；两级 List 都走动态查询协议，过滤/排序/投影/分页能力由
+// 存储层 schema 注释 DSL 声明。写面（登录时记录登录日志、操作留痕）不在
+// 本服务：日志行由各自的业务现场写入。
+service AuditService {
+  // ListLoginLogs 按动态查询协议返回一页登录日志（时间倒序缺省排序）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListLoginLogs (ListLoginLogsRequest) returns (LoginLogSet) {
+    option (google.api.http) = {
+      post: "/v1/audit/login-logs/list"
+      body: "query"
+    };
+  }
+
+  // GetLoginLog 按 id 查询单条登录日志。跨租户不可见等同不存在
+  //（NOT_FOUND）。
+  rpc GetLoginLog (GetLoginLogRequest) returns (LoginLog) {
+    option (google.api.http) = {
+      get: "/v1/audit/login-logs/{id}"
+    };
+  }
+
+  // ListOperationLogs 按动态查询协议返回一页操作日志。协议错误返回
+  // INVALID_ARGUMENT。
+  rpc ListOperationLogs (ListOperationLogsRequest) returns (OperationLogSet) {
+    option (google.api.http) = {
+      post: "/v1/audit/operation-logs/list"
+      body: "query"
+    };
+  }
+
+  // GetOperationLog 按 id 查询单条操作日志（含操作前后数据快照）。
+  // 跨租户不可见等同不存在（NOT_FOUND）。
+  rpc GetOperationLog (GetOperationLogRequest) returns (OperationLog) {
+    option (google.api.http) = {
+      get: "/v1/audit/operation-logs/{id}"
+    };
+  }
+}
+
+// LoginLog 是登录日志的规范表示。全部字段只读（append-only，无更新面）。
+message LoginLog {
+  // 日志 ID，自增序列。只读。
+  int64 id = 1;
+  // 登录用户 ID。只读。
+  int64 user_id = 2;
+  // 用户名（写入时冗余快照，便于快速查看）。只读。
+  string username = 3;
+  // 登录 IP 地址，可空。只读。
+  optional string ip_address = 4;
+  // 浏览器/客户端 User-Agent，可空。只读。
+  optional string user_agent = 5;
+  // 登录方式：password/sms/oauth/refresh_token。只读。
+  string login_type = 6;
+  // 是否登录成功。只读。
+  bool is_success = 7;
+  // 失败原因（成功时为空）。只读。
+  optional string failure_reason = 8;
+  // 登录时间。只读。
+  google.protobuf.Timestamp login_at = 9;
+  // 创建人/操作用户。只读。
+  int64 created_by = 10;
+  // 创建时间。只读。
+  google.protobuf.Timestamp created_at = 11;
+}
+
+// LoginLogSet 是 ListLoginLogs 返回的分页集合。
+message LoginLogSet {
+  // 本页登录日志，顺序遵循查询中的 sort。
+  repeated LoginLog items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// GetLoginLogRequest 是 AuditService.GetLoginLog 的输入。
+message GetLoginLogRequest {
+  // 目标日志行的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListLoginLogsRequest 是 AuditService.ListLoginLogs 的输入。
+message ListLoginLogsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// OperationLog 是操作日志的规范表示。全部字段只读（append-only，无更新
+// 面）；操作前后数据快照为 JSON 对象（写入时即校验合法性）。
+message OperationLog {
+  // 日志 ID，自增序列。只读。
+  int64 id = 1;
+  // 操作用户 ID。只读。
+  int64 user_id = 2;
+  // 用户名（写入时冗余快照）。只读。
+  string username = 3;
+  // 操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等。
+  // 只读。
+  string operation_type = 4;
+  // 操作目标表名，可空。只读。
+  optional string target_table = 5;
+  // 操作目标记录 ID，可空。只读。
+  optional string target_id = 6;
+  // 操作前数据快照（JSON 对象），可空。只读。
+  optional google.protobuf.Struct old_value = 7;
+  // 操作后数据快照（JSON 对象），可空。只读。
+  optional google.protobuf.Struct new_value = 8;
+  // 请求 IP 地址，可空。只读。
+  optional string ip_address = 9;
+  // 浏览器/客户端 User-Agent，可空。只读。
+  optional string user_agent = 10;
+  // API 路径，可空。只读。
+  optional string api_path = 11;
+  // HTTP 方法：GET/POST/PUT/DELETE/PATCH，可空。只读。
+  optional string http_method = 12;
+  // 请求耗时（毫秒），可空。只读。
+  optional int32 duration_ms = 13;
+  // 结果码（200/400/403/404/500 等），可空。只读。
+  optional string result_code = 14;
+  // 结果消息，可空。只读。
+  optional string result_msg = 15;
+  // 请求追踪 ID（关联同一请求的多个操作），可空。只读。
+  optional string request_id = 16;
+  // 操作时间。只读。
+  google.protobuf.Timestamp operated_at = 17;
+  // 创建人/操作用户。只读。
+  int64 created_by = 18;
+  // 创建时间。只读。
+  google.protobuf.Timestamp created_at = 19;
+}
+
+// OperationLogSet 是 ListOperationLogs 返回的分页集合。
+message OperationLogSet {
+  // 本页操作日志，顺序遵循查询中的 sort。
+  repeated OperationLog items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// GetOperationLogRequest 是 AuditService.GetOperationLog 的输入。
+message GetOperationLogRequest {
+  // 目标日志行的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListOperationLogsRequest 是 AuditService.ListOperationLogs 的输入。
+message ListOperationLogsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}

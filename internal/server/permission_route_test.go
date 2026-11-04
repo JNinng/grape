@@ -52,11 +52,30 @@ func newPermissionTestServer(t *testing.T, repo biz.PermissionRepo) *kratoshttp.
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	permMiddleware := entrymw.NewPermissionMiddleware(biz.NewPermissionUsecase(repo))
 	noop := func(h middleware.Handler) middleware.Handler { return h }
-	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}}, nil, traceMiddleware,
-		noop, authMiddleware, permMiddleware, ops.NewMetricsHandler(nil, nil),
-		nil, nil, nil, nil, nil,
+	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}},
+		nil,
+		traceMiddleware,
+		noop,
+		authMiddleware,
+		permMiddleware,
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 		service.NewPermissionService(biz.NewPermissionUsecase(repo)),
-		nil, nil, nil, nil, nil, nil, nil, nil)
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

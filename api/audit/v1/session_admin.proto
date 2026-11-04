@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package audit.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/audit/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.audit.v1";
+option java_outer_classname = "SessionAdminProto";
+
+// SessionAdminService 提供会话管理面（治理面）：租户内会话列表（动态查询
+// 协议）与主动撤销。会话是租户内资源：租户边界由数据库 RLS 强制，表无
+// @scope（行级无范围）。令牌哈希不进入任何端点（schema @internal，协议
+// 不可查、模型不携带）；撤销为幂等动作——目标不存在、已撤销或已被清理
+// 均按成功返回，不泄露会话存在性（与登出/认证撤销同口径）。撤销会使该
+// 会话的访问令牌与刷新令牌一并失效（is_revoked 置位后认证校验直接拒绝）。
+service SessionAdminService {
+  // ListSessions 按动态查询协议返回一页租户内会话（更新时间倒序缺省）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListSessions (ListSessionsRequest) returns (SessionAdminSet) {
+    option (google.api.http) = {
+      post: "/v1/sessions/list"
+      body: "query"
+    };
+  }
+
+  // RevokeSession 按租户内会话 ID 主动撤销（幂等）：已撤销、已过期被清理
+  // 或不存在的会话同样返回成功，不泄露存在性。
+  rpc RevokeSession (RevokeSessionRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/sessions/revoke"
+      body: "*"
+    };
+  }
+}
+
+// SessionAdmin 是会话管理面的规范表示。令牌哈希与租户 ID 不进入本消息
+//（凭据不回显，租户边界由 RLS 承担）；全部字段只读，变更仅撤销一个动作。
+message SessionAdmin {
+  // 会话 ID。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。只读。
+  int32 status = 2;
+  // 会话所属用户 ID。只读。
+  int64 user_id = 3;
+  // 访问令牌过期时间。只读。
+  google.protobuf.Timestamp expires_at = 4;
+  // 刷新令牌过期时间；未设置表示没有刷新令牌。只读。
+  google.protobuf.Timestamp refresh_expires_at = 5;
+  // 最近一次签发/刷新时间；校验为只读点查不刷新此列。可空。只读。
+  google.protobuf.Timestamp last_activity_at = 6;
+  // 设备信息（OS/浏览器/型号等），可空。只读。
+  optional string device_info = 7;
+  // 登录来源 IP，可空。只读。
+  optional string ip_address = 8;
+  // 是否已主动撤销：true 后即使令牌未过期也不可用。只读。
+  bool is_revoked = 9;
+  // 签发操作者（会话用户）。只读。
+  int64 created_by = 10;
+  // 最近一次变更的操作者（刷新为会话用户，撤销为调用者）。只读。
+  int64 updated_by = 11;
+  // 签发时间。只读。
+  google.protobuf.Timestamp created_at = 12;
+  // 最近一次变更时间。只读。
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+// SessionAdminSet 是 ListSessions 返回的分页集合。
+message SessionAdminSet {
+  // 本页会话，顺序遵循查询中的 sort。
+  repeated SessionAdmin items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// ListSessionsRequest 是 SessionAdminService.ListSessions 的输入。
+message ListSessionsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// RevokeSessionRequest 是 SessionAdminService.RevokeSession 的输入。
+message RevokeSessionRequest {
+  // 目标会话的租户内标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

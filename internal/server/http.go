@@ -3,6 +3,8 @@ package server
 import (
 	nethttp "net/http"
 
+	auditv1 "grape/api/audit/v1"
+	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	queryv1 "grape/api/query/v1"
@@ -52,8 +54,11 @@ func NewHTTPServer(
 	userGroup *service.UserGroupService,
 	role *service.RoleService,
 	menu *service.MenuService,
+	dict *service.DictService,
 	perm *service.PermissionService,
 	session *service.SessionService,
+	sessionAdmin *service.SessionAdminService,
+	auditLog *service.AuditService,
 	query *service.QueryService,
 	agent *service.AgentService,
 	agentSessions *service.AgentSessionsService,
@@ -109,6 +114,9 @@ func NewHTTPServer(
 	orgv1.RegisterUserGroupServiceHTTPServer(srv, userGroup)
 	permv1.RegisterRoleServiceHTTPServer(srv, role)
 	permv1.RegisterMenuServiceHTTPServer(srv, menu)
+	dictv1.RegisterDictServiceHTTPServer(srv, dict)
+	auditv1.RegisterSessionAdminServiceHTTPServer(srv, sessionAdmin)
+	auditv1.RegisterAuditServiceHTTPServer(srv, auditLog)
 	permv1.RegisterPermissionServiceHTTPServer(srv, perm)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
 	queryv1.RegisterQueryServiceHTTPServer(srv, query)

@@ -54,6 +54,10 @@ func (*agentFakeSessionRepo) RevokeByAccessTokenHash(context.Context, string) er
 	return biz.ErrSessionInvalidArgument
 }
 
+func (*agentFakeSessionRepo) List(context.Context, biz.Identity, *dynq.Query) (*biz.SessionAdminList, error) {
+	return &biz.SessionAdminList{}, nil
+}
+
 func (*agentFakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) (*biz.Session, error) {
 	return nil, biz.ErrSessionInvalid
 }
@@ -143,9 +147,25 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	// telemetry 位传 nil：路由挂载测试不涉 OTel（nil 接收者按未启用处理）。
-	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
+	srv, err := NewHTTPServer(confServer,
+		nil,
+		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, agentService,
+		authMiddleware,
+		permStubMiddleware(),
+		ops.NewMetricsHandler(nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		agentService,
 		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
 		// 不触达该路由；挂载顺序守卫分属两处——sessions 先于 agent 前缀
 		// 通配在 agent_sessions_route_test.go，agent 先于静态兜底在
