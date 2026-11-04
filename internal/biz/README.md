@@ -53,7 +53,8 @@
 | [permission.go](permission.go)    | 功能权限码：管理面权限码常量（`<资源>:<操作>`，与部署面种子权限点一一对应）、`ErrPermissionDenied`（入口层判定不通过的唯一 403 语义）、`PermissionRepo` 契约（fn_has_permission 判定与 GetPermissionCodes 枚举）与 `PermissionUsecase`（入口判定中间件与权限码查询端点的业务面；每请求库内直查，应用内无缓存）。 |
 | [grant.go](grant.go)              | Agent 工具授权：`ToolGrant` DO 与 `GrantRepo` 契约（许可评估原语 FindActive* 的 miss 以 (nil, nil) 表达正常控制流，管理原语按 id 定位）；`GrantUsecase` 编排会话级先于全局级的许可解析（Resolve/Remember，agent 适配层消费）与管理面（ListOwn/ListTenant/Revoke，手写端点消费，功能权限码在用例层判定）；功能权限码常量与类型化错误。 |
 | [metrics.go](metrics.go)          | Agent 运行观测契约 `AgentRunObserver`（RunActive/RunRejected/ToolCallObserved）：agent 适配层推运行事实、ops 的 RuntimeMetrics 实现，依赖反转接缝与 FacilityDiagnostics 同型。 |
-| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewDeptUsecase`、`NewUserGroupUsecase`、`NewRoleUsecase`、`NewMenuUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewGrantUsecase`、`NewPermissionUsecase`、`NewRetrievalLogUsecase`、`NewRedactRegistry`（审计表/检索留痕与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
+| [query.go](query.go)              | 动态查询能力出口：`QuerySchemaProvider` 契约（返回资源 List 能力 schema，实现转发生成代码出口，不触库无租户边界）、`QueryUsecase` 与 `ErrQueryResourceUnknown`（未收录资源 INVALID_ARGUMENT）；schema 出口与 Parse/List/Count 同参纪律见 [data/pg_sqlc](../data/pg_sqlc/) 的 schema 出口注册表。 |
+| [provider.go](provider.go)        | Wire `ProviderSet`：注册 `NewUserUsecase`、`NewDeptUsecase`、`NewUserGroupUsecase`、`NewRoleUsecase`、`NewMenuUsecase`、`NewSessionUsecase`、`NewAuthUsecase`、`NewAuditUsecase`、`NewDocumentUsecase`、`NewGrantUsecase`、`NewPermissionUsecase`、`NewRetrievalLogUsecase`、`NewQueryUsecase`、`NewRedactRegistry`（审计表/检索留痕与复现视图共用的脱敏注册表单点）。                                                                                                                                       |
 
 
 ## 关键约束

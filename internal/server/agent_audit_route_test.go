@@ -59,7 +59,7 @@ func newAgentAuditTestServer(t *testing.T) *kratoshttp.Server {
 	auditService := service.NewAgentAuditService(biz.NewAuditUsecase(&auditFakeRepo{}, nil))
 	srv, err := NewHTTPServer(confServer, nil, traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
-		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		authMiddleware, permStubMiddleware(), ops.NewMetricsHandler(nil, nil), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		auditService, nil,
 		// 检索留痕查询端点本文件用例不触达，传 nil。
 		nil)

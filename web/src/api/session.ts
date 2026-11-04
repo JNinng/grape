@@ -14,7 +14,7 @@ export interface LoginInput {
 }
 
 // login 调用登录端点并落地会话态：access token 只进内存，refresh token
-// 进 sessionStorage（理由见 auth/store.ts）。失败时抛错且不改任何状态。
+// 进 localStorage（理由见 auth/store.ts）。失败时抛错且不改任何状态。
 export async function login(input: LoginInput): Promise<void> {
   const body: Record<string, string> = {
     userName: input.userName.trim(),

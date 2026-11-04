@@ -138,7 +138,7 @@ type AgentToolGrant struct {
 	RevokedAt pgtype.Timestamp `db:"revoked_at" json:"revoked_at"`
 }
 
-// 基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 基础字段示例表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type Basic struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -150,7 +150,7 @@ type Basic struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -164,7 +164,7 @@ type Basic struct {
 	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
-// 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
+// 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: updated_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -186,13 +186,13 @@ type SysConfig struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 }
 
-// 部门表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 部门表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysDept struct {
 	// 部门 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -208,7 +208,7 @@ type SysDept struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -232,7 +232,7 @@ type SysDeptClosure struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 字典数据表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 字典数据表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysDictDatum struct {
 	// 字典数据 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -256,7 +256,7 @@ type SysDictDatum struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -264,7 +264,7 @@ type SysDictDatum struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 字典类型表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 字典类型表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysDictType struct {
 	// 字典类型 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -282,7 +282,7 @@ type SysDictType struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -290,7 +290,7 @@ type SysDictType struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
+// 功能特性表，控制各租户的功能开关，支持灰度发布和按租户授权 [@default_sort: updated_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysFeatureFlag struct {
 	// 特性 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -312,7 +312,7 @@ type SysFeatureFlag struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -380,7 +380,7 @@ type SysMenu struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -441,7 +441,7 @@ type SysPermVersion struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 }
 
-// 角色表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 角色表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysRole struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -465,7 +465,7 @@ type SysRole struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -473,7 +473,7 @@ type SysRole struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 角色分发部门映射表（角色的分发部门集合）。判定规则：角色无映射记录=遵循通用逻辑（scope_dept_id 子树 + 能看见目标用户）；有映射=映射分发角色，显式映射优先——分配时命中映射的操作者豁免 data_scope 覆盖校验，但目标用户所属部门必须存在于映射集合中；角色列表按映射对部门管理员可见属宿主应用层的呈现策略；用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 角色分发部门映射表（角色的分发部门集合）。判定规则：角色无映射记录=遵循通用逻辑（scope_dept_id 子树 + 能看见目标用户）；有映射=映射分发角色，显式映射优先——分配时命中映射的操作者豁免 data_scope 覆盖校验，但目标用户所属部门必须存在于映射集合中；角色列表按映射对部门管理员可见属宿主应用层的呈现策略；用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysRoleAllowedDept struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -489,7 +489,7 @@ type SysRoleAllowedDept struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -497,7 +497,7 @@ type SysRoleAllowedDept struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 角色数据 ID 范围表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 角色数据 ID 范围表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysRoleIDScope struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -515,7 +515,7 @@ type SysRoleIDScope struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -537,7 +537,7 @@ type SysRoleMenu struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: created_at DESC @pk: id @page: 20/200]
+// 用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: updated_at DESC @pk: id @page: 20/200]
 type SysSession struct {
 	// 会话 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -569,11 +569,11 @@ type SysSession struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 }
 
-// 租户表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 租户表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysTenant struct {
 	// 租户 ID [@dynamic: exact, in @sortable @hideable]
 	ID string `db:"id" json:"id"`
@@ -601,7 +601,7 @@ type SysTenant struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -609,7 +609,7 @@ type SysTenant struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
+// 租户配置表，存储各租户的自定义配置参数，覆盖系统全局配置的默认值 [@default_sort: updated_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysTenantConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -631,7 +631,7 @@ type SysTenantConfig struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -639,7 +639,7 @@ type SysTenantConfig struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: created_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
+// 通用翻译表，为业务表字段提供多语言翻译能力，支持按实体-字段-语言粒度管理 [@default_sort: updated_at DESC @pk: id @page: 20/200 @filter: deleted_at is_null]
 type SysTranslation struct {
 	// 翻译 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -663,7 +663,7 @@ type SysTranslation struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -671,7 +671,7 @@ type SysTranslation struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysUser struct {
 	// 用户 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -703,7 +703,7 @@ type SysUser struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
@@ -717,7 +717,7 @@ type SysUser struct {
 	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
-// 用户组表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 用户组表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysUserGroup struct {
 	// 用户组 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -735,7 +735,7 @@ type SysUserGroup struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 	// 更新人 [@dynamic: exact, in @updatable: set]
 	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
-	// 更新时间 [@dynamic: range @sortable]
+	// 更新时间 [@dynamic: exact, in, range @sortable @hideable]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`

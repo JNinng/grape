@@ -43,8 +43,8 @@ go build ./cmd/server
 | [vite.config.ts](vite.config.ts) | Vite / Vitest 配置：React 与 Tailwind 插件、开发代理、jsdom 测试环境。 |
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
 | [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
-| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 23 个经兼容改写的官方组件（new-york-v4 口径，组件清单、本地改写差异与兼容改写规则见 [ui/README.md](src/components/ui/README.md)）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，各模块复用）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
+| [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 24 个经兼容改写的官方组件（new-york-v4 口径，组件清单、本地改写差异与兼容改写规则见 [ui/README.md](src/components/ui/README.md)）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，列显隐/可排序性/页大小上限按 ListSchema 门控，各模块复用）、`manage/query-filter.tsx`（渐进式筛选输入：条件以 chip 串展示、落条即查，筛选项动态响应 ListSchema）、`manage/row-actions.tsx`（行内操作悬停弹框，portal 渲染不被 sticky 列裁剪）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`querySchema.ts`（`GET /v1/query/schema` 客户端：资源 List 能力 schema，驱动筛选与列定义）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
 | [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 仅保留 GrapeMark 品牌标；通用线性图标一律用 lucide-react，加载态用 `ui/spinner`。 |
@@ -52,7 +52,7 @@ go build ./cmd/server
 
 ## UI 组件与主题
 
-组件层取自 shadcn/ui 官方仓库 `new-york-v4`，落地 23 个本地改写组件到
+组件层取自 shadcn/ui 官方仓库 `new-york-v4`，落地 24 个本地改写组件到
 [src/components/ui/](src/components/ui/)。组件清单、各组件与官方版的行为
 差异、radix 的 jsdom 测试垫片，以及新组件落地必过的**兼容改写规则**（hex
 颜色与 transform 位移——oklch / `color-mix()` / CSS `translate` / `rotate`
@@ -86,9 +86,10 @@ selectOptions。
 - 契约：`POST /v1/auth/login`（tenant_id 可空，留空由服务端回落默认租户）、
   `POST /v1/auth/refresh`（轮换一对新令牌）、`POST /v1/auth/logout`（凭
   Authorization 头撤销当前会话，幂等）。字段名按 protojson 映射为 camelCase。
-- accessToken 只存模块内存（页面刷新即失效）；refreshToken 存 sessionStorage
-  （单标签页会话内有效，不跨标签共享、不跨浏览器重启残留）。XSS 的真正缓解是
-  CSP 与输出转义，存储介质只决定暴露时长与范围；localStorage 禁用。
+- accessToken 只存模块内存（页面刷新即失效）；refreshToken 存 localStorage
+  （跨标签页共享同一会话，浏览器重启后仍可静默续期）。XSS 的真正缓解是
+  CSP 与输出转义，存储介质只决定暴露时长与范围；refresh token 单次有效、
+  服务端轮换即作废，泄漏窗口有限。
 - 刷新轮换必须单飞：并发 401 只发一次 refresh（`auth/singleFlight.ts`），其余
   调用共享同一结果，避免旧刷新令牌被并发轮换互相作废；失败传播给全部等待方，
   清态后经 `callbacks.ts` 通知 App 跳转登录页。
@@ -143,12 +144,15 @@ selectOptions。
 
 - 数据形态：List 端点走 query.v1 动态查询协议——`api/query.ts` 声明
   `DynamicQuery`（where 条件恒 AND / sort / pagination），`QuerySet` 分页
-  信封的 total 为 protojson 字符串型 int64；`manage/data-table.tsx` 负责
-  组装查询、表头排序（asc → desc → 回落默认）与分页交互，筛选产物由各页
-  以 `where` 传入（变化即回第 1 页），增删改后递增 `reloadKey` 重查。
+  信封的 total 为 protojson 字符串型 int64；各页挂载时经 `api/querySchema.ts`
+  拉取资源的 List 能力 schema，筛选与列定义动态响应 schema（可排序性、列
+  显隐与页大小上限以其为准，默认排序取 schema 的 default_sort，加载失败给
+  可重试横幅、不静默降级）；`manage/data-table.tsx` 负责组装查询、表头排序
+  （asc → desc → 回落默认）与分页交互，筛选产物由各页以 `where` 传入（变化
+  即回第 1 页），增删改后递增 `reloadKey` 重查。
 - int64 口径：DTO 的 id 与归属三元组一律字符串；optional 字段未设置省略，
   请求体省略 undefined 键即未设置（protojson 对显式 null 亦按未设置处理）。
-- 用户管理页（样板页）：筛选（用户名 contains + 状态 eq）、新建（初始密码
+- 用户管理页（样板页）：筛选与列定义动态响应 ListSchema、新建（初始密码
   服务端哈希，状态缺省启用）、编辑（status 更新必填，Switch 显式表达）、
   修改密码、分配角色（角色 ID 逗号/空白分隔，M0 无角色列表 API）、转移归属
   （三元组整组替换，留空即清掉该归属）、删除（软删除，二次确认）。动作成
@@ -163,8 +167,7 @@ selectOptions。
   删除（软删除，二次确认；后端 409 DEPT_HAS_CHILDREN 时提示先删子级）。动
   作成功后整树重查；错误按 org/v1 的 reason 消息映射为可读英文提示，词表
   外透传原始消息；树加载失败给可重试横幅。
-- 用户组管理页：data-table 列表（组名 contains + 组编码 prefix + 状态 eq
-  筛选，创建时间排序分页）。新建（组编码/组名租户内唯一，409 冲突映射为
+- 用户组管理页：data-table 列表（筛选与列定义动态响应 ListSchema）。新建（组编码/组名租户内唯一，409 冲突映射为
   可读提示；组长用户 ID 可选、状态缺省启用）、编辑（仅 name/remark/status，
   组编码只读展示且不上送，组长不经更新面）、删除（软删除，二次确认）、成
   员管理（行内动作弹出面板：成员分页列表按添加时间升序；批量添加以逗号/
@@ -174,8 +177,7 @@ selectOptions。
   aria-hidden 子树内，相关测试断言显式带 `hidden: true`）。错误词表与部门
   页同模式：org/v1 的 USER_GROUP_* reason 消息映射为可读英文提示，词表外
   透传原始消息。
-- 角色管理页：data-table 列表（角色名 contains + 编码 prefix + 状态 eq 筛
-  选，创建时间排序分页；编码列的动态查询能力为 exact/prefix，故用 prefix）。
+- 角色管理页：data-table 列表（筛选与列定义动态响应 ListSchema）。
   新建（编码与角色名租户内唯一且创建后不可变，409 冲突映射为可读提示），
   编辑（仅 name/status/remark，status 更新语义必填；编码、类型与数据范围
   不经更新面），删除（软删除，二次确认；系统预置角色

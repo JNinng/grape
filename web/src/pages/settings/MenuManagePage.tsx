@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ChevronDownIcon, ChevronRightIcon, MoreHorizontalIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
 import {
   createMenu,
   deleteMenu,
@@ -33,13 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { RowActionsMenu } from '@/components/manage/row-actions'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -613,22 +607,19 @@ function RowActions({
   onOpen: (state: MenuDialogState) => void
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`操作 ${menu.name}`}>
-          <MoreHorizontalIcon aria-hidden className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'edit', menu })}>编辑</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'move', menu })}>移动</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'create', parent: menu })}>新建子菜单</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onOpen({ kind: 'delete', menu })}>
-          删除
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionsMenu
+      rowLabel={menu.name}
+      info={[
+        { label: '菜单名', value: menu.name },
+        { label: '权限码', value: menu.permissionCode ?? '' },
+      ]}
+      actions={[
+        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', menu }) },
+        { label: '移动', onSelect: () => onOpen({ kind: 'move', menu }) },
+        { label: '新建子菜单', onSelect: () => onOpen({ kind: 'create', parent: menu }) },
+        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', menu }) },
+      ]}
+    />
   )
 }
 

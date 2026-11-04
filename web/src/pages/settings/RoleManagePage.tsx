@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { MoreHorizontalIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import {
   createRole,
   deleteRole,
@@ -13,8 +13,10 @@ import {
   type RoleDataScopeDTO,
 } from '@/api/roles'
 import { fetchMenuTree, type MenuTreeNodeDTO, type MenuTreeReplyDTO } from '@/api/menus'
-import type { QueryCondition } from '@/api/query'
-import { DataTable, type DataTableColumn } from '@/components/manage/data-table'
+import type { QueryCondition, QuerySort } from '@/api/query'
+import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
+import { RowActionsMenu } from '@/components/manage/row-actions'
+import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -38,13 +40,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -129,12 +124,6 @@ const ROLE_ERROR_HINTS: Record<string, string> = {
 function roleErrorHint(err: unknown, fallback: string): string {
   const message = err instanceof Error ? err.message : fallback
   return ROLE_ERROR_HINTS[message] ?? message
-}
-
-// formatDateTime 渲染本地时间展示；非法时间回退原文，不伪造语义。
-function formatDateTime(iso: string): string {
-  const t = new Date(iso)
-  return Number.isNaN(t.getTime()) ? iso : t.toLocaleString()
 }
 
 // statusBadge 渲染状态列：0 禁用、1 启用；缺省按启用兜底（创建缺省启用）。
@@ -832,141 +821,103 @@ function RowActions({
   onOpen: (state: RoleDialogState) => void
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`操作 ${role.name}`}>
-          <MoreHorizontalIcon aria-hidden className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'edit', role })}>编辑</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'data-scope', role })}>数据范围</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'menus', role })}>菜单授权</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onOpen({ kind: 'delete', role })}>
-          删除
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionsMenu
+      rowLabel={role.name}
+      info={[
+        { label: '角色名', value: role.name },
+        { label: '编码', value: role.code },
+      ]}
+      actions={[
+        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', role }) },
+        { label: '数据范围', onSelect: () => onOpen({ kind: 'data-scope', role }) },
+        { label: '菜单授权', onSelect: () => onOpen({ kind: 'menus', role }) },
+        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', role }) },
+      ]}
+    />
   )
 }
 
 // ---------- 页面 ----------
 
-// RoleManagePage 角色管理：列表 + 筛选（角色名 contains / 编码 prefix /
-// 状态 eq）+ 行内动作（编辑/数据范围/菜单授权/删除）+ 新建。数据范围与
-// 菜单授权都是整组替换语义，成功后重查列表。
+// RoleManagePage 角色管理：列表（筛选/列定义动态响应 GetListSchema 响应）
+// + 行内动作（编辑/数据范围/菜单授权/删除）+ 新建。数据范围与菜单授权都
+// 是整组替换语义，成功后重查列表。
 export function RoleManagePage() {
-  const [nameKeyword, setNameKeyword] = useState('')
-  const [appliedNameKeyword, setAppliedNameKeyword] = useState('')
-  const [codeKeyword, setCodeKeyword] = useState('')
-  const [appliedCodeKeyword, setAppliedCodeKeyword] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [filters, setFilters] = useState<QueryCondition[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<RoleDialogState | null>(null)
+  const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_role')
 
-  // where 是筛选表单的产物（多条 AND）：应用关键字或切换状态即生效。
-  const where = useMemo<QueryCondition[]>(() => {
-    const conditions: QueryCondition[] = []
-    const nameKw = appliedNameKeyword.trim()
-    if (nameKw !== '') {
-      conditions.push({ field: 'name', op: 'contains', value: nameKw })
-    }
-    const codeKw = appliedCodeKeyword.trim()
-    if (codeKw !== '') {
-      conditions.push({ field: 'code', op: 'prefix', value: codeKw })
-    }
-    if (statusFilter === 'enabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_ENABLED })
-    } else if (statusFilter === 'disabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_DISABLED })
-    }
-    return conditions
-  }, [appliedNameKeyword, appliedCodeKeyword, statusFilter])
+  const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
+  const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
+  const pageSize = schema?.pagination?.defaultPageSize ?? 20
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
+  // columns 动态响应 schema：页面仅覆写必要附加项——长 label 列头与徽标/
+  // 规则名渲染；行操作列不对应查询字段，恒追加在末尾。
   const columns = useMemo<DataTableColumn<RoleDTO>[]>(
-    () => [
-      { key: 'id', header: 'ID', className: 'w-16', render: (role) => role.id },
-      { key: 'name', header: '角色名', render: (role) => role.name },
-      { key: 'code', header: '编码', render: (role) => role.code },
-      { key: 'roleType', header: '类型', render: (role) => roleTypeBadge(role.roleType) },
-      { key: 'dataScope', header: '数据范围', render: (role) => dataScopeLabel(role.dataScope) },
-      { key: 'status', header: '状态', render: (role) => statusBadge(role.status) },
-      { key: 'createdAt', header: '创建时间', sortable: 'createdAt', render: (role) => formatDateTime(role.createdAt) },
-      {
-        key: 'actions',
-        header: '操作',
-        className: 'w-16 text-right',
-        render: (role) => <RowActions role={role} onOpen={setDialog} />,
-      },
-    ],
-    [],
+    () =>
+      schema === null
+        ? []
+        : schemaColumns<RoleDTO>(
+            schema,
+            {
+              roleType: { header: '类型', render: (role) => roleTypeBadge(role.roleType) },
+              dataScope: { header: '数据范围', render: (role) => dataScopeLabel(role.dataScope) },
+              status: { header: '状态', render: (role) => statusBadge(role.status) },
+            },
+            [
+              {
+                key: 'actions',
+                header: '操作',
+                className: 'w-16 text-right',
+                sticky: 'right',
+                render: (role) => <RowActions role={role} onOpen={setDialog} />,
+              },
+            ],
+          ),
+    [schema],
   )
 
-  const applyFilters = (event: FormEvent) => {
-    event.preventDefault()
-    setAppliedNameKeyword(nameKeyword)
-    setAppliedCodeKeyword(codeKeyword)
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">角色管理</h1>
-          <p className="text-sm text-muted-foreground">
-            租户内角色与数据范围、菜单授权的维护入口；系统预置角色不可删除。
-          </p>
+    <div className="flex min-h-0 flex-1 flex-col p-6">
+      {/* 落条即查：QueryFilter 的条件串直接作为 DataTable 的 where；标题与
+       * 描述由表格标题行承载（描述悬停弹出）。 */}
+      {schemaError !== null ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>查询能力加载失败：{schemaError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retrySchema}>
+              重试
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : schemaLoading ? (
+        <div className="flex min-h-32 items-center justify-center" aria-label="加载中">
+          <Spinner aria-hidden className="size-6" />
         </div>
-        <form className="flex flex-wrap items-center gap-2" onSubmit={applyFilters} aria-label="角色筛选">
-          <Input
-            aria-label="角色名关键字"
-            placeholder="角色名包含…"
-            value={nameKeyword}
-            onChange={(e) => setNameKeyword(e.target.value)}
-            className="w-44"
-          />
-          <Input
-            aria-label="编码前缀"
-            placeholder="编码前缀…"
-            value={codeKeyword}
-            onChange={(e) => setCodeKeyword(e.target.value)}
-            className="w-36"
-          />
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'enabled' | 'disabled')}>
-            <SelectTrigger aria-label="状态筛选" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="enabled">启用</SelectItem>
-              <SelectItem value="disabled">禁用</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit" variant="outline">
-            <SearchIcon aria-hidden className="size-4" />
-            筛选
-          </Button>
-        </form>
-      </div>
-
-      <DataTable
-        rowKey={(role) => role.id}
-        columns={columns}
-        fetchPage={listRoles}
-        where={where}
-        reloadKey={reloadKey}
-        defaultSort={[{ field: 'createdAt', order: 'desc' }]}
-        emptyText="没有符合条件的角色"
-        toolbar={
-          <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
-            <PlusIcon aria-hidden className="size-4" />
-            新建角色
-          </Button>
-        }
-      />
+      ) : (
+        <DataTable
+          title="角色管理"
+          description="租户内角色与数据范围、菜单授权的维护入口；系统预置角色不可删除。"
+          filters={<QueryFilter fields={filterFields} value={filters} onChange={setFilters} onSearch={() => setReloadKey((key) => key + 1)} ariaLabel="角色筛选" />}
+          rowKey={(role) => role.id}
+          columns={columns}
+          fetchPage={listRoles}
+          where={filters}
+          schema={schema}
+          reloadKey={reloadKey}
+          defaultSort={defaultSort}
+          pageSize={pageSize}
+          emptyText="没有符合条件的角色"
+          toolbar={
+            <ToolbarIconButton label="新建角色" onClick={() => setDialog({ kind: 'create' })}>
+              <PlusIcon aria-hidden className="size-4" />
+            </ToolbarIconButton>
+          }
+        />
+      )}
 
       {dialog === null ? null : dialog.kind === 'create' ? (
         <RoleCreateDialog onClose={() => setDialog(null)} onCreated={reload} />

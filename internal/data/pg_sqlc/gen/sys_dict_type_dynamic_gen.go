@@ -3,7 +3,7 @@
 // 策略来源(DDL 注释 DSL,review 时与 schema 定义直接比对):
 //
 //	table sys_dict_type: [@page: 20/400]
-//	table sys_dict_type: [@default_sort: created_at DESC]
+//	table sys_dict_type: [@default_sort: updated_at DESC]
 //	table sys_dict_type: [@pk: id]
 //	table sys_dict_type: [@filter: deleted_at is_null]
 //	column sys_dict_type.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
@@ -14,7 +14,7 @@
 //	column sys_dict_type.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_dict_type.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_dict_type.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
-//	column sys_dict_type.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
+//	column sys_dict_type.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_dict_type.deleted_at: [@internal]
 //	column sys_dict_type.tenant_id: [@dynamic: eq, neq @hideable]
 //
@@ -131,9 +131,9 @@ var sys_dict_typeRegistry = dynq.TableMeta{
 			Label:      "更新时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
 			Sortable:   true,
-			Selectable: false,
+			Selectable: true,
 			Hidden:     false,
 		},
 		{
@@ -159,7 +159,7 @@ var sys_dict_typeRegistry = dynq.TableMeta{
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
-		{Field: "createdAt", Desc: true},
+		{Field: "updatedAt", Desc: true},
 	},
 	Tiebreaker:  "id",
 	PageDefault: 20,
@@ -251,6 +251,10 @@ type ListSysDictTypeParams struct {
 	UpdatedByNeq   *int64
 	UpdatedByIn    []int64
 	UpdatedByNotIn []int64
+	UpdatedAt      *time.Time
+	UpdatedAtNeq   *time.Time
+	UpdatedAtIn    []time.Time
+	UpdatedAtNotIn []time.Time
 	UpdatedAtGt    *time.Time
 	UpdatedAtGte   *time.Time
 	UpdatedAtLt    *time.Time
@@ -715,6 +719,48 @@ func ParseSysDictTypeQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysDict
 			}
 		case "updatedAt":
 			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("updatedAt.eq", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsTime(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAt = &v
+			case dynq.OpNeq:
+				if err := slots.Take("updatedAt.neq", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsTime(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtNeq = &v
+			case dynq.OpIn:
+				if err := slots.Take("updatedAt.in", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsTimeSlice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtIn = vs
+			case dynq.OpNotIn:
+				if err := slots.Take("updatedAt.not_in", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsTimeSlice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtNotIn = vs
 			case dynq.OpGt:
 				if err := slots.Take("updatedAt.gt", i, "updatedAt"); err != nil {
 					return out, err
@@ -859,7 +905,7 @@ func validateSysDictTypeParams(params ListSysDictTypeParams, cfg *dynq.QueryConf
 	if cfg.WhereDisabled("updatedBy") && (params.UpdatedBy != nil || params.UpdatedByNeq != nil || params.UpdatedByIn != nil || params.UpdatedByNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedBy", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
+	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
 	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
@@ -988,6 +1034,18 @@ func buildSysDictTypeWhere(params ListSysDictTypeParams) []sq.Sqlizer {
 	}
 	if params.UpdatedByNotIn != nil {
 		conds = append(conds, sq.NotEq{"updated_by": params.UpdatedByNotIn})
+	}
+	if params.UpdatedAt != nil {
+		conds = append(conds, sq.Eq{"updated_at": *params.UpdatedAt})
+	}
+	if params.UpdatedAtNeq != nil {
+		conds = append(conds, sq.NotEq{"updated_at": *params.UpdatedAtNeq})
+	}
+	if params.UpdatedAtIn != nil {
+		conds = append(conds, sq.Eq{"updated_at": params.UpdatedAtIn})
+	}
+	if params.UpdatedAtNotIn != nil {
+		conds = append(conds, sq.NotEq{"updated_at": params.UpdatedAtNotIn})
 	}
 	if params.UpdatedAtGt != nil {
 		conds = append(conds, sq.Gt{"updated_at": *params.UpdatedAtGt})

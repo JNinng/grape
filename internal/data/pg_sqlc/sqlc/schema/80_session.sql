@@ -29,7 +29,7 @@ CREATE TABLE public.sys_session
 CREATE UNIQUE INDEX sys_session_token_hash_un ON public.sys_session USING btree (token_hash);
 CREATE UNIQUE INDEX sys_session_refresh_token_hash_un ON public.sys_session USING btree (refresh_token_hash) WHERE refresh_token_hash IS NOT NULL;
 CREATE INDEX idx_session_tenant_user ON public.sys_session USING btree (tenant_id, user_id);
-COMMENT ON TABLE public.sys_session IS '用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: created_at DESC @pk: id @page: 20/200]';
+COMMENT ON TABLE public.sys_session IS '用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: updated_at DESC @pk: id @page: 20/200]';
 
 COMMENT ON COLUMN public.sys_session.id IS '会话 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
@@ -46,7 +46,7 @@ COMMENT ON COLUMN public.sys_session.is_revoked IS '是否已主动撤销：true
 COMMENT ON COLUMN public.sys_session.created_by IS '创建人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_session.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.updated_by IS '更新人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_session.updated_at IS '更新时间 [@dynamic: range @sortable]';
+COMMENT ON COLUMN public.sys_session.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 
 
 -- ============================================================

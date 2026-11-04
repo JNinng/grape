@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package query.v1;
+
+option go_package = "grape/api/query/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.query.v1";
+option objc_class_prefix = "APIQueryV1";
+
+// ErrorReason 是查询能力出口的错误原因枚举，用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  QUERY_UNSPECIFIED = 0;
+  // 请求的能力 schema 资源未收录（未暴露动态 List 的资源）。
+  QUERY_RESOURCE_UNKNOWN = 1;
+}

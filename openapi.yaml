@@ -356,6 +356,27 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/perm.v1.GetMyPermissionsReply'
+    /v1/query/schema:
+        get:
+            tags:
+                - QueryService
+            description: |-
+                GetListSchema 返回资源的 List 能力 schema（字段、操作符、排序、分页配置）。
+                 请求的资源未收录时返回 INVALID_ARGUMENT。
+            operationId: QueryService_GetListSchema
+            parameters:
+                - name: resource
+                  in: query
+                  description: 资源名（存储表名，如 sys_user）。仅收录已暴露动态 List 的资源。
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/query.v1.ListSchema'
     /v1/roles/create:
         post:
             tags:
@@ -1536,6 +1557,123 @@ components:
                  value 与 right_value 为 JSON 值，接受形态由字段数据类型与操作符决定：
                  整型字段的 eq 接受数字；between 在 value 放下界、right_value 放上界；
                  in / not_in 接受数组；is_null / not_null 不需要值。
+        query.v1.ListSchema:
+            type: object
+            properties:
+                resource:
+                    type: string
+                    description: 资源名（存储表名）。
+                hash:
+                    type: string
+                    description: schema 内容 hash（确定性纯函数），可作 ETag 缓存协商。
+                fields:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.ListSchemaField'
+                    description: 可查询字段的能力列表。
+                defaultSort:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.ListSchemaSort'
+                    description: 默认排序；查询未指定 sort 时的服务端回落。
+                pagination:
+                    allOf:
+                        - $ref: '#/components/schemas/query.v1.ListSchemaPagination'
+                    description: 分页参数。
+            description: |-
+                ListSchema 是动态 List 查询的能力契约，镜像存储层 dynq.ResourceSchema。
+                 被完全禁用（或 @internal）的字段不出现在 fields 中；JSON 键统一小驼峰，
+                 与存储层 schema 的 JSON 协议一致。
+        query.v1.ListSchemaField:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: 字段键，小驼峰，与 Query.where/sort/fields 中的字段键一致。
+                label:
+                    type: string
+                    description: 展示文本。
+                dataType:
+                    type: string
+                    description: 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
+                nullable:
+                    type: boolean
+                    description: 是否可空。
+                sortable:
+                    type: boolean
+                    description: 是否可排序（sort 接受该字段）。
+                hideable:
+                    type: boolean
+                    description: 列头可显隐交互提示。
+                selectable:
+                    type: boolean
+                    description: hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+                ops:
+                    type: array
+                    items:
+                        type: string
+                    description: |-
+                        该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
+                         between、contains、prefix、suffix、has、is_null、not_null）。
+                enum:
+                    type: array
+                    items:
+                        type: string
+                    description: 枚举字段的合法线上枚举名。JSON 键为 enum。
+                api:
+                    allOf:
+                        - $ref: '#/components/schemas/query.v1.ListSchemaFieldAPI'
+                    description: 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+            description: ListSchemaField 是单个查询字段的能力契约。
+        query.v1.ListSchemaFieldAPI:
+            type: object
+            properties:
+                endpoint:
+                    type: string
+                    description: 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
+                valueKey:
+                    type: string
+                    description: items 中选项值的字段名（顶层）。
+                labelKey:
+                    type: string
+                    description: items 中展示文本的字段名（顶层）。
+                mode:
+                    type: string
+                    description: 交互模式：single | multi | search。
+            description: |-
+                ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
+                 GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
+                 命名的顶层字段。
+        query.v1.ListSchemaPagination:
+            type: object
+            properties:
+                defaultPageSize:
+                    type: integer
+                    description: 每页默认条数。
+                    format: int32
+                maxPageSize:
+                    type: integer
+                    description: 每页最大条数。
+                    format: int32
+                modes:
+                    type: array
+                    items:
+                        type: string
+                    description: 支持的分页模式：offset、cursor。
+                includeTotal:
+                    type: boolean
+                    description: 是否支持 include_total=false 跳过 COUNT。
+            description: ListSchemaPagination 是分页双模式与 total 计算能力。
+        query.v1.ListSchemaSort:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: 字段键，小驼峰。
+                desc:
+                    type: boolean
+                    description: true = desc。
+            description: ListSchemaSort 是默认排序项。
         query.v1.Pagination:
             type: object
             properties:
@@ -1854,6 +1992,12 @@ tags:
          （fn_has_permission 同源推导），集合为空表示当前用户不持有任何权限码。
          本端点只受认证约束，不设权限码——权限码集合本身是用户界面的引导数据，
          入口层判定不应对它设门槛。
+    - name: QueryService
+      description: |-
+        QueryService 提供动态 List 的能力 schema 出口：前端据此渲染查询组件。
+         schema 是（生成期元数据，能力收窄选项）的确定性纯函数，同一资源恒产出
+         字节级相同结果，内容 hash 可作 ETag。资源仅收录已暴露动态 List 的表；
+         本服务为能力元数据读面，认证后即可访问，不设功能权限码。
     - name: RoleService
       description: |-
         RoleService 提供角色管理。角色是租户内资源：租户边界由数据库 RLS 强制，

@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RoleDTO, RoleDataScopeDTO, RoleMenuSetDTO } from '@/api/roles'
 import type { MenuTreeReplyDTO, MenuTreeNodeDTO, MenuDTO } from '@/api/menus'
+import { getListSchema, type ListSchemaDTO } from '@/api/querySchema'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
 import { RoleManagePage } from './RoleManagePage'
@@ -48,6 +49,10 @@ vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
 }))
 
+vi.mock('@/api/querySchema', () => ({
+  getListSchema: vi.fn(),
+}))
+
 const mockListRoles = vi.mocked(listRoles)
 const mockCreateRole = vi.mocked(createRole)
 const mockUpdateRole = vi.mocked(updateRole)
@@ -58,11 +63,36 @@ const mockListRoleMenus = vi.mocked(listRoleMenus)
 const mockSetRoleMenus = vi.mocked(setRoleMenus)
 const mockFetchMenuTree = vi.mocked(fetchMenuTree)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
+const mockGetListSchema = vi.mocked(getListSchema)
+
+// roleSchema 基线对齐 GetListSchema(sys_role) 响应口径：label 直取列注释
+// 原文（status/roleType/dataScope 为长文案），hideable 驱动列显隐，默认
+// 排序与页大小驱动表格。
+function roleSchema(): ListSchemaDTO {
+  return {
+    resource: 'sys_role',
+    hash: 'test-hash',
+    fields: [
+      { field: 'id', label: '角色 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'name', label: '角色名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'code', label: '权限编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
+      { field: 'roleType', label: '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义', dataType: 'integer', hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'dataScope', label: '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户', dataType: 'integer', hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+    ],
+    defaultSort: [{ field: 'createdAt', desc: true }],
+    pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },
+  }
+}
 
 beforeEach(() => {
   clearToasts()
   // 全量权限码：SettingsLayout 导航按权限码过滤后仍展示全部模块。
   mockFetchMyPermissions.mockResolvedValue(['sys:role', 'sys:menu'])
+  mockGetListSchema.mockResolvedValue(roleSchema())
   mockListRoles.mockResolvedValue({
     items: [role(), presetRole()],
     total: '2',
@@ -181,16 +211,31 @@ describe('RoleManagePage list', () => {
     expect(mockListRoles).toHaveBeenCalledTimes(1)
   })
 
-  it('sends_the_name_contains_code_prefix_and_status_filters_on_apply', async () => {
+  // openFilter 走渐进式筛选入口：点筛选框 → 在 Popover 内选字段进入值
+  // 编辑步（字段按钮须在 dialog 内定位——表头排序按钮与字段同名）。
+  async function openFilter(user2: ReturnType<typeof userEvent.setup>, fieldLabel: string) {
+    await user2.click(screen.getByRole('button', { name: '角色筛选' }))
+    const dialog = await screen.findByRole('dialog')
+    await user2.click(within(dialog).getByRole('button', { name: fieldLabel }))
+  }
+
+  it('stacks_name_code_and_status_conditions_from_the_progressive_filter', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('运营')
 
-    await user2.type(screen.getByLabelText('角色名关键字'), '运营')
-    await user2.type(screen.getByLabelText('编码前缀'), 'op')
-    await user2.click(screen.getByLabelText('状态筛选'))
-    await user2.click(screen.getByRole('option', { name: '启用' }))
-    await user2.click(screen.getByRole('button', { name: '筛选' }))
+    // 逐条落条即查：三条条件叠加后，最后一次请求携带完整 where。
+    await openFilter(user2, '角色名')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), '运营')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
+
+    await openFilter(user2, '权限编码')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), 'op')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
+
+    await openFilter(user2, '数据状态，0：禁用、1：启用')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), '1')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
 
     await waitFor(() => {
       const lastCall = mockListRoles.mock.calls.at(-1)

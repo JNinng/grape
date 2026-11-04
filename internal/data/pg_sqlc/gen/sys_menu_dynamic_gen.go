@@ -21,7 +21,7 @@
 //	column sys_menu.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_menu.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_menu.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
-//	column sys_menu.updated_at: [@dynamic: gt, gte, lt, lte, between @sortable]
+//	column sys_menu.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_menu.deleted_at: [@internal]
 //	column sys_menu.tenant_id: [@dynamic: eq, neq @hideable]
 //
@@ -211,9 +211,9 @@ var sys_menuRegistry = dynq.TableMeta{
 			Label:      "更新时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
 			Sortable:   true,
-			Selectable: false,
+			Selectable: true,
 			Hidden:     false,
 		},
 		{
@@ -366,6 +366,10 @@ type ListSysMenuParams struct {
 	UpdatedByNeq         *int64
 	UpdatedByIn          []int64
 	UpdatedByNotIn       []int64
+	UpdatedAt            *time.Time
+	UpdatedAtNeq         *time.Time
+	UpdatedAtIn          []time.Time
+	UpdatedAtNotIn       []time.Time
 	UpdatedAtGt          *time.Time
 	UpdatedAtGte         *time.Time
 	UpdatedAtLt          *time.Time
@@ -994,6 +998,48 @@ func ParseSysMenuQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysMenuPara
 			}
 		case "updatedAt":
 			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("updatedAt.eq", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsTime(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAt = &v
+			case dynq.OpNeq:
+				if err := slots.Take("updatedAt.neq", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsTime(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtNeq = &v
+			case dynq.OpIn:
+				if err := slots.Take("updatedAt.in", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsTimeSlice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtIn = vs
+			case dynq.OpNotIn:
+				if err := slots.Take("updatedAt.not_in", i, "updatedAt"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsTimeSlice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "updatedAt")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "updatedAt")
+				}
+				out.UpdatedAtNotIn = vs
 			case dynq.OpGt:
 				if err := slots.Take("updatedAt.gt", i, "updatedAt"); err != nil {
 					return out, err
@@ -1147,7 +1193,7 @@ func validateSysMenuParams(params ListSysMenuParams, cfg *dynq.QueryConfig) erro
 	if cfg.WhereDisabled("updatedBy") && (params.UpdatedBy != nil || params.UpdatedByNeq != nil || params.UpdatedByIn != nil || params.UpdatedByNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedBy", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
+	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
 	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
@@ -1318,6 +1364,18 @@ func buildSysMenuWhere(params ListSysMenuParams) []sq.Sqlizer {
 	}
 	if params.UpdatedByNotIn != nil {
 		conds = append(conds, sq.NotEq{"updated_by": params.UpdatedByNotIn})
+	}
+	if params.UpdatedAt != nil {
+		conds = append(conds, sq.Eq{"updated_at": *params.UpdatedAt})
+	}
+	if params.UpdatedAtNeq != nil {
+		conds = append(conds, sq.NotEq{"updated_at": *params.UpdatedAtNeq})
+	}
+	if params.UpdatedAtIn != nil {
+		conds = append(conds, sq.Eq{"updated_at": params.UpdatedAtIn})
+	}
+	if params.UpdatedAtNotIn != nil {
+		conds = append(conds, sq.NotEq{"updated_at": params.UpdatedAtNotIn})
 	}
 	if params.UpdatedAtGt != nil {
 		conds = append(conds, sq.Gt{"updated_at": *params.UpdatedAtGt})

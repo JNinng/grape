@@ -1,8 +1,10 @@
 import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from 'react'
-import { MoreHorizontalIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import { assignRoles, createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type OwnerTripleInput, type UserDTO } from '@/api/users'
-import type { QueryCondition } from '@/api/query'
-import { DataTable, type DataTableColumn } from '@/components/manage/data-table'
+import type { QueryCondition, QuerySort } from '@/api/query'
+import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
+import { RowActionsMenu } from '@/components/manage/row-actions'
+import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,16 +27,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toast'
 
@@ -50,12 +46,6 @@ type UserDialogState =
   | { kind: 'owner'; user: UserDTO }
   | { kind: 'delete'; user: UserDTO }
 
-// formatDateTime 渲染本地时间展示；非法时间回退原文，不伪造语义。
-function formatDateTime(iso: string): string {
-  const t = new Date(iso)
-  return Number.isNaN(t.getTime()) ? iso : t.toLocaleString()
-}
-
 // statusBadge 渲染状态列：0 禁用、1 启用；缺省按启用兜底（创建缺省启用）。
 function statusBadge(status: number | undefined): ReactNode {
   return status === STATUS_DISABLED ? (
@@ -63,11 +53,6 @@ function statusBadge(status: number | undefined): ReactNode {
   ) : (
     <Badge variant="secondary">启用</Badge>
   )
-}
-
-// orDash 把可空字段渲染为占位横线，避免空白单元格。
-function orDash(value: string | undefined): string {
-  return value === undefined || value === '' ? '—' : value
 }
 
 // Field 是表单字段布局：标签 + 控件，标签经 htmlFor 与控件关联。
@@ -525,134 +510,108 @@ function UserDeleteDialog({
 
 // ---------- 行内动作 ----------
 
-function RowActions({
-  user,
-  onOpen,
-}: {
-  user: UserDTO
-  onOpen: (state: UserDialogState) => void
-}) {
+// RowActions 是行内操作弹框：顶部展示用户名/昵称摘要，悬停即弹出。
+function RowActions({ user, onOpen }: { user: UserDTO; onOpen: (state: UserDialogState) => void }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`操作 ${user.name}`}>
-          <MoreHorizontalIcon aria-hidden className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'edit', user })}>编辑</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'password', user })}>修改密码</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'roles', user })}>分配角色</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'owner', user })}>转移归属</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onOpen({ kind: 'delete', user })}>
-          删除
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionsMenu
+      rowLabel={user.name}
+      info={[
+        { label: '用户名', value: user.name },
+        { label: '昵称', value: user.nickname },
+      ]}
+      actions={[
+        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', user }) },
+        { label: '修改密码', onSelect: () => onOpen({ kind: 'password', user }) },
+        { label: '分配角色', onSelect: () => onOpen({ kind: 'roles', user }) },
+        { label: '转移归属', onSelect: () => onOpen({ kind: 'owner', user }) },
+        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', user }) },
+      ]}
+    />
   )
 }
 
 // ---------- 页面 ----------
 
-// UserManagePage 用户管理：列表 + 筛选 + 行内动作（编辑/改密/分配角色/
-// 转移归属/删除）+ 新建。作为后续管理模块的样板页：筛选产物为 where，
-// 取数经 DataTable 注入 listUsers。
+// UserManagePage 用户管理：列表 + 渐进式筛选 + 行内动作（编辑/改密/分配
+// 角色/转移归属/删除）+ 新建。作为后续管理模块的样板页：取数经 DataTable
+// 注入 listUsers；筛选与列定义均动态响应 GetListSchema 响应。
 export function UserManagePage() {
-  const [keyword, setKeyword] = useState('')
-  const [appliedKeyword, setAppliedKeyword] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
+  const [filters, setFilters] = useState<QueryCondition[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<UserDialogState | null>(null)
+  const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_user')
 
-  // where 是筛选表单的产物（多条 AND）：应用关键字或切换状态即生效。
-  const where = useMemo<QueryCondition[]>(() => {
-    const conditions: QueryCondition[] = []
-    const kw = appliedKeyword.trim()
-    if (kw !== '') {
-      conditions.push({ field: 'name', op: 'contains', value: kw })
-    }
-    if (statusFilter === 'enabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_ENABLED })
-    } else if (statusFilter === 'disabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_DISABLED })
-    }
-    return conditions
-  }, [appliedKeyword, statusFilter])
+  const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
+  const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
+  const pageSize = schema?.pagination?.defaultPageSize ?? 20
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
+  // columns 动态响应 schema：列集/顺序/表头/排序/显隐全部来自 GetListSchema
+  // 响应（hideable 字段逐列输出），页面仅覆写必要附加项——schema label
+  // 为长文案无法直接作列头的字段与需自定义渲染的状态徽标；行操作列不
+  // 对应查询字段，恒追加在末尾。
   const columns = useMemo<DataTableColumn<UserDTO>[]>(
-    () => [
-      { key: 'id', header: 'ID', className: 'w-16', render: (u) => u.id },
-      { key: 'name', header: '用户名', render: (u) => u.name },
-      { key: 'nickname', header: '昵称', render: (u) => u.nickname },
-      { key: 'email', header: '邮箱', render: (u) => orDash(u.email) },
-      { key: 'phone', header: '手机号', render: (u) => orDash(u.phone) },
-      { key: 'status', header: '状态', render: (u) => statusBadge(u.status) },
-      { key: 'createdAt', header: '创建时间', sortable: 'createdAt', render: (u) => formatDateTime(u.createdAt) },
-      {
-        key: 'actions',
-        header: '操作',
-        className: 'w-16 text-right',
-        render: (u) => <RowActions user={u} onOpen={setDialog} />,
-      },
-    ],
-    [],
+    () =>
+      schema === null
+        ? []
+        : schemaColumns<UserDTO>(
+            schema,
+            {
+              status: { header: '状态', render: (u) => statusBadge(u.status) },
+              locale: { header: '语言' },
+            },
+            [
+              {
+                key: 'actions',
+                header: '操作',
+                className: 'w-16 text-right',
+                sticky: 'right',
+                render: (u) => <RowActions user={u} onOpen={setDialog} />,
+              },
+            ],
+          ),
+    [schema],
   )
 
-  const applyFilters = (event: FormEvent) => {
-    event.preventDefault()
-    setAppliedKeyword(keyword)
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">用户管理</h1>
-          <p className="text-sm text-muted-foreground">租户内用户账号与数据范围归属的维护入口。</p>
+    <div className="flex min-h-0 flex-1 flex-col p-6">
+      {/* 落条即查：QueryFilter 的条件串直接作为 DataTable 的 where；标题与
+       * 描述由表格标题行承载（描述悬停弹出）。 */}
+      {schemaError !== null ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>查询能力加载失败：{schemaError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retrySchema}>
+              重试
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : schemaLoading ? (
+        <div className="flex min-h-32 items-center justify-center" aria-label="加载中">
+          <Spinner aria-hidden className="size-6" />
         </div>
-        <form className="flex flex-wrap items-center gap-2" onSubmit={applyFilters} aria-label="用户筛选">
-          <Input
-            aria-label="用户名关键字"
-            placeholder="用户名包含…"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            className="w-56"
-          />
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'enabled' | 'disabled')}>
-            <SelectTrigger aria-label="状态筛选" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="enabled">启用</SelectItem>
-              <SelectItem value="disabled">禁用</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit" variant="outline">
-            <SearchIcon aria-hidden className="size-4" />
-            筛选
-          </Button>
-        </form>
-      </div>
-
-      <DataTable
-        rowKey={(user) => user.id}
-        columns={columns}
-        fetchPage={listUsers}
-        where={where}
-        reloadKey={reloadKey}
-        defaultSort={[{ field: 'createdAt', order: 'desc' }]}
-        emptyText="没有符合条件的用户"
-        toolbar={
-          <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
-            <PlusIcon aria-hidden className="size-4" />
-            新建用户
-          </Button>
-        }
-      />
+      ) : (
+        <DataTable
+          title="用户管理"
+          description="租户内用户账号与数据范围归属的维护入口。"
+          filters={<QueryFilter fields={filterFields} value={filters} onChange={setFilters} onSearch={() => setReloadKey((key) => key + 1)} ariaLabel="用户筛选" />}
+          rowKey={(user) => user.id}
+          columns={columns}
+          fetchPage={listUsers}
+          where={filters}
+          schema={schema}
+          reloadKey={reloadKey}
+          defaultSort={defaultSort}
+          pageSize={pageSize}
+          emptyText="没有符合条件的用户"
+          toolbar={
+            <ToolbarIconButton label="新建用户" onClick={() => setDialog({ kind: 'create' })}>
+              <PlusIcon aria-hidden className="size-4" />
+            </ToolbarIconButton>
+          }
+        />
+      )}
 
       {dialog === null ? null : dialog.kind === 'create' ? (
         <UserCreateDialog onClose={() => setDialog(null)} onCreated={reload} />

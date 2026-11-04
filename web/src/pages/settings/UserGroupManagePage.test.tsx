@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UserGroupDTO, UserGroupMemberDTO } from '@/api/userGroups'
+import { getListSchema, type ListSchemaDTO } from '@/api/querySchema'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
 import { UserGroupManagePage } from './UserGroupManagePage'
@@ -32,6 +33,10 @@ vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
 }))
 
+vi.mock('@/api/querySchema', () => ({
+  getListSchema: vi.fn(),
+}))
+
 const mockListGroups = vi.mocked(listUserGroups)
 const mockCreateGroup = vi.mocked(createUserGroup)
 const mockUpdateGroup = vi.mocked(updateUserGroup)
@@ -40,6 +45,28 @@ const mockListMembers = vi.mocked(listUserGroupMembers)
 const mockAddMembers = vi.mocked(addMembers)
 const mockRemoveMembers = vi.mocked(removeMembers)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
+const mockGetListSchema = vi.mocked(getListSchema)
+
+// groupSchema 基线对齐 GetListSchema(sys_user_group) 响应口径：label 直取
+// 列注释原文（status 为长文案），hideable 驱动列显隐，默认排序与页大小
+// 驱动表格。
+function groupSchema(): ListSchemaDTO {
+  return {
+    resource: 'sys_user_group',
+    hash: 'test-hash',
+    fields: [
+      { field: 'id', label: '用户组 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
+      { field: 'name', label: '组名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'code', label: '组编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+    ],
+    defaultSort: [{ field: 'createdAt', desc: true }],
+    pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },
+  }
+}
 
 // group 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function group(overrides: Partial<UserGroupDTO> = {}): UserGroupDTO {
@@ -77,6 +104,7 @@ beforeEach(() => {
   // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
   // 不依赖 jsdom fetch 对相对地址抛错）。
   mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
+  mockGetListSchema.mockResolvedValue(groupSchema())
   mockListGroups.mockResolvedValue({
     items: [group(), secondGroup()],
     total: '2',
@@ -126,13 +154,22 @@ describe('UserGroupManagePage list & filters', () => {
     })
   })
 
-  it('applies_the_name_contains_filter_when_the_filter_form_is_submitted', async () => {
+  // openFilter 走渐进式筛选入口：点筛选框 → 在 Popover 内选字段进入值
+  // 编辑步（字段按钮须在 dialog 内定位——表头排序按钮与字段同名）。
+  async function openFilter(user2: ReturnType<typeof userEvent.setup>, fieldLabel: string) {
+    await user2.click(screen.getByRole('button', { name: '用户组筛选' }))
+    const dialog = await screen.findByRole('dialog')
+    await user2.click(within(dialog).getByRole('button', { name: fieldLabel }))
+  }
+
+  it('applies_the_name_contains_filter_when_the_text_value_is_confirmed', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('ops')
 
-    await user2.type(screen.getByLabelText('组名关键字'), 'op')
-    await user2.click(screen.getByRole('button', { name: '筛选' }))
+    await openFilter(user2, '组名')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), 'op')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
 
     await waitFor(() => expect(mockListGroups).toHaveBeenCalledTimes(2))
     expect(mockListGroups.mock.calls[1][0]).toMatchObject({
@@ -141,13 +178,15 @@ describe('UserGroupManagePage list & filters', () => {
     })
   })
 
-  it('applies_the_code_prefix_filter_when_the_filter_form_is_submitted', async () => {
+  it('applies_the_code_prefix_filter_with_the_default_op_from_the_schema', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('ops')
 
-    await user2.type(screen.getByLabelText('组编码前缀'), 'DE')
-    await user2.click(screen.getByRole('button', { name: '筛选' }))
+    // code 的 ops 仅 exact/prefix：默认 op 落到 prefix。
+    await openFilter(user2, '组编码')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), 'DE')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
 
     await waitFor(() => expect(mockListGroups).toHaveBeenCalledTimes(2))
     expect(mockListGroups.mock.calls[1][0]).toMatchObject({
@@ -155,13 +194,15 @@ describe('UserGroupManagePage list & filters', () => {
     })
   })
 
-  it('applies_the_status_equality_filter_when_an_option_is_picked', async () => {
+  it('applies_the_status_equality_filter_with_the_number_editor_from_the_schema', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('ops')
 
-    await user2.click(screen.getByRole('combobox', { name: '状态筛选' }))
-    await user2.click(screen.getByRole('option', { name: '禁用' }))
+    // status 的 dataType 为 integer：值编辑器为数字框，默认 op 即 eq。
+    await openFilter(user2, '数据状态，0：禁用、1：启用')
+    await user2.type(within(screen.getByRole('dialog')).getByLabelText('筛选值'), '0')
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确定' }))
 
     await waitFor(() => expect(mockListGroups).toHaveBeenCalledTimes(2))
     expect(mockListGroups.mock.calls[1][0]).toMatchObject({

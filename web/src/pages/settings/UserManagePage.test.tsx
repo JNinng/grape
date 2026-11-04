@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UserDTO } from '@/api/users'
+import { getListSchema, type ListSchemaDTO } from '@/api/querySchema'
 import { SettingsLayout } from './SettingsLayout'
 import { UserManagePage } from './UserManagePage'
 import { Toaster, clearToasts } from '@/components/ui/toast'
@@ -32,6 +33,10 @@ vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
 }))
 
+vi.mock('@/api/querySchema', () => ({
+  getListSchema: vi.fn(),
+}))
+
 const mockListUsers = vi.mocked(listUsers)
 const mockCreateUser = vi.mocked(createUser)
 const mockUpdateUser = vi.mocked(updateUser)
@@ -40,6 +45,7 @@ const mockDeleteUser = vi.mocked(deleteUser)
 const mockAssignRoles = vi.mocked(assignRoles)
 const mockTransferOwner = vi.mocked(transferUserOwner)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
+const mockGetListSchema = vi.mocked(getListSchema)
 
 // user 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function user(overrides: Partial<UserDTO> = {}): UserDTO {
@@ -59,11 +65,35 @@ function bob(): UserDTO {
   return user({ id: '12', name: 'bob', nickname: 'Bob' })
 }
 
+// schema 基线对齐 GetListSchema 响应口径：字段 label/ops/dataType 直取
+// 响应（status 为 integer 即数字编辑器），hideable 驱动列显隐，默认排序
+// 与页大小驱动表格。
+function schema(): ListSchemaDTO {
+  return {
+    resource: 'sys_user',
+    hash: 'test-hash',
+    fields: [
+      { field: 'id', label: '用户 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'] },
+      { field: 'status', label: '状态', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq'] },
+      { field: 'name', label: '用户名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'nickname', label: '昵称', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'email', label: '邮箱', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
+      { field: 'phone', label: '手机号', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
+      { field: 'lastLoginAt', label: '最后登录时间', dataType: 'datetime', nullable: true, sortable: true, ops: ['gt', 'gte', 'lt', 'lte', 'between', 'is_null', 'not_null'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+    ],
+    defaultSort: [{ field: 'updatedAt', desc: true }],
+    pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },
+  }
+}
+
 beforeEach(() => {
   clearToasts()
   // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
   // 不依赖 jsdom fetch 对相对地址抛错）。
   mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
+  mockGetListSchema.mockResolvedValue(schema())
   mockListUsers.mockResolvedValue({ items: [user(), bob()], total: '2', hasMore: false, nextCursor: '', page: 1 })
 })
 
@@ -102,18 +132,27 @@ describe('UserManagePage list & filters', () => {
     expect(mockListUsers).toHaveBeenCalledTimes(1)
     expect(mockListUsers.mock.calls[0][0]).toEqual({
       where: [],
-      sort: [{ field: 'createdAt', order: 'desc' }],
+      sort: [{ field: 'updatedAt', order: 'desc' }],
       pagination: { page: 1, pageSize: 20 },
     })
   })
 
-  it('applies_the_name_contains_filter_when_the_filter_form_is_submitted', async () => {
+  // openFilter 走渐进式筛选入口：点筛选框 → 在 Popover 内选字段进入值
+  // 编辑步（字段按钮须在 dialog 内定位——表头排序按钮与字段同名）。
+  async function openFilter(user2: ReturnType<typeof userEvent.setup>, fieldLabel: string) {
+    await user2.click(screen.getByRole('button', { name: '用户筛选' }))
+    const dialog = await screen.findByRole('dialog')
+    await user2.click(within(dialog).getByRole('button', { name: fieldLabel }))
+  }
+
+  it('applies_the_name_contains_filter_when_the_text_value_is_confirmed', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('alice')
 
-    await user2.type(screen.getByLabelText('用户名关键字'), 'ali')
-    await user2.click(screen.getByRole('button', { name: '筛选' }))
+    await openFilter(user2, '用户名')
+    await user2.type(screen.getByLabelText('筛选值'), 'ali')
+    await user2.click(screen.getByRole('button', { name: '确定' }))
 
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
     expect(mockListUsers.mock.calls[1][0]).toMatchObject({
@@ -122,18 +161,79 @@ describe('UserManagePage list & filters', () => {
     })
   })
 
-  it('applies_the_status_equality_filter_when_an_option_is_picked', async () => {
+  it('applies_the_status_equality_filter_with_the_number_editor_from_the_schema', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('alice')
 
-    await user2.click(screen.getByRole('combobox', { name: '状态筛选' }))
-    await user2.click(screen.getByRole('option', { name: '禁用' }))
+    // status 的 dataType 为 integer：值编辑器为数字框，默认 op 即 eq。
+    await openFilter(user2, '状态')
+    await user2.type(screen.getByLabelText('筛选值'), '0')
+    await user2.click(screen.getByRole('button', { name: '确定' }))
 
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
     expect(mockListUsers.mock.calls[1][0]).toMatchObject({
       where: [{ field: 'status', op: 'eq', value: 0 }],
     })
+  })
+
+  it('removes_a_dropped_condition_chip_and_refetches_immediately', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+    await screen.findByText('alice')
+
+    await openFilter(user2, '状态')
+    await user2.type(screen.getByLabelText('筛选值'), '0')
+    await user2.click(screen.getByRole('button', { name: '确定' }))
+    await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
+
+    // chip ✕ 移除即重查（落条即查的对称行为）。
+    await user2.click(screen.getByRole('button', { name: '移除条件：状态 等于 0' }))
+    await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(3))
+    expect(mockListUsers.mock.calls[2][0]).toMatchObject({ where: [] })
+  })
+
+  it('surfaces_the_schema_failure_and_refetches_on_retry', async () => {
+    const user2 = userEvent.setup()
+    mockGetListSchema.mockRejectedValueOnce(new Error('resource unknown'))
+    renderPage()
+
+    expect(await screen.findByText('查询能力加载失败：resource unknown')).toBeInTheDocument()
+    expect(mockListUsers).not.toHaveBeenCalled()
+
+    // 重试成功后按 schema 驱动渲染列表。
+    await user2.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('alice')).toBeInTheDocument()
+    expect(mockGetListSchema).toHaveBeenCalledTimes(2)
+  })
+
+  it('toggles_a_hideable_column_via_the_column_settings_menu', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+    expect(await screen.findByRole('columnheader', { name: '昵称' })).toBeInTheDocument()
+
+    // 契约：hideable 列可显隐——菜单勾选后保持打开，可连续切换。modal 菜单
+    // 打开期间外部内容被标记 aria-hidden，列头断言须带 hidden 查询（列隐藏
+    // 时节点是真不存在，而非仅不可见）。
+    await user2.click(screen.getByRole('button', { name: '列设置' }))
+    const menu = await screen.findByRole('menu')
+    await user2.click(within(menu).getByRole('menuitemcheckbox', { name: '昵称' }))
+    expect(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: '昵称' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '昵称', hidden: true })).not.toBeInTheDocument()
+
+    await user2.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: '昵称' }))
+    expect(await screen.findByRole('columnheader', { name: '昵称', hidden: true })).toBeInTheDocument()
+  })
+
+  it('keeps_the_created_at_header_sortable_while_actions_stay_unsorted', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+    await screen.findByText('alice')
+
+    // 契约：仅 @sortable 字段可点表头排序；操作列不声明 field 恒普通列头。
+    await user2.click(screen.getByRole('button', { name: '创建时间' }))
+    await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
+    expect(mockListUsers.mock.calls[1][0]).toMatchObject({ sort: [{ field: 'createdAt', order: 'asc' }] })
   })
 })
 

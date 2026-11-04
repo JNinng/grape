@@ -7,6 +7,7 @@
 package v1
 
 import (
+	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	structpb "google.golang.org/protobuf/types/known/structpb"
@@ -306,11 +307,472 @@ func (x *Pagination) GetIncludeTotal() bool {
 	return false
 }
 
+// GetListSchemaRequest 是 QueryService.GetListSchema 的输入。
+type GetListSchemaRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 资源名（存储表名，如 sys_user）。仅收录已暴露动态 List 的资源。
+	Resource      string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetListSchemaRequest) Reset() {
+	*x = GetListSchemaRequest{}
+	mi := &file_query_v1_query_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetListSchemaRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetListSchemaRequest) ProtoMessage() {}
+
+func (x *GetListSchemaRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetListSchemaRequest.ProtoReflect.Descriptor instead.
+func (*GetListSchemaRequest) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *GetListSchemaRequest) GetResource() string {
+	if x != nil {
+		return x.Resource
+	}
+	return ""
+}
+
+// ListSchema 是动态 List 查询的能力契约，镜像存储层 dynq.ResourceSchema。
+// 被完全禁用（或 @internal）的字段不出现在 fields 中；JSON 键统一小驼峰，
+// 与存储层 schema 的 JSON 协议一致。
+type ListSchema struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 资源名（存储表名）。
+	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
+	// schema 内容 hash（确定性纯函数），可作 ETag 缓存协商。
+	Hash string `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
+	// 可查询字段的能力列表。
+	Fields []*ListSchemaField `protobuf:"bytes,3,rep,name=fields,proto3" json:"fields,omitempty"`
+	// 默认排序；查询未指定 sort 时的服务端回落。
+	DefaultSort []*ListSchemaSort `protobuf:"bytes,4,rep,name=default_sort,json=defaultSort,proto3" json:"default_sort,omitempty"`
+	// 分页参数。
+	Pagination    *ListSchemaPagination `protobuf:"bytes,5,opt,name=pagination,proto3" json:"pagination,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchema) Reset() {
+	*x = ListSchema{}
+	mi := &file_query_v1_query_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchema) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchema) ProtoMessage() {}
+
+func (x *ListSchema) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchema.ProtoReflect.Descriptor instead.
+func (*ListSchema) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListSchema) GetResource() string {
+	if x != nil {
+		return x.Resource
+	}
+	return ""
+}
+
+func (x *ListSchema) GetHash() string {
+	if x != nil {
+		return x.Hash
+	}
+	return ""
+}
+
+func (x *ListSchema) GetFields() []*ListSchemaField {
+	if x != nil {
+		return x.Fields
+	}
+	return nil
+}
+
+func (x *ListSchema) GetDefaultSort() []*ListSchemaSort {
+	if x != nil {
+		return x.DefaultSort
+	}
+	return nil
+}
+
+func (x *ListSchema) GetPagination() *ListSchemaPagination {
+	if x != nil {
+		return x.Pagination
+	}
+	return nil
+}
+
+// ListSchemaField 是单个查询字段的能力契约。
+type ListSchemaField struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 字段键，小驼峰，与 Query.where/sort/fields 中的字段键一致。
+	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
+	// 展示文本。
+	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	// 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
+	DataType string `protobuf:"bytes,3,opt,name=data_type,json=dataType,proto3" json:"data_type,omitempty"`
+	// 是否可空。
+	Nullable bool `protobuf:"varint,4,opt,name=nullable,proto3" json:"nullable,omitempty"`
+	// 是否可排序（sort 接受该字段）。
+	Sortable bool `protobuf:"varint,5,opt,name=sortable,proto3" json:"sortable,omitempty"`
+	// 列头可显隐交互提示。
+	Hideable bool `protobuf:"varint,6,opt,name=hideable,proto3" json:"hideable,omitempty"`
+	// hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+	Selectable bool `protobuf:"varint,7,opt,name=selectable,proto3" json:"selectable,omitempty"`
+	// 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
+	// between、contains、prefix、suffix、has、is_null、not_null）。
+	Ops []string `protobuf:"bytes,8,rep,name=ops,proto3" json:"ops,omitempty"`
+	// 枚举字段的合法线上枚举名。JSON 键为 enum。
+	EnumValues []string `protobuf:"bytes,9,rep,name=enum_values,json=enum,proto3" json:"enum_values,omitempty"`
+	// 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+	Api           *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchemaField) Reset() {
+	*x = ListSchemaField{}
+	mi := &file_query_v1_query_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchemaField) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchemaField) ProtoMessage() {}
+
+func (x *ListSchemaField) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchemaField.ProtoReflect.Descriptor instead.
+func (*ListSchemaField) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ListSchemaField) GetField() string {
+	if x != nil {
+		return x.Field
+	}
+	return ""
+}
+
+func (x *ListSchemaField) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
+func (x *ListSchemaField) GetDataType() string {
+	if x != nil {
+		return x.DataType
+	}
+	return ""
+}
+
+func (x *ListSchemaField) GetNullable() bool {
+	if x != nil {
+		return x.Nullable
+	}
+	return false
+}
+
+func (x *ListSchemaField) GetSortable() bool {
+	if x != nil {
+		return x.Sortable
+	}
+	return false
+}
+
+func (x *ListSchemaField) GetHideable() bool {
+	if x != nil {
+		return x.Hideable
+	}
+	return false
+}
+
+func (x *ListSchemaField) GetSelectable() bool {
+	if x != nil {
+		return x.Selectable
+	}
+	return false
+}
+
+func (x *ListSchemaField) GetOps() []string {
+	if x != nil {
+		return x.Ops
+	}
+	return nil
+}
+
+func (x *ListSchemaField) GetEnumValues() []string {
+	if x != nil {
+		return x.EnumValues
+	}
+	return nil
+}
+
+func (x *ListSchemaField) GetApi() *ListSchemaFieldAPI {
+	if x != nil {
+		return x.Api
+	}
+	return nil
+}
+
+// ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
+// GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
+// 命名的顶层字段。
+type ListSchemaFieldAPI struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
+	Endpoint string `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// items 中选项值的字段名（顶层）。
+	ValueKey string `protobuf:"bytes,2,opt,name=value_key,json=valueKey,proto3" json:"value_key,omitempty"`
+	// items 中展示文本的字段名（顶层）。
+	LabelKey string `protobuf:"bytes,3,opt,name=label_key,json=labelKey,proto3" json:"label_key,omitempty"`
+	// 交互模式：single | multi | search。
+	Mode          string `protobuf:"bytes,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchemaFieldAPI) Reset() {
+	*x = ListSchemaFieldAPI{}
+	mi := &file_query_v1_query_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchemaFieldAPI) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchemaFieldAPI) ProtoMessage() {}
+
+func (x *ListSchemaFieldAPI) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchemaFieldAPI.ProtoReflect.Descriptor instead.
+func (*ListSchemaFieldAPI) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListSchemaFieldAPI) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *ListSchemaFieldAPI) GetValueKey() string {
+	if x != nil {
+		return x.ValueKey
+	}
+	return ""
+}
+
+func (x *ListSchemaFieldAPI) GetLabelKey() string {
+	if x != nil {
+		return x.LabelKey
+	}
+	return ""
+}
+
+func (x *ListSchemaFieldAPI) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+// ListSchemaSort 是默认排序项。
+type ListSchemaSort struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 字段键，小驼峰。
+	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
+	// true = desc。
+	Desc          bool `protobuf:"varint,2,opt,name=desc,proto3" json:"desc,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchemaSort) Reset() {
+	*x = ListSchemaSort{}
+	mi := &file_query_v1_query_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchemaSort) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchemaSort) ProtoMessage() {}
+
+func (x *ListSchemaSort) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchemaSort.ProtoReflect.Descriptor instead.
+func (*ListSchemaSort) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ListSchemaSort) GetField() string {
+	if x != nil {
+		return x.Field
+	}
+	return ""
+}
+
+func (x *ListSchemaSort) GetDesc() bool {
+	if x != nil {
+		return x.Desc
+	}
+	return false
+}
+
+// ListSchemaPagination 是分页双模式与 total 计算能力。
+type ListSchemaPagination struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 每页默认条数。
+	DefaultPageSize int32 `protobuf:"varint,1,opt,name=default_page_size,json=defaultPageSize,proto3" json:"default_page_size,omitempty"`
+	// 每页最大条数。
+	MaxPageSize int32 `protobuf:"varint,2,opt,name=max_page_size,json=maxPageSize,proto3" json:"max_page_size,omitempty"`
+	// 支持的分页模式：offset、cursor。
+	Modes []string `protobuf:"bytes,3,rep,name=modes,proto3" json:"modes,omitempty"`
+	// 是否支持 include_total=false 跳过 COUNT。
+	IncludeTotal  bool `protobuf:"varint,4,opt,name=include_total,json=includeTotal,proto3" json:"include_total,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchemaPagination) Reset() {
+	*x = ListSchemaPagination{}
+	mi := &file_query_v1_query_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchemaPagination) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchemaPagination) ProtoMessage() {}
+
+func (x *ListSchemaPagination) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchemaPagination.ProtoReflect.Descriptor instead.
+func (*ListSchemaPagination) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ListSchemaPagination) GetDefaultPageSize() int32 {
+	if x != nil {
+		return x.DefaultPageSize
+	}
+	return 0
+}
+
+func (x *ListSchemaPagination) GetMaxPageSize() int32 {
+	if x != nil {
+		return x.MaxPageSize
+	}
+	return 0
+}
+
+func (x *ListSchemaPagination) GetModes() []string {
+	if x != nil {
+		return x.Modes
+	}
+	return nil
+}
+
+func (x *ListSchemaPagination) GetIncludeTotal() bool {
+	if x != nil {
+		return x.IncludeTotal
+	}
+	return false
+}
+
 var File_query_v1_query_proto protoreflect.FileDescriptor
 
 const file_query_v1_query_proto_rawDesc = "" +
 	"\n" +
-	"\x14query/v1/query.proto\x12\bquery.v1\x1a\x1cgoogle/protobuf/struct.proto\"\xa8\x01\n" +
+	"\x14query/v1/query.proto\x12\bquery.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xa8\x01\n" +
 	"\x05Query\x12\x16\n" +
 	"\x06fields\x18\x01 \x03(\tR\x06fields\x12)\n" +
 	"\x05where\x18\x02 \x03(\v2\x13.query.v1.ConditionR\x05where\x12&\n" +
@@ -337,7 +799,47 @@ const file_query_v1_query_proto_rawDesc = "" +
 	"\n" +
 	"_page_sizeB\b\n" +
 	"\x06_afterB\x10\n" +
-	"\x0e_include_totalB@\n" +
+	"\x0e_include_total\"7\n" +
+	"\x14GetListSchemaRequest\x12\x1f\n" +
+	"\bresource\x18\x01 \x01(\tB\x03\xe0A\x02R\bresource\"\xec\x01\n" +
+	"\n" +
+	"ListSchema\x12\x1a\n" +
+	"\bresource\x18\x01 \x01(\tR\bresource\x12\x12\n" +
+	"\x04hash\x18\x02 \x01(\tR\x04hash\x121\n" +
+	"\x06fields\x18\x03 \x03(\v2\x19.query.v1.ListSchemaFieldR\x06fields\x12;\n" +
+	"\fdefault_sort\x18\x04 \x03(\v2\x18.query.v1.ListSchemaSortR\vdefaultSort\x12>\n" +
+	"\n" +
+	"pagination\x18\x05 \x01(\v2\x1e.query.v1.ListSchemaPaginationR\n" +
+	"pagination\"\xab\x02\n" +
+	"\x0fListSchemaField\x12\x14\n" +
+	"\x05field\x18\x01 \x01(\tR\x05field\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1b\n" +
+	"\tdata_type\x18\x03 \x01(\tR\bdataType\x12\x1a\n" +
+	"\bnullable\x18\x04 \x01(\bR\bnullable\x12\x1a\n" +
+	"\bsortable\x18\x05 \x01(\bR\bsortable\x12\x1a\n" +
+	"\bhideable\x18\x06 \x01(\bR\bhideable\x12\x1e\n" +
+	"\n" +
+	"selectable\x18\a \x01(\bR\n" +
+	"selectable\x12\x10\n" +
+	"\x03ops\x18\b \x03(\tR\x03ops\x12\x19\n" +
+	"\venum_values\x18\t \x03(\tR\x04enum\x12.\n" +
+	"\x03api\x18\n" +
+	" \x01(\v2\x1c.query.v1.ListSchemaFieldAPIR\x03api\"~\n" +
+	"\x12ListSchemaFieldAPI\x12\x1a\n" +
+	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x1b\n" +
+	"\tvalue_key\x18\x02 \x01(\tR\bvalueKey\x12\x1b\n" +
+	"\tlabel_key\x18\x03 \x01(\tR\blabelKey\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\tR\x04mode\":\n" +
+	"\x0eListSchemaSort\x12\x14\n" +
+	"\x05field\x18\x01 \x01(\tR\x05field\x12\x12\n" +
+	"\x04desc\x18\x02 \x01(\bR\x04desc\"\xa1\x01\n" +
+	"\x14ListSchemaPagination\x12*\n" +
+	"\x11default_page_size\x18\x01 \x01(\x05R\x0fdefaultPageSize\x12\"\n" +
+	"\rmax_page_size\x18\x02 \x01(\x05R\vmaxPageSize\x12\x14\n" +
+	"\x05modes\x18\x03 \x03(\tR\x05modes\x12#\n" +
+	"\rinclude_total\x18\x04 \x01(\bR\fincludeTotal2o\n" +
+	"\fQueryService\x12_\n" +
+	"\rGetListSchema\x12\x1e.query.v1.GetListSchemaRequest\x1a\x14.query.v1.ListSchema\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/query/schemaB@\n" +
 	"\x19io.grpc.examples.query.v1B\n" +
 	"QueryProtoP\x01Z\x15grape/api/query/v1;v1b\x06proto3"
 
@@ -353,25 +855,37 @@ func file_query_v1_query_proto_rawDescGZIP() []byte {
 	return file_query_v1_query_proto_rawDescData
 }
 
-var file_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_query_v1_query_proto_goTypes = []any{
-	(*Query)(nil),          // 0: query.v1.Query
-	(*Condition)(nil),      // 1: query.v1.Condition
-	(*SortItem)(nil),       // 2: query.v1.SortItem
-	(*Pagination)(nil),     // 3: query.v1.Pagination
-	(*structpb.Value)(nil), // 4: google.protobuf.Value
+	(*Query)(nil),                // 0: query.v1.Query
+	(*Condition)(nil),            // 1: query.v1.Condition
+	(*SortItem)(nil),             // 2: query.v1.SortItem
+	(*Pagination)(nil),           // 3: query.v1.Pagination
+	(*GetListSchemaRequest)(nil), // 4: query.v1.GetListSchemaRequest
+	(*ListSchema)(nil),           // 5: query.v1.ListSchema
+	(*ListSchemaField)(nil),      // 6: query.v1.ListSchemaField
+	(*ListSchemaFieldAPI)(nil),   // 7: query.v1.ListSchemaFieldAPI
+	(*ListSchemaSort)(nil),       // 8: query.v1.ListSchemaSort
+	(*ListSchemaPagination)(nil), // 9: query.v1.ListSchemaPagination
+	(*structpb.Value)(nil),       // 10: google.protobuf.Value
 }
 var file_query_v1_query_proto_depIdxs = []int32{
-	1, // 0: query.v1.Query.where:type_name -> query.v1.Condition
-	2, // 1: query.v1.Query.sort:type_name -> query.v1.SortItem
-	3, // 2: query.v1.Query.pagination:type_name -> query.v1.Pagination
-	4, // 3: query.v1.Condition.value:type_name -> google.protobuf.Value
-	4, // 4: query.v1.Condition.right_value:type_name -> google.protobuf.Value
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	1,  // 0: query.v1.Query.where:type_name -> query.v1.Condition
+	2,  // 1: query.v1.Query.sort:type_name -> query.v1.SortItem
+	3,  // 2: query.v1.Query.pagination:type_name -> query.v1.Pagination
+	10, // 3: query.v1.Condition.value:type_name -> google.protobuf.Value
+	10, // 4: query.v1.Condition.right_value:type_name -> google.protobuf.Value
+	6,  // 5: query.v1.ListSchema.fields:type_name -> query.v1.ListSchemaField
+	8,  // 6: query.v1.ListSchema.default_sort:type_name -> query.v1.ListSchemaSort
+	9,  // 7: query.v1.ListSchema.pagination:type_name -> query.v1.ListSchemaPagination
+	7,  // 8: query.v1.ListSchemaField.api:type_name -> query.v1.ListSchemaFieldAPI
+	4,  // 9: query.v1.QueryService.GetListSchema:input_type -> query.v1.GetListSchemaRequest
+	5,  // 10: query.v1.QueryService.GetListSchema:output_type -> query.v1.ListSchema
+	10, // [10:11] is the sub-list for method output_type
+	9,  // [9:10] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_query_v1_query_proto_init() }
@@ -386,9 +900,9 @@ func file_query_v1_query_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_query_v1_query_proto_rawDesc), len(file_query_v1_query_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   10,
 			NumExtensions: 0,
-			NumServices:   0,
+			NumServices:   1,
 		},
 		GoTypes:           file_query_v1_query_proto_goTypes,
 		DependencyIndexes: file_query_v1_query_proto_depIdxs,

@@ -1,15 +1,86 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	queryv1 "grape/api/query/v1"
+	"grape/internal/biz"
 
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	dynq "github.com/jninng/sqlc_gen_dynamic/dynq"
 	"google.golang.org/protobuf/types/known/structpb"
 )
+
+// QueryService 是动态查询能力出口的传输适配器：返回资源 List schema 供
+// 前端渲染查询组件，委托给 biz 用例，不实现业务规则。
+type QueryService struct {
+	queryv1.UnimplementedQueryServiceServer
+	uc *biz.QueryUsecase
+}
+
+// NewQueryService 构造查询能力出口服务。
+func NewQueryService(uc *biz.QueryUsecase) *QueryService {
+	return &QueryService{uc: uc}
+}
+
+// GetListSchema 返回资源的 List 能力 schema。schema 是确定性纯函数，
+// 内容 hash 可作 ETag；资源未收录映射为 INVALID_ARGUMENT。
+func (s *QueryService) GetListSchema(ctx context.Context, req *queryv1.GetListSchemaRequest) (*queryv1.ListSchema, error) {
+	if _, err := authOf(ctx); err != nil {
+		return nil, err
+	}
+	schema, err := s.uc.ListSchema(req.GetResource())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoListSchema(schema), nil
+}
+
+// toProtoListSchema 将存储层 schema 契约转换为 DTO。字段键、操作符与
+// 枚举名直接透传，前端渲染的唯一事实源是存储层 schema。
+func toProtoListSchema(s dynq.ResourceSchema) *queryv1.ListSchema {
+	fields := make([]*queryv1.ListSchemaField, 0, len(s.Fields))
+	for _, f := range s.Fields {
+		pf := &queryv1.ListSchemaField{
+			Field:      f.Field,
+			Label:      f.Label,
+			DataType:   f.DataType,
+			Nullable:   f.Nullable,
+			Sortable:   f.Sortable,
+			Hideable:   f.Hideable,
+			Selectable: f.Selectable,
+			Ops:        f.Ops,
+			EnumValues: f.Enum,
+		}
+		if f.API != nil {
+			pf.Api = &queryv1.ListSchemaFieldAPI{
+				Endpoint: f.API.Endpoint,
+				ValueKey: f.API.ValueKey,
+				LabelKey: f.API.LabelKey,
+				Mode:     f.API.Mode,
+			}
+		}
+		fields = append(fields, pf)
+	}
+	sorts := make([]*queryv1.ListSchemaSort, 0, len(s.DefaultSort))
+	for _, o := range s.DefaultSort {
+		sorts = append(sorts, &queryv1.ListSchemaSort{Field: string(o.Field), Desc: o.Desc})
+	}
+	return &queryv1.ListSchema{
+		Resource:    s.Resource,
+		Hash:        s.Hash(),
+		Fields:      fields,
+		DefaultSort: sorts,
+		Pagination: &queryv1.ListSchemaPagination{
+			DefaultPageSize: int32(s.Pagination.DefaultPageSize),
+			MaxPageSize:     int32(s.Pagination.MaxPageSize),
+			Modes:           s.Pagination.Modes,
+			IncludeTotal:    s.Pagination.IncludeTotal,
+		},
+	}
+}
 
 // errPageAfterConflict 表示分页同时指定了 page 与 after；二者互斥。
 var errPageAfterConflict = errors.New("page and after are mutually exclusive")

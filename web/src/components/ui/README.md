@@ -1,11 +1,11 @@
 # src/components/ui — shadcn/ui 本地改写组件层
 
 组件取自 shadcn/ui 官方仓库 `new-york-v4`（依赖统一包 `radix-ui`、`cn`、
-`class-variance-authority`、`lucide-react`、`cmdk`、`tw-animate-css`），
-落地 23 个够用即止的组件：alert、alert-dialog、badge、button、card、
-checkbox、collapsible、command、dialog、dropdown-menu、empty、input、
-label、pagination、popover、select、separator、spinner、switch、table、
-textarea、toast、tooltip。
+`class-variance-authority`、`lucide-react`、`cmdk`、`tw-animate-css`、
+`react-day-picker`），落地 24 个够用即止的组件：alert、alert-dialog、
+badge、button、calendar、card、checkbox、collapsible、command、dialog、
+dropdown-menu、empty、input、label、pagination、popover、select、
+separator、spinner、switch、table、textarea、toast、tooltip。
 
 [components.json](../../../components.json) 保留 shadcn CLI 配置，未来
 `npx shadcn add <x>` 拉取新组件后须按下方兼容改写规则过一遍再提交。
@@ -18,6 +18,11 @@ textarea、toast、tooltip。
   `<Toaster/>` 全局挂载于 App，`toast.success/error/info` 命令式入口。
 - **checkbox**：以半选态（`checked='indeterminate'`）呈现减号指示，供角色
   页授权树表达「部分子节点已授权」。
+- **calendar**：底层 react-day-picker v10，未引入其样式表，全部经
+  `classNames` 自绘且为精简版（仅单月 label 布局导航，不含下拉年月与
+  多月并排）；日期格子的选中/区间/today/outside 样式集中到自定义
+  DayButton 按 modifiers 条件计算，替代官方「td 透底叠色 + oklch/渐变」
+  写法。消费方为 manage/query-filter 的日期值编辑器。
 
 ## 兼容改写规则（新组件落地必须过一遍）
 

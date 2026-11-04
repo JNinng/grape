@@ -2,7 +2,8 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DynamicQuery, QuerySet } from '@/api/query'
-import { DataTable, type DataTableColumn } from './data-table'
+import type { ListSchemaDTO } from '@/api/querySchema'
+import { DataTable, schemaColumns, type DataTableColumn } from './data-table'
 
 interface Row {
   id: string
@@ -94,13 +95,30 @@ describe('DataTable rendering', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('列表加载失败：加载失败')
   })
 
-  it('summarizes_the_total_when_the_envelope_carries_one', async () => {
+  it('summarizes_the_total_in_the_bottom_bar_with_the_page_label_near_the_pager', async () => {
     const fetchPage = vi.fn().mockResolvedValue(pageSet([{ id: '1', name: 'alice' }], { total: '41', hasMore: true }))
     render(<DataTable rowKey={(row) => row.id} columns={columns} fetchPage={fetchPage} />)
 
     await screen.findByText('alice')
     expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 41 条')
-    expect(screen.getByText('第 1 页 / 3 页')).toBeInTheDocument()
+    expect(screen.getByText('第 1 / 3 页')).toBeInTheDocument()
+  })
+
+  it('changes_the_page_size_from_the_bottom_bar_selector_and_returns_to_page_one', async () => {
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce(pageSet([{ id: '1', name: 'alice' }], { total: '41', hasMore: true }))
+      .mockResolvedValue(pageSet([{ id: '2', name: 'bob' }], { total: '41', hasMore: true }))
+    const user = userEvent.setup()
+    render(<DataTable rowKey={(row) => row.id} columns={columns} fetchPage={fetchPage} />)
+
+    await screen.findByText('alice')
+    await user.click(screen.getByRole('combobox', { name: '每页条数' }))
+    await user.click(await screen.findByRole('option', { name: '10 条/页' }))
+
+    await waitFor(() =>
+      expect(fetchPage.mock.calls[1][0]).toMatchObject({ pagination: { page: 1, pageSize: 10 } }),
+    )
   })
 })
 
@@ -126,6 +144,66 @@ describe('DataTable pagination', () => {
     expect(secondCall.pagination).toEqual({ page: 2, pageSize: 20 })
     // 末页禁用下一页（hasMore=false）。
     expect(screen.getByRole('button', { name: '下一页' })).toBeDisabled()
+  })
+})
+
+describe('schemaColumns', () => {
+  // schemaFixture 覆盖 hideable 门控、sortable 声明、可空 datetime 缺省
+  // 渲染与 label 长文案。
+  const schemaFixture: ListSchemaDTO = {
+    resource: 'demo',
+    hash: 'h',
+    fields: [
+      { field: 'id', label: 'ID', dataType: 'integer', sortable: true, hideable: true, ops: ['eq'] },
+      { field: 'name', label: '名称', dataType: 'string', hideable: true, ops: ['contains'] },
+      { field: 'deletedAt', label: '删除时间', dataType: 'datetime', nullable: true, sortable: true, hideable: true, ops: ['between'] },
+      { field: 'active', label: '启用', dataType: 'boolean', hideable: true, ops: ['eq'] },
+      { field: 'secret', label: '机密', dataType: 'string', ops: ['contains'] },
+    ],
+  }
+
+  it('builds_columns_from_hideable_fields_in_schema_order_with_sortable_flags', () => {
+    const cols = schemaColumns<Row>(schemaFixture)
+
+    expect(cols.map((column) => column.key)).toEqual(['id', 'name', 'deletedAt', 'active'])
+    expect(cols.map((column) => column.header)).toEqual(['ID', '名称', '删除时间', '启用'])
+    expect(cols[0]?.sortable).toBe('id')
+    expect(cols[2]?.sortable).toBe('deletedAt')
+    expect(cols[1]?.sortable).toBeUndefined()
+    expect(cols.every((column) => column.field === column.key)).toBe(true)
+  })
+
+  it('applies_header_and_render_overrides_and_appends_extra_columns', () => {
+    const cols = schemaColumns<Row>(
+      schemaFixture,
+      {
+        name: { header: '用户名', render: (row) => `named:${row.name}` },
+        id: { className: 'w-16' },
+      },
+      [{ key: 'actions', header: '操作', render: () => 'ops' }],
+    )
+
+    expect(cols.map((column) => column.header)).toEqual(['ID', '用户名', '删除时间', '启用', '操作'])
+    expect(cols[0]?.className).toBe('w-16')
+    expect(cols[1]?.render({ id: '1', name: 'alice' })).toBe('named:alice')
+    // 操作列不声明 field，恒可见且不参与显隐。
+    expect(cols[4]?.field).toBeUndefined()
+  })
+
+  it('renders_default_values_with_dash_for_nullables_and_datetime_formatting', () => {
+    const cols = schemaColumns<{ id: string; name: string; deletedAt?: string; active: boolean }>(schemaFixture)
+    const deletedAtColumn = cols[2]!
+    const activeColumn = cols[3]!
+
+    // 可空缺省出破折号；datetime 合法值格式化本地时间、非法值回退原文；
+    // boolean 出是/否。
+    expect(deletedAtColumn.render({ id: '1', name: 'a', active: false })).toBe('—')
+    expect(deletedAtColumn.render({ id: '1', name: 'a', active: false, deletedAt: '2026-01-01T08:00:00Z' })).toBe(
+      new Date('2026-01-01T08:00:00Z').toLocaleString(),
+    )
+    expect(deletedAtColumn.render({ id: '1', name: 'a', active: false, deletedAt: 'not-a-date' })).toBe('not-a-date')
+    expect(activeColumn.render({ id: '1', name: 'a', active: true })).toBe('是')
+    expect(activeColumn.render({ id: '1', name: 'a', active: false })).toBe('否')
   })
 })
 
@@ -158,6 +236,30 @@ describe('DataTable sorting', () => {
     await user.click(screen.getByRole('button', { name: /名称/ }))
     await waitFor(() => expect(fetchPage.mock.calls[3][0]).toMatchObject({ sort: defaultSort }))
     expect(screen.getByRole('columnheader', { name: /名称/ })).not.toHaveAttribute('aria-sort')
+  })
+
+  it('offers_a_clear_sort_entry_only_while_sorting_deviates_from_the_default', async () => {
+    const defaultSort = [{ field: 'createdAt', order: 'desc' as const }]
+    const fetchPage = vi.fn().mockResolvedValue(pageSet([{ id: '1', name: 'alice' }]))
+    const user = userEvent.setup()
+    render(
+      <DataTable
+        rowKey={(row) => row.id}
+        columns={columns}
+        fetchPage={fetchPage}
+        defaultSort={defaultSort}
+      />,
+    )
+    await screen.findByText('alice')
+    // 未偏离默认排序时不出现清除入口。
+    expect(screen.queryByRole('button', { name: '清除排序' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /名称/ }))
+    expect(await screen.findByRole('button', { name: '清除排序' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '清除排序' }))
+
+    await waitFor(() => expect(fetchPage.mock.calls[2][0]).toMatchObject({ sort: defaultSort }))
+    expect(screen.queryByRole('button', { name: '清除排序' })).not.toBeInTheDocument()
   })
 })
 

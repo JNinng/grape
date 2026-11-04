@@ -67,7 +67,7 @@ type MenuServiceClient interface {
 	UpdateMenuSuper(ctx context.Context, in *UpdateMenuSuperRequest, opts ...grpc.CallOption) (*Menu, error)
 	// MoveMenuSuper 移动菜单到新父级（parent_id 未设置表示移为根）。
 	// 新父级不存在/已删除/跨租户返回 INVALID_ARGUMENT；移入自身子树
-	//（成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
+	// （成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
 	MoveMenuSuper(ctx context.Context, in *MoveMenuSuperRequest, opts ...grpc.CallOption) (*Menu, error)
 	// DeleteMenuSuper 软删除菜单（deleted_at 置位）。存在未删除直接子
 	// 菜单返回 HAS_CHILDREN（自叶向根逐层删）；目标不存在或跨租户返回
@@ -182,7 +182,7 @@ type MenuServiceServer interface {
 	UpdateMenuSuper(context.Context, *UpdateMenuSuperRequest) (*Menu, error)
 	// MoveMenuSuper 移动菜单到新父级（parent_id 未设置表示移为根）。
 	// 新父级不存在/已删除/跨租户返回 INVALID_ARGUMENT；移入自身子树
-	//（成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
+	// （成环）返回 INVALID_ARGUMENT 且不写入。目标不存在返回 NOT_FOUND。
 	MoveMenuSuper(context.Context, *MoveMenuSuperRequest) (*Menu, error)
 	// DeleteMenuSuper 软删除菜单（deleted_at 置位）。存在未删除直接子
 	// 菜单返回 HAS_CHILDREN（自叶向根逐层删）；目标不存在或跨租户返回

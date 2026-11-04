@@ -71,7 +71,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	string2 := defaultTenantID(auth)
 	authUsecase := biz.NewAuthUsecase(userRepo, sessionUsecase, string2)
 	sessionService := service.NewSessionService(authUsecase, sessionUsecase)
-	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, permissionService, sessionService)
+	querySchemaProvider := pg_sqlc.NewQuerySchemaRepo()
+	queryUsecase := biz.NewQueryUsecase(querySchemaProvider)
+	queryService := service.NewQueryService(queryUsecase)
+	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, permissionService, sessionService, queryService)
 	service2, cleanup3, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
 		cleanup2()
@@ -142,7 +145,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, permissionService, sessionService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, permissionService, sessionService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
 	if err != nil {
 		cleanup8()
 		cleanup7()

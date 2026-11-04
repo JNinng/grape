@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package query.v1;
 
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
 import "google/protobuf/struct.proto";
 
 option go_package = "grape/api/query/v1;v1";
@@ -61,4 +63,99 @@ message Pagination {
   optional string after = 3;
   // 是否计算 total。缺省为 true。
   optional bool include_total = 4;
+}
+
+// QueryService 提供动态 List 的能力 schema 出口：前端据此渲染查询组件。
+// schema 是（生成期元数据，能力收窄选项）的确定性纯函数，同一资源恒产出
+// 字节级相同结果，内容 hash 可作 ETag。资源仅收录已暴露动态 List 的表；
+// 本服务为能力元数据读面，认证后即可访问，不设功能权限码。
+service QueryService {
+  // GetListSchema 返回资源的 List 能力 schema（字段、操作符、排序、分页配置）。
+  // 请求的资源未收录时返回 INVALID_ARGUMENT。
+  rpc GetListSchema (GetListSchemaRequest) returns (ListSchema) {
+    option (google.api.http) = {
+      get: "/v1/query/schema"
+    };
+  }
+}
+
+// GetListSchemaRequest 是 QueryService.GetListSchema 的输入。
+message GetListSchemaRequest {
+  // 资源名（存储表名，如 sys_user）。仅收录已暴露动态 List 的资源。
+  string resource = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListSchema 是动态 List 查询的能力契约，镜像存储层 dynq.ResourceSchema。
+// 被完全禁用（或 @internal）的字段不出现在 fields 中；JSON 键统一小驼峰，
+// 与存储层 schema 的 JSON 协议一致。
+message ListSchema {
+  // 资源名（存储表名）。
+  string resource = 1;
+  // schema 内容 hash（确定性纯函数），可作 ETag 缓存协商。
+  string hash = 2;
+  // 可查询字段的能力列表。
+  repeated ListSchemaField fields = 3;
+  // 默认排序；查询未指定 sort 时的服务端回落。
+  repeated ListSchemaSort default_sort = 4;
+  // 分页参数。
+  ListSchemaPagination pagination = 5;
+}
+
+// ListSchemaField 是单个查询字段的能力契约。
+message ListSchemaField {
+  // 字段键，小驼峰，与 Query.where/sort/fields 中的字段键一致。
+  string field = 1;
+  // 展示文本。
+  string label = 2;
+  // 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
+  string data_type = 3;
+  // 是否可空。
+  bool nullable = 4;
+  // 是否可排序（sort 接受该字段）。
+  bool sortable = 5;
+  // 列头可显隐交互提示。
+  bool hideable = 6;
+  // hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+  bool selectable = 7;
+  // 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
+  // between、contains、prefix、suffix、has、is_null、not_null）。
+  repeated string ops = 8;
+  // 枚举字段的合法线上枚举名。JSON 键为 enum。
+  repeated string enum_values = 9 [json_name = "enum"];
+  // 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+  ListSchemaFieldAPI api = 10;
+}
+
+// ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
+// GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
+// 命名的顶层字段。
+message ListSchemaFieldAPI {
+  // 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
+  string endpoint = 1;
+  // items 中选项值的字段名（顶层）。
+  string value_key = 2;
+  // items 中展示文本的字段名（顶层）。
+  string label_key = 3;
+  // 交互模式：single | multi | search。
+  string mode = 4;
+}
+
+// ListSchemaSort 是默认排序项。
+message ListSchemaSort {
+  // 字段键，小驼峰。
+  string field = 1;
+  // true = desc。
+  bool desc = 2;
+}
+
+// ListSchemaPagination 是分页双模式与 total 计算能力。
+message ListSchemaPagination {
+  // 每页默认条数。
+  int32 default_page_size = 1;
+  // 每页最大条数。
+  int32 max_page_size = 2;
+  // 支持的分页模式：offset、cursor。
+  repeated string modes = 3;
+  // 是否支持 include_total=false 跳过 COUNT。
+  bool include_total = 4;
 }

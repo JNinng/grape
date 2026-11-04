@@ -56,7 +56,7 @@ func newPermissionTestServer(t *testing.T, repo biz.PermissionRepo) *kratoshttp.
 		noop, authMiddleware, permMiddleware, ops.NewMetricsHandler(nil, nil),
 		nil, nil, nil, nil, nil,
 		service.NewPermissionService(biz.NewPermissionUsecase(repo)),
-		nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

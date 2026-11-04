@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { MoreHorizontalIcon, PlusIcon, SearchIcon } from 'lucide-react'
+import { PlusIcon } from 'lucide-react'
 import {
   addMembers,
   createUserGroup,
@@ -11,8 +11,11 @@ import {
   type UserGroupDTO,
   type UserGroupMemberDTO,
 } from '@/api/userGroups'
-import type { QueryCondition } from '@/api/query'
-import { DataTable, type DataTableColumn } from '@/components/manage/data-table'
+import type { QueryCondition, QuerySort } from '@/api/query'
+import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
+import { RowActionsMenu } from '@/components/manage/row-actions'
+import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,16 +37,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -95,11 +90,6 @@ function statusBadge(status: number | undefined): ReactNode {
   ) : (
     <Badge variant="secondary">启用</Badge>
   )
-}
-
-// orDash 把可空字段渲染为占位横线，避免空白单元格。
-function orDash(value: string | undefined): string {
-  return value === undefined || value === '' ? '—' : value
 }
 
 // Field 是表单字段布局：标签 + 控件，标签经 htmlFor 与控件关联。
@@ -602,137 +592,98 @@ function RowActions({
   onOpen: (state: DialogState) => void
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`操作 ${group.name}`}>
-          <MoreHorizontalIcon aria-hidden className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'members', group })}>成员管理</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onOpen({ kind: 'edit', group })}>编辑</DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={() => onOpen({ kind: 'delete', group })}>
-          删除
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <RowActionsMenu
+      rowLabel={group.name}
+      info={[
+        { label: '组名', value: group.name },
+        { label: '组编码', value: group.code },
+      ]}
+      actions={[
+        { label: '成员管理', onSelect: () => onOpen({ kind: 'members', group }) },
+        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', group }) },
+        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', group }) },
+      ]}
+    />
   )
 }
 
 // ---------- 页面 ----------
 
-// UserGroupManagePage 用户组管理：列表（动态查询筛选/排序/分页）+ 行内
-// 动作（成员管理/编辑/删除）+ 新建。筛选产物为 where，取数经 DataTable
-// 注入 listUserGroups。
+// UserGroupManagePage 用户组管理：列表（筛选/列定义动态响应 GetListSchema
+// 响应）+ 行内动作（成员管理/编辑/删除）+ 新建。筛选产物为 where，取数经
+// DataTable 注入 listUserGroups。
 export function UserGroupManagePage() {
-  const [nameKeyword, setNameKeyword] = useState('')
-  const [codePrefix, setCodePrefix] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
-  const [applied, setApplied] = useState<{ name: string; code: string }>({ name: '', code: '' })
+  const [filters, setFilters] = useState<QueryCondition[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_user_group')
 
-  // where 是筛选表单的产物（多条 AND）：状态选择即时生效（对齐用户页样
-  // 板），组名/组编码关键字经「筛选」提交后生效。
-  const where = useMemo<QueryCondition[]>(() => {
-    const conditions: QueryCondition[] = []
-    const name = applied.name.trim()
-    if (name !== '') {
-      conditions.push({ field: 'name', op: 'contains', value: name })
-    }
-    const code = applied.code.trim()
-    if (code !== '') {
-      conditions.push({ field: 'code', op: 'prefix', value: code })
-    }
-    if (statusFilter === 'enabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_ENABLED })
-    } else if (statusFilter === 'disabled') {
-      conditions.push({ field: 'status', op: 'eq', value: STATUS_DISABLED })
-    }
-    return conditions
-  }, [applied, statusFilter])
+  const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
+  const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
+  const pageSize = schema?.pagination?.defaultPageSize ?? 20
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
+  // columns 动态响应 schema：页面仅覆写必要附加项（状态徽标 + 长 label
+  // 列头）；行操作列不对应查询字段，恒追加在末尾。
   const columns = useMemo<DataTableColumn<UserGroupDTO>[]>(
-    () => [
-      { key: 'id', header: 'ID', className: 'w-16', render: (g) => g.id },
-      { key: 'name', header: '组名', render: (g) => g.name },
-      { key: 'code', header: '组编码', render: (g) => g.code },
-      { key: 'remark', header: '备注', render: (g) => orDash(g.remark) },
-      { key: 'ownerUserId', header: '组长', render: (g) => orDash(g.ownerUserId) },
-      { key: 'status', header: '状态', render: (g) => statusBadge(g.status) },
-      { key: 'createdAt', header: '创建时间', sortable: 'createdAt', render: (g) => formatDateTime(g.createdAt) },
-      {
-        key: 'actions',
-        header: '操作',
-        className: 'w-16 text-right',
-        render: (g) => <RowActions group={g} onOpen={setDialog} />,
-      },
-    ],
-    [],
+    () =>
+      schema === null
+        ? []
+        : schemaColumns<UserGroupDTO>(
+            schema,
+            { status: { header: '状态', render: (g) => statusBadge(g.status) } },
+            [
+              {
+                key: 'actions',
+                header: '操作',
+                className: 'w-16 text-right',
+                sticky: 'right',
+                render: (g) => <RowActions group={g} onOpen={setDialog} />,
+              },
+            ],
+          ),
+    [schema],
   )
 
-  const applyFilters = (event: FormEvent) => {
-    event.preventDefault()
-    setApplied({ name: nameKeyword, code: codePrefix })
-  }
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">用户组管理</h1>
-          <p className="text-sm text-muted-foreground">租户内用户组与成员映射的维护入口。</p>
+    <div className="flex min-h-0 flex-1 flex-col p-6">
+      {/* 落条即查：QueryFilter 的条件串直接作为 DataTable 的 where；标题与
+       * 描述由表格标题行承载（描述悬停弹出）。 */}
+      {schemaError !== null ? (
+        <Alert variant="destructive">
+          <AlertDescription className="flex items-center justify-between gap-3">
+            <span>查询能力加载失败：{schemaError}</span>
+            <Button type="button" variant="outline" size="sm" onClick={retrySchema}>
+              重试
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : schemaLoading ? (
+        <div className="flex min-h-32 items-center justify-center" aria-label="加载中">
+          <Spinner aria-hidden className="size-6" />
         </div>
-        <form className="flex flex-wrap items-center gap-2" onSubmit={applyFilters} aria-label="用户组筛选">
-          <Input
-            aria-label="组名关键字"
-            placeholder="组名包含…"
-            value={nameKeyword}
-            onChange={(e) => setNameKeyword(e.target.value)}
-            className="w-48"
-          />
-          <Input
-            aria-label="组编码前缀"
-            placeholder="组编码前缀…"
-            value={codePrefix}
-            onChange={(e) => setCodePrefix(e.target.value)}
-            className="w-40"
-          />
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | 'enabled' | 'disabled')}>
-            <SelectTrigger aria-label="状态筛选" className="w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="enabled">启用</SelectItem>
-              <SelectItem value="disabled">禁用</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit" variant="outline">
-            <SearchIcon aria-hidden className="size-4" />
-            筛选
-          </Button>
-        </form>
-      </div>
-
-      <DataTable
-        rowKey={(group) => group.id}
-        columns={columns}
-        fetchPage={listUserGroups}
-        where={where}
-        reloadKey={reloadKey}
-        defaultSort={[{ field: 'createdAt', order: 'desc' }]}
-        emptyText="没有符合条件的用户组"
-        toolbar={
-          <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
-            <PlusIcon aria-hidden className="size-4" />
-            新建用户组
-          </Button>
-        }
-      />
+      ) : (
+        <DataTable
+          title="用户组管理"
+          description="租户内用户组与成员映射的维护入口。"
+          filters={<QueryFilter fields={filterFields} value={filters} onChange={setFilters} onSearch={() => setReloadKey((key) => key + 1)} ariaLabel="用户组筛选" />}
+          rowKey={(group) => group.id}
+          columns={columns}
+          fetchPage={listUserGroups}
+          where={filters}
+          schema={schema}
+          reloadKey={reloadKey}
+          defaultSort={defaultSort}
+          pageSize={pageSize}
+          emptyText="没有符合条件的用户组"
+          toolbar={
+            <ToolbarIconButton label="新建用户组" onClick={() => setDialog({ kind: 'create' })}>
+              <PlusIcon aria-hidden className="size-4" />
+            </ToolbarIconButton>
+          }
+        />
+      )}
 
       {dialog === null ? null : dialog.kind === 'create' ? (
         <UserGroupCreateDialog onClose={() => setDialog(null)} onCreated={reload} />

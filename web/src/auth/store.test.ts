@@ -29,14 +29,14 @@ describe('session store', () => {
     setSession(loginReply())
 
     expect(getAccessToken()).toBe('access-1')
-    expect(sessionStorage.getItem(refreshTokenStorageKey)).not.toContain('access')
+    expect(localStorage.getItem(refreshTokenStorageKey)).not.toContain('access')
   })
 
-  it('persists the refresh token in sessionStorage', () => {
+  it('persists the refresh token in localStorage', () => {
     setSession(loginReply())
 
     expect(getRefreshToken()).toBe('refresh-1')
-    expect(sessionStorage.getItem(refreshTokenStorageKey)).toBe('refresh-1')
+    expect(localStorage.getItem(refreshTokenStorageKey)).toBe('refresh-1')
   })
 
   it('keeps the session user for UI display', () => {

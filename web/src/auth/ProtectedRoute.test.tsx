@@ -65,7 +65,7 @@ describe('ProtectedRoute', () => {
 
   it('restores the session when only a refresh token survives a reload', async () => {
     clearSession()
-    sessionStorage.setItem(refreshTokenStorageKey, 'refresh-1')
+    localStorage.setItem(refreshTokenStorageKey, 'refresh-1')
     mockRefresh.mockResolvedValue()
 
     renderAt('/')
@@ -76,7 +76,7 @@ describe('ProtectedRoute', () => {
 
   it('redirects to login when refresh fails', async () => {
     clearSession()
-    sessionStorage.setItem(refreshTokenStorageKey, 'refresh-stale')
+    localStorage.setItem(refreshTokenStorageKey, 'refresh-stale')
     mockRefresh.mockRejectedValue(new Error('expired'))
 
     renderAt('/')

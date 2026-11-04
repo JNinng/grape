@@ -27,7 +27,7 @@ CREATE TABLE public.sys_tenant
 -- 软删除后名称/编码可复用：用部分唯一索引替代表级 UNIQUE 约束（与其他表模式一致）
 CREATE UNIQUE INDEX sys_tenant_name_un ON public.sys_tenant USING btree (name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_tenant_code_un ON public.sys_tenant USING btree (code) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_tenant IS '租户表 [@default_sort: created_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_tenant IS '租户表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
 
 -- Column comments
 
@@ -44,6 +44,6 @@ COMMENT ON COLUMN public.sys_tenant.default_locale IS '租户默认语言（BCP-
 COMMENT ON COLUMN public.sys_tenant.created_by IS '创建人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_tenant.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
-COMMENT ON COLUMN public.sys_tenant.updated_at IS '更新时间 [@dynamic: range @sortable]';
+COMMENT ON COLUMN public.sys_tenant.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_tenant.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
