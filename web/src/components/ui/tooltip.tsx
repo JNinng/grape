@@ -45,7 +45,9 @@ function TooltipContent({
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground" />
+        {/* 箭头的居中位移与 45° 旋转合并为单个 transform：translate/rotate
+            是 v4 独立 CSS 属性，兼容目标内核不支持，拆开写会整体失效。 */}
+        <TooltipPrimitive.Arrow className="z-50 size-2.5 [transform:translateY(calc(-50%_-_2px))_rotate(45deg)] rounded-[2px] bg-foreground fill-foreground" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )
