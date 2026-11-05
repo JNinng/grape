@@ -7,11 +7,11 @@
 //	table sys_dict_data: [@pk: id]
 //	table sys_dict_data: [@filter: deleted_at is_null]
 //	column sys_dict_data.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_dict_data.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_dict_data.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_dict_data.dict_type_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_dict_data.label: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_dict_data.value: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_dict_data.value_type: [@dynamic: eq, neq @hideable]
+//	column sys_dict_data.value_type: [@dynamic: eq, neq @hideable @label: 值类型 @desc: 系统获取值时根据此类型做预处理 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON]
 //	column sys_dict_data.sort_order: [@dynamic: eq, neq, gt, gte, lt, lte, between @sortable @updatable: set]
 //	column sys_dict_data.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
 //	column sys_dict_data.created_by: [@dynamic: eq, neq, in, not_in]
@@ -54,13 +54,17 @@ var sys_dict_dataRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "dictTypeId",
@@ -98,13 +102,21 @@ var sys_dict_dataRegistry = dynq.TableMeta{
 		{
 			Key:        "valueType",
 			Column:     "value_type",
-			Label:      "值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理",
+			Label:      "值类型",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "系统获取值时根据此类型做预处理",
+			Options: []dynq.FieldOption{
+				{Value: "string", Label: "字符串"},
+				{Value: "integer", Label: "整数"},
+				{Value: "boolean", Label: "布尔"},
+				{Value: "float", Label: "浮点"},
+				{Value: "json", Label: "JSON"},
+			},
 		},
 		{
 			Key:        "sortOrder",
@@ -1434,7 +1446,7 @@ type SysDictDatumUpdateOption = dynq.UpdateOption[SysDictDatumTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysDictDatumTable) SetStatus(v int64) SysDictDatumUpdateOption {
 	return func(st *dynq.UpdateState[SysDictDatumTable]) error {
 		return st.Set("status", "status", "", v)

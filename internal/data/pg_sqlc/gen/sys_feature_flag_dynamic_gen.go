@@ -7,11 +7,11 @@
 //	table sys_feature_flag: [@pk: id]
 //	table sys_feature_flag: [@filter: deleted_at is_null]
 //	column sys_feature_flag.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_feature_flag.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_feature_flag.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_feature_flag.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_feature_flag.flag_key: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_feature_flag.description: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
-//	column sys_feature_flag.is_enabled: [@dynamic: eq, neq, in, not_in @hideable @updatable: set]
+//	column sys_feature_flag.is_enabled: [@dynamic: eq, neq, in, not_in @hideable @updatable: set @label: 是否启用 @desc: true-开启功能、false-关闭功能]
 //	column sys_feature_flag.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
 //	column sys_feature_flag.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_feature_flag.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
@@ -53,13 +53,17 @@ var sys_feature_flagRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -97,13 +101,14 @@ var sys_feature_flagRegistry = dynq.TableMeta{
 		{
 			Key:        "isEnabled",
 			Column:     "is_enabled",
-			Label:      "是否启用：true-开启功能 false-关闭功能",
+			Label:      "是否启用",
 			DataType:   dynq.DataTypeBoolean,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "true-开启功能、false-关闭功能",
 		},
 		{
 			Key:        "remark",
@@ -1329,7 +1334,7 @@ type SysFeatureFlagUpdateOption = dynq.UpdateOption[SysFeatureFlagTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysFeatureFlagTable) SetStatus(v int64) SysFeatureFlagUpdateOption {
 	return func(st *dynq.UpdateState[SysFeatureFlagTable]) error {
 		return st.Set("status", "status", "", v)
@@ -1350,7 +1355,7 @@ func (SysFeatureFlagTable) SetDescription(v *string) SysFeatureFlagUpdateOption 
 	}
 }
 
-// SetIsEnabled 设置 isEnabled（是否启用：true-开启功能 false-关闭功能）列值，无 nil。
+// SetIsEnabled 设置 isEnabled（是否启用）列值，无 nil。
 func (SysFeatureFlagTable) SetIsEnabled(v bool) SysFeatureFlagUpdateOption {
 	return func(st *dynq.UpdateState[SysFeatureFlagTable]) error {
 		return st.Set("isEnabled", "is_enabled", "", v)

@@ -7,7 +7,7 @@
 //	table sys_dict_type: [@pk: id]
 //	table sys_dict_type: [@filter: deleted_at is_null]
 //	column sys_dict_type.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_dict_type.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_dict_type.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_dict_type.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_dict_type.code: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_dict_type.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
@@ -51,13 +51,17 @@ var sys_dict_typeRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -1190,7 +1194,7 @@ type SysDictTypeUpdateOption = dynq.UpdateOption[SysDictTypeTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysDictTypeTable) SetStatus(v int64) SysDictTypeUpdateOption {
 	return func(st *dynq.UpdateState[SysDictTypeTable]) error {
 		return st.Set("status", "status", "", v)

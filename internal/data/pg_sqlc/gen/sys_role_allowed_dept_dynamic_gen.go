@@ -7,7 +7,7 @@
 //	table sys_role_allowed_dept: [@pk: id]
 //	table sys_role_allowed_dept: [@filter: deleted_at is_null]
 //	column sys_role_allowed_dept.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_role_allowed_dept.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_role_allowed_dept.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_role_allowed_dept.role_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_role_allowed_dept.dept_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_role_allowed_dept.created_by: [@dynamic: eq, neq, in, not_in]
@@ -50,13 +50,17 @@ var sys_role_allowed_deptRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "roleId",

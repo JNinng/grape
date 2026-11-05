@@ -6,7 +6,7 @@
 //	table sys_session: [@default_sort: updated_at DESC]
 //	table sys_session: [@pk: id]
 //	column sys_session.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_session.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_session.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_session.user_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_session.tenant_id: [@internal]
 //	column sys_session.token_hash: [@internal]
@@ -54,13 +54,17 @@ var sys_sessionRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "userId",

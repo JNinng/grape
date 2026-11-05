@@ -7,11 +7,11 @@
 //	table sys_menu: [@pk: id]
 //	table sys_menu: [@filter: deleted_at is_null]
 //	column sys_menu.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_menu.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_menu.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_menu.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_menu.permission_code: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_menu.parent_id: [@dynamic: eq, neq, in, not_in]
-//	column sys_menu.menu_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_menu.menu_type: [@dynamic: eq, neq, in, not_in @hideable @label: 菜单类型 @desc: 按钮即操作权限点 @options: 1=目录 2=菜单 3=按钮]
 //	column sys_menu.icon: [@updatable: set]
 //	column sys_menu.route_path: [@updatable: set]
 //	column sys_menu.component: [@updatable: set]
@@ -58,13 +58,17 @@ var sys_menuRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -102,13 +106,19 @@ var sys_menuRegistry = dynq.TableMeta{
 		{
 			Key:        "menuType",
 			Column:     "menu_type",
-			Label:      "菜单类型：1-目录 2-菜单 3-按钮（操作权限点）",
+			Label:      "菜单类型",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "按钮即操作权限点",
+			Options: []dynq.FieldOption{
+				{Value: int64(1), Label: "目录"},
+				{Value: int64(2), Label: "菜单"},
+				{Value: int64(3), Label: "按钮"},
+			},
 		},
 		{
 			Key:        "icon",
@@ -1522,7 +1532,7 @@ type SysMenuUpdateOption = dynq.UpdateOption[SysMenuTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysMenuTable) SetStatus(v int64) SysMenuUpdateOption {
 	return func(st *dynq.UpdateState[SysMenuTable]) error {
 		return st.Set("status", "status", "", v)

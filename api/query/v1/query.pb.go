@@ -466,7 +466,14 @@ type ListSchemaField struct {
 	EnumValues []string `protobuf:"bytes,9,rep,name=enum_values,json=enum,proto3" json:"enum_values,omitempty"`
 	// 选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
 	// 响应键省略。
-	Api           *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
+	Api *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
+	// 字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
+	// JSON 响应键省略。
+	Desc string `protobuf:"bytes,11,opt,name=desc,proto3" json:"desc,omitempty"`
+	// 静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
+	// 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
+	// （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
+	Options       []*ListSchemaFieldOption `protobuf:"bytes,12,rep,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -571,6 +578,75 @@ func (x *ListSchemaField) GetApi() *ListSchemaFieldAPI {
 	return nil
 }
 
+func (x *ListSchemaField) GetDesc() string {
+	if x != nil {
+		return x.Desc
+	}
+	return ""
+}
+
+func (x *ListSchemaField) GetOptions() []*ListSchemaFieldOption {
+	if x != nil {
+		return x.Options
+	}
+	return nil
+}
+
+// ListSchemaFieldOption 是静态字典选项的单个键值对。
+type ListSchemaFieldOption struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 选项值，number 或 string，与字段 data_type 定型一致。
+	Value *structpb.Value `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
+	// 选项展示文本。
+	Label         string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSchemaFieldOption) Reset() {
+	*x = ListSchemaFieldOption{}
+	mi := &file_query_v1_query_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSchemaFieldOption) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSchemaFieldOption) ProtoMessage() {}
+
+func (x *ListSchemaFieldOption) ProtoReflect() protoreflect.Message {
+	mi := &file_query_v1_query_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSchemaFieldOption.ProtoReflect.Descriptor instead.
+func (*ListSchemaFieldOption) Descriptor() ([]byte, []int) {
+	return file_query_v1_query_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ListSchemaFieldOption) GetValue() *structpb.Value {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+func (x *ListSchemaFieldOption) GetLabel() string {
+	if x != nil {
+		return x.Label
+	}
+	return ""
+}
+
 // ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
 // GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
 // 命名的顶层字段。
@@ -590,7 +666,7 @@ type ListSchemaFieldAPI struct {
 
 func (x *ListSchemaFieldAPI) Reset() {
 	*x = ListSchemaFieldAPI{}
-	mi := &file_query_v1_query_proto_msgTypes[7]
+	mi := &file_query_v1_query_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -602,7 +678,7 @@ func (x *ListSchemaFieldAPI) String() string {
 func (*ListSchemaFieldAPI) ProtoMessage() {}
 
 func (x *ListSchemaFieldAPI) ProtoReflect() protoreflect.Message {
-	mi := &file_query_v1_query_proto_msgTypes[7]
+	mi := &file_query_v1_query_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -615,7 +691,7 @@ func (x *ListSchemaFieldAPI) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSchemaFieldAPI.ProtoReflect.Descriptor instead.
 func (*ListSchemaFieldAPI) Descriptor() ([]byte, []int) {
-	return file_query_v1_query_proto_rawDescGZIP(), []int{7}
+	return file_query_v1_query_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListSchemaFieldAPI) GetEndpoint() string {
@@ -659,7 +735,7 @@ type ListSchemaSort struct {
 
 func (x *ListSchemaSort) Reset() {
 	*x = ListSchemaSort{}
-	mi := &file_query_v1_query_proto_msgTypes[8]
+	mi := &file_query_v1_query_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -671,7 +747,7 @@ func (x *ListSchemaSort) String() string {
 func (*ListSchemaSort) ProtoMessage() {}
 
 func (x *ListSchemaSort) ProtoReflect() protoreflect.Message {
-	mi := &file_query_v1_query_proto_msgTypes[8]
+	mi := &file_query_v1_query_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -684,7 +760,7 @@ func (x *ListSchemaSort) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSchemaSort.ProtoReflect.Descriptor instead.
 func (*ListSchemaSort) Descriptor() ([]byte, []int) {
-	return file_query_v1_query_proto_rawDescGZIP(), []int{8}
+	return file_query_v1_query_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListSchemaSort) GetField() string {
@@ -718,7 +794,7 @@ type ListSchemaPagination struct {
 
 func (x *ListSchemaPagination) Reset() {
 	*x = ListSchemaPagination{}
-	mi := &file_query_v1_query_proto_msgTypes[9]
+	mi := &file_query_v1_query_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -730,7 +806,7 @@ func (x *ListSchemaPagination) String() string {
 func (*ListSchemaPagination) ProtoMessage() {}
 
 func (x *ListSchemaPagination) ProtoReflect() protoreflect.Message {
-	mi := &file_query_v1_query_proto_msgTypes[9]
+	mi := &file_query_v1_query_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -743,7 +819,7 @@ func (x *ListSchemaPagination) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSchemaPagination.ProtoReflect.Descriptor instead.
 func (*ListSchemaPagination) Descriptor() ([]byte, []int) {
-	return file_query_v1_query_proto_rawDescGZIP(), []int{9}
+	return file_query_v1_query_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListSchemaPagination) GetDefaultPageSize() int32 {
@@ -816,7 +892,7 @@ const file_query_v1_query_proto_rawDesc = "" +
 	"\fdefault_sort\x18\x04 \x03(\v2\x18.query.v1.ListSchemaSortR\vdefaultSort\x12>\n" +
 	"\n" +
 	"pagination\x18\x05 \x01(\v2\x1e.query.v1.ListSchemaPaginationR\n" +
-	"pagination\"\xab\x02\n" +
+	"pagination\"\xfa\x02\n" +
 	"\x0fListSchemaField\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1b\n" +
@@ -830,7 +906,12 @@ const file_query_v1_query_proto_rawDesc = "" +
 	"\x03ops\x18\b \x03(\tR\x03ops\x12\x19\n" +
 	"\venum_values\x18\t \x03(\tR\x04enum\x12.\n" +
 	"\x03api\x18\n" +
-	" \x01(\v2\x1c.query.v1.ListSchemaFieldAPIR\x03api\"~\n" +
+	" \x01(\v2\x1c.query.v1.ListSchemaFieldAPIR\x03api\x12\x12\n" +
+	"\x04desc\x18\v \x01(\tR\x04desc\x129\n" +
+	"\aoptions\x18\f \x03(\v2\x1f.query.v1.ListSchemaFieldOptionR\aoptions\"[\n" +
+	"\x15ListSchemaFieldOption\x12,\n" +
+	"\x05value\x18\x01 \x01(\v2\x16.google.protobuf.ValueR\x05value\x12\x14\n" +
+	"\x05label\x18\x02 \x01(\tR\x05label\"~\n" +
 	"\x12ListSchemaFieldAPI\x12\x1a\n" +
 	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x1b\n" +
 	"\tvalue_key\x18\x02 \x01(\tR\bvalueKey\x12\x1b\n" +
@@ -861,37 +942,40 @@ func file_query_v1_query_proto_rawDescGZIP() []byte {
 	return file_query_v1_query_proto_rawDescData
 }
 
-var file_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_query_v1_query_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_query_v1_query_proto_goTypes = []any{
-	(*Query)(nil),                // 0: query.v1.Query
-	(*Condition)(nil),            // 1: query.v1.Condition
-	(*SortItem)(nil),             // 2: query.v1.SortItem
-	(*Pagination)(nil),           // 3: query.v1.Pagination
-	(*GetListSchemaRequest)(nil), // 4: query.v1.GetListSchemaRequest
-	(*ListSchema)(nil),           // 5: query.v1.ListSchema
-	(*ListSchemaField)(nil),      // 6: query.v1.ListSchemaField
-	(*ListSchemaFieldAPI)(nil),   // 7: query.v1.ListSchemaFieldAPI
-	(*ListSchemaSort)(nil),       // 8: query.v1.ListSchemaSort
-	(*ListSchemaPagination)(nil), // 9: query.v1.ListSchemaPagination
-	(*structpb.Value)(nil),       // 10: google.protobuf.Value
+	(*Query)(nil),                 // 0: query.v1.Query
+	(*Condition)(nil),             // 1: query.v1.Condition
+	(*SortItem)(nil),              // 2: query.v1.SortItem
+	(*Pagination)(nil),            // 3: query.v1.Pagination
+	(*GetListSchemaRequest)(nil),  // 4: query.v1.GetListSchemaRequest
+	(*ListSchema)(nil),            // 5: query.v1.ListSchema
+	(*ListSchemaField)(nil),       // 6: query.v1.ListSchemaField
+	(*ListSchemaFieldOption)(nil), // 7: query.v1.ListSchemaFieldOption
+	(*ListSchemaFieldAPI)(nil),    // 8: query.v1.ListSchemaFieldAPI
+	(*ListSchemaSort)(nil),        // 9: query.v1.ListSchemaSort
+	(*ListSchemaPagination)(nil),  // 10: query.v1.ListSchemaPagination
+	(*structpb.Value)(nil),        // 11: google.protobuf.Value
 }
 var file_query_v1_query_proto_depIdxs = []int32{
 	1,  // 0: query.v1.Query.where:type_name -> query.v1.Condition
 	2,  // 1: query.v1.Query.sort:type_name -> query.v1.SortItem
 	3,  // 2: query.v1.Query.pagination:type_name -> query.v1.Pagination
-	10, // 3: query.v1.Condition.value:type_name -> google.protobuf.Value
-	10, // 4: query.v1.Condition.right_value:type_name -> google.protobuf.Value
+	11, // 3: query.v1.Condition.value:type_name -> google.protobuf.Value
+	11, // 4: query.v1.Condition.right_value:type_name -> google.protobuf.Value
 	6,  // 5: query.v1.ListSchema.fields:type_name -> query.v1.ListSchemaField
-	8,  // 6: query.v1.ListSchema.default_sort:type_name -> query.v1.ListSchemaSort
-	9,  // 7: query.v1.ListSchema.pagination:type_name -> query.v1.ListSchemaPagination
-	7,  // 8: query.v1.ListSchemaField.api:type_name -> query.v1.ListSchemaFieldAPI
-	4,  // 9: query.v1.QueryService.GetListSchema:input_type -> query.v1.GetListSchemaRequest
-	5,  // 10: query.v1.QueryService.GetListSchema:output_type -> query.v1.ListSchema
-	10, // [10:11] is the sub-list for method output_type
-	9,  // [9:10] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	9,  // 6: query.v1.ListSchema.default_sort:type_name -> query.v1.ListSchemaSort
+	10, // 7: query.v1.ListSchema.pagination:type_name -> query.v1.ListSchemaPagination
+	8,  // 8: query.v1.ListSchemaField.api:type_name -> query.v1.ListSchemaFieldAPI
+	7,  // 9: query.v1.ListSchemaField.options:type_name -> query.v1.ListSchemaFieldOption
+	11, // 10: query.v1.ListSchemaFieldOption.value:type_name -> google.protobuf.Value
+	4,  // 11: query.v1.QueryService.GetListSchema:input_type -> query.v1.GetListSchemaRequest
+	5,  // 12: query.v1.QueryService.GetListSchema:output_type -> query.v1.ListSchema
+	12, // [12:13] is the sub-list for method output_type
+	11, // [11:12] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_query_v1_query_proto_init() }
@@ -906,7 +990,7 @@ func file_query_v1_query_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_query_v1_query_proto_rawDesc), len(file_query_v1_query_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -70,7 +70,7 @@ type TenantServiceClient interface {
 	// ALREADY_EXISTS。contact_name/contact_phone/default_locale 各不超过
 	// 64/32/10，default_locale 须为 BCP-47 基本形态（空则缺省 zh-CN）；
 	// max_user_count 提供时必须 >0。status 只允许 0/1，创建缺省启用
-	//（optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
+	// （optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
 	CreateTenantSuper(ctx context.Context, in *CreateTenantSuperRequest, opts ...grpc.CallOption) (*Tenant, error)
 	// GetTenantSuper 按 id 查询单个租户。目标不存在、已软删或不在调用方
 	// 租户树内（RLS 不可见）均返回 NOT_FOUND。
@@ -221,7 +221,7 @@ type TenantServiceServer interface {
 	// ALREADY_EXISTS。contact_name/contact_phone/default_locale 各不超过
 	// 64/32/10，default_locale 须为 BCP-47 基本形态（空则缺省 zh-CN）；
 	// max_user_count 提供时必须 >0。status 只允许 0/1，创建缺省启用
-	//（optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
+	// （optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
 	CreateTenantSuper(context.Context, *CreateTenantSuperRequest) (*Tenant, error)
 	// GetTenantSuper 按 id 查询单个租户。目标不存在、已软删或不在调用方
 	// 租户树内（RLS 不可见）均返回 NOT_FOUND。

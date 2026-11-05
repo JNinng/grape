@@ -38,7 +38,7 @@ type Menu struct {
 	// 不可变，更新输入中被忽略。
 	PermissionCode string `protobuf:"bytes,4,opt,name=permission_code,json=permissionCode,proto3" json:"permission_code,omitempty"`
 	// 父级菜单 ID，未设置表示根菜单/顶级权限分组；更新输入中被忽略
-	//（结构变更走 MoveMenuSuper）。
+	// （结构变更走 MoveMenuSuper）。
 	ParentId *int64 `protobuf:"varint,5,opt,name=parent_id,json=parentId,proto3,oneof" json:"parent_id,omitempty"`
 	// 菜单类型：1 目录、2 菜单、3 按钮（操作权限点）。创建后不可变，
 	// 更新输入中被忽略。

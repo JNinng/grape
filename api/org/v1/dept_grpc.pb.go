@@ -58,7 +58,7 @@ type DeptServiceClient interface {
 	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(ctx context.Context, in *UpdateDeptRequest, opts ...grpc.CallOption) (*Dept, error)
 	// MoveDept 移动部门到新父级：校验父级有效且不在被移动部门的子树内
-	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
+	// （防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
 	// 重写。parent_id 传 null（缺省）表示移为根部门。
 	MoveDept(ctx context.Context, in *MoveDeptRequest, opts ...grpc.CallOption) (*Dept, error)
 	// DeleteDept 软删除部门（deleted_at 置位）。存在未删除的直接子部门时
@@ -174,7 +174,7 @@ type DeptServiceServer interface {
 	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(context.Context, *UpdateDeptRequest) (*Dept, error)
 	// MoveDept 移动部门到新父级：校验父级有效且不在被移动部门的子树内
-	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
+	// （防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
 	// 重写。parent_id 传 null（缺省）表示移为根部门。
 	MoveDept(context.Context, *MoveDeptRequest) (*Dept, error)
 	// DeleteDept 软删除部门（deleted_at 置位）。存在未删除的直接子部门时

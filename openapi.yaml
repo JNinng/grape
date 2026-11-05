@@ -3357,6 +3357,19 @@ components:
                     description: |-
                         选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
                          响应键省略。
+                desc:
+                    type: string
+                    description: |-
+                        字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
+                         JSON 响应键省略。
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.ListSchemaFieldOption'
+                    description: |-
+                        静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
+                         按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
+                         （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
             description: ListSchemaField 是单个查询字段的能力契约。
         query.v1.ListSchemaFieldAPI:
             type: object
@@ -3377,6 +3390,17 @@ components:
                 ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
                  GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
                  命名的顶层字段。
+        query.v1.ListSchemaFieldOption:
+            type: object
+            properties:
+                value:
+                    allOf:
+                        - $ref: '#/components/schemas/google.protobuf.Value'
+                    description: 选项值，number 或 string，与字段 data_type 定型一致。
+                label:
+                    type: string
+                    description: 选项展示文本。
+            description: ListSchemaFieldOption 是静态字典选项的单个键值对。
         query.v1.ListSchemaPagination:
             type: object
             properties:

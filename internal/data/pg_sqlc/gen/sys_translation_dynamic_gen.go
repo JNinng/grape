@@ -7,7 +7,7 @@
 //	table sys_translation: [@pk: id]
 //	table sys_translation: [@filter: deleted_at is_null]
 //	column sys_translation.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_translation.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_translation.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @desc: 暂缺翻译时可禁用，消费方回退原始值 @options: 0=禁用 1=启用]
 //	column sys_translation.table_name: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_translation.row_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_translation.column_name: [@dynamic: eq, neq, in, not_in @hideable]
@@ -54,13 +54,18 @@ var sys_translationRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值）",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "暂缺翻译时可禁用，消费方回退原始值",
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "tableName",
@@ -1414,7 +1419,7 @@ type SysTranslationUpdateOption = dynq.UpdateOption[SysTranslationTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值））列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysTranslationTable) SetStatus(v int64) SysTranslationUpdateOption {
 	return func(st *dynq.UpdateState[SysTranslationTable]) error {
 		return st.Set("status", "status", "", v)

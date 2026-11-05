@@ -10,9 +10,9 @@
 //	column sys_login_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
 //	column sys_login_log.tenant_id: [@internal]
 //	column sys_login_log.ip_address: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @hideable @label: 登录方式 @options: password=密码登录 sms=短信验证码 oauth=第三方授权 refresh_token=刷新令牌]
 //	column sys_login_log.is_success: [@dynamic: eq, neq, in, not_in @hideable]
-//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @hideable]
+//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @hideable @label: 失败原因 @desc: 如密码错误、账号已禁用、租户已过期、验证码错误]
 //	column sys_login_log.login_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_login_log.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_login_log.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
@@ -103,13 +103,19 @@ var sys_login_logRegistry = dynq.TableMeta{
 		{
 			Key:        "loginType",
 			Column:     "login_type",
-			Label:      "登录方式：password-密码登录 sms-短信验证码 oauth-第三方授权 refresh_token-刷新令牌",
+			Label:      "登录方式",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: "password", Label: "密码登录"},
+				{Value: "sms", Label: "短信验证码"},
+				{Value: "oauth", Label: "第三方授权"},
+				{Value: "refresh_token", Label: "刷新令牌"},
+			},
 		},
 		{
 			Key:        "isSuccess",
@@ -125,13 +131,14 @@ var sys_login_logRegistry = dynq.TableMeta{
 		{
 			Key:        "failureReason",
 			Column:     "failure_reason",
-			Label:      "失败原因：如密码错误、账号已禁用、租户已过期、验证码错误",
+			Label:      "失败原因",
 			DataType:   dynq.DataTypeString,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpContains, dynq.OpPrefix, dynq.OpSuffix},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "如密码错误、账号已禁用、租户已过期、验证码错误",
 		},
 		{
 			Key:        "loginAt",

@@ -45,7 +45,7 @@ const (
 	// 菜单存在未删除的直接子菜单，禁止删除。
 	ErrorReason_MENU_HAS_CHILDREN ErrorReason = 8
 	// 功能权限码不通过：入口层判定当前用户不持有端点声明的权限码
-	//（角色 → 菜单 → 权限码链未命中）。
+	// （角色 → 菜单 → 权限码链未命中）。
 	ErrorReason_PERM_ACCESS_DENIED ErrorReason = 9
 )
 

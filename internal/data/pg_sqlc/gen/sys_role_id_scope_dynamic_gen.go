@@ -7,8 +7,8 @@
 //	table sys_role_id_scope: [@pk: id]
 //	table sys_role_id_scope: [@filter: deleted_at is_null]
 //	column sys_role_id_scope.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_role_id_scope.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_role_id_scope.type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_role_id_scope.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @label: 状态 @options: 0=禁用 1=启用]
+//	column sys_role_id_scope.type: [@dynamic: eq, neq, in, not_in @hideable @label: 数据 ID 类型 @options: 1=用户ID 2=部门ID 3=用户组ID]
 //	column sys_role_id_scope.role_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_role_id_scope.data_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_role_id_scope.created_by: [@dynamic: eq, neq, in, not_in]
@@ -51,24 +51,33 @@ var sys_role_id_scopeRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "type",
 			Column:     "type",
-			Label:      "数据 ID 类型，1：用户ID、2：部门ID、3：用户组ID",
+			Label:      "数据 ID 类型",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(1), Label: "用户ID"},
+				{Value: int64(2), Label: "部门ID"},
+				{Value: int64(3), Label: "用户组ID"},
+			},
 		},
 		{
 			Key:        "roleId",

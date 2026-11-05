@@ -8,17 +8,17 @@
 //	table sys_user: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
 //	table sys_user: [@filter: deleted_at is_null]
 //	column sys_user.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_user.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_user.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_user.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_user.nickname: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_user.password: [@internal @updatable: set]
 //	column sys_user.email: [@dynamic: eq, neq, prefix @hideable @updatable: set]
 //	column sys_user.phone: [@dynamic: eq, neq, prefix @hideable @updatable: set]
 //	column sys_user.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
-//	column sys_user.locale: [@dynamic: eq, neq @hideable @updatable: set]
+//	column sys_user.locale: [@dynamic: eq, neq @hideable @updatable: set @label: 语言 @desc: 用户语言偏好（BCP-47），影响界面展示语言]
 //	column sys_user.last_login_at: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @sortable @updatable: set]
 //	column sys_user.failed_count: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @updatable: set]
-//	column sys_user.locked_until: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @updatable: set]
+//	column sys_user.locked_until: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @updatable: set @label: 锁定截止时间 @desc: NULL 表示未锁定]
 //	column sys_user.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_user.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
@@ -62,13 +62,17 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -138,13 +142,14 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "locale",
 			Column:     "locale",
-			Label:      "用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言",
+			Label:      "语言",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "用户语言偏好（BCP-47），影响界面展示语言",
 		},
 		{
 			Key:        "lastLoginAt",
@@ -171,13 +176,14 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "lockedUntil",
 			Column:     "locked_until",
-			Label:      "账号锁定截止时间，NULL 表示未锁定",
+			Label:      "锁定截止时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween, dynq.OpIsNull, dynq.OpNotNull},
 			Sortable:   false,
 			Selectable: false,
 			Hidden:     false,
+			Desc:       "NULL 表示未锁定",
 		},
 		{
 			Key:        "createdBy",
@@ -2044,7 +2050,7 @@ type SysUserUpdateOption = dynq.UpdateOption[SysUserTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysUserTable) SetStatus(v int64) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("status", "status", "", v)
@@ -2093,7 +2099,7 @@ func (SysUserTable) SetRemark(v *string) SysUserUpdateOption {
 	}
 }
 
-// SetLocale 设置 locale（用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言）列值，无 nil。
+// SetLocale 设置 locale（语言）列值，无 nil。
 func (SysUserTable) SetLocale(v string) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("locale", "locale", "", v)
@@ -2114,7 +2120,7 @@ func (SysUserTable) SetFailedCount(v int64) SysUserUpdateOption {
 	}
 }
 
-// SetLockedUntil 设置 lockedUntil（账号锁定截止时间，NULL 表示未锁定）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+// SetLockedUntil 设置 lockedUntil（锁定截止时间）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (SysUserTable) SetLockedUntil(v *time.Time) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("lockedUntil", "locked_until", "", v)

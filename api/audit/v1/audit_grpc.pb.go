@@ -41,7 +41,7 @@ type AuditServiceClient interface {
 	// INVALID_ARGUMENT。
 	ListLoginLogs(ctx context.Context, in *ListLoginLogsRequest, opts ...grpc.CallOption) (*LoginLogSet, error)
 	// GetLoginLog 按 id 查询单条登录日志。跨租户不可见等同不存在
-	//（NOT_FOUND）。
+	// （NOT_FOUND）。
 	GetLoginLog(ctx context.Context, in *GetLoginLogRequest, opts ...grpc.CallOption) (*LoginLog, error)
 	// ListOperationLogs 按动态查询协议返回一页操作日志。协议错误返回
 	// INVALID_ARGUMENT。
@@ -115,7 +115,7 @@ type AuditServiceServer interface {
 	// INVALID_ARGUMENT。
 	ListLoginLogs(context.Context, *ListLoginLogsRequest) (*LoginLogSet, error)
 	// GetLoginLog 按 id 查询单条登录日志。跨租户不可见等同不存在
-	//（NOT_FOUND）。
+	// （NOT_FOUND）。
 	GetLoginLog(context.Context, *GetLoginLogRequest) (*LoginLog, error)
 	// ListOperationLogs 按动态查询协议返回一页操作日志。协议错误返回
 	// INVALID_ARGUMENT。

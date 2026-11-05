@@ -32,12 +32,12 @@ COMMENT ON TABLE public.sys_role IS '角色表 [@default_sort: updated_at DESC @
 -- Column comments
 
 COMMENT ON COLUMN public.sys_role.id IS '主键 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_role.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_role.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_role."name" IS '角色名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_role.code IS '权限编码 [@dynamic: exact, prefix @hideable]';
-COMMENT ON COLUMN public.sys_role.role_type IS '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义 [@dynamic: exact, in @hideable]';
-COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户 [@dynamic: exact, in @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 [@dynamic: exact, in @updatable: set]';
+COMMENT ON COLUMN public.sys_role.role_type IS '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义 [@label: 角色类型 @options: 1=系统预置 2=租户自定义 @desc: 系统预置不可删除，核心权限不可剥离 @dynamic: exact, in @hideable]';
+COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户 [@label: 数据范围 @options: 1=仅本人 2=本部门 3=本部门及子部门 4=指定人 5=指定部门 6=用户组 7=全租户 @dynamic: exact, in @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 [@label: 组织可见范围 @desc: 限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 @dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_role.remark IS '备注 [@dynamic: fuzzy @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_role.created_by IS '创建人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_role.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
@@ -72,8 +72,8 @@ COMMENT ON TABLE public.sys_role_id_scope IS '角色数据 ID 范围表 [@defaul
 -- Column comments
 
 COMMENT ON COLUMN public.sys_role_id_scope.id IS '主键 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_role_id_scope.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_role_id_scope."type" IS '数据 ID 类型，1：用户ID、2：部门ID、3：用户组ID [@dynamic: exact, in @hideable]';
+COMMENT ON COLUMN public.sys_role_id_scope.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.sys_role_id_scope."type" IS '数据 ID 类型，1：用户ID、2：部门ID、3：用户组ID [@label: 数据 ID 类型 @options: 1=用户ID 2=部门ID 3=用户组ID @dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_role_id_scope.role_id IS '角色 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_role_id_scope.data_id IS '数据 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_role_id_scope.created_by IS '创建人 [@dynamic: exact, in]';
@@ -107,7 +107,7 @@ COMMENT ON TABLE public.sys_role_allowed_dept IS '角色分发部门映射表（
 -- Column comments
 
 COMMENT ON COLUMN public.sys_role_allowed_dept.id IS '主键 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_role_allowed_dept.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.sys_role_allowed_dept.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_role_allowed_dept.role_id IS '角色 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_role_allowed_dept.dept_id IS '允许分配该角色的部门 ID（映射分发范围） [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_role_allowed_dept.created_by IS '创建人 [@dynamic: exact, in]';
@@ -146,11 +146,11 @@ CREATE UNIQUE INDEX sys_menu_tenant_code_un ON public.sys_menu USING btree (tena
 COMMENT ON TABLE public.sys_menu IS '菜单/权限表，定义系统功能菜单和操作权限的树形结构，通过 sys_role_menu 与角色关联 [@default_sort: sort_order ASC @pk: id @page: 20/200 @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.sys_menu.id IS '菜单 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_menu.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_menu.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_menu."name" IS '菜单/权限名称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_menu.permission_code IS '权限编码（租户内唯一），应用层通过此编码匹配权限，命名如 sys:user:create、sys:user:delete [@dynamic: exact, prefix @hideable]';
 COMMENT ON COLUMN public.sys_menu.parent_id IS '父级菜单 ID，NULL 为根菜单/顶级权限分组 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_menu.menu_type IS '菜单类型：1-目录 2-菜单 3-按钮（操作权限点） [@dynamic: exact, in @hideable]';
+COMMENT ON COLUMN public.sys_menu.menu_type IS '菜单类型：1-目录 2-菜单 3-按钮（操作权限点） [@label: 菜单类型 @options: 1=目录 2=菜单 3=按钮 @desc: 按钮即操作权限点 @dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_menu.icon IS '菜单图标 [@updatable: set]';
 COMMENT ON COLUMN public.sys_menu.route_path IS '前端路由路径 [@updatable: set]';
 COMMENT ON COLUMN public.sys_menu.component IS '前端组件路径 [@updatable: set]';

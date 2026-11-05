@@ -9,13 +9,13 @@
 //	column sys_operation_log.user_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_operation_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
 //	column sys_operation_log.tenant_id: [@internal]
-//	column sys_operation_log.operation_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_operation_log.operation_type: [@dynamic: eq, neq, in, not_in @hideable @label: 操作类型 @desc: CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等]
 //	column sys_operation_log.target_table: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_operation_log.target_id: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_operation_log.ip_address: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_operation_log.http_method: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_operation_log.http_method: [@dynamic: eq, neq, in, not_in @hideable @label: HTTP 方法 @desc: GET/POST/PUT/DELETE/PATCH]
 //	column sys_operation_log.duration_ms: [@dynamic: eq, neq, gt, gte, lt, lte, between @sortable]
-//	column sys_operation_log.result_code: [@dynamic: eq, neq, prefix @hideable]
+//	column sys_operation_log.result_code: [@dynamic: eq, neq, prefix @hideable @label: 结果码 @desc: 200/400/403/404/500 等]
 //	column sys_operation_log.result_msg: [@dynamic: contains, prefix, suffix @hideable]
 //	column sys_operation_log.request_id: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_operation_log.operated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
@@ -87,13 +87,14 @@ var sys_operation_logRegistry = dynq.TableMeta{
 		{
 			Key:        "operationType",
 			Column:     "operation_type",
-			Label:      "操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等",
+			Label:      "操作类型",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等",
 		},
 		{
 			Key:        "targetTable",
@@ -171,13 +172,14 @@ var sys_operation_logRegistry = dynq.TableMeta{
 		{
 			Key:        "httpMethod",
 			Column:     "http_method",
-			Label:      "HTTP 方法：GET/POST/PUT/DELETE/PATCH",
+			Label:      "HTTP 方法",
 			DataType:   dynq.DataTypeString,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "GET/POST/PUT/DELETE/PATCH",
 		},
 		{
 			Key:        "durationMs",
@@ -193,13 +195,14 @@ var sys_operation_logRegistry = dynq.TableMeta{
 		{
 			Key:        "resultCode",
 			Column:     "result_code",
-			Label:      "结果码：200/400/403/404/500 等",
+			Label:      "结果码",
 			DataType:   dynq.DataTypeString,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpPrefix},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "200/400/403/404/500 等",
 		},
 		{
 			Key:        "resultMsg",

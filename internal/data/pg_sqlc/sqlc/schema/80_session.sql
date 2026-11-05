@@ -32,7 +32,7 @@ CREATE INDEX idx_session_tenant_user ON public.sys_session USING btree (tenant_i
 COMMENT ON TABLE public.sys_session IS '用户会话/令牌表，管理登录访问令牌和刷新令牌，支持服务端主动撤销 [@default_sort: updated_at DESC @pk: id @page: 20/200]';
 
 COMMENT ON COLUMN public.sys_session.id IS '会话 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
+COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.user_id IS '用户 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_session.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_session.token_hash IS '访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@internal]';

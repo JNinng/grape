@@ -39,6 +39,11 @@ func stubListSchema() dynq.ResourceSchema {
 				Selectable: true,
 				Ops:        []string{"eq", "in"},
 				Enum:       []string{"enabled", "disabled"},
+				Desc:       "0：禁用、1：启用",
+				Options: []dynq.FieldOption{
+					{Value: int64(0), Label: "disabled"},
+					{Value: int64(1), Label: "enabled"},
+				},
 			},
 			{
 				Field: "ownerUserId",
@@ -78,6 +83,13 @@ func TestQueryServiceGetListSchemaConvertsContract(t *testing.T) {
 	status := out.GetFields()[0]
 	if status.GetField() != "status" || status.GetEnumValues() == nil {
 		t.Fatalf("status field = %+v, want enum values carried", status)
+	}
+	if status.GetDesc() != "0：禁用、1：启用" {
+		t.Fatalf("status desc = %q, want carried", status.GetDesc())
+	}
+	opts := status.GetOptions()
+	if len(opts) != 2 || opts[0].GetValue().GetNumberValue() != 0 || opts[0].GetLabel() != "disabled" || opts[1].GetValue().GetNumberValue() != 1 || opts[1].GetLabel() != "enabled" {
+		t.Fatalf("status options = %+v, want value/label pairs carried", opts)
 	}
 	api := out.GetFields()[1].GetApi()
 	if api.GetEndpoint() != "/v1/users/list" || api.GetValueKey() != "id" || api.GetLabelKey() != "nickname" || api.GetMode() != "multi" {
