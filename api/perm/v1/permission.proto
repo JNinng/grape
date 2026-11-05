@@ -32,6 +32,7 @@ message GetMyPermissionsRequest {
 
 // GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
 message GetMyPermissionsReply {
-  // 当前用户持有的功能权限码集合（去重升序）。
+  // 当前用户持有的功能权限码集合（去重升序）；为空时键省略（空集合不
+  // 输出），客户端按空数组处理。
   repeated string codes = 1;
 }

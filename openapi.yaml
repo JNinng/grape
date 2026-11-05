@@ -1935,7 +1935,7 @@ components:
                     description: 登录方式：password/sms/oauth/refresh_token。只读。
                 isSuccess:
                     type: boolean
-                    description: 是否登录成功。只读。
+                    description: 是否登录成功。只读；false 时 JSON 响应键省略。
                 failureReason:
                     type: string
                     description: 失败原因（成功时为空）。只读。
@@ -1958,19 +1958,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.LoginLog'
-                    description: 本页登录日志，顺序遵循查询中的 sort。
+                    description: 本页登录日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: LoginLogSet 是 ListLoginLogs 返回的分页集合。
         audit.v1.OperationLog:
@@ -2048,19 +2048,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.OperationLog'
-                    description: 本页操作日志，顺序遵循查询中的 sort。
+                    description: 本页操作日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: OperationLogSet 是 ListOperationLogs 返回的分页集合。
         audit.v1.RevokeSessionRequest:
@@ -2080,7 +2080,7 @@ components:
                     description: 会话 ID。只读。
                 status:
                     type: integer
-                    description: 数据状态：0 禁用、1 启用。只读。
+                    description: 数据状态：0 禁用、1 启用。只读；为 0 时 JSON 响应键省略。
                     format: int32
                 userId:
                     type: string
@@ -2105,7 +2105,9 @@ components:
                     description: 登录来源 IP，可空。只读。
                 isRevoked:
                     type: boolean
-                    description: 是否已主动撤销：true 后即使令牌未过期也不可用。只读。
+                    description: |-
+                        是否已主动撤销：true 后即使令牌未过期也不可用。只读；false 时 JSON
+                         响应键省略。
                 createdBy:
                     type: string
                     description: 签发操作者（会话用户）。只读。
@@ -2130,19 +2132,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.SessionAdmin'
-                    description: 本页会话，顺序遵循查询中的 sort。
+                    description: 本页会话，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: SessionAdminSet 是 ListSessions 返回的分页集合。
         config.v1.Config:
@@ -2200,19 +2202,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/config.v1.Config'
-                    description: 本页配置，顺序遵循查询中的 sort。
+                    description: 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: ConfigSet 是 ListConfigs 返回的分页集合。
         config.v1.CreateConfigSuperRequest:
@@ -2319,19 +2321,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/config.v1.FeatureFlag'
-                    description: 本页功能开关，顺序遵循查询中的 sort。
+                    description: 本页功能开关，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: FeatureFlagSet 是 ListFeatureFlags 返回的分页集合。
         config.v1.TenantConfig:
@@ -2388,19 +2390,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/config.v1.TenantConfig'
-                    description: 本页配置，顺序遵循查询中的 sort。
+                    description: 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: TenantConfigSet 是 ListTenantConfigs 返回的分页集合。
         config.v1.Translation:
@@ -2464,19 +2466,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/config.v1.Translation'
-                    description: 本页翻译，顺序遵循查询中的 sort。
+                    description: 本页翻译，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: TranslationSet 是 ListTranslations 返回的分页集合。
         dict.v1.CreateDictDataRequest:
@@ -2527,7 +2529,7 @@ components:
                          创建后不可变。
                 sortOrder:
                     type: integer
-                    description: 排序号，同类型内按其升序展示。
+                    description: 排序号，同类型内按其升序展示。为 0 时 JSON 响应键省略。
                     format: int32
                 remark:
                     type: string
@@ -2558,19 +2560,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/dict.v1.DictData'
-                    description: 本页字典数据，顺序遵循查询中的 sort。
+                    description: 本页字典数据，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: |-
                 DictDataSet 是 ListDictDatas / ListDictTypeDatas 共用的分页集合：
@@ -2623,19 +2625,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/dict.v1.DictType'
-                    description: 本页字典类型，顺序遵循查询中的 sort。
+                    description: 本页字典类型，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: DictTypeSet 是 ListDictTypes 返回的分页集合。
         google.protobuf.Value:
@@ -2730,19 +2732,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.Dept'
-                    description: 本页部门，顺序遵循查询中的 sort。
+                    description: 本页部门，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: DeptSet 是 ListDepts 返回的分页集合。
         org.v1.DeptTreeNode:
@@ -2756,7 +2758,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.DeptTreeNode'
-                    description: 直接子节点。
+                    description: 直接子节点；无子节点时键省略（空集合不输出），客户端按空数组处理。
             description: |-
                 DeptTreeNode 是 GetDeptTree 返回的树节点：部门与其子树。children 按部门
                  创建时间升序排列（同刻按 id 升序），与叶子平铺顺序一致。
@@ -2767,10 +2769,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.DeptTreeNode'
-                    description: 根节点集合（parent_id 为空的部门）。
+                    description: |-
+                        根节点集合（parent_id 为空的部门）；无根节点时键省略（空集合不输出），
+                         客户端按空数组处理。
                 total:
                     type: string
-                    description: 树内节点总数（= 租户内未删除部门数），供前端提示。
+                    description: |-
+                        树内节点总数（= 租户内未删除部门数），供前端提示。为零时 JSON 响应键
+                         省略。
             description: DeptTreeReply 是 DeptService.GetDeptTree 的输出。
         org.v1.MoveDeptRequest:
             required:
@@ -2867,7 +2873,7 @@ components:
                     description: 用户昵称。
                 status:
                     type: integer
-                    description: 用户数据状态：0 禁用、1 启用。
+                    description: 用户数据状态：0 禁用、1 启用。为 0 时 JSON 响应键省略。
                     format: int32
                 addedBy:
                     type: string
@@ -2886,13 +2892,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.UserGroupMember'
-                    description: 本页成员，按添加时间升序（同刻按 user_id 升序）。
+                    description: |-
+                        本页成员，按添加时间升序（同刻按 user_id 升序）；零命中时键省略（空
+                         集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总成员数。
+                    description: 匹配的总成员数。为零时 JSON 响应键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
             description: UserGroupMemberSet 是 ListUserGroupMembers 返回的分页集合。
         org.v1.UserGroupSet:
             type: object
@@ -2901,19 +2909,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.UserGroup'
-                    description: 本页用户组，顺序遵循查询中的 sort。
+                    description: 本页用户组，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: UserGroupSet 是 ListUserGroups 返回的分页集合。
         perm.v1.CreateMenuSuperRequest:
@@ -2947,7 +2955,9 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 当前用户持有的功能权限码集合（去重升序）。
+                    description: |-
+                        当前用户持有的功能权限码集合（去重升序）；为空时键省略（空集合不
+                         输出），客户端按空数组处理。
             description: GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
         perm.v1.Menu:
             type: object
@@ -2994,7 +3004,7 @@ components:
                     description: 权限表达式（应用层匹配用），可空。
                 sortOrder:
                     type: integer
-                    description: 排序号，树内同级按其升序排列。
+                    description: 排序号，树内同级按其升序排列。为 0 时 JSON 响应键省略。
                     format: int32
                 remark:
                     type: string
@@ -3029,7 +3039,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.MenuTreeNode'
-                    description: 直接子节点，顺序与平铺列表一致。
+                    description: |-
+                        直接子节点，顺序与平铺列表一致；无子节点时键省略（空集合不输出），
+                         客户端按空数组处理。
             description: MenuTreeNode 是菜单树节点：菜单与其直接子节点。
         perm.v1.MenuTreeReply:
             type: object
@@ -3038,10 +3050,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.MenuTreeNode'
-                    description: 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+                    description: |-
+                        根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）；无根
+                         节点时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 树内节点总数（未删除菜单总数）。
+                    description: 树内节点总数（未删除菜单总数）。为零时 JSON 响应键省略。
             description: MenuTreeReply 是 GetMenuTree 返回的树形集合。
         perm.v1.MoveMenuSuperRequest:
             required:
@@ -3131,12 +3145,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
-                    description: ID 范围明细集合。
+                    description: ID 范围明细集合；无明细时键省略（空集合不输出），客户端按空数组处理。
                 allowedDeptIds:
                     type: array
                     items:
                         type: string
-                    description: 分发部门 ID 集合（升序）。
+                    description: |-
+                        分发部门 ID 集合（升序）；无分发部门时键省略（空集合不输出），客户端
+                         按空数组处理。
             description: |-
                 RoleDataScope 是角色的数据范围配置视图。data_scope 决定 id_scopes 的
                  消费方式（4 指定人/5 指定部门/6 用户组分别只读对应 type 的明细）；
@@ -3162,7 +3178,9 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 已授权菜单 ID，升序。
+                    description: |-
+                        已授权菜单 ID，升序；无授权时键省略（空集合不输出），客户端按空数组
+                         处理。
             description: |-
                 RoleMenuSet 是角色当前的有效授权菜单 ID 集合（升序）：已停用/软删菜单
                  的残留映射不出现在本集合。
@@ -3173,19 +3191,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.Role'
-                    description: 本页角色，顺序遵循查询中的 sort。
+                    description: 本页角色，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: RoleSet 是 ListRoles 返回的分页集合。
         perm.v1.SetRoleDataScopeRequest:
@@ -3208,12 +3226,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
-                    description: ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+                    description: |-
+                        ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+                         省略（键缺省）等同空集合，即清空明细。
                 allowedDeptIds:
                     type: array
                     items:
                         type: string
-                    description: 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+                    description: |-
+                        分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。省略等同空
+                         集合，即清空分发部门。
             description: SetRoleDataScopeRequest 是 RoleService.SetRoleDataScope 的输入。
         perm.v1.SetRoleMenusRequest:
             required:
@@ -3229,7 +3251,7 @@ components:
                         type: string
                     description: |-
                         目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
-                         必须存在且启用。
+                         必须存在且启用。省略（键缺省）等同空集合。
             description: SetRoleMenusRequest 是 RoleService.SetRoleMenus 的输入。
         query.v1.Condition:
             type: object
@@ -3270,12 +3292,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/query.v1.ListSchemaField'
-                    description: 可查询字段的能力列表。
+                    description: |-
+                        可查询字段的能力列表；无字段时键省略（空集合不输出），客户端按空数组
+                         处理。
                 defaultSort:
                     type: array
                     items:
                         $ref: '#/components/schemas/query.v1.ListSchemaSort'
-                    description: 默认排序；查询未指定 sort 时的服务端回落。
+                    description: |-
+                        默认排序；查询未指定 sort 时的服务端回落。无默认排序时键省略（空集合
+                         不输出），客户端按空数组处理。
                 pagination:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaPagination'
@@ -3298,32 +3324,39 @@ components:
                     description: 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
                 nullable:
                     type: boolean
-                    description: 是否可空。
+                    description: 是否可空。false 时 JSON 响应键省略。
                 sortable:
                     type: boolean
-                    description: 是否可排序（sort 接受该字段）。
+                    description: 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
                 hideable:
                     type: boolean
-                    description: 列头可显隐交互提示。
+                    description: 列头可显隐交互提示。false 时 JSON 响应键省略。
                 selectable:
                     type: boolean
-                    description: hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+                    description: |-
+                        hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
+                         JSON 响应键省略。
                 ops:
                     type: array
                     items:
                         type: string
                     description: |-
                         该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
-                         between、contains、prefix、suffix、has、is_null、not_null）。
+                         between、contains、prefix、suffix、has、is_null、not_null）。空集合时
+                         键省略，客户端按空数组处理。
                 enum:
                     type: array
                     items:
                         type: string
-                    description: 枚举字段的合法线上枚举名。JSON 键为 enum。
+                    description: |-
+                        枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
+                         不输出），客户端按空数组处理。
                 api:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaFieldAPI'
-                    description: 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+                    description: |-
+                        选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
+                         响应键省略。
             description: ListSchemaField 是单个查询字段的能力契约。
         query.v1.ListSchemaFieldAPI:
             type: object
@@ -3359,10 +3392,10 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 支持的分页模式：offset、cursor。
+                    description: 支持的分页模式：offset、cursor。空集合时键省略，客户端按空数组处理。
                 includeTotal:
                     type: boolean
-                    description: 是否支持 include_total=false 跳过 COUNT。
+                    description: 是否支持 include_total=false 跳过 COUNT。false 时 JSON 响应键省略。
             description: ListSchemaPagination 是分页双模式与 total 计算能力。
         query.v1.ListSchemaSort:
             type: object
@@ -3372,7 +3405,7 @@ components:
                     description: 字段键，小驼峰。
                 desc:
                     type: boolean
-                    description: true = desc。
+                    description: true = desc。false 时 JSON 响应键省略。
             description: ListSchemaSort 是默认排序项。
         query.v1.Pagination:
             type: object
@@ -3599,19 +3632,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/tenant.v1.Tenant'
-                    description: 本页租户，顺序遵循查询中的 sort。
+                    description: 本页租户，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: TenantSet 是 ListTenantsSuper 返回的分页集合。
         user.v1.AssignRolesReply:
@@ -3746,19 +3779,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/user.v1.User'
-                    description: 本页用户，顺序遵循查询中的 sort。
+                    description: 本页用户，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: UserSet 是 ListUsers 返回的分页集合。
 tags:

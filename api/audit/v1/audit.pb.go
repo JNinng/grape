@@ -41,7 +41,7 @@ type LoginLog struct {
 	UserAgent *string `protobuf:"bytes,5,opt,name=user_agent,json=userAgent,proto3,oneof" json:"user_agent,omitempty"`
 	// 登录方式：password/sms/oauth/refresh_token。只读。
 	LoginType string `protobuf:"bytes,6,opt,name=login_type,json=loginType,proto3" json:"login_type,omitempty"`
-	// 是否登录成功。只读。
+	// 是否登录成功。只读；false 时 JSON 响应键省略。
 	IsSuccess bool `protobuf:"varint,7,opt,name=is_success,json=isSuccess,proto3" json:"is_success,omitempty"`
 	// 失败原因（成功时为空）。只读。
 	FailureReason *string `protobuf:"bytes,8,opt,name=failure_reason,json=failureReason,proto3,oneof" json:"failure_reason,omitempty"`
@@ -165,15 +165,15 @@ func (x *LoginLog) GetCreatedAt() *timestamppb.Timestamp {
 // LoginLogSet 是 ListLoginLogs 返回的分页集合。
 type LoginLogSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页登录日志，顺序遵循查询中的 sort。
+	// 本页登录日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*LoginLog `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -549,15 +549,15 @@ func (x *OperationLog) GetCreatedAt() *timestamppb.Timestamp {
 // OperationLogSet 是 ListOperationLogs 返回的分页集合。
 type OperationLogSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页操作日志，顺序遵循查询中的 sort。
+	// 本页操作日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*OperationLog `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

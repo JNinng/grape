@@ -210,15 +210,15 @@ func (x *User) GetDeletedAt() *timestamppb.Timestamp {
 // UserSet 是 ListUsers 返回的分页集合。
 type UserSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页用户，顺序遵循查询中的 sort。
+	// 本页用户，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*User `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

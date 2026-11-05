@@ -156,15 +156,15 @@ func (x *DictType) GetDeletedAt() *timestamppb.Timestamp {
 // DictTypeSet 是 ListDictTypes 返回的分页集合。
 type DictTypeSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页字典类型，顺序遵循查询中的 sort。
+	// 本页字典类型，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*DictType `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -251,7 +251,7 @@ type DictData struct {
 	// 值类型：string/integer/boolean/float/json，系统获取值时按此预处理；
 	// 创建后不可变。
 	ValueType string `protobuf:"bytes,6,opt,name=value_type,json=valueType,proto3" json:"value_type,omitempty"`
-	// 排序号，同类型内按其升序展示。
+	// 排序号，同类型内按其升序展示。为 0 时 JSON 响应键省略。
 	SortOrder int32 `protobuf:"varint,7,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
 	// 备注，可空。
 	Remark *string `protobuf:"bytes,8,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
@@ -395,15 +395,15 @@ func (x *DictData) GetDeletedAt() *timestamppb.Timestamp {
 // 模式（page 填归一化后的实际页码，next_cursor 恒空）。
 type DictDataSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页字典数据，顺序遵循查询中的 sort。
+	// 本页字典数据，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*DictData `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

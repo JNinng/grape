@@ -362,9 +362,11 @@ type ListSchema struct {
 	Resource string `protobuf:"bytes,1,opt,name=resource,proto3" json:"resource,omitempty"`
 	// schema 内容 hash（确定性纯函数），可作 ETag 缓存协商。
 	Hash string `protobuf:"bytes,2,opt,name=hash,proto3" json:"hash,omitempty"`
-	// 可查询字段的能力列表。
+	// 可查询字段的能力列表；无字段时键省略（空集合不输出），客户端按空数组
+	// 处理。
 	Fields []*ListSchemaField `protobuf:"bytes,3,rep,name=fields,proto3" json:"fields,omitempty"`
-	// 默认排序；查询未指定 sort 时的服务端回落。
+	// 默认排序；查询未指定 sort 时的服务端回落。无默认排序时键省略（空集合
+	// 不输出），客户端按空数组处理。
 	DefaultSort []*ListSchemaSort `protobuf:"bytes,4,rep,name=default_sort,json=defaultSort,proto3" json:"default_sort,omitempty"`
 	// 分页参数。
 	Pagination    *ListSchemaPagination `protobuf:"bytes,5,opt,name=pagination,proto3" json:"pagination,omitempty"`
@@ -446,20 +448,24 @@ type ListSchemaField struct {
 	Label string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`
 	// 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
 	DataType string `protobuf:"bytes,3,opt,name=data_type,json=dataType,proto3" json:"data_type,omitempty"`
-	// 是否可空。
+	// 是否可空。false 时 JSON 响应键省略。
 	Nullable bool `protobuf:"varint,4,opt,name=nullable,proto3" json:"nullable,omitempty"`
-	// 是否可排序（sort 接受该字段）。
+	// 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
 	Sortable bool `protobuf:"varint,5,opt,name=sortable,proto3" json:"sortable,omitempty"`
-	// 列头可显隐交互提示。
+	// 列头可显隐交互提示。false 时 JSON 响应键省略。
 	Hideable bool `protobuf:"varint,6,opt,name=hideable,proto3" json:"hideable,omitempty"`
-	// hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+	// hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
+	// JSON 响应键省略。
 	Selectable bool `protobuf:"varint,7,opt,name=selectable,proto3" json:"selectable,omitempty"`
 	// 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
-	// between、contains、prefix、suffix、has、is_null、not_null）。
+	// between、contains、prefix、suffix、has、is_null、not_null）。空集合时
+	// 键省略，客户端按空数组处理。
 	Ops []string `protobuf:"bytes,8,rep,name=ops,proto3" json:"ops,omitempty"`
-	// 枚举字段的合法线上枚举名。JSON 键为 enum。
+	// 枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
+	// 不输出），客户端按空数组处理。
 	EnumValues []string `protobuf:"bytes,9,rep,name=enum_values,json=enum,proto3" json:"enum_values,omitempty"`
-	// 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+	// 选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
+	// 响应键省略。
 	Api           *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -645,7 +651,7 @@ type ListSchemaSort struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 字段键，小驼峰。
 	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
-	// true = desc。
+	// true = desc。false 时 JSON 响应键省略。
 	Desc          bool `protobuf:"varint,2,opt,name=desc,proto3" json:"desc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -702,9 +708,9 @@ type ListSchemaPagination struct {
 	DefaultPageSize int32 `protobuf:"varint,1,opt,name=default_page_size,json=defaultPageSize,proto3" json:"default_page_size,omitempty"`
 	// 每页最大条数。
 	MaxPageSize int32 `protobuf:"varint,2,opt,name=max_page_size,json=maxPageSize,proto3" json:"max_page_size,omitempty"`
-	// 支持的分页模式：offset、cursor。
+	// 支持的分页模式：offset、cursor。空集合时键省略，客户端按空数组处理。
 	Modes []string `protobuf:"bytes,3,rep,name=modes,proto3" json:"modes,omitempty"`
-	// 是否支持 include_total=false 跳过 COUNT。
+	// 是否支持 include_total=false 跳过 COUNT。false 时 JSON 响应键省略。
 	IncludeTotal  bool `protobuf:"varint,4,opt,name=include_total,json=includeTotal,proto3" json:"include_total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

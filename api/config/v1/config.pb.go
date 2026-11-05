@@ -175,15 +175,15 @@ func (x *Config) GetDeletedAt() *timestamppb.Timestamp {
 // ConfigSet 是 ListConfigs 返回的分页集合。
 type ConfigSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页配置，顺序遵循查询中的 sort。
+	// 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*Config `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -411,15 +411,15 @@ func (x *TenantConfig) GetTenantId() string {
 // TenantConfigSet 是 ListTenantConfigs 返回的分页集合。
 type TenantConfigSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页配置，顺序遵循查询中的 sort。
+	// 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*TenantConfig `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1112,15 +1112,15 @@ func (x *FeatureFlag) GetTenantId() string {
 // FeatureFlagSet 是 ListFeatureFlags 返回的分页集合。
 type FeatureFlagSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页功能开关，顺序遵循查询中的 sort。
+	// 本页功能开关，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*FeatureFlag `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1359,15 +1359,15 @@ func (x *Translation) GetTenantId() string {
 // TranslationSet 是 ListTranslations 返回的分页集合。
 type TranslationSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页翻译，顺序遵循查询中的 sort。
+	// 本页翻译，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*Translation `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

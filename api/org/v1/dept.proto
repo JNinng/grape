@@ -113,15 +113,15 @@ message Dept {
 
 // DeptSet 是 ListDepts 返回的分页集合。
 message DeptSet {
-  // 本页部门，顺序遵循查询中的 sort。
+  // 本页部门，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated Dept items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -130,7 +130,7 @@ message DeptSet {
 message DeptTreeNode {
   // 本节点的部门。
   Dept dept = 1;
-  // 直接子节点。
+  // 直接子节点；无子节点时键省略（空集合不输出），客户端按空数组处理。
   repeated DeptTreeNode children = 2;
 }
 
@@ -141,9 +141,11 @@ message GetDeptTreeRequest {
 
 // DeptTreeReply 是 DeptService.GetDeptTree 的输出。
 message DeptTreeReply {
-  // 根节点集合（parent_id 为空的部门）。
+  // 根节点集合（parent_id 为空的部门）；无根节点时键省略（空集合不输出），
+  // 客户端按空数组处理。
   repeated DeptTreeNode roots = 1;
-  // 树内节点总数（= 租户内未删除部门数），供前端提示。
+  // 树内节点总数（= 租户内未删除部门数），供前端提示。为零时 JSON 响应键
+  // 省略。
   int64 total = 2;
 }
 

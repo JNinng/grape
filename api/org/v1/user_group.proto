@@ -125,15 +125,15 @@ message UserGroup {
 
 // UserGroupSet 是 ListUserGroups 返回的分页集合。
 message UserGroupSet {
-  // 本页用户组，顺序遵循查询中的 sort。
+  // 本页用户组，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated UserGroup items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -146,7 +146,7 @@ message UserGroupMember {
   string name = 2;
   // 用户昵称。
   string nickname = 3;
-  // 用户数据状态：0 禁用、1 启用。
+  // 用户数据状态：0 禁用、1 启用。为 0 时 JSON 响应键省略。
   int32 status = 4;
   // 添加人。只读。
   int64 added_by = 5;
@@ -156,11 +156,12 @@ message UserGroupMember {
 
 // UserGroupMemberSet 是 ListUserGroupMembers 返回的分页集合。
 message UserGroupMemberSet {
-  // 本页成员，按添加时间升序（同刻按 user_id 升序）。
+  // 本页成员，按添加时间升序（同刻按 user_id 升序）；零命中时键省略（空
+  // 集合不输出），客户端按空数组处理。
   repeated UserGroupMember items = 1;
-  // 匹配的总成员数。
+  // 匹配的总成员数。为零时 JSON 响应键省略。
   int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
 }
 

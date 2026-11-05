@@ -93,9 +93,11 @@ message ListSchema {
   string resource = 1;
   // schema 内容 hash（确定性纯函数），可作 ETag 缓存协商。
   string hash = 2;
-  // 可查询字段的能力列表。
+  // 可查询字段的能力列表；无字段时键省略（空集合不输出），客户端按空数组
+  // 处理。
   repeated ListSchemaField fields = 3;
-  // 默认排序；查询未指定 sort 时的服务端回落。
+  // 默认排序；查询未指定 sort 时的服务端回落。无默认排序时键省略（空集合
+  // 不输出），客户端按空数组处理。
   repeated ListSchemaSort default_sort = 4;
   // 分页参数。
   ListSchemaPagination pagination = 5;
@@ -109,20 +111,24 @@ message ListSchemaField {
   string label = 2;
   // 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
   string data_type = 3;
-  // 是否可空。
+  // 是否可空。false 时 JSON 响应键省略。
   bool nullable = 4;
-  // 是否可排序（sort 接受该字段）。
+  // 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
   bool sortable = 5;
-  // 列头可显隐交互提示。
+  // 列头可显隐交互提示。false 时 JSON 响应键省略。
   bool hideable = 6;
-  // hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+  // hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
+  // JSON 响应键省略。
   bool selectable = 7;
   // 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
-  // between、contains、prefix、suffix、has、is_null、not_null）。
+  // between、contains、prefix、suffix、has、is_null、not_null）。空集合时
+  // 键省略，客户端按空数组处理。
   repeated string ops = 8;
-  // 枚举字段的合法线上枚举名。JSON 键为 enum。
+  // 枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
+  // 不输出），客户端按空数组处理。
   repeated string enum_values = 9 [json_name = "enum"];
-  // 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+  // 选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
+  // 响应键省略。
   ListSchemaFieldAPI api = 10;
 }
 
@@ -144,7 +150,7 @@ message ListSchemaFieldAPI {
 message ListSchemaSort {
   // 字段键，小驼峰。
   string field = 1;
-  // true = desc。
+  // true = desc。false 时 JSON 响应键省略。
   bool desc = 2;
 }
 
@@ -154,8 +160,8 @@ message ListSchemaPagination {
   int32 default_page_size = 1;
   // 每页最大条数。
   int32 max_page_size = 2;
-  // 支持的分页模式：offset、cursor。
+  // 支持的分页模式：offset、cursor。空集合时键省略，客户端按空数组处理。
   repeated string modes = 3;
-  // 是否支持 include_total=false 跳过 COUNT。
+  // 是否支持 include_total=false 跳过 COUNT。false 时 JSON 响应键省略。
   bool include_total = 4;
 }

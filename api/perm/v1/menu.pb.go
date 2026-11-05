@@ -51,7 +51,7 @@ type Menu struct {
 	Component *string `protobuf:"bytes,9,opt,name=component,proto3,oneof" json:"component,omitempty"`
 	// 权限表达式（应用层匹配用），可空。
 	PermissionExpr *string `protobuf:"bytes,10,opt,name=permission_expr,json=permissionExpr,proto3,oneof" json:"permission_expr,omitempty"`
-	// 排序号，树内同级按其升序排列。
+	// 排序号，树内同级按其升序排列。为 0 时 JSON 响应键省略。
 	SortOrder int32 `protobuf:"varint,11,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
 	// 备注，可空。
 	Remark *string `protobuf:"bytes,12,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
@@ -223,7 +223,8 @@ type MenuTreeNode struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 本节点菜单。
 	Menu *Menu `protobuf:"bytes,1,opt,name=menu,proto3" json:"menu,omitempty"`
-	// 直接子节点，顺序与平铺列表一致。
+	// 直接子节点，顺序与平铺列表一致；无子节点时键省略（空集合不输出），
+	// 客户端按空数组处理。
 	Children      []*MenuTreeNode `protobuf:"bytes,2,rep,name=children,proto3" json:"children,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -276,9 +277,10 @@ func (x *MenuTreeNode) GetChildren() []*MenuTreeNode {
 // MenuTreeReply 是 GetMenuTree 返回的树形集合。
 type MenuTreeReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+	// 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）；无根
+	// 节点时键省略（空集合不输出），客户端按空数组处理。
 	Roots []*MenuTreeNode `protobuf:"bytes,1,rep,name=roots,proto3" json:"roots,omitempty"`
-	// 树内节点总数（未删除菜单总数）。
+	// 树内节点总数（未删除菜单总数）。为零时 JSON 响应键省略。
 	Total         int64 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -306,15 +306,15 @@ message Config {
 
 // ConfigSet 是 ListConfigs 返回的分页集合。
 message ConfigSet {
-  // 本页配置，顺序遵循查询中的 sort。
+  // 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated Config items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -350,15 +350,15 @@ message TenantConfig {
 
 // TenantConfigSet 是 ListTenantConfigs 返回的分页集合。
 message TenantConfigSet {
-  // 本页配置，顺序遵循查询中的 sort。
+  // 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated TenantConfig items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -459,15 +459,15 @@ message FeatureFlag {
 
 // FeatureFlagSet 是 ListFeatureFlags 返回的分页集合。
 message FeatureFlagSet {
-  // 本页功能开关，顺序遵循查询中的 sort。
+  // 本页功能开关，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated FeatureFlag items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -507,15 +507,15 @@ message Translation {
 
 // TranslationSet 是 ListTranslations 返回的分页集合。
 message TranslationSet {
-  // 本页翻译，顺序遵循查询中的 sort。
+  // 本页翻译，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated Translation items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 

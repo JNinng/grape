@@ -31,7 +31,7 @@ type SessionAdmin struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 会话 ID。只读。
 	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	// 数据状态：0 禁用、1 启用。只读。
+	// 数据状态：0 禁用、1 启用。只读；为 0 时 JSON 响应键省略。
 	Status int32 `protobuf:"varint,2,opt,name=status,proto3" json:"status,omitempty"`
 	// 会话所属用户 ID。只读。
 	UserId int64 `protobuf:"varint,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
@@ -45,7 +45,8 @@ type SessionAdmin struct {
 	DeviceInfo *string `protobuf:"bytes,7,opt,name=device_info,json=deviceInfo,proto3,oneof" json:"device_info,omitempty"`
 	// 登录来源 IP，可空。只读。
 	IpAddress *string `protobuf:"bytes,8,opt,name=ip_address,json=ipAddress,proto3,oneof" json:"ip_address,omitempty"`
-	// 是否已主动撤销：true 后即使令牌未过期也不可用。只读。
+	// 是否已主动撤销：true 后即使令牌未过期也不可用。只读；false 时 JSON
+	// 响应键省略。
 	IsRevoked bool `protobuf:"varint,9,opt,name=is_revoked,json=isRevoked,proto3" json:"is_revoked,omitempty"`
 	// 签发操作者（会话用户）。只读。
 	CreatedBy int64 `protobuf:"varint,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
@@ -183,15 +184,15 @@ func (x *SessionAdmin) GetUpdatedAt() *timestamppb.Timestamp {
 // SessionAdminSet 是 ListSessions 返回的分页集合。
 type SessionAdminSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页会话，顺序遵循查询中的 sort。
+	// 本页会话，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*SessionAdmin `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

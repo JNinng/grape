@@ -157,15 +157,15 @@ message DictType {
 
 // DictTypeSet 是 ListDictTypes 返回的分页集合。
 message DictTypeSet {
-  // 本页字典类型，顺序遵循查询中的 sort。
+  // 本页字典类型，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated DictType items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -184,7 +184,7 @@ message DictData {
   // 值类型：string/integer/boolean/float/json，系统获取值时按此预处理；
   // 创建后不可变。
   string value_type = 6;
-  // 排序号，同类型内按其升序展示。
+  // 排序号，同类型内按其升序展示。为 0 时 JSON 响应键省略。
   int32 sort_order = 7;
   // 备注，可空。
   optional string remark = 8;
@@ -204,15 +204,15 @@ message DictData {
 // 前者为动态协议信封（page/next_cursor 按 mode 填充），后者为固定 offset
 // 模式（page 填归一化后的实际页码，next_cursor 恒空）。
 message DictDataSet {
-  // 本页字典数据，顺序遵循查询中的 sort。
+  // 本页字典数据，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated DictData items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
