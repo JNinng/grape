@@ -196,6 +196,16 @@ describe('fetchRoleDataScope', () => {
     ])
     expect(cfg.allowedDeptIds).toEqual(['3', '8'])
   })
+
+  it('defaults_id_scopes_and_allowed_dept_ids_to_empty_arrays_when_the_keys_are_omitted', async () => {
+    // 无明细、无分发部门：protojson 省略两个 repeated 键，客户端兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { roleId: '5', dataScope: 1 }))
+
+    const cfg = await fetchRoleDataScope('5')
+
+    expect(cfg.idScopes).toEqual([])
+    expect(cfg.allowedDeptIds).toEqual([])
+  })
 })
 
 describe('setRoleDataScope', () => {
@@ -220,6 +230,20 @@ describe('setRoleDataScope', () => {
       allowedDeptIds: [],
     })
     expect(cfg.dataScope).toBe(7)
+  })
+
+  it('defaults_id_scopes_and_allowed_dept_ids_to_empty_arrays_when_the_response_omits_the_keys', async () => {
+    // 清空后回读：protojson 省略空 repeated 键，返回值同样兜底为空数组。
+    fetchMock.mockResolvedValue(jsonResponse(200, { roleId: '5', dataScope: 7 }))
+
+    const cfg = await setRoleDataScope('5', {
+      dataScope: 7,
+      idScopes: [],
+      allowedDeptIds: [],
+    })
+
+    expect(cfg.idScopes).toEqual([])
+    expect(cfg.allowedDeptIds).toEqual([])
   })
 
   it('sends_id_scope_entries_and_allowed_dept_ids_verbatim', async () => {
