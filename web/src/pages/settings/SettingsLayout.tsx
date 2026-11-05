@@ -17,8 +17,8 @@ import { fetchMyPermissions } from '@/api/permissions'
 import { GrapeMark } from '@/ui/icons'
 
 // SettingsModule 描述左侧导航的一个模块项：code 是打开该模块页面的页面级
-// 权限码（对齐部署面菜单种子的 sys:* 页面码）；path 缺省即尚未实现的占位
-// 模块（禁用态展示）。后续里程碑接入时补上 path 并在 App 注册子路由。
+// 权限码（对齐部署面菜单种子的 sys:* 页面码）；path 缺省即未开放模块
+//（禁用态展示）。新增模块时补上 path 并在 App 注册子路由。
 interface SettingsModule {
   key: string
   label: string
@@ -29,7 +29,7 @@ interface SettingsModule {
 
 // SETTINGS_MODULES 是管理面模块全量清单与各自的页面级权限码（来源：部署
 // 面菜单种子 seed.sql / 99_perm_seed.sql 的页面菜单 permission_code）。
-// 持有对应权限码才展示导航项；未实现模块的禁用占位项同样参与过滤。
+// 持有对应权限码才展示导航项；未开放模块的禁用占位项同样参与过滤。
 const SETTINGS_MODULES: SettingsModule[] = [
   { key: 'users', label: '用户', icon: UsersIcon, code: 'sys:user', path: '/settings/users' },
   { key: 'depts', label: '部门', icon: FolderTreeIcon, code: 'sys:dept', path: '/settings/depts' },
@@ -39,8 +39,8 @@ const SETTINGS_MODULES: SettingsModule[] = [
   { key: 'dicts', label: '字典', icon: ScrollTextIcon, code: 'sys:dict', path: '/settings/dicts' },
   { key: 'audit-logs', label: '审计日志', icon: ClipboardListIcon, code: 'sys:audit', path: '/settings/audit-logs' },
   { key: 'sessions', label: '会话', icon: KeyIcon, code: 'sys:session', path: '/settings/sessions' },
-  { key: 'configs', label: '配置', icon: FileCogIcon, code: 'sys:config' },
-  { key: 'tenants', label: '租户', icon: BuildingIcon, code: 'sys:tenant' },
+  { key: 'configs', label: '配置', icon: FileCogIcon, code: 'sys:config', path: '/settings/configs' },
+  { key: 'tenants', label: '租户', icon: BuildingIcon, code: 'sys:tenant', path: '/settings/tenants' },
 ]
 
 // SettingsLayout 是管理页布局：左侧模块导航 + 右侧子路由内容区。挂载时拉

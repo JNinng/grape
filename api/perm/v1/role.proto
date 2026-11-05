@@ -159,15 +159,15 @@ message Role {
 
 // RoleSet 是 ListRoles 返回的分页集合。
 message RoleSet {
-  // 本页角色，顺序遵循查询中的 sort。
+  // 本页角色，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated Role items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -191,16 +191,18 @@ message RoleDataScope {
   int32 data_scope = 2;
   // 组织可见范围（分配层级限定），可空。
   optional int64 scope_dept_id = 3;
-  // ID 范围明细集合。
+  // ID 范围明细集合；无明细时键省略（空集合不输出），客户端按空数组处理。
   repeated RoleIDScopeEntry id_scopes = 4;
-  // 分发部门 ID 集合（升序）。
+  // 分发部门 ID 集合（升序）；无分发部门时键省略（空集合不输出），客户端
+  // 按空数组处理。
   repeated int64 allowed_dept_ids = 5;
 }
 
 // RoleMenuSet 是角色当前的有效授权菜单 ID 集合（升序）：已停用/软删菜单
 // 的残留映射不出现在本集合。
 message RoleMenuSet {
-  // 已授权菜单 ID，升序。
+  // 已授权菜单 ID，升序；无授权时键省略（空集合不输出），客户端按空数组
+  // 处理。
   repeated int64 menu_ids = 1;
 }
 
@@ -251,8 +253,10 @@ message SetRoleDataScopeRequest {
   // 组织可见范围（分配层级限定），可空；非空时引用的部门必须存在且启用。
   optional int64 scope_dept_id = 3;
   // ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+  // 省略（键缺省）等同空集合，即清空明细。
   repeated RoleIDScopeEntry id_scopes = 4;
-  // 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+  // 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。省略等同空
+  // 集合，即清空分发部门。
   repeated int64 allowed_dept_ids = 5;
 }
 
@@ -267,6 +271,6 @@ message SetRoleMenusRequest {
   // 目标角色的服务端标识。
   int64 id = 1 [(google.api.field_behavior) = REQUIRED];
   // 目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
-  // 必须存在且启用。
+  // 必须存在且启用。省略（键缺省）等同空集合。
   repeated int64 menu_ids = 2;
 }

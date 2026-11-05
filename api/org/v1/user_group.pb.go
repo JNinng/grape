@@ -164,15 +164,15 @@ func (x *UserGroup) GetDeletedAt() *timestamppb.Timestamp {
 // UserGroupSet 是 ListUserGroups 返回的分页集合。
 type UserGroupSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页用户组，顺序遵循查询中的 sort。
+	// 本页用户组，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*UserGroup `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -253,7 +253,7 @@ type UserGroupMember struct {
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// 用户昵称。
 	Nickname string `protobuf:"bytes,3,opt,name=nickname,proto3" json:"nickname,omitempty"`
-	// 用户数据状态：0 禁用、1 启用。
+	// 用户数据状态：0 禁用、1 启用。为 0 时 JSON 响应键省略。
 	Status int32 `protobuf:"varint,4,opt,name=status,proto3" json:"status,omitempty"`
 	// 添加人。只读。
 	AddedBy int64 `protobuf:"varint,5,opt,name=added_by,json=addedBy,proto3" json:"added_by,omitempty"`
@@ -338,11 +338,12 @@ func (x *UserGroupMember) GetAddedAt() *timestamppb.Timestamp {
 // UserGroupMemberSet 是 ListUserGroupMembers 返回的分页集合。
 type UserGroupMemberSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页成员，按添加时间升序（同刻按 user_id 升序）。
+	// 本页成员，按添加时间升序（同刻按 user_id 升序）；零命中时键省略（空
+	// 集合不输出），客户端按空数组处理。
 	Items []*UserGroupMember `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总成员数。
+	// 匹配的总成员数。为零时 JSON 响应键省略。
 	Total int64 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore       bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

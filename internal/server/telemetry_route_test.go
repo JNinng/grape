@@ -159,7 +159,8 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 		t.Fatalf("build trace middleware: %v", err)
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
-	srv, err := NewHTTPServer(confServer,
+	srv, err := NewHTTPServer(
+		confServer,
 		tele,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
@@ -177,12 +178,19 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		// 租户管理服务本文件用例不触达，传 nil。
+		nil,
 		agentService,
 		nil,
 		nil,
 		nil,
 		nil,
-		nil)
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

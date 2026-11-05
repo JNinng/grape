@@ -35,12 +35,32 @@ func TestQuerySchemaRegistryCoversExposedResources(t *testing.T) {
 }
 
 // TestQuerySchemaRegistryIncludesAllDynamicListResources 验证已暴露动态
-// List 的四个资源（user/role/dept/user_group）全部收录，防接入遗漏。
+// List 的资源全部收录，防接入遗漏：字面量期望集合是 registry 的完整镜像
+// （缺一即失败），并反向断言 registry 无多余 key（多一即失败）。
 func TestQuerySchemaRegistryIncludesAllDynamicListResources(t *testing.T) {
-	for _, resource := range []string{"sys_dept", "sys_role", "sys_user", "sys_user_group"} {
+	want := []string{
+		"sys_config",
+		"sys_dept",
+		"sys_dict_data",
+		"sys_dict_type",
+		"sys_feature_flag",
+		"sys_login_log",
+		"sys_operation_log",
+		"sys_role",
+		"sys_session",
+		"sys_tenant",
+		"sys_tenant_config",
+		"sys_translation",
+		"sys_user",
+		"sys_user_group",
+	}
+	for _, resource := range want {
 		if _, ok := querySchemaRegistry[resource]; !ok {
 			t.Fatalf("resource %q not registered", resource)
 		}
+	}
+	if len(querySchemaRegistry) != len(want) {
+		t.Fatalf("registry size = %d, want %d (no undeclared resources)", len(querySchemaRegistry), len(want))
 	}
 }
 

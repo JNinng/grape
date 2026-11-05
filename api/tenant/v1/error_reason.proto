@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package tenant.v1;
+
+option go_package = "grape/api/tenant/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.tenant.v1";
+option objc_class_prefix = "APITenantV1";
+
+// ErrorReason 是租户域资源（sys_tenant）的错误原因枚举，用于 Kratos
+// 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  TENANT_UNSPECIFIED = 0;
+  // 目标租户不存在（含已软删与调用方租户树外不可见）。
+  TENANT_NOT_FOUND = 1;
+  // 租户请求参数非法（必填缺失、列宽超限、locale 形态、父级引用无效、
+  // max_user_count 取值、操作自身租户等）。
+  TENANT_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（未删除租户间 code 或 name 已被占用）。
+  TENANT_ALREADY_EXISTS = 3;
+  // 租户存在未删除的直接子租户，禁止删除（需自叶向根逐层删）。
+  TENANT_HAS_CHILDREN = 4;
+}

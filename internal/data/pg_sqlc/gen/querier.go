@@ -64,6 +64,12 @@ type Querier interface {
 	// 性判定：命中数与请求数不等即存在未知/跨租户/停用/已删除对象，整组拒绝
 	// 不写入；与数据范围推导 fn_accessible_* 的活跃联结同口径）
 	CountSysRoleScopeUserRefs(ctx context.Context, ids []int64) (int64, error)
+	// 统计未删除的直接子租户数（删除前置校验：大于 0 拒绝软删，需自叶向根
+	// 逐层删）。经部署面受控判定函数 fn_tenant_active_child_count 读取全局
+	// 事实：租户树 RLS 下祖父看不到子租户自己创建的孙行，直接 count 会漏掉
+	// 它们并产生孤儿；函数只返回计数、不构成跨租户数据读面（见
+	// 98_tenant_guard.sql）。
+	CountSysTenantActiveChildren(ctx context.Context, id string) (int64, error)
 	// 统计候选成员中租户内未软删用户数（添加成员前的存在性判定：命中数与
 	// 请求数不等即存在未知用户，整批拒绝不写入；跨租户用户经 RLS 不命中，
 	// 等同不存在）
@@ -99,6 +105,19 @@ type Querier interface {
 	GetScope(ctx context.Context, operator int64) (GetScopeRow, error)
 	// 读取租户级与用户级范围版本；行不存在时返回 0
 	GetScopeVersion(ctx context.Context, userID int64) (GetScopeVersionRow, error)
+	// 配置固定 CRUD（sys_config / sys_tenant_config）。配置族是「全局默认 +
+	// 租户覆盖」两级：sys_config 是平台级全局表（无 tenant_id、无 RLS），
+	// 运行角色对它的直写已被 role.sql REVOKE，写面经 98_config_write.sql 的
+	// SECURITY DEFINER 固定口径写函数（本文件只写受控函数的 SELECT 调用）；
+	// sys_tenant_config 是租户表（RLS 承担租户边界），写面为普通 DML。
+	// 动态查询能力由 schema/90_config.sql 的列注释 DSL 声明
+	//（ParseSysConfigQuery / ParseSysTenantConfigQuery 等顶层函数为生成物），
+	// 本文件只写固定命名查询。两表的 config_key 唯一约束限定未删除行间
+	//（部分唯一索引），软删后可复用；value_type 白名单与 status 取值校验
+	// 收在 biz 用例，库层无 CHECK。
+	// 按 id 读取未软删的全局配置（sys_config 不设 RLS：全局表，读取本身即
+	// 全局口径）
+	GetSysConfigByID(ctx context.Context, id int64) (SysConfig, error)
 	// 按 id 读取未软删的部门（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysDeptByID(ctx context.Context, id int64) (SysDept, error)
 	// 按 id 读取未软删的字典数据（租户边界由 RLS 承担；表无 @scope，租户内全可见）
@@ -113,6 +132,15 @@ type Querier interface {
 	// 类型软删后数据行物理残留，消费侧按需过滤宿主活跃性。
 	// 按 id 读取未软删的字典类型（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysDictTypeByID(ctx context.Context, id int64) (SysDictType, error)
+	// 功能开关（sys_feature_flag）与通用翻译（sys_translation）同属租户表：
+	// 读写走普通 DML / 动态 List，租户边界由 RLS 承担，tenant_id 一律取会话
+	// app.tenant_id（不取请求值）。身份列创建后不可变
+	//（sys_feature_flag.flag_key；sys_translation 的 table_name/row_id/
+	// column_name/locale），更新查询不写这些列；软删口径收在 SoftDelete，
+	// 唯一约束限定未删除行间（部分唯一索引），软删后可复用。
+	// 按 id 读取未软删的功能开关（租户边界由 RLS 承担；表无 @scope，租户内
+	// 全可见）
+	GetSysFeatureFlagByID(ctx context.Context, id int64) (SysFeatureFlag, error)
 	// 审计日志固定点查（sys_login_log / sys_operation_log）。两表 append-only
 	// 只读：无写入路径（日志行由业务现场写入）、无更新/删除面，动态查询能力
 	// 由 schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层
@@ -151,6 +179,24 @@ type Querier interface {
 	// 可见副作用。
 	// 按 id 读取未软删的角色（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysRoleByID(ctx context.Context, id int64) (SysRole, error)
+	// 租户固定 CRUD（sys_tenant）。租户树的每一行归属其父租户（tenant_id
+	// 列），RLS 策略 sys_tenant_tenant_isolation 允许命中 tenant_id =
+	// app.tenant_id 或 id = app.tenant_id 的行：平台租户可读写自身与直接
+	// 子租户；孙租户不可见（删除完整性由受控计数函数兜底）。树外行天然
+	// 不可见（上层统一 NotFound）。表无 @scope，
+	// 行级无范围；动态查询能力由 schema/20_tenant.sql 的列注释 DSL 声明
+	//（ParseSysTenantQuery 等顶层函数为生成物），本文件只写固定命名查询。
+	// code 与 name 的唯一约束限定未删除行间（部分唯一索引），软删后可复用。
+	// parent_id 是结构列（创建后不变）；tenant_id 是归属列，插入一律取会话
+	// app.tenant_id，调用方无法指定或伪造。
+	// 按 id 读取未软删的租户（租户树边界由 RLS 承担；树外行等同不存在）
+	GetSysTenantByID(ctx context.Context, id string) (SysTenant, error)
+	// 按 id 读取未软删的租户配置（租户边界由 RLS 承担；表无 @scope，租户内
+	// 全可见）
+	GetSysTenantConfigByID(ctx context.Context, id int64) (SysTenantConfig, error)
+	// 按 id 读取未软删的翻译（租户边界由 RLS 承担；表无 @scope，租户内全
+	// 可见）
+	GetSysTranslationByID(ctx context.Context, id int64) (SysTranslation, error)
 	// 按 id 读取未软删的用户（不做数据范围过滤；仅限同事务内已锁定并判定的回读）
 	GetSysUserByID(ctx context.Context, id int64) (SysUser, error)
 	// 用户组固定 CRUD（sys_user_group）与成员映射读写（sys_user_group_mapping）。
@@ -196,6 +242,10 @@ type Querier interface {
 	// 许可已存在时幂等跳过（部分唯一索引 agent_tool_grant_active_un，
 	// ON CONFLICT 不带目标以覆盖表达式部分索引），返回实际写入行数
 	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
+	// 新建全局配置：调用受控写函数 fn_config_create（SECURITY DEFINER 固定
+	// 口径：函数内校验认证事务纪律并落审计列）；运行角色无 sys_config 直写
+	// 权限，本调用是唯一写路径
+	InsertSysConfig(ctx context.Context, arg InsertSysConfigParams) (SysConfig, error)
 	// 插入部门记录；租户取会话 app.tenant_id。闭包路径由
 	// trg_maintain_dept_closure 在同事务内自动建立（父级合法性一并由触发器
 	// 校验兜底）
@@ -206,6 +256,9 @@ type Querier interface {
 	// 插入字典类型记录；租户取会话 app.tenant_id，租户内未删除类型间 code 唯一
 	// 冲突映射 AlreadyExists
 	InsertSysDictType(ctx context.Context, arg InsertSysDictTypeParams) (SysDictType, error)
+	// 插入功能开关：租户取会话 app.tenant_id（不取请求值）；租户内未删除
+	// 开关间 flag_key 唯一冲突映射 AlreadyExists
+	InsertSysFeatureFlag(ctx context.Context, arg InsertSysFeatureFlagParams) (SysFeatureFlag, error)
 	// 新建菜单：调用受控写函数 fn_menu_create（SECURITY DEFINER 固定口径：
 	// 函数内以 app.tenant_id 复位租户边界并校验父节点）；租户不取请求值，
 	// 由函数内会话变量落值
@@ -214,6 +267,16 @@ type Querier interface {
 	InsertSysRole(ctx context.Context, arg InsertSysRoleParams) (SysRole, error)
 	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算
 	InsertSysSession(ctx context.Context, arg InsertSysSessionParams) (SysSession, error)
+	// 插入租户记录；tenant_id 取会话 app.tenant_id（行归属父租户，RLS WITH
+	// CHECK 兜底），未删除行间 code/name 唯一冲突映射 AlreadyExists
+	InsertSysTenant(ctx context.Context, arg InsertSysTenantParams) (SysTenant, error)
+	// 插入租户配置：租户取会话 app.tenant_id（不取请求值）；租户内未删除
+	// 配置间 config_key 唯一冲突映射 AlreadyExists
+	InsertSysTenantConfig(ctx context.Context, arg InsertSysTenantConfigParams) (SysTenantConfig, error)
+	// 插入翻译：租户取会话 app.tenant_id（不取请求值）；租户内未删除翻译间
+	// 身份四元组 (table_name,row_id,column_name,locale) 唯一冲突映射
+	// AlreadyExists
+	InsertSysTranslation(ctx context.Context, arg InsertSysTranslationParams) (SysTranslation, error)
 	// 插入用户记录；租户取会话 app.tenant_id
 	InsertSysUser(ctx context.Context, arg InsertSysUserParams) (SysUser, error)
 	// 插入用户组记录；租户取会话 app.tenant_id
@@ -258,6 +321,8 @@ type Querier interface {
 	// 按 id 锁定未软删的角色（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysRoleByID(ctx context.Context, id int64) (SysRole, error)
+	// 按 id 锁定未软删的租户（FOR UPDATE，更新/停用/恢复/删除路径先锁后写）
+	LockSysTenantByID(ctx context.Context, id string) (SysTenant, error)
 	// 按 id 锁定未软删的用户组（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysUserGroupByID(ctx context.Context, id int64) (SysUserGroup, error)
@@ -293,8 +358,13 @@ type Querier interface {
 	// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
 	// 未命中时更新 0 行
 	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)
+	// 置位目标状态（停用 0 / 恢复 1，幂等目标状态写）；updated_at 由触发器刷新
+	SetSysTenantStatus(ctx context.Context, arg SetSysTenantStatusParams) (SysTenant, error)
 	// 替换口令哈希
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
+	// 置位 deleted_at 软删除全局配置：调用受控写函数 fn_config_delete；
+	// 返回删除行数，0 即目标未命中（映射 NotFound）
+	SoftDeleteSysConfig(ctx context.Context, arg SoftDeleteSysConfigParams) (int64, error)
 	// 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝
 	//（仓储先经 CountSysDeptActiveChildren 前置校验映射为类型化错误）
 	SoftDeleteSysDept(ctx context.Context, arg SoftDeleteSysDeptParams) (int64, error)
@@ -302,12 +372,20 @@ type Querier interface {
 	SoftDeleteSysDictData(ctx context.Context, arg SoftDeleteSysDictDataParams) (int64, error)
 	// 置位 deleted_at 软删除字典类型；活跃数据校验由调用方在同一事务内先行完成
 	SoftDeleteSysDictType(ctx context.Context, arg SoftDeleteSysDictTypeParams) (int64, error)
+	// 置位 deleted_at 软删除功能开关（宿主无派生结构，不联动其他行）
+	SoftDeleteSysFeatureFlag(ctx context.Context, arg SoftDeleteSysFeatureFlagParams) (int64, error)
 	// 置位 deleted_at 软删除菜单：调用受控写函数 fn_menu_delete（存在未软删
 	// 直接子菜单时函数内拒绝）；返回删除行数，0 即目标未命中（映射 NotFound）
 	SoftDeleteSysMenu(ctx context.Context, arg SoftDeleteSysMenuParams) (int64, error)
 	// 置位 deleted_at 软删除角色（明细/映射行物理残留，消费侧活跃过滤排除）；
 	// code/name 唯一约束限定未删除行间，软删后可复用
 	SoftDeleteSysRole(ctx context.Context, arg SoftDeleteSysRoleParams) (int64, error)
+	// 置位 deleted_at 软删除租户；活跃子租户校验由调用方在同一事务内先行完成
+	SoftDeleteSysTenant(ctx context.Context, arg SoftDeleteSysTenantParams) (int64, error)
+	// 置位 deleted_at 软删除租户配置（宿主无派生结构，不联动其他行）
+	SoftDeleteSysTenantConfig(ctx context.Context, arg SoftDeleteSysTenantConfigParams) (int64, error)
+	// 置位 deleted_at 软删除翻译（宿主无派生结构，不联动其他行）
+	SoftDeleteSysTranslation(ctx context.Context, arg SoftDeleteSysTranslationParams) (int64, error)
 	// 置位 deleted_at 软删除用户
 	SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserParams) (int64, error)
 	// 置位 deleted_at 软删除用户组（成员映射行物理残留，消费侧活跃过滤排除）
@@ -315,6 +393,10 @@ type Querier interface {
 	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
 	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
+	// 覆盖可变字段（name/status/value/remark）：调用受控写函数 fn_config_update
+	//（config_key/value_type 是身份/值语义列不经本路径变更）；目标未命中
+	// 函数返回 NULL 复合行，以 id IS NOT NULL 过滤成空集（映射 NotFound）
+	UpdateSysConfig(ctx context.Context, arg UpdateSysConfigParams) (SysConfig, error)
 	// 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
 	// 走专项口径）；updated_at 由触发器刷新
 	UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error)
@@ -324,6 +406,10 @@ type Querier interface {
 	// 更新可变字段（name/status/remark；不含 code——身份列不经本路径变更）；
 	// updated_at 由触发器刷新
 	UpdateSysDictType(ctx context.Context, arg UpdateSysDictTypeParams) (SysDictType, error)
+	// 更新功能开关可变字段（name/description/is_enabled/remark/status；不含
+	// flag_key/tenant_id——身份/归属列不经本路径变更）；updated_at 由触发器
+	// 刷新
+	UpdateSysFeatureFlag(ctx context.Context, arg UpdateSysFeatureFlagParams) (SysFeatureFlag, error)
 	// 覆盖可变字段（status/name/icon/route_path/component/permission_expr/
 	// sort_order/remark）：调用受控写函数 fn_menu_update（身份/类型/结构列
 	// permission_code/menu_type/parent_id 不经本路径变更）；目标未命中函数
@@ -337,6 +423,19 @@ type Querier interface {
 	// 更新数据范围配置标量（data_scope/scope_dept_id，SetRoleDataScope 专项
 	// 口径；scope_dept_id 为 NULL 表示全租户可分配）；updated_at 由触发器刷新
 	UpdateSysRoleDataScope(ctx context.Context, arg UpdateSysRoleDataScopeParams) (SysRole, error)
+	// 覆盖可变字段（status/name/contact_name/contact_phone/expired_at/
+	// max_user_count/default_locale）；code 是身份列（同 code 创建后不变的
+	// 口径），不经本路径变更；id/parent_id/tenant_id 同属身份/结构/归属列；
+	// updated_at 由触发器刷新
+	UpdateSysTenant(ctx context.Context, arg UpdateSysTenantParams) (SysTenant, error)
+	// 更新租户配置可变字段（name/status/value/remark；不含 config_key/
+	// value_type/tenant_id——身份/值语义/归属列不经本路径变更）；updated_at
+	// 由触发器刷新
+	UpdateSysTenantConfig(ctx context.Context, arg UpdateSysTenantConfigParams) (SysTenantConfig, error)
+	// 更新翻译可变字段（status/value/remark；不含 table_name/row_id/
+	// column_name/locale/tenant_id——身份/归属列不经本路径变更）；updated_at
+	// 由触发器刷新
+	UpdateSysTranslation(ctx context.Context, arg UpdateSysTranslationParams) (SysTranslation, error)
 	// 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新
 	UpdateSysUser(ctx context.Context, arg UpdateSysUserParams) (SysUser, error)
 	// 更新可变字段（name/status/remark；不含 code 与 owner_user_id——身份与

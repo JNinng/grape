@@ -11,7 +11,8 @@ import (
 
 // mapStorageError 将驱动层错误映射到 biz 的类型化错误：
 // ErrNoRows → notFound；dynq 协议错误 → invalidArg（保留 detail）；
-// SQLSTATE 23505 → alreadyExists；其余原样返回。
+// SQLSTATE 23505 → alreadyExists；23514（CHECK 约束）与 22001（列宽截断）
+// → invalidArg（库层兜底与用例校验同语义）；其余原样返回。
 func mapStorageError(err error, notFound, invalidArg, alreadyExists error) error {
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
@@ -23,8 +24,13 @@ func mapStorageError(err error, notFound, invalidArg, alreadyExists error) error
 		return invalidArg
 	default:
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcodeUniqueViolation {
-			return alreadyExists
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case pgerrcodeUniqueViolation:
+				return alreadyExists
+			case pgerrcodeCheckViolation, pgerrcodeStringDataRightTruncation:
+				return invalidArg
+			}
 		}
 		return err
 	}
@@ -38,5 +44,9 @@ func isDynqError(err error) bool {
 	return errors.As(err, &e)
 }
 
-// pgerrcodeUniqueViolation 是 PostgreSQL 唯一约束冲突的 SQLSTATE。
-const pgerrcodeUniqueViolation = "23505"
+// PostgreSQL SQLSTATE 常量（库层兜底到领域错误的映射依据）。
+const (
+	pgerrcodeUniqueViolation           = "23505"
+	pgerrcodeCheckViolation            = "23514"
+	pgerrcodeStringDataRightTruncation = "22001"
+)

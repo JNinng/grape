@@ -53,7 +53,7 @@ type UserGroupServiceClient interface {
 	ListUserGroups(ctx context.Context, in *ListUserGroupsRequest, opts ...grpc.CallOption) (*UserGroupSet, error)
 	// UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
 	// owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-	// 组长变更走部署面专项口径（本批不提供）。
+	// 组长变更走部署面专项口径（管理 API 不提供）。
 	UpdateUserGroup(ctx context.Context, in *UpdateUserGroupRequest, opts ...grpc.CallOption) (*UserGroup, error)
 	// DeleteUserGroup 软删除用户组（deleted_at 置位）。成员映射行随物理
 	// 保留：映射表无外键级联，残留行被权限推导与成员列表的组表/用户表
@@ -185,7 +185,7 @@ type UserGroupServiceServer interface {
 	ListUserGroups(context.Context, *ListUserGroupsRequest) (*UserGroupSet, error)
 	// UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
 	// owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-	// 组长变更走部署面专项口径（本批不提供）。
+	// 组长变更走部署面专项口径（管理 API 不提供）。
 	UpdateUserGroup(context.Context, *UpdateUserGroupRequest) (*UserGroup, error)
 	// DeleteUserGroup 软删除用户组（deleted_at 置位）。成员映射行随物理
 	// 保留：映射表无外键级联，残留行被权限推导与成员列表的组表/用户表

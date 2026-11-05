@@ -55,7 +55,7 @@ type DeptServiceClient interface {
 	ListDepts(ctx context.Context, in *ListDeptsRequest, opts ...grpc.CallOption) (*DeptSet, error)
 	// UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
 	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（本批不提供）。
+	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(ctx context.Context, in *UpdateDeptRequest, opts ...grpc.CallOption) (*Dept, error)
 	// MoveDept 移动部门到新父级：校验父级有效且不在被移动部门的子树内
 	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
@@ -171,7 +171,7 @@ type DeptServiceServer interface {
 	ListDepts(context.Context, *ListDeptsRequest) (*DeptSet, error)
 	// UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
 	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（本批不提供）。
+	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(context.Context, *UpdateDeptRequest) (*Dept, error)
 	// MoveDept 移动部门到新父级：校验父级有效且不在被移动部门的子树内
 	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内

@@ -162,6 +162,12 @@ export async function deleteRole(id: string): Promise<void> {
   }
 }
 
+// normalizeRoleDataScope 补齐 protojson 省略的空 repeated 字段：无明细或
+// 无分发部门时响应没有对应键，页面按数组恒存在消费。
+function normalizeRoleDataScope(cfg: RoleDataScopeDTO): RoleDataScopeDTO {
+  return { ...cfg, idScopes: cfg.idScopes ?? [], allowedDeptIds: cfg.allowedDeptIds ?? [] }
+}
+
 // fetchRoleDataScope 调用 GET /v1/roles/{id}/data-scope：读取角色的数据
 // 范围配置（规则、分配层级限定、ID 范围明细与分发部门集合）。
 export async function fetchRoleDataScope(id: string): Promise<RoleDataScopeDTO> {
@@ -169,7 +175,7 @@ export async function fetchRoleDataScope(id: string): Promise<RoleDataScopeDTO> 
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as RoleDataScopeDTO
+  return normalizeRoleDataScope((await res.json()) as RoleDataScopeDTO)
 }
 
 // setRoleDataScope 调用 PUT /v1/roles/{id}/data-scope（body: "*"）：整组
@@ -184,7 +190,7 @@ export async function setRoleDataScope(id: string, input: SetRoleDataScopeInput)
   if (!res.ok) {
     throw await toApiError(res)
   }
-  return (await res.json()) as RoleDataScopeDTO
+  return normalizeRoleDataScope((await res.json()) as RoleDataScopeDTO)
 }
 
 // listRoleMenus 调用 GET /v1/roles/{id}/menus：当前有效授权菜单 ID 升序

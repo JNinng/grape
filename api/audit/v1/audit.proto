@@ -71,7 +71,7 @@ message LoginLog {
   optional string user_agent = 5;
   // 登录方式：password/sms/oauth/refresh_token。只读。
   string login_type = 6;
-  // 是否登录成功。只读。
+  // 是否登录成功。只读；false 时 JSON 响应键省略。
   bool is_success = 7;
   // 失败原因（成功时为空）。只读。
   optional string failure_reason = 8;
@@ -85,15 +85,15 @@ message LoginLog {
 
 // LoginLogSet 是 ListLoginLogs 返回的分页集合。
 message LoginLogSet {
-  // 本页登录日志，顺序遵循查询中的 sort。
+  // 本页登录日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated LoginLog items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 
@@ -155,15 +155,15 @@ message OperationLog {
 
 // OperationLogSet 是 ListOperationLogs 返回的分页集合。
 message OperationLogSet {
-  // 本页操作日志，顺序遵循查询中的 sort。
+  // 本页操作日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated OperationLog items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 

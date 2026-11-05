@@ -44,11 +44,11 @@ go build ./cmd/server
 | [index.html](index.html) | Vite 入口（构建后变形为 `dist/index.html`，与仓库占位页是两回事）。 |
 | [src/index.css](src/index.css) | Tailwind 入口与全局设计基调：语义 token（`:root` 浅色 / `.dark` 深色两套字面 hex，经 `@theme inline` 映射为工具类）、品牌衍生面与状态软色对（`--brand-*` / `--success-*` / `--danger-*`，随主题色系切换）、五个主题色系覆盖块（`html[data-accent]`，见「UI 组件与主题」节）、字体栈、细滚动条基础层与组件类；页面样式一律写工具类，不另散落 CSS。色板与 token 值一律字面 hex/rgba——oklch 需 Chrome 111+（旧内核解析不了会使颜色全失效），透明度修饰符（编译为 color-mix）同理禁用，弱化/半透明统一走 `--overlay`、`--destructive-soft` 等 rgba token，新增色阶或 token 须补齐两套主题（新色系另加 data-accent 覆盖块）。 |
 | [src/components/](src/components/) | shadcn/ui 组件层：`ui/` 下 24 个经兼容改写的官方组件（new-york-v4 口径，组件清单、本地改写差异与兼容改写规则见 [ui/README.md](src/components/ui/README.md)）、`manage/data-table.tsx`（管理页通用表格：query.v1 动态查询 + 分页 + 表头排序，列显隐/可排序性/页大小上限按 ListSchema 门控，各模块复用）、`manage/query-filter.tsx`（渐进式筛选输入：条件以 chip 串展示、落条即查，筛选项动态响应 ListSchema）、`manage/row-actions.tsx`（行内操作悬停弹框，portal 渲染不被 sticky 列裁剪）、`theme-provider.tsx`（零依赖主题提供者：明暗 + 色系持久化、跟随系统、跨标签同步）、`mode-toggle.tsx`（浅色/深色/跟随系统切换器）、`accent-picker.tsx`（主题色系切换器）、`page-transition.tsx`（路由换页淡入过渡）。 |
-| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`querySchema.ts`（`GET /v1/query/schema` 客户端：资源 List 能力 schema，驱动筛选与列定义）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`dicts.ts`（DictService 管理端点：字典类型与数据两级 CRUD + 动态 List，同 users 口径）、`auditLogs.ts`（AuditService：登录/操作日志只读查询）、`sessionAdmin.ts`（SessionAdminService：会话列表 + 主动撤销）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
+| [src/api/](src/api/) | 会话 API 与带 401 状态机的 fetch 封装：`session.ts`（登录 / 登出）、`http.ts`（附 Bearer 头、401 → 单飞刷新 → 重放一次）、`query.ts`（query.v1 动态查询协议类型，各管理模块共用）、`querySchema.ts`（`GET /v1/query/schema` 客户端：资源 List 能力 schema，驱动筛选与列定义）、`users.ts`（UserService 管理端点，int64 走 protojson 字符串口径）、`depts.ts`（DeptService 管理端点：树/CRUD/移动，同 users 口径）、`userGroups.ts`（UserGroupService 管理端点：组 CRUD + 成员列表/添加/移除，同 users 口径）、`roles.ts`（RoleService 管理端点：CRUD + 数据范围配置 + 菜单授权，同 users 口径）、`menus.ts`（MenuService 管理端点：菜单树/CRUD/移动，同 users 口径）、`dicts.ts`（DictService 管理端点：字典类型与数据两级 CRUD + 动态 List，同 users 口径）、`configs.ts`（配置族管理端点：全局配置/租户配置/功能开关/翻译四组 CRUD + 动态 List，同 users 口径）、`tenants.ts`（TenantService 管理端点：租户实体 CRUD + 停用/恢复，字符串主键，同 users 口径）、`auditLogs.ts`（AuditService：登录/操作日志只读查询）、`sessionAdmin.ts`（SessionAdminService：会话列表 + 主动撤销）、`permissions.ts`（PermissionService：当前用户功能权限码查询，导航过滤数据源）、`agentSessions.ts`（agent 会话列表）、`agentAudit.ts`（工具调用/授权确认审计）、`agentRetrievalLogs.ts`（检索留痕）、`agentEventWindow.ts`（会话事件窗口）、`toApiError.ts`、`types.ts`。 |
 | [src/auth/](src/auth/) | 会话态：`store.ts`（令牌存取）、`refresh.ts` + `singleFlight.ts`（单飞刷新轮换）、`ProtectedRoute.tsx`（受保护路由）、`callbacks.ts`（会话失效回调接缝）。 |
 | [src/agui/](src/agui/) | AG-UI 对话域：`agent.ts`（`HttpAgent` 工厂，fetch 注入 authFetch）、`events.ts`（事件 reducer 与历史快照折叠，纯函数）、`history.ts`（/agui/history 快照回放）、`confirmation.ts`（ack 决定与待确认查询）、`cancel.ts`（/agui/cancel）、`ids.ts`（运行侧 ID）。 |
 | [src/ui/](src/ui/) | 共享纯视觉件：`icons.tsx` 仅保留 GrapeMark 品牌标；通用线性图标一律用 lucide-react，加载态用 `ui/spinner`。 |
-| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，导航按当前用户权限码过滤、拉取失败回落全量，未接入的禁用占位）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）、`DeptManagePage.tsx`（部门管理页：组织树展示/新建/编辑/移动/删除）、`UserGroupManagePage.tsx`（用户组管理页：列表/筛选/新建/编辑/删除/成员管理）、`RoleManagePage.tsx`（角色管理页：列表/筛选/新建/编辑/删除/数据范围配置/菜单授权树）、`MenuManagePage.tsx`（菜单管理页：权限码树展示/新建/编辑/移动/删除）、`DictManagePage.tsx`（字典管理页：类型列表/筛选/新建/编辑/删除 + 数据维护面板的增改删）、`AuditLogManagePage.tsx`（审计日志页：操作/登录两视图标签切换，操作日志详情弹窗渲染前后 JSON 快照）、`SessionManagePage.tsx`（会话管理页：列表/筛选/撤销确认）。 |
+| [src/pages/](src/pages/) | `LoginPage` 登录页、`ChatPage` 对话页（装配会话侧栏 / 消息流 / 确认卡 / 取消，头部右侧有系统设置入口）、`ReplayPage` 运维复现视图；`chat/` 子目录为对话页拆件：`MessageList.tsx`（纯文本渲染）、`ConfirmationCard.tsx`（确认卡）；`replay/` 子目录为复现视图拆件：`compaction.ts`（压缩占位符识别纯函数）、`model.ts`（数据组装与 trace_id 关联纯函数）、`CompactionRefPanel.tsx`（占位徽标与原文对照展开）；`settings/` 子目录为管理页：`SettingsLayout.tsx`（左侧模块导航 + 内容区布局，导航按当前用户权限码过滤、拉取失败回落全量，未开放模块保留禁用占位机制）、`UserManagePage.tsx`（用户管理样板页：列表/筛选/新建/编辑/改密/删除/分配角色/转移归属）、`DeptManagePage.tsx`（部门管理页：组织树展示/新建/编辑/移动/删除）、`UserGroupManagePage.tsx`（用户组管理页：列表/筛选/新建/编辑/删除/成员管理）、`RoleManagePage.tsx`（角色管理页：列表/筛选/新建/编辑/删除/数据范围配置/菜单授权树）、`MenuManagePage.tsx`（菜单管理页：权限码树展示/新建/编辑/移动/删除）、`DictManagePage.tsx`（字典管理页：类型列表/筛选/新建/编辑/删除 + 数据维护面板的增改删）、`ConfigManagePage.tsx`（配置管理页：全局配置/租户配置/功能开关/翻译四视图标签切换，列表/筛选/新建/编辑/删除 + 功能开关快捷启停）、`TenantManagePage.tsx`（租户管理页：列表/筛选/新建/编辑/停用恢复/删除，自身租户的停用恢复与删除禁用）、`AuditLogManagePage.tsx`（审计日志页：操作/登录两视图标签切换，操作日志详情弹窗渲染前后 JSON 快照）、`SessionManagePage.tsx`（会话管理页：列表/筛选/撤销确认）。 |
 
 ## UI 组件与主题
 
@@ -131,17 +131,19 @@ selectOptions。
 `SettingsLayout` 左侧模块导航 + 右侧子路由内容区（`/settings/users`、
 `/settings/depts`、`/settings/user-groups`、`/settings/roles`、
 `/settings/menus`、`/settings/dicts`、`/settings/audit-logs`、
-`/settings/sessions`，索引重定向到首个已实现模块）。
+`/settings/sessions`、`/settings/configs`、`/settings/tenants`，索引重定向到
+首个已实现模块）。
 
-- 导航按权限码过滤（M3-6）：每个导航项声明其页面级权限码（对齐部署面
+- 导航按权限码过滤：每个导航项声明其页面级权限码（对齐部署面
   菜单种子的 sys:* 页面码——用户 `sys:user`、部门 `sys:dept`、用户组
   `sys:user-group`、角色 `sys:role`、菜单 `sys:menu`、字典 `sys:dict`、
   审计日志 `sys:audit`、会话 `sys:session`、配置 `sys:config`、租户
   `sys:tenant`），挂载时经 `GET /v1/permissions/mine`（`api/
-  permissions.ts`）拉取当前用户功能权限码后按集合过滤展示，未实现模块的
-  禁用占位项同样参与过滤；加载完成前导航留空（避免先展示无权模块再移除
-  的闪烁），拉取失败（含 403/网络错误）回落静态全量展示（M0 口径，越权
-  由 API 拒绝兜底）。
+  permissions.ts`）拉取当前用户功能权限码后按集合过滤展示（全部模块均已
+  接入；导航项仍按权限码过滤，缺少权限码的模块不展示）；加载完成前导航留空
+  （避免先展示无权模块再移除
+  的闪烁），拉取失败（含 403/网络错误）回落静态全量展示（越权由 API
+  拒绝兜底）。
 
 - 数据形态：List 端点走 query.v1 动态查询协议——`api/query.ts` 声明
   `DynamicQuery`（where 条件恒 AND / sort / pagination），`QuerySet` 分页
@@ -229,6 +231,41 @@ selectOptions。
   与撤销态以徽标呈现，令牌哈希不入 DTO）。行内「撤销」（二次确认，文案
   说明访问与刷新令牌一并失效）；撤销幂等——目标不存在、已撤销或已被清理
   均按成功处理，成功后重查列表，失败以 toast 呈现后端原始消息。
+- 配置管理页：全局配置/租户配置/功能开关/翻译四个视图以标签切换（切换时
+  清空筛选并重查；列与筛选分别动态响应 `sys_config` / `sys_tenant_config` /
+  `sys_feature_flag` / `sys_translation` 的 ListSchema，打开某视图才拉取其
+  schema 与列表）。全局与租户配置：新建（配置键唯一，值类型下拉为
+  string/integer/boolean/float/json 白名单）、编辑（仅 name/value/remark/
+  status，配置键与值类型只读且不上送）、删除（软删除，二次确认）。功能
+  开关：新建/编辑（功能键创建后不可变）、行内「启用/停用」快捷切换——更新
+  为覆盖语义，status 与 isEnabled 必须同时上送并带存量 name/description/
+  remark，避免省略 isEnabled 落 false 或清空描述；删除（软删除，二次确认）。
+  翻译：新建（来源表/来源行/来源列/语言代码/翻译文本，rowId 须为 int64
+  范围内的正整数、locale 须为 BCP-47 基本形态如 zh-CN，提交前内联校验）、
+  编辑（身份四列只读）、删除（软删除，二次确认）。列表的配置值列由页面
+  补齐（库层未声明 @hideable）；写动作成功出 toast，表单弹窗失败保留内联
+  提示；删除失败以 toast 呈现。错误按 config/v1 的 CONFIG_* /
+  TENANT_CONFIG_* / FEATURE_FLAG_* / TRANSLATION_* reason 码优先兜底、
+  消息文案词表次之，映射为可读英文提示，两表都未命中则透传原始消息；四个
+  视图的加载失败都给可重试横幅。
+- 租户管理页：data-table 租户列表（筛选与列定义动态响应 `sys_tenant` 的
+  ListSchema；列由 schemaColumns 生成，编码/名称/父级租户/状态徽标/默认
+  语言/最大用户数/到期时间/更新时间等均可见，父级/最大用户数/到期时间为
+  页面补充列，空值出占位横线）。新建（id 服务端生成；parentId 不上送，
+  固定挂在当前登录租户下；编码与名称未删除租户间唯一，编码创建后不可变；
+  到期时间按 date 输入并在提交时转当日 UTC 的 RFC3339；最大用户数须为正
+  整数；默认语言缺省 zh-CN 且按 BCP-47 基本形态校验）、编辑（编码只读，
+  仅名称/联系人/联系电话/到期时间/最大用户数/默认语言/状态可改；不提交
+  编码、父级与归属租户，到期时间与最大用户数留空即清空）、停用/恢复
+  （二次确认，幂等目标状态写；停用仅置数据状态，当前版本不承诺阻断该
+  租户的登录与访问）、删除（软删除，二次确认；存在子租户时后端返回
+  TENANT_HAS_CHILDREN，提示先删子租户并保留弹窗）。当前登录租户
+  （`getUser().tenantId` 与行 id 相同）的停用/恢复与删除动作禁用，菜单
+  文字直接标注「（当前登录租户）」且页面有常驻可见说明；编辑弹窗的状态
+  开关对自身租户禁用并说明原因。新建/编辑失败在弹窗内联提示；停用/恢复/
+  删除失败在确认弹窗内联提示并同时 toast；错误按 tenant/v1 的消息专用
+  文案优先（自身状态变更、caller 租户缺失等）、`TENANT_*` reason 码次之
+  兜底，两表都未命中则透传原始消息。
 
 ## 运维复现视图
 

@@ -69,9 +69,28 @@ var DeployFiles = []string{
 	// EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions
 	// 同款）。
 	"98_menu_write.sql",
-	// 管理面功能权限码种子（M3-6）：sys_menu 操作权限点
-	//（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点）
-	// 与超级管理员（101）的角色-菜单映射；不入 sqlc catalog，尾部独立
+	// 全局配置受控写面（D2）：sys_config 的 SECURITY DEFINER
+	// 固定口径写函数（fn_config_create/update/delete——建/改/软删，
+	// 认证事务纪律校验与软删口径收在函数内）；入 sqlc catalog（函数
+	// 签名，命名查询见 queries/sys_config.sql），尾部独立追加不改既有
+	// 顺序，只依赖 schema/90_config.sql 的 sys_config 存在。grape_u 对
+	// sys_config 的直写 REVOKE 在 role.sql，本文件不动授权：EXECUTE
+	// 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款）。
+	"98_config_write.sql",
+	// 租户删除前置完整性判定（受控读取面）：sys_tenant 的
+	// SECURITY DEFINER 计数函数 fn_tenant_active_child_count——租户树
+	// RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、
+	// 不返回行数据（不构成跨租户数据读面），函数内校验 app.tenant_id
+	// 已设置（未设置即拒绝）。入 sqlc catalog（函数签名，命名查询见
+	// queries/sys_tenant.sql），尾部独立追加不改既有顺序，只依赖
+	// schema/20_tenant.sql 的 sys_tenant 存在；EXECUTE 沿用 PostgreSQL
+	// 默认授权 PUBLIC（fn_menu_* / fn_cleanup_expired_sessions 同款）。
+	"98_tenant_guard.sql",
+	// 管理面功能权限码种子：sys_menu 操作权限点
+	//（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点、
+	// 257 通用翻译页面、258-265 配置族全局/租户操作码、266-269 功能开关
+	// 操作码、270-273 翻译操作码）与超级管理员（101）的角色-菜单
+	// 映射；不入 sqlc catalog，尾部独立
 	// 追加不改既有顺序，只依赖 seed.sql 的租户/角色/既有菜单树存在。
 	// 全量 ON CONFLICT DO NOTHING（seed.sql 同款幂等口径），超级用户/
 	// 表 owner 执行。

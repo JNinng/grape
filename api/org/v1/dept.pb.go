@@ -164,15 +164,15 @@ func (x *Dept) GetDeletedAt() *timestamppb.Timestamp {
 // DeptSet 是 ListDepts 返回的分页集合。
 type DeptSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页部门，顺序遵循查询中的 sort。
+	// 本页部门，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*Dept `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -249,7 +249,7 @@ type DeptTreeNode struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 本节点的部门。
 	Dept *Dept `protobuf:"bytes,1,opt,name=dept,proto3" json:"dept,omitempty"`
-	// 直接子节点。
+	// 直接子节点；无子节点时键省略（空集合不输出），客户端按空数组处理。
 	Children      []*DeptTreeNode `protobuf:"bytes,2,rep,name=children,proto3" json:"children,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -340,9 +340,11 @@ func (*GetDeptTreeRequest) Descriptor() ([]byte, []int) {
 // DeptTreeReply 是 DeptService.GetDeptTree 的输出。
 type DeptTreeReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 根节点集合（parent_id 为空的部门）。
+	// 根节点集合（parent_id 为空的部门）；无根节点时键省略（空集合不输出），
+	// 客户端按空数组处理。
 	Roots []*DeptTreeNode `protobuf:"bytes,1,rep,name=roots,proto3" json:"roots,omitempty"`
-	// 树内节点总数（= 租户内未删除部门数），供前端提示。
+	// 树内节点总数（= 租户内未删除部门数），供前端提示。为零时 JSON 响应键
+	// 省略。
 	Total         int64 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

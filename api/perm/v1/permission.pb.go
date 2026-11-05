@@ -63,7 +63,8 @@ func (*GetMyPermissionsRequest) Descriptor() ([]byte, []int) {
 // GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
 type GetMyPermissionsReply struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 当前用户持有的功能权限码集合（去重升序）。
+	// 当前用户持有的功能权限码集合（去重升序）；为空时键省略（空集合不
+	// 输出），客户端按空数组处理。
 	Codes         []string `protobuf:"bytes,1,rep,name=codes,proto3" json:"codes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

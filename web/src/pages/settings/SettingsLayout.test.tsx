@@ -43,8 +43,7 @@ describe('SettingsLayout navigation filtering', () => {
   it('keeps_only_the_modules_whose_page_code_is_granted_after_loading', async () => {
     renderLayout()
 
-    // 授权集合仅含八个已实现模块的页面码：其余模块（含未实现的禁用占位
-    // 项）一并隐藏。
+    // 授权集合不含 sys:config / sys:tenant：配置与租户导航项一并隐藏。
     expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument()
     const nav = screen.getByLabelText('管理模块')
     for (const label of ['用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话']) {
@@ -87,8 +86,8 @@ describe('SettingsLayout navigation filtering', () => {
 })
 
 describe('SettingsLayout navigation links', () => {
-  it('links_the_implemented_modules_and_marks_the_rest_disabled', async () => {
-    // 全量授权：断言五个已实现模块的链接与其余模块的禁用占位并存。
+  it('links_all_implemented_modules', async () => {
+    // 全量授权：已实现模块全部渲染为可点击链接。
     mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:dept', 'sys:user-group', 'sys:role', 'sys:menu', 'sys:dict', 'sys:audit', 'sys:session', 'sys:config', 'sys:tenant'])
     renderLayout()
 
@@ -100,11 +99,8 @@ describe('SettingsLayout navigation links', () => {
     expect(screen.getByRole('link', { name: '字典' })).toHaveAttribute('href', '/settings/dicts')
     expect(screen.getByRole('link', { name: '审计日志' })).toHaveAttribute('href', '/settings/audit-logs')
     expect(screen.getByRole('link', { name: '会话' })).toHaveAttribute('href', '/settings/sessions')
-    for (const label of ['配置', '租户']) {
-      const item = screen.getByText(label).closest('[aria-disabled]')
-      expect(item).not.toBeNull()
-      expect(item).toHaveAttribute('aria-disabled', 'true')
-    }
+    expect(screen.getByRole('link', { name: '配置' })).toHaveAttribute('href', '/settings/configs')
+    expect(screen.getByRole('link', { name: '租户' })).toHaveAttribute('href', '/settings/tenants')
   })
 
   it('marks_the_active_module_entry_with_the_page_marker', async () => {

@@ -186,15 +186,15 @@ func (x *Role) GetDeletedAt() *timestamppb.Timestamp {
 // RoleSet 是 ListRoles 返回的分页集合。
 type RoleSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 本页角色，顺序遵循查询中的 sort。
+	// 本页角色，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
 	Items []*Role `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
-	// 匹配的总行数。include_total 设为 false 时不出现。
+	// 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
 	Total *int64 `protobuf:"varint,2,opt,name=total,proto3,oneof" json:"total,omitempty"`
-	// 是否还有后续页。
+	// 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
 	HasMore bool `protobuf:"varint,3,opt,name=has_more,json=hasMore,proto3" json:"has_more,omitempty"`
-	// 游标模式下一页的游标；末页及无更多结果时为空。
+	// 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
 	NextCursor string `protobuf:"bytes,4,opt,name=next_cursor,json=nextCursor,proto3" json:"next_cursor,omitempty"`
-	// offset 模式下的当前页码；游标模式下为 0。
+	// offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
 	Page          int32 `protobuf:"varint,5,opt,name=page,proto3" json:"page,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -333,9 +333,10 @@ type RoleDataScope struct {
 	DataScope int32 `protobuf:"varint,2,opt,name=data_scope,json=dataScope,proto3" json:"data_scope,omitempty"`
 	// 组织可见范围（分配层级限定），可空。
 	ScopeDeptId *int64 `protobuf:"varint,3,opt,name=scope_dept_id,json=scopeDeptId,proto3,oneof" json:"scope_dept_id,omitempty"`
-	// ID 范围明细集合。
+	// ID 范围明细集合；无明细时键省略（空集合不输出），客户端按空数组处理。
 	IdScopes []*RoleIDScopeEntry `protobuf:"bytes,4,rep,name=id_scopes,json=idScopes,proto3" json:"id_scopes,omitempty"`
-	// 分发部门 ID 集合（升序）。
+	// 分发部门 ID 集合（升序）；无分发部门时键省略（空集合不输出），客户端
+	// 按空数组处理。
 	AllowedDeptIds []int64 `protobuf:"varint,5,rep,packed,name=allowed_dept_ids,json=allowedDeptIds,proto3" json:"allowed_dept_ids,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -410,7 +411,8 @@ func (x *RoleDataScope) GetAllowedDeptIds() []int64 {
 // 的残留映射不出现在本集合。
 type RoleMenuSet struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 已授权菜单 ID，升序。
+	// 已授权菜单 ID，升序；无授权时键省略（空集合不输出），客户端按空数组
+	// 处理。
 	MenuIds       []int64 `protobuf:"varint,1,rep,packed,name=menu_ids,json=menuIds,proto3" json:"menu_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -741,8 +743,10 @@ type SetRoleDataScopeRequest struct {
 	// 组织可见范围（分配层级限定），可空；非空时引用的部门必须存在且启用。
 	ScopeDeptId *int64 `protobuf:"varint,3,opt,name=scope_dept_id,json=scopeDeptId,proto3,oneof" json:"scope_dept_id,omitempty"`
 	// ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+	// 省略（键缺省）等同空集合，即清空明细。
 	IdScopes []*RoleIDScopeEntry `protobuf:"bytes,4,rep,name=id_scopes,json=idScopes,proto3" json:"id_scopes,omitempty"`
-	// 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+	// 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。省略等同空
+	// 集合，即清空分发部门。
 	AllowedDeptIds []int64 `protobuf:"varint,5,rep,packed,name=allowed_dept_ids,json=allowedDeptIds,proto3" json:"allowed_dept_ids,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -865,7 +869,7 @@ type SetRoleMenusRequest struct {
 	// 目标角色的服务端标识。
 	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// 目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
-	// 必须存在且启用。
+	// 必须存在且启用。省略（键缺省）等同空集合。
 	MenuIds       []int64 `protobuf:"varint,2,rep,packed,name=menu_ids,json=menuIds,proto3" json:"menu_ids,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

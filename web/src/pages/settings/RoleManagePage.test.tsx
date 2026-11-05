@@ -12,16 +12,18 @@ import { createRole, deleteRole, fetchRoleDataScope, listRoleMenus, listRoles, s
 import { fetchMenuTree } from '@/api/menus'
 import { fetchMyPermissions } from '@/api/permissions'
 
-// realApi.listRoleMenus / realApi.fetchMenuTree 保留被 vi.mock 替换前的真
-// 实实现，供「真实 protojson 形状」回归用例经 stub 的全局 fetch 走客户端
-// 归一化全链路。vi.hoisted 使存放处先于被提升的 vi.mock 工厂初始化。
+// realApi 保留被 vi.mock 替换前的真实实现，供「真实 protojson 形状」回归
+// 用例经 stub 的全局 fetch 走客户端归一化全链路。vi.hoisted 使存放处先于
+// 被提升的 vi.mock 工厂初始化。
 const realApi = vi.hoisted(() => ({
+  fetchRoleDataScope: null as null | ((id: string) => Promise<RoleDataScopeDTO>),
   listRoleMenus: null as null | ((id: string) => Promise<RoleMenuSetDTO>),
   fetchMenuTree: null as null | (() => Promise<MenuTreeReplyDTO>),
 }))
 
 vi.mock('@/api/roles', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/api/roles')>()
+  realApi.fetchRoleDataScope = actual.fetchRoleDataScope
   realApi.listRoleMenus = actual.listRoleMenus
   return {
     ...actual,
@@ -367,6 +369,33 @@ describe('RoleManagePage data scope', () => {
     expect(within(dialog).getByLabelText('指定部门 ID（逗号或空白分隔）')).toHaveValue('3, 9')
     expect(within(dialog).getByLabelText('分配层级限定部门 ID（可选，留空=全租户可分配）')).toHaveValue('3')
     expect(within(dialog).getByLabelText('分发部门 ID（逗号或空白分隔，留空=遵循通用分配逻辑）')).toHaveValue('3')
+  })
+
+  it('renders_the_form_from_the_raw_protojson_response_without_empty_repeated_keys', async () => {
+    // 真实后端形状：全租户角色既无明细也无分发部门，protojson 省略
+    // idScopes/allowedDeptIds 两个键。经真实客户端归一化后，弹窗不得因
+    // 缺少数组崩溃，两个 ID 输入回显为空。
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url
+        if (path === '/v1/roles/5/data-scope') {
+          return jsonResponse(200, { roleId: '5', dataScope: 7 })
+        }
+        throw new Error(`unexpected fetch: ${path}`)
+      }),
+    )
+    mockFetchDataScope.mockImplementation(() => realApi.fetchRoleDataScope!('5'))
+    const user2 = userEvent.setup()
+    renderPage()
+    const actions = await openRowActions(user2, '运营')
+
+    await user2.click(actions.getByRole('menuitem', { name: '数据范围' }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(await within(dialog).findByRole('combobox', { name: '数据范围规则' })).toHaveTextContent('全租户')
+    expect(within(dialog).getByLabelText('分配层级限定部门 ID（可选，留空=全租户可分配）')).toHaveValue('')
+    expect(within(dialog).getByLabelText('分发部门 ID（逗号或空白分隔，留空=遵循通用分配逻辑）')).toHaveValue('')
   })
 
   it('keeps_other_type_entries_and_clears_scope_dept_when_switching_to_all_tenant', async () => {

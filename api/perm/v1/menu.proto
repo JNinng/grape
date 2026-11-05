@@ -113,7 +113,7 @@ message Menu {
   optional string component = 9;
   // 权限表达式（应用层匹配用），可空。
   optional string permission_expr = 10;
-  // 排序号，树内同级按其升序排列。
+  // 排序号，树内同级按其升序排列。为 0 时 JSON 响应键省略。
   int32 sort_order = 11;
   // 备注，可空。
   optional string remark = 12;
@@ -133,15 +133,17 @@ message Menu {
 message MenuTreeNode {
   // 本节点菜单。
   Menu menu = 1;
-  // 直接子节点，顺序与平铺列表一致。
+  // 直接子节点，顺序与平铺列表一致；无子节点时键省略（空集合不输出），
+  // 客户端按空数组处理。
   repeated MenuTreeNode children = 2;
 }
 
 // MenuTreeReply 是 GetMenuTree 返回的树形集合。
 message MenuTreeReply {
-  // 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+  // 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）；无根
+  // 节点时键省略（空集合不输出），客户端按空数组处理。
   repeated MenuTreeNode roots = 1;
-  // 树内节点总数（未删除菜单总数）。
+  // 树内节点总数（未删除菜单总数）。为零时 JSON 响应键省略。
   int64 total = 2;
 }
 

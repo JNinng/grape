@@ -53,7 +53,8 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	// telemetry 位传 nil：本测试不涉 OTel（nil 接收者按未启用处理）。
-	srv, err := NewHTTPServer(confServer,
+	srv, err := NewHTTPServer(
+		confServer,
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
@@ -71,13 +72,20 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		// 租户管理服务本文件用例不触达，传 nil。
+		nil,
 		agentService,
 		sessionsService,
 		eventWindowService,
 		// 审计与检索留痕查询端点本文件用例不触达，传 nil。
 		nil,
 		nil,
-		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
+		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))),
+	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

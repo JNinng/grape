@@ -41,10 +41,10 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [http.go](http.go) | `NewHTTPServer`：按 `conf.Server.Http` 设置 network / addr / timeout 并关闭 StrictSlash，装配 `recovery → CORS（可选）→ 路由级超时 → trace → otel（telemetry.enabled 时）→ auth → permission` 链，CORS 启用时经 405 兜底生成路由预检、配置错误装配期拒绝启动；经 `srv.Handle` 直挂 `/metrics`，注册 user / dept / user-group / role / menu / dict / permission / session / audit（会话治理 + 审计日志）的生成 HTTP 路由，挂载 Agent 手写路由（会话列表与事件窗口精确路径先于 AG-UI 前缀通配注册，gorilla/mux 按注册顺序匹配），最后 `srv.HandlePrefix("/")` 挂载前端静态托管（SPA fallback）。 |
+| [http.go](http.go) | `NewHTTPServer`：按 `conf.Server.Http` 设置 network / addr / timeout 并关闭 StrictSlash，装配 `recovery → CORS（可选）→ 路由级超时 → trace → otel（telemetry.enabled 时）→ auth → permission` 链，CORS 启用时经 405 兜底生成路由预检、配置错误装配期拒绝启动；经 `srv.Handle` 直挂 `/metrics`，注册 user / dept / user-group / role / menu / dict / config（全局配置 + 租户配置 + 功能开关 + 通用翻译）/ tenant（平台级租户实体管理）/ permission / session / audit（会话治理 + 审计日志）的生成 HTTP 路由，挂载 Agent 手写路由（会话列表与事件窗口精确路径先于 AG-UI 前缀通配注册，gorilla/mux 按注册顺序匹配），最后 `srv.HandlePrefix("/")` 挂载前端静态托管（SPA fallback）。 |
 | [web.go](web.go) | `NewWebHandler` / `webFileHandler`：嵌入 dist 的静态托管——assets 直出（immutable 长缓存）、未命中回退 `index.html`（no-cache）、保留 API 前缀按边界匹配返回 404、非 GET/HEAD 返回 405；`ReservedAPIPrefixes` 给出保留名单。 |
 | [timeout.go](timeout.go) | `NewRouteTimeoutMiddleware`：路由级请求超时中间件，按 `request_timeout` 恢复普通路由限时，agent 前缀（SSE 长流）跳过；`server.http.timeout` 归零后的 SSE 治理配套。 |
-| [grpc.go](grpc.go) | `NewGRPCServer`：按 `conf.Server.Grpc` 构造 gRPC 服务器，装配 `recovery → trace → auth → permission` 链，注册 user / dept / user-group / role / menu / dict / permission / session / audit（会话治理 + 审计日志）的生成 gRPC 服务；不挂运维出口，gRPC 无 SSE 不涉超时治理。 |
+| [grpc.go](grpc.go) | `NewGRPCServer`：按 `conf.Server.Grpc` 构造 gRPC 服务器，装配 `recovery → trace → auth → permission` 链，注册 user / dept / user-group / role / menu / dict / config（全局配置 + 租户配置 + 功能开关 + 通用翻译）/ tenant（平台级租户实体管理）/ permission / session / audit（会话治理 + 审计日志）的生成 gRPC 服务；不挂运维出口，gRPC 无 SSE 不涉超时治理。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：暴露 `NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`，由 `cmd/server` 统一装配。 |
 | [metrics_route_test.go](metrics_route_test.go) | 守卫 `/metrics` 直挂路由的链外语义：原始 Handler 不经业务中间件。 |
 | [agent_route_test.go](agent_route_test.go) | 守卫 Agent 手写路由的挂载语义：无令牌 401（fail-closed）、无尾斜杠 307 规整、echo 工具端到端、跨超时点 SSE 不断流、`x-trace-id` 回传。 |
@@ -68,4 +68,4 @@ SSE 超时治理：Kratos 入站 filter 按 `server.http.timeout` 给每个请�
 
 ## 测试
 
-现有覆盖：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；Agent 手写路由的入链语义（无令牌 401、SSE 长流跨超时点、trace-id 回传与分片阶段中途可见、echo 工具端到端）；agent 会话列表端点与事件窗口端点的认证与归属边界（无令牌 401、跨用户不可见、参数边界）；审计查询与检索留痕查询端点的无令牌 401；前端静态托管的挂载与回退语义（SPA 刷新不 404、API 前缀优先、免认证、占位产物）；OTel 接入（内存导出器断言 span 导出）；CORS 挂载（预检短路/兜底、白名单、关闭零头、装配期校验）。
+现有覆盖：`/metrics` 直挂路由的链外语义（原始 Handler 不经业务中间件）；Agent 手写路由的入链语义（无令牌 401、SSE 长流跨超时点、trace-id 回传与分片阶段中途可见、echo 工具端到端）；agent 会话列表端点与事件窗口端点的认证与归属边界（无令牌 401、跨用户不可见、参数边界）；审计查询与检索留痕查询端点的无令牌 401；租户与配置族 List 路由的认证链序（无令牌 401 先于权限判定、放行后到达真实 service）；前端静态托管的挂载与回退语义（SPA 刷新不 404、API 前缀优先、免认证、占位产物）；OTel 接入（内存导出器断言 span 导出）；CORS 挂载（预检短路/兜底、白名单、关闭零头、装配期校验）。

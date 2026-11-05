@@ -161,6 +161,119 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/session.v1.LoginReply'
+    /v1/configs/create:
+        post:
+            tags:
+                - ConfigService
+            description: |-
+                CreateConfigSuper 创建全局配置（super 面：经部署面受控写函数写入）。
+                 仅平台（根）租户可写：子租户即使持有权限码也返回
+                 CONFIG_PLATFORM_REQUIRED（403）。
+                 config_key 未删除行间唯一，冲突返回 ALREADY_EXISTS；value_type 必须
+                 在 string/integer/boolean/float/json 白名单内，否则返回
+                 INVALID_ARGUMENT 且不写入。id、created_by/updated_by 与时间戳在
+                 输入中被忽略。
+            operationId: ConfigService_CreateConfigSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.CreateConfigSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Config'
+    /v1/configs/list:
+        post:
+            tags:
+                - ConfigService
+            description: |-
+                ListConfigs 按动态查询协议返回一页全局配置（供检索与分页表格）。
+                 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+                 INVALID_ARGUMENT。
+            operationId: ConfigService_ListConfigs
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.ConfigSet'
+    /v1/configs/update:
+        put:
+            tags:
+                - ConfigService
+            description: |-
+                UpdateConfigSuper 覆盖可变字段（name、status、value、remark）。
+                 仅平台（根）租户可写：子租户即使持有权限码也返回
+                 CONFIG_PLATFORM_REQUIRED（403）。
+                 config_key 与 value_type 是身份/值语义列，在输入中被忽略。目标
+                 不存在或已软删返回 NOT_FOUND。
+            operationId: ConfigService_UpdateConfigSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.Config'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Config'
+    /v1/configs/{id}:
+        get:
+            tags:
+                - ConfigService
+            description: GetConfig 按 id 查询单个全局配置。目标不存在或已软删返回 NOT_FOUND。
+            operationId: ConfigService_GetConfig
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标全局配置的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Config'
+        delete:
+            tags:
+                - ConfigService
+            description: |-
+                DeleteConfigSuper 软删除全局配置（deleted_at 置位）。
+                 仅平台（根）租户可写：子租户即使持有权限码也返回
+                 CONFIG_PLATFORM_REQUIRED（403）。
+                 目标不存在或已软删返回 NOT_FOUND。唯一约束限定未删除行间，软删后
+                 config_key 可复用。
+            operationId: ConfigService_DeleteConfigSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标全局配置的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
     /v1/depts/create:
         post:
             tags:
@@ -250,7 +363,7 @@ paths:
             description: |-
                 UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
                  输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-                 专项口径（本批不提供）。
+                 专项口径（管理 API 不提供，由部署面维护）。
             operationId: DeptService_UpdateDept
             requestBody:
                 content:
@@ -554,6 +667,112 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/dict.v1.DictDataSet'
+    /v1/feature-flags/create:
+        post:
+            tags:
+                - FeatureFlagService
+            description: |-
+                CreateFeatureFlag 创建功能开关。flag_key 在租户内未删除行间唯一，
+                 冲突返回 ALREADY_EXISTS；name/flag_key 必填（TrimSpace 后落库，长度
+                 按 trim 后计），description/remark 各不超过 512。tenant_id 不取请求
+                 值；id、created_by/updated_by 与时间戳在输入中被忽略。
+            operationId: FeatureFlagService_CreateFeatureFlag
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.CreateFeatureFlagRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.FeatureFlag'
+    /v1/feature-flags/list:
+        post:
+            tags:
+                - FeatureFlagService
+            description: |-
+                ListFeatureFlags 按动态查询协议返回一页功能开关（仅本租户可见）。
+                 协议错误返回 INVALID_ARGUMENT。
+            operationId: FeatureFlagService_ListFeatureFlags
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.FeatureFlagSet'
+    /v1/feature-flags/update:
+        put:
+            tags:
+                - FeatureFlagService
+            description: |-
+                UpdateFeatureFlag 覆盖可变字段（name、description、is_enabled、
+                 remark、status）。flag_key 与 tenant_id 创建后不可变，在输入中被
+                 忽略。跨租户或已软删目标返回 NOT_FOUND。
+            operationId: FeatureFlagService_UpdateFeatureFlag
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.FeatureFlag'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.FeatureFlag'
+    /v1/feature-flags/{id}:
+        get:
+            tags:
+                - FeatureFlagService
+            description: |-
+                GetFeatureFlag 按 id 查询单个功能开关。跨租户不可见等同不存在
+                （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+            operationId: FeatureFlagService_GetFeatureFlag
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标功能开关的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.FeatureFlag'
+        delete:
+            tags:
+                - FeatureFlagService
+            description: |-
+                DeleteFeatureFlag 软删除功能开关（deleted_at 置位）。跨租户或已软删
+                 目标返回 NOT_FOUND（RLS 天然不可见）。软删后租户内 flag_key 可复用。
+            operationId: FeatureFlagService_DeleteFeatureFlag
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标功能开关的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
     /v1/menus/create:
         post:
             tags:
@@ -968,6 +1187,384 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/tenant-configs/create:
+        post:
+            tags:
+                - TenantConfigService
+            description: |-
+                CreateTenantConfig 创建租户配置。config_key 在租户内未删除行间
+                 唯一，冲突返回 ALREADY_EXISTS；value_type 白名单口径同全局配置。
+                 tenant_id 不取请求值，由 RLS 会话变量落值；id、created_by/
+                 updated_by 与时间戳在输入中被忽略。
+            operationId: TenantConfigService_CreateTenantConfig
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.CreateTenantConfigRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.TenantConfig'
+    /v1/tenant-configs/list:
+        post:
+            tags:
+                - TenantConfigService
+            description: |-
+                ListTenantConfigs 按动态查询协议返回一页租户配置（仅本租户可见）。
+                 协议错误返回 INVALID_ARGUMENT。
+            operationId: TenantConfigService_ListTenantConfigs
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.TenantConfigSet'
+    /v1/tenant-configs/update:
+        put:
+            tags:
+                - TenantConfigService
+            description: |-
+                UpdateTenantConfig 覆盖可变字段（name、status、value、remark）。
+                 config_key、value_type 与 tenant_id 创建后不可变，在输入中被忽略。
+                 跨租户或已软删目标返回 NOT_FOUND。
+            operationId: TenantConfigService_UpdateTenantConfig
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.TenantConfig'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.TenantConfig'
+    /v1/tenant-configs/{id}:
+        get:
+            tags:
+                - TenantConfigService
+            description: |-
+                GetTenantConfig 按 id 查询单个租户配置。跨租户不可见等同不存在
+                （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+            operationId: TenantConfigService_GetTenantConfig
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户配置的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.TenantConfig'
+        delete:
+            tags:
+                - TenantConfigService
+            description: |-
+                DeleteTenantConfig 软删除租户配置（deleted_at 置位）。跨租户或已
+                 软删目标返回 NOT_FOUND（RLS 天然不可见）。软删后租户内 config_key
+                 可复用。
+            operationId: TenantConfigService_DeleteTenantConfig
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户配置的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/tenants/create:
+        post:
+            tags:
+                - TenantService
+            description: |-
+                CreateTenantSuper 创建一个租户实体。id 由服务端生成；parent_id
+                 省略或等于调用方租户（其它值返回 INVALID_ARGUMENT——结构父级与
+                 行归属必须一致，每个租户只能创建自己的直接子租户）。code/name
+                 必填（TrimSpace 后落库，长度分别 ≤32/≤256），未删除行间冲突返回
+                 ALREADY_EXISTS。contact_name/contact_phone/default_locale 各不超过
+                 64/32/10，default_locale 须为 BCP-47 基本形态（空则缺省 zh-CN）；
+                 max_user_count 提供时必须 >0。status 只允许 0/1，创建缺省启用
+                （optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
+            operationId: TenantService_CreateTenantSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/tenant.v1.CreateTenantSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.Tenant'
+    /v1/tenants/list:
+        post:
+            tags:
+                - TenantService
+            description: |-
+                ListTenantsSuper 按动态查询协议返回一页租户（调用方租户树可见
+                 部分）。过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表
+                 游标均返回 INVALID_ARGUMENT。
+            operationId: TenantService_ListTenantsSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.TenantSet'
+    /v1/tenants/update:
+        put:
+            tags:
+                - TenantService
+            description: |-
+                UpdateTenantSuper 覆盖可变字段（status、name、contact_name、
+                 contact_phone、expired_at、max_user_count、default_locale）。id 与
+                 tenant_id 只读；code 是身份列（创建后不可变），parent_id 是结构列
+                 （创建后不可变），两者在更新输入中被忽略。name 冲突返回
+                 ALREADY_EXISTS；目标不存在、已软删或树外不可见返回 NOT_FOUND。
+                 调用方自身租户的 status 变更（与当前值不同）返回 INVALID_ARGUMENT
+                 ——自身停用/恢复须走 Disable/Restore；同值更新（如只改 name）放行。
+            operationId: TenantService_UpdateTenantSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/tenant.v1.Tenant'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.Tenant'
+    /v1/tenants/{id}:
+        get:
+            tags:
+                - TenantService
+            description: |-
+                GetTenantSuper 按 id 查询单个租户。目标不存在、已软删或不在调用方
+                 租户树内（RLS 不可见）均返回 NOT_FOUND。
+            operationId: TenantService_GetTenantSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.Tenant'
+        delete:
+            tags:
+                - TenantService
+            description: |-
+                DeleteTenantSuper 软删除租户（deleted_at 置位）。存在未删除的直接
+                 子租户时拒绝（TENANT_HAS_CHILDREN，需自叶向根逐层删）；禁止删除
+                 调用方自身租户（INVALID_ARGUMENT）。目标不存在、已软删或树外
+                 不可见返回 NOT_FOUND。
+            operationId: TenantService_DeleteTenantSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/tenants/{id}/disable:
+        post:
+            tags:
+                - TenantService
+            description: |-
+                DisableTenantSuper 停用租户（status 置 0，幂等目标状态写：已停用
+                 再停用不出错）。禁止停用调用方自身租户（INVALID_ARGUMENT）。
+                 目标不存在、已软删或树外不可见返回 NOT_FOUND。
+            operationId: TenantService_DisableTenantSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.Tenant'
+    /v1/tenants/{id}/restore:
+        post:
+            tags:
+                - TenantService
+            description: |-
+                RestoreTenantSuper 恢复租户（status 置 1，幂等目标状态写）。禁止
+                 恢复调用方自身租户（INVALID_ARGUMENT）。目标不存在、已软删或树外
+                 不可见返回 NOT_FOUND。
+            operationId: TenantService_RestoreTenantSuper
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标租户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/tenant.v1.Tenant'
+    /v1/translations/create:
+        post:
+            tags:
+                - TranslationService
+            description: |-
+                CreateTranslation 创建翻译。身份四元组在租户内未删除行间唯一，冲突
+                 返回 ALREADY_EXISTS；table_name/column_name 必填（TrimSpace 后非空，
+                 长度 ≤64），row_id 必须为正，locale 必须匹配 BCP-47 基本形态且总长
+                 ≤10，value 必填（TrimSpace 后非空，落库 trim 后的值），remark ≤512。
+                 tenant_id 不取请求值；id、created_by/updated_by 与时间戳在输入中被
+                 忽略。
+            operationId: TranslationService_CreateTranslation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.CreateTranslationRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Translation'
+    /v1/translations/list:
+        post:
+            tags:
+                - TranslationService
+            description: |-
+                ListTranslations 按动态查询协议返回一页翻译（仅本租户可见）。
+                 协议错误返回 INVALID_ARGUMENT。
+            operationId: TranslationService_ListTranslations
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.TranslationSet'
+    /v1/translations/update:
+        put:
+            tags:
+                - TranslationService
+            description: |-
+                UpdateTranslation 覆盖可变字段（status、value、remark）。table_name、
+                 row_id、column_name、locale 与 tenant_id 创建后不可变，在输入中被
+                 忽略。跨租户或已软删目标返回 NOT_FOUND。
+            operationId: TranslationService_UpdateTranslation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/config.v1.Translation'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Translation'
+    /v1/translations/{id}:
+        get:
+            tags:
+                - TranslationService
+            description: |-
+                GetTranslation 按 id 查询单个翻译。跨租户不可见等同不存在
+                （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+            operationId: TranslationService_GetTranslation
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标翻译的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/config.v1.Translation'
+        delete:
+            tags:
+                - TranslationService
+            description: |-
+                DeleteTranslation 软删除翻译（deleted_at 置位）。跨租户或已软删目标
+                 返回 NOT_FOUND（RLS 天然不可见）。软删后同一身份四元组可复用。
+            operationId: TranslationService_DeleteTranslation
+            parameters:
+                - name: id
+                  in: path
+                  description: 目标翻译的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
     /v1/user-groups/add-members:
         post:
             tags:
@@ -1062,7 +1659,7 @@ paths:
             description: |-
                 UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
                  owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-                 组长变更走部署面专项口径（本批不提供）。
+                 组长变更走部署面专项口径（管理 API 不提供）。
             operationId: UserGroupService_UpdateUserGroup
             requestBody:
                 content:
@@ -1338,7 +1935,7 @@ components:
                     description: 登录方式：password/sms/oauth/refresh_token。只读。
                 isSuccess:
                     type: boolean
-                    description: 是否登录成功。只读。
+                    description: 是否登录成功。只读；false 时 JSON 响应键省略。
                 failureReason:
                     type: string
                     description: 失败原因（成功时为空）。只读。
@@ -1361,19 +1958,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.LoginLog'
-                    description: 本页登录日志，顺序遵循查询中的 sort。
+                    description: 本页登录日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: LoginLogSet 是 ListLoginLogs 返回的分页集合。
         audit.v1.OperationLog:
@@ -1451,19 +2048,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.OperationLog'
-                    description: 本页操作日志，顺序遵循查询中的 sort。
+                    description: 本页操作日志，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: OperationLogSet 是 ListOperationLogs 返回的分页集合。
         audit.v1.RevokeSessionRequest:
@@ -1483,7 +2080,7 @@ components:
                     description: 会话 ID。只读。
                 status:
                     type: integer
-                    description: 数据状态：0 禁用、1 启用。只读。
+                    description: 数据状态：0 禁用、1 启用。只读；为 0 时 JSON 响应键省略。
                     format: int32
                 userId:
                     type: string
@@ -1508,7 +2105,9 @@ components:
                     description: 登录来源 IP，可空。只读。
                 isRevoked:
                     type: boolean
-                    description: 是否已主动撤销：true 后即使令牌未过期也不可用。只读。
+                    description: |-
+                        是否已主动撤销：true 后即使令牌未过期也不可用。只读；false 时 JSON
+                         响应键省略。
                 createdBy:
                     type: string
                     description: 签发操作者（会话用户）。只读。
@@ -1533,21 +2132,355 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/audit.v1.SessionAdmin'
-                    description: 本页会话，顺序遵循查询中的 sort。
+                    description: 本页会话，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: SessionAdminSet 是 ListSessions 返回的分页集合。
+        config.v1.Config:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 配置名称。
+                configKey:
+                    type: string
+                    description: 配置键（未删除行间唯一），如 smtp.host、session.timeout；创建后不可变。
+                value:
+                    type: string
+                    description: |-
+                        配置值，可空（空值表示未设置，与空串语义由消费方约定）。原样透传：
+                         不做 trim 与空白折叠。
+                valueType:
+                    type: string
+                    description: |-
+                        值类型：string/integer/boolean/float/json，消费方取值时按此预处理；
+                         创建后不可变。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+            description: Config 是系统全局配置的规范表示。审计列与时间戳只读。
+        config.v1.ConfigSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/config.v1.Config'
+                    description: 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: ConfigSet 是 ListConfigs 返回的分页集合。
+        config.v1.CreateConfigSuperRequest:
+            required:
+                - config
+            type: object
+            properties:
+                config:
+                    allOf:
+                        - $ref: '#/components/schemas/config.v1.Config'
+                    description: 要创建的全局配置。id、created_by/updated_by 与时间戳在输入中被忽略。
+            description: CreateConfigSuperRequest 是 ConfigService.CreateConfigSuper 的输入。
+        config.v1.CreateFeatureFlagRequest:
+            required:
+                - featureFlag
+            type: object
+            properties:
+                featureFlag:
+                    allOf:
+                        - $ref: '#/components/schemas/config.v1.FeatureFlag'
+                    description: |-
+                        要创建的功能开关。id、created_by/updated_by、tenant_id 与时间戳在
+                         输入中被忽略（tenant_id 由服务端按认证身份落值）。
+            description: CreateFeatureFlagRequest 是 FeatureFlagService.CreateFeatureFlag 的输入。
+        config.v1.CreateTenantConfigRequest:
+            required:
+                - tenantConfig
+            type: object
+            properties:
+                tenantConfig:
+                    allOf:
+                        - $ref: '#/components/schemas/config.v1.TenantConfig'
+                    description: |-
+                        要创建的租户配置。id、created_by/updated_by、tenant_id 与时间戳在
+                         输入中被忽略（tenant_id 由服务端按认证身份落值）。
+            description: CreateTenantConfigRequest 是 TenantConfigService.CreateTenantConfig 的输入。
+        config.v1.CreateTranslationRequest:
+            required:
+                - translation
+            type: object
+            properties:
+                translation:
+                    allOf:
+                        - $ref: '#/components/schemas/config.v1.Translation'
+                    description: |-
+                        要创建的翻译。id、created_by/updated_by、tenant_id 与时间戳在输入中
+                         被忽略（tenant_id 由服务端按认证身份落值）。
+            description: CreateTranslationRequest 是 TranslationService.CreateTranslation 的输入。
+        config.v1.FeatureFlag:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 功能名称。
+                flagKey:
+                    type: string
+                    description: |-
+                        功能键（租户内未删除行间唯一），如 export_enabled、sso_enabled；
+                         创建后不可变。
+                description:
+                    type: string
+                    description: 功能描述，可空。
+                isEnabled:
+                    type: boolean
+                    description: |-
+                        功能是否开启。optional 未设置即 false（创建缺省 false）；更新为覆盖
+                         语义，未设置同样落 false，显式设置按值落库。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+                tenantId:
+                    type: string
+                    description: 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+            description: FeatureFlag 是功能开关的规范表示。审计列与时间戳只读。
+        config.v1.FeatureFlagSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/config.v1.FeatureFlag'
+                    description: 本页功能开关，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: FeatureFlagSet 是 ListFeatureFlags 返回的分页集合。
+        config.v1.TenantConfig:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 配置名称。
+                configKey:
+                    type: string
+                    description: 配置键（租户内未删除行间唯一）；创建后不可变。
+                value:
+                    type: string
+                    description: 配置值，可空。原样透传：不做 trim 与空白折叠。
+                valueType:
+                    type: string
+                    description: 值类型：string/integer/boolean/float/json；创建后不可变。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+                tenantId:
+                    type: string
+                    description: 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+            description: TenantConfig 是租户配置的规范表示。审计列与时间戳只读。
+        config.v1.TenantConfigSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/config.v1.TenantConfig'
+                    description: 本页配置，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: TenantConfigSet 是 ListTenantConfigs 返回的分页集合。
+        config.v1.Translation:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                tableName:
+                    type: string
+                    description: 来源表名，如 sys_menu、sys_dict_data；创建后不可变。
+                rowId:
+                    type: string
+                    description: 来源行主键 ID；创建后不可变。
+                columnName:
+                    type: string
+                    description: 来源列名，如 name、label；创建后不可变。
+                locale:
+                    type: string
+                    description: |-
+                        语言代码（BCP-47 基本形态，如 zh-CN、en-US、ja-JP、ko-KR），总长
+                         ≤10；创建后不可变。
+                value:
+                    type: string
+                    description: |-
+                        翻译文本（必填）。落库前去除首尾空白（内部空白原样保留，不做空白
+                         折叠）。
+                remark:
+                    type: string
+                    description: 备注，可空。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+                tenantId:
+                    type: string
+                    description: 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+            description: Translation 是通用翻译的规范表示。审计列与时间戳只读。
+        config.v1.TranslationSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/config.v1.Translation'
+                    description: 本页翻译，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: TranslationSet 是 ListTranslations 返回的分页集合。
         dict.v1.CreateDictDataRequest:
             required:
                 - dictData
@@ -1596,7 +2529,7 @@ components:
                          创建后不可变。
                 sortOrder:
                     type: integer
-                    description: 排序号，同类型内按其升序展示。
+                    description: 排序号，同类型内按其升序展示。为 0 时 JSON 响应键省略。
                     format: int32
                 remark:
                     type: string
@@ -1627,19 +2560,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/dict.v1.DictData'
-                    description: 本页字典数据，顺序遵循查询中的 sort。
+                    description: 本页字典数据，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: |-
                 DictDataSet 是 ListDictDatas / ListDictTypeDatas 共用的分页集合：
@@ -1692,19 +2625,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/dict.v1.DictType'
-                    description: 本页字典类型，顺序遵循查询中的 sort。
+                    description: 本页字典类型，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: DictTypeSet 是 ListDictTypes 返回的分页集合。
         google.protobuf.Value:
@@ -1799,19 +2732,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.Dept'
-                    description: 本页部门，顺序遵循查询中的 sort。
+                    description: 本页部门，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: DeptSet 是 ListDepts 返回的分页集合。
         org.v1.DeptTreeNode:
@@ -1825,7 +2758,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.DeptTreeNode'
-                    description: 直接子节点。
+                    description: 直接子节点；无子节点时键省略（空集合不输出），客户端按空数组处理。
             description: |-
                 DeptTreeNode 是 GetDeptTree 返回的树节点：部门与其子树。children 按部门
                  创建时间升序排列（同刻按 id 升序），与叶子平铺顺序一致。
@@ -1836,10 +2769,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.DeptTreeNode'
-                    description: 根节点集合（parent_id 为空的部门）。
+                    description: |-
+                        根节点集合（parent_id 为空的部门）；无根节点时键省略（空集合不输出），
+                         客户端按空数组处理。
                 total:
                     type: string
-                    description: 树内节点总数（= 租户内未删除部门数），供前端提示。
+                    description: |-
+                        树内节点总数（= 租户内未删除部门数），供前端提示。为零时 JSON 响应键
+                         省略。
             description: DeptTreeReply 是 DeptService.GetDeptTree 的输出。
         org.v1.MoveDeptRequest:
             required:
@@ -1936,7 +2873,7 @@ components:
                     description: 用户昵称。
                 status:
                     type: integer
-                    description: 用户数据状态：0 禁用、1 启用。
+                    description: 用户数据状态：0 禁用、1 启用。为 0 时 JSON 响应键省略。
                     format: int32
                 addedBy:
                     type: string
@@ -1955,13 +2892,15 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.UserGroupMember'
-                    description: 本页成员，按添加时间升序（同刻按 user_id 升序）。
+                    description: |-
+                        本页成员，按添加时间升序（同刻按 user_id 升序）；零命中时键省略（空
+                         集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总成员数。
+                    description: 匹配的总成员数。为零时 JSON 响应键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
             description: UserGroupMemberSet 是 ListUserGroupMembers 返回的分页集合。
         org.v1.UserGroupSet:
             type: object
@@ -1970,19 +2909,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/org.v1.UserGroup'
-                    description: 本页用户组，顺序遵循查询中的 sort。
+                    description: 本页用户组，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: UserGroupSet 是 ListUserGroups 返回的分页集合。
         perm.v1.CreateMenuSuperRequest:
@@ -2016,7 +2955,9 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 当前用户持有的功能权限码集合（去重升序）。
+                    description: |-
+                        当前用户持有的功能权限码集合（去重升序）；为空时键省略（空集合不
+                         输出），客户端按空数组处理。
             description: GetMyPermissionsReply 是 PermissionService.GetMyPermissions 的输出。
         perm.v1.Menu:
             type: object
@@ -2063,7 +3004,7 @@ components:
                     description: 权限表达式（应用层匹配用），可空。
                 sortOrder:
                     type: integer
-                    description: 排序号，树内同级按其升序排列。
+                    description: 排序号，树内同级按其升序排列。为 0 时 JSON 响应键省略。
                     format: int32
                 remark:
                     type: string
@@ -2098,7 +3039,9 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.MenuTreeNode'
-                    description: 直接子节点，顺序与平铺列表一致。
+                    description: |-
+                        直接子节点，顺序与平铺列表一致；无子节点时键省略（空集合不输出），
+                         客户端按空数组处理。
             description: MenuTreeNode 是菜单树节点：菜单与其直接子节点。
         perm.v1.MenuTreeReply:
             type: object
@@ -2107,10 +3050,12 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.MenuTreeNode'
-                    description: 根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）。
+                    description: |-
+                        根节点集合（parent_id 为空的菜单，父引用缺失的行按根兜底挂载）；无根
+                         节点时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 树内节点总数（未删除菜单总数）。
+                    description: 树内节点总数（未删除菜单总数）。为零时 JSON 响应键省略。
             description: MenuTreeReply 是 GetMenuTree 返回的树形集合。
         perm.v1.MoveMenuSuperRequest:
             required:
@@ -2200,12 +3145,14 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
-                    description: ID 范围明细集合。
+                    description: ID 范围明细集合；无明细时键省略（空集合不输出），客户端按空数组处理。
                 allowedDeptIds:
                     type: array
                     items:
                         type: string
-                    description: 分发部门 ID 集合（升序）。
+                    description: |-
+                        分发部门 ID 集合（升序）；无分发部门时键省略（空集合不输出），客户端
+                         按空数组处理。
             description: |-
                 RoleDataScope 是角色的数据范围配置视图。data_scope 决定 id_scopes 的
                  消费方式（4 指定人/5 指定部门/6 用户组分别只读对应 type 的明细）；
@@ -2231,7 +3178,9 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 已授权菜单 ID，升序。
+                    description: |-
+                        已授权菜单 ID，升序；无授权时键省略（空集合不输出），客户端按空数组
+                         处理。
             description: |-
                 RoleMenuSet 是角色当前的有效授权菜单 ID 集合（升序）：已停用/软删菜单
                  的残留映射不出现在本集合。
@@ -2242,19 +3191,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.Role'
-                    description: 本页角色，顺序遵循查询中的 sort。
+                    description: 本页角色，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: RoleSet 是 ListRoles 返回的分页集合。
         perm.v1.SetRoleDataScopeRequest:
@@ -2277,12 +3226,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/perm.v1.RoleIDScopeEntry'
-                    description: ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+                    description: |-
+                        ID 范围明细集合；引用的用户/部门/用户组必须存在且启用，重复条目去重。
+                         省略（键缺省）等同空集合，即清空明细。
                 allowedDeptIds:
                     type: array
                     items:
                         type: string
-                    description: 分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。
+                    description: |-
+                        分发部门 ID 集合；引用的部门必须存在且启用，重复项去重。省略等同空
+                         集合，即清空分发部门。
             description: SetRoleDataScopeRequest 是 RoleService.SetRoleDataScope 的输入。
         perm.v1.SetRoleMenusRequest:
             required:
@@ -2298,7 +3251,7 @@ components:
                         type: string
                     description: |-
                         目标授权菜单 ID 集合；空集合清空全部授权；重复项去重，引用的菜单
-                         必须存在且启用。
+                         必须存在且启用。省略（键缺省）等同空集合。
             description: SetRoleMenusRequest 是 RoleService.SetRoleMenus 的输入。
         query.v1.Condition:
             type: object
@@ -2339,12 +3292,16 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/query.v1.ListSchemaField'
-                    description: 可查询字段的能力列表。
+                    description: |-
+                        可查询字段的能力列表；无字段时键省略（空集合不输出），客户端按空数组
+                         处理。
                 defaultSort:
                     type: array
                     items:
                         $ref: '#/components/schemas/query.v1.ListSchemaSort'
-                    description: 默认排序；查询未指定 sort 时的服务端回落。
+                    description: |-
+                        默认排序；查询未指定 sort 时的服务端回落。无默认排序时键省略（空集合
+                         不输出），客户端按空数组处理。
                 pagination:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaPagination'
@@ -2367,32 +3324,39 @@ components:
                     description: 数据类型：string / integer / decimal / boolean / date / datetime / enum 等。
                 nullable:
                     type: boolean
-                    description: 是否可空。
+                    description: 是否可空。false 时 JSON 响应键省略。
                 sortable:
                     type: boolean
-                    description: 是否可排序（sort 接受该字段）。
+                    description: 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
                 hideable:
                     type: boolean
-                    description: 列头可显隐交互提示。
+                    description: 列头可显隐交互提示。false 时 JSON 响应键省略。
                 selectable:
                     type: boolean
-                    description: hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。
+                    description: |-
+                        hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
+                         JSON 响应键省略。
                 ops:
                     type: array
                     items:
                         type: string
                     description: |-
                         该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
-                         between、contains、prefix、suffix、has、is_null、not_null）。
+                         between、contains、prefix、suffix、has、is_null、not_null）。空集合时
+                         键省略，客户端按空数组处理。
                 enum:
                     type: array
                     items:
                         type: string
-                    description: 枚举字段的合法线上枚举名。JSON 键为 enum。
+                    description: |-
+                        枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
+                         不输出），客户端按空数组处理。
                 api:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaFieldAPI'
-                    description: 选项数据源为远程接口的声明；为空表示枚举取静态清单。
+                    description: |-
+                        选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
+                         响应键省略。
             description: ListSchemaField 是单个查询字段的能力契约。
         query.v1.ListSchemaFieldAPI:
             type: object
@@ -2428,10 +3392,10 @@ components:
                     type: array
                     items:
                         type: string
-                    description: 支持的分页模式：offset、cursor。
+                    description: 支持的分页模式：offset、cursor。空集合时键省略，客户端按空数组处理。
                 includeTotal:
                     type: boolean
-                    description: 是否支持 include_total=false 跳过 COUNT。
+                    description: 是否支持 include_total=false 跳过 COUNT。false 时 JSON 响应键省略。
             description: ListSchemaPagination 是分页双模式与 total 计算能力。
         query.v1.ListSchemaSort:
             type: object
@@ -2441,7 +3405,7 @@ components:
                     description: 字段键，小驼峰。
                 desc:
                     type: boolean
-                    description: true = desc。
+                    description: true = desc。false 时 JSON 响应键省略。
             description: ListSchemaSort 是默认排序项。
         query.v1.Pagination:
             type: object
@@ -2581,6 +3545,108 @@ components:
                     type: string
                     description: 昵称。
             description: SessionUser 是登录响应中的用户摘要。
+        tenant.v1.CreateTenantSuperRequest:
+            required:
+                - tenant
+            type: object
+            properties:
+                tenant:
+                    allOf:
+                        - $ref: '#/components/schemas/tenant.v1.Tenant'
+                    description: |-
+                        要创建的租户。id、tenant_id、parent_id 的缺省展开（parent 省略时
+                         取调用方租户）、created_by/updated_by 与时间戳由服务端落值。
+            description: CreateTenantSuperRequest 是 TenantService.CreateTenantSuper 的输入。
+        tenant.v1.Tenant:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: |-
+                        服务端生成的租户标识（字符串，`t-` + 14 位小写十六进制，共 16
+                         字符）。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                code:
+                    type: string
+                    description: |-
+                        租户编码（未删除行间唯一），如 default、demo；身份列，创建后
+                         不可变（更新输入中被忽略）。
+                name:
+                    type: string
+                    description: 租户名（未删除行间唯一）；更新可改。
+                parentId:
+                    type: string
+                    description: |-
+                        父级租户 ID。创建时可省略（缺省 = 调用方租户）或显式等于调用方
+                         租户；其它值返回 INVALID_ARGUMENT（结构父级与行归属必须一致）。
+                         创建后不可变，更新输入中被忽略。
+                contactName:
+                    type: string
+                    description: 联系人，可空。
+                contactPhone:
+                    type: string
+                    description: 联系电话，可空。
+                expiredAt:
+                    type: string
+                    description: 到期时间，可空（未设置表示不过期）。
+                    format: date-time
+                maxUserCount:
+                    type: integer
+                    description: 最大用户数，可空（未设置表示不限制）；提供时必须 >0。
+                    format: int32
+                defaultLocale:
+                    type: string
+                    description: 租户默认语言（BCP-47 基本形态，如 zh-CN、en-US）；空则缺省 zh-CN。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。服务端生成，只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。服务端生成，只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间，通常为空。只读。
+                    format: date-time
+                tenantId:
+                    type: string
+                    description: |-
+                        行的归属父租户。只读：由服务端按认证身份的租户落值，请求中的值被
+                         忽略；创建时与 parent_id 一致（恒等于调用方租户）。租户树根行
+                        （id = tenant_id）的该列等于自身 id。
+            description: Tenant 是租户实体的规范表示。审计列与时间戳只读。
+        tenant.v1.TenantSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/tenant.v1.Tenant'
+                    description: 本页租户，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: TenantSet 是 ListTenantsSuper 返回的分页集合。
         user.v1.AssignRolesReply:
             type: object
             properties:
@@ -2713,19 +3779,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/user.v1.User'
-                    description: 本页用户，顺序遵循查询中的 sort。
+                    description: 本页用户，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
                 total:
                     type: string
-                    description: 匹配的总行数。include_total 设为 false 时不出现。
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
                 hasMore:
                     type: boolean
-                    description: 是否还有后续页。
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
                 nextCursor:
                     type: string
-                    description: 游标模式下一页的游标；末页及无更多结果时为空。
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
                 page:
                     type: integer
-                    description: offset 模式下的当前页码；游标模式下为 0。
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
                     format: int32
             description: UserSet 是 ListUsers 返回的分页集合。
 tags:
@@ -2737,6 +3803,28 @@ tags:
          （行级无范围）；两级 List 都走动态查询协议，过滤/排序/投影/分页能力由
          存储层 schema 注释 DSL 声明。写面（登录时记录登录日志、操作留痕）不在
          本服务：日志行由各自的业务现场写入。
+    - name: ConfigService
+      description: |-
+        ConfigService 提供系统全局配置（sys_config）的管理。sys_config 是
+         平台级全局表：不绑定租户、无 tenant_id、不设 RLS，所有租户共享同一
+         份配置。
+
+         读写形态：读端点（GetConfig / ListConfigs）不设 super——表无行级范围，
+         读取本身就是全局口径，租户边界不适用；写端点经部署面 SECURITY
+         DEFINER 固定口径写函数（role.sql 已对 sys_config REVOKE 运行角色直写，
+         函数内校验认证事务纪律），方法名按 permission.md 口径带 Super。
+
+         平台信任边界：写权限不能只依赖调用者租户内的角色 → 菜单 → 权限码链
+        （子租户被授予菜单/角色管理后可自造 sys:config:global:* 写码）；仅
+         平台（根）租户可写，子租户即使持有权限码也拒绝（CONFIG_PLATFORM_REQUIRED，
+         403）。读端点不受此限。
+
+         身份/值语义列纪律：config_key 参与唯一约束（未删除行间唯一），
+         value_type 是消费方的取值预处理声明（string/integer/boolean/float/
+         json，库层无 CHECK，白名单收在用例入参校验）——两者创建后不可变，
+         更新输入中被忽略。status 只允许 0（禁用）/1（启用），创建时缺省
+         启用。删除为软删除，唯一约束限定未删除行间，软删后 config_key 可
+         复用。
     - name: DeptService
       description: |-
         DeptService 提供部门管理。组织树是租户内资源：租户边界由数据库 RLS
@@ -2757,6 +3845,20 @@ tags:
          中被忽略；字典数据的宿主归属 dict_type_id 创建后不可变。字典类型删除
          为软删除，存在未删除字典数据时拒绝（先清空该类型下的数据）；删除数据
          不联动宿主，数据删除为软删除。
+    - name: FeatureFlagService
+      description: |-
+        FeatureFlagService 提供功能开关（sys_feature_flag）的管理。功能开关是
+         租户级资源：租户边界由数据库 RLS 强制，租户内全部开关对持有令牌的成员
+         可见（表无 @scope，行级无范围）。
+
+         读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+        （tenant_id 取会话 app.tenant_id，不取请求值）。
+
+         身份语义列纪律：flag_key 在租户内未删除行间唯一（配合 tenant_id 形成
+         组合唯一），创建后不可变，更新输入中被忽略。tenant_id 只读，由服务端
+         落值。status 只允许 0/1，创建缺省启用；is_enabled 是功能开关的业务
+         取值，创建时 optional 未设置即 false，显式设置按值落库。软删除后
+         flag_key 可复用；跨租户目标由 RLS 天然不可见，等同不存在（NOT_FOUND）。
     - name: MenuService
       description: |-
         MenuService 提供菜单/权限点树的管理。sys_menu 承载功能权限码链的
@@ -2820,6 +3922,67 @@ tags:
         SessionService 提供登录与会话令牌生命周期。令牌是随机不透明值，
          不含租户/用户信息，身份事实以服务端会话记录为准；访问令牌走
          `Authorization: Bearer` 头传输，不走 cookie。
+    - name: TenantConfigService
+      description: |-
+        TenantConfigService 提供租户配置（sys_tenant_config）的管理。租户
+         配置是租户级覆盖：租户边界由数据库 RLS 强制，租户内全部配置对持有
+         令牌的成员可见（表无 @scope，行级无范围）。
+
+         读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+        （tenant_id 取会话 app.tenant_id，不取请求值）。
+
+         身份/值语义列纪律：config_key 在租户内未删除行间唯一（配合 tenant_id
+         形成组合唯一），value_type 同全局配置口径；两者创建后不可变，更新
+         输入中被忽略。tenant_id 只读，由服务端落值（请求中的值一律忽略）。
+         status 只允许 0/1，创建时缺省启用。删除为软删除，软删后 config_key
+         可复用；跨租户目标由 RLS 天然不可见，等同不存在（NOT_FOUND）。
+    - name: TenantService
+      description: |-
+        TenantService 提供平台级租户实体（sys_tenant）的管理。
+
+         租户树模型（schema/20_tenant.sql 的设计口径）：sys_tenant 的每一行
+         归属其父租户（tenant_id 列），RLS 策略 sys_tenant_tenant_isolation
+         允许命中 tenant_id = app.tenant_id 或 id = app.tenant_id 的行。每个
+         租户可见并管理自己名下的直接子租户与自身；树外租户行由 RLS 天然
+         不可见，等同不存在（NOT_FOUND）。租户树由各租户创建自己的直接子租户
+         构成：结构父级（parent_id）与行归属（tenant_id）必须一致，创建时
+         parent_id 只允许省略（缺省 = 调用方租户）或等于调用方租户。
+
+         默认种子口径：种子只向平台根租户（t-super-01 的超级管理员角色 101）
+         授予 sys:tenant:* 菜单/权限点；子租户如需自助管理其直接子租户，需
+         另行在其租户内铺设菜单/角色（种子不铺）。
+
+         super 命名口径：本服务 API 方法名统一带 Super，表达的是「平台级租户
+         实体管理」——被管理的是一整个租户实体（而非调用方自己租户内的业务
+         数据），与 permission.md 中「绕过租户/数据范围约束」的 super 语义不同。
+         内部仓储的读方法（List/Get）不带 Super，写/状态方法带。租户边界仍由
+         RLS 承担：除删除前置的受控只读计数函数（只返回计数，不返回行数据）外，
+         本服务不新增 RLS 绕过机制、不新增 SECURITY DEFINER 写函数，写路径是
+         普通 DML（role.sql 未对 sys_tenant REVOKE 直写授权）。
+
+         身份/结构列纪律：id 由服务端生成（字符串），创建请求中的 id、
+         tenant_id、审计列与时间戳被忽略；tenant_id 落值为会话
+         app.tenant_id（行归属父租户，RLS WITH CHECK 兜底）。parent_id 创建时
+         可省略（缺省 = 调用方租户）或显式等于调用方租户，创建后不可变，
+         更新输入中被忽略。code 是身份列、name 是名称列：两者在未删除行间唯一
+        （部分唯一索引，软删后可复用），code 创建后不可变（更新输入忽略），
+         name 更新可改（冲突返回 ALREADY_EXISTS）。
+    - name: TranslationService
+      description: |-
+        TranslationService 提供通用翻译（sys_translation）的管理。翻译是租户级
+         资源：租户边界由数据库 RLS 强制，租户内全部翻译对持有令牌的成员可见
+        （表无 @scope，行级无范围）。
+
+         读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+        （tenant_id 取会话 app.tenant_id，不取请求值）。
+
+         身份语义列纪律：table_name、row_id、column_name、locale 四列共同确定
+         一条翻译（配合 tenant_id 形成组合唯一），均创建后不可变，更新输入中被
+         忽略。value 是翻译文本本身：传输层原样透传；用例层落库前去除首尾空白
+        （内部空白保留）并要求非空。locale 按 BCP-47 基本形态校验（如 zh-CN、
+         en-US、ja-JP）。status 只允许 0/1，创建缺省启用。软删除后同一
+        （table_name,row_id,column_name,locale）可复用；跨租户目标由 RLS 天然
+         不可见，等同不存在（NOT_FOUND）。
     - name: UserGroupService
       description: |-
         UserGroupService 提供用户组管理。用户组是租户内资源：租户边界由数据库

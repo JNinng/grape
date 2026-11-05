@@ -45,7 +45,7 @@ service SessionAdminService {
 message SessionAdmin {
   // 会话 ID。只读。
   int64 id = 1;
-  // 数据状态：0 禁用、1 启用。只读。
+  // 数据状态：0 禁用、1 启用。只读；为 0 时 JSON 响应键省略。
   int32 status = 2;
   // 会话所属用户 ID。只读。
   int64 user_id = 3;
@@ -59,7 +59,8 @@ message SessionAdmin {
   optional string device_info = 7;
   // 登录来源 IP，可空。只读。
   optional string ip_address = 8;
-  // 是否已主动撤销：true 后即使令牌未过期也不可用。只读。
+  // 是否已主动撤销：true 后即使令牌未过期也不可用。只读；false 时 JSON
+  // 响应键省略。
   bool is_revoked = 9;
   // 签发操作者（会话用户）。只读。
   int64 created_by = 10;
@@ -73,15 +74,15 @@ message SessionAdmin {
 
 // SessionAdminSet 是 ListSessions 返回的分页集合。
 message SessionAdminSet {
-  // 本页会话，顺序遵循查询中的 sort。
+  // 本页会话，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
   repeated SessionAdmin items = 1;
-  // 匹配的总行数。include_total 设为 false 时不出现。
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
   optional int64 total = 2;
-  // 是否还有后续页。
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
   bool has_more = 3;
-  // 游标模式下一页的游标；末页及无更多结果时为空。
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
   string next_cursor = 4;
-  // offset 模式下的当前页码；游标模式下为 0。
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
   int32 page = 5;
 }
 

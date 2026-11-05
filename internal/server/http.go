@@ -4,11 +4,13 @@ import (
 	nethttp "net/http"
 
 	auditv1 "grape/api/audit/v1"
+	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	queryv1 "grape/api/query/v1"
 	sessionv1 "grape/api/session/v1"
+	tenantv1 "grape/api/tenant/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
 	entrymw "grape/internal/middleware"
@@ -55,6 +57,11 @@ func NewHTTPServer(
 	role *service.RoleService,
 	menu *service.MenuService,
 	dict *service.DictService,
+	config *service.ConfigService,
+	tenantConfig *service.TenantConfigService,
+	featureFlag *service.FeatureFlagService,
+	translation *service.TranslationService,
+	tenant *service.TenantService,
 	perm *service.PermissionService,
 	session *service.SessionService,
 	sessionAdmin *service.SessionAdminService,
@@ -115,6 +122,11 @@ func NewHTTPServer(
 	permv1.RegisterRoleServiceHTTPServer(srv, role)
 	permv1.RegisterMenuServiceHTTPServer(srv, menu)
 	dictv1.RegisterDictServiceHTTPServer(srv, dict)
+	configv1.RegisterConfigServiceHTTPServer(srv, config)
+	configv1.RegisterTenantConfigServiceHTTPServer(srv, tenantConfig)
+	configv1.RegisterFeatureFlagServiceHTTPServer(srv, featureFlag)
+	configv1.RegisterTranslationServiceHTTPServer(srv, translation)
+	tenantv1.RegisterTenantServiceHTTPServer(srv, tenant)
 	auditv1.RegisterSessionAdminServiceHTTPServer(srv, sessionAdmin)
 	auditv1.RegisterAuditServiceHTTPServer(srv, auditLog)
 	permv1.RegisterPermissionServiceHTTPServer(srv, perm)

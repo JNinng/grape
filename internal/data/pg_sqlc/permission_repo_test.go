@@ -108,7 +108,7 @@ func TestPermissionRepo_held_code_judged_granted(t *testing.T) {
 	if !mustHasPermission(t, d, permAuth("t-super-01", 1), "sys:user:query") {
 		t.Fatal("admin must hold sys:user:query")
 	}
-	// 超面写码（M3-2 受控写面）与转移归属新码同样命中。
+	// 超面写码（受控写面）与转移归属新码同样命中。
 	if !mustHasPermission(t, d, permAuth("t-super-01", 1), "sys:menu:create") {
 		t.Fatal("admin must hold sys:menu:create")
 	}
@@ -130,6 +130,80 @@ func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
 	// 未知权限码等同不持有。
 	if mustHasPermission(t, d, permAuth("t-super-01", 1), "sys:nonexistent:code") {
 		t.Fatal("unknown code must be denied")
+	}
+}
+
+func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
+	// 99_perm_seed.sql 的 258-265 配置族权限点只授予超级管理员（角色 101）：
+	// 用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	d := setupTestDB(t)
+	codes := []string{
+		"sys:config:global:query",
+		"sys:config:global:create",
+		"sys:config:global:update",
+		"sys:config:global:delete",
+		"sys:config:tenant:query",
+		"sys:config:tenant:create",
+		"sys:config:tenant:update",
+		"sys:config:tenant:delete",
+	}
+	for _, code := range codes {
+		if !mustHasPermission(t, d, permAuth("t-super-01", 1), code) {
+			t.Fatalf("admin must hold %s", code)
+		}
+	}
+	for _, code := range codes {
+		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+			t.Fatalf("ordinary user must not hold %s", code)
+		}
+	}
+}
+
+func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only(t *testing.T) {
+	// 99_perm_seed.sql 的 266-273 功能开关/翻译权限点只授予超级管理员（角色
+	// 101）：用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	d := setupTestDB(t)
+	codes := []string{
+		"sys:config:feature-flag:query",
+		"sys:config:feature-flag:create",
+		"sys:config:feature-flag:update",
+		"sys:config:feature-flag:delete",
+		"sys:config:translation:query",
+		"sys:config:translation:create",
+		"sys:config:translation:update",
+		"sys:config:translation:delete",
+	}
+	for _, code := range codes {
+		if !mustHasPermission(t, d, permAuth("t-super-01", 1), code) {
+			t.Fatalf("admin must hold %s", code)
+		}
+	}
+	for _, code := range codes {
+		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+			t.Fatalf("ordinary user must not hold %s", code)
+		}
+	}
+}
+
+func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
+	// seed.sql 的 220-223 租户管理权限点只授予超级管理员（角色 101）：
+	// 用户 1 四个码全部命中；普通用户 3（角色 103）一个都不持有。
+	d := setupTestDB(t)
+	codes := []string{
+		"sys:tenant:query",
+		"sys:tenant:create",
+		"sys:tenant:update",
+		"sys:tenant:delete",
+	}
+	for _, code := range codes {
+		if !mustHasPermission(t, d, permAuth("t-super-01", 1), code) {
+			t.Fatalf("admin must hold %s", code)
+		}
+	}
+	for _, code := range codes {
+		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+			t.Fatalf("ordinary user must not hold %s", code)
+		}
 	}
 }
 
