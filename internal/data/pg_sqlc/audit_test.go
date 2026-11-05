@@ -21,7 +21,7 @@ import (
 
 // 审计仓储集成测试：以真实 PostgreSQL 验证租户 RLS、
 // 写入-查询往返（含脱敏后内容）、组合批量与分页边界。测试自建专属库
-// grape_audit_test 并重建（DROP+CREATE+按 deploy.DeployFiles 部署清单全量
+// grape_audit_test 并重建（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单全量
 // 装载，含 schema/95_agent_audit.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
@@ -115,7 +115,7 @@ func setupAuditTestDB(t *testing.T) *Data {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range deploy.DeployFiles {
+	for _, f := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

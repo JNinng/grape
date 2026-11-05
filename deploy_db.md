@@ -35,7 +35,7 @@ make dbdeploy ARGS="--database <库名>"
 | 11 | [rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) | RLS 策略、权限过滤函数（fn_accessible_* 三件套）、updated_at 触发器 | 依赖步骤 1–9 的表已存在 |
 | 12 | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) | 写前判断函数（fn_can_* 四件） | 依赖步骤 11 的 fn_accessible_* |
 | 13 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) | 权限查询判定函数、范围版本表与 bump 触发器 | 必须先于步骤 14：种子的角色映射写入要 bump 版本表 |
-| 14 | [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) | 种子数据（含权限演示数据，覆盖多个租户） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS） |
+| 14 | [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) | 生产默认种子：平台树根租户 t-super-01 的自举数据（租户/admin/角色 101/菜单/字典/配置/开关/翻译） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS） |
 | 15 | [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) | Agent 会话存储：`CREATE SCHEMA agent` + 框架 session/postgres 六张 `agent_*` 表与索引 + grape_u 授权（trpc-agent-go 框架自管表，不入 sqlc catalog） | 只依赖步骤 10 的 grape_u 存在（授权对象）；与 public 业务域零耦合，放尾部不动既有顺序；schema 幂等建立 |
 | 16 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 多嵌入空间表——裸 vector 列 + embedder/embed_dim 身份列 + CHECK 绑定、每维度表达式部分 HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制；授权收窄到 agent_document，不覆盖 agent schema 全表 |
 | 17 | [schema/95_agent_audit.sql](internal/data/pg_sqlc/sqlc/schema/95_agent_audit.sql) | Agent 业务审计：`agent_tool_call_log` 与 `agent_confirmation_log` 两表、索引与租户 RLS（sqlc catalog 输入，命名查询见 queries/agent_audit.sql） | 步骤 1–9 的同型追加（append-only 审计表 + 租户 RLS），放清单尾部独立追加不改既有顺序；依赖步骤 10 的角色存在——grape_u 的 DML 授权由 role.sql 默认权限覆盖（部署角色于 public 建表自动 GRANT），文件内不含授权语句；RLS 策略落本域文件而非 rls.sql（新域独立成文件，见文件头注释） |
@@ -62,6 +62,8 @@ for f in schema/10_basic.sql schema/20_tenant.sql schema/30_user.sql schema/40_r
 done
 # role.sql 的口令占位符需在执行前自行替换，随后补 CONNECT 授权（见下节）
 ```
+
+> 集成测试专用种子 [test_seed.sql](internal/data/pg_sqlc/sqlc/test_seed.sql)（t-test-01/t-test-02 测试租户及其演示数据）**不在生产部署清单内**：仅由测试部署清单 `deploy.TestDeployFiles()`（生产清单 + 追加 test_seed.sql）装载，依赖 seed.sql 的树根租户存在。开发/演示库如需测试数据（如以 zhangsan/123456 登录演示），在生产清单执行完后以超级用户单独执行该文件即可。
 
 ## 幂等性与全量重建
 

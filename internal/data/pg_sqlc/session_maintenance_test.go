@@ -95,7 +95,7 @@ func TestSessionMaintenanceCleanup(t *testing.T) {
 	// del-expired 过期超宽限（跨租户）、del-revoked 已撤销未过期（删除）。
 	insertMaintenanceSession(t, ctx, admin, 880000000001, "t-super-01", "keep-fresh", now.Add(time.Hour), false)
 	insertMaintenanceSession(t, ctx, admin, 880000000002, "t-super-01", "keep-in-grace", now.Add(-time.Hour), false)
-	insertMaintenanceSession(t, ctx, admin, 880000000003, "t-demo-01", "del-expired", now.Add(-25*time.Hour), false)
+	insertMaintenanceSession(t, ctx, admin, 880000000003, "t-test-02", "del-expired", now.Add(-25*time.Hour), false)
 	insertMaintenanceSession(t, ctx, admin, 880000000004, "t-super-01", "del-revoked", now.Add(time.Hour), true)
 
 	report, err := maintainer.Maintain(ctx)

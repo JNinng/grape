@@ -55,7 +55,7 @@ server ──► service ──► agent ──► trpc-agent-go / ack 框架
 
 测试与被测代码同包；需要完整 Stack 的子包集成测试用外部测试包（`httpapi_test`、`audit_test`），替身与夹具统一在 testsupport。单测不发真实网络请求（模型用 acktest 脚本化替身）。挂载链守卫（无令牌 401、SSE、trace-id）在 [../server/agent_route_test.go](../server/agent_route_test.go)。
 
-PG 集成测试按环境变量门控，未设置即跳过；各用专属库，经 `testsupport.SetupSuiteDatabase` 全清单部署：
+PG 集成测试按环境变量门控，未设置即跳过；各用专属库，经 `testsupport.SetupSuiteDatabase` 按 `deploy.TestDeployFiles()`（生产清单 + 测试种子 test_seed.sql）部署：
 
 | 套件 | 环境变量 | 覆盖 |
 | ---- | ---- | ---- |

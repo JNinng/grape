@@ -97,6 +97,23 @@ var DeployFiles = []string{
 	"99_perm_seed.sql",
 }
 
+// TestSeedFiles 是测试专用种子清单：在 DeployFiles 全清单之后追加执行，
+// 仅由集成测试装载（setupTestDB 与 testsupport 套件部署，经 TestDeployFiles），
+// dbdeploy 生产部署不包含。文件依赖 seed.sql 的树根租户 t-super-01 存在，
+// 内容全部属测试租户（t-test-*），与生产默认数据分离。
+var TestSeedFiles = []string{
+	"test_seed.sql",
+}
+
+// TestDeployFiles 返回集成测试用部署清单：生产清单 + 测试种子。
+// 返回新切片，不修改 DeployFiles。
+func TestDeployFiles() []string {
+	files := make([]string, 0, len(DeployFiles)+len(TestSeedFiles))
+	files = append(files, DeployFiles...)
+	files = append(files, TestSeedFiles...)
+	return files
+}
+
 // role.sql 中的口令占位符：部署方（dbdeploy）在执行前对文件内容做
 // 一次性替换，仓库内的 SQL 与日志不落明文。占位符声明只存在于
 // role.sql，此处是 Go 侧的对应引用。

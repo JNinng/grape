@@ -15,16 +15,16 @@ import (
 // 部门仓储集成测试：以真实 PostgreSQL 验证 sys_dept 固定 CRUD、动态查询
 // 协议、RLS 租户边界与闭包表触发器（trg_maintain_dept_closure）的建立/
 // 移动重写/软删清理纪律。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/seed.sql：t-super-01 有部门树 1..8，t-demo-01 无部门）。
+// 种子数据见 sqlc/test_seed.sql：t-test-01 有部门树 1..8，t-test-02 无部门）。
 // 各用例经 setupTestDB 重建数据库实现隔离；新建部门用 newID() 发号，
 // 不与种子主键冲突。
 
 const (
 	// testTenantSeeded 是种子部门树所在的租户（1=总公司、2=技术部、
 	// 7/8=技术部的子组）。
-	testTenantSeeded = "t-super-01"
+	testTenantSeeded = "t-test-01"
 	// testTenantEmpty 是无部门种子的租户，供新建树的用例使用。
-	testTenantEmpty = "t-demo-01"
+	testTenantEmpty = "t-test-02"
 )
 
 // deptAuth 返回指定租户的操作者身份；部门表无 @scope，操作者仅落入审计列。
@@ -156,7 +156,7 @@ func TestDeptRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 
 func TestDeptRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 部门 1 属 t-super-01；t-demo-01 的身份经 RLS 不可见，等同不存在。
+	// 部门 1 属 t-test-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	other := deptAuth(testTenantEmpty)
 
 	_, err := NewDeptRepo(d).GetByID(context.Background(), other, 1)

@@ -18,8 +18,8 @@ import (
 // 租户仓储集成测试：以真实 PostgreSQL 验证 sys_tenant 的租户树 RLS 边界
 //（tenant_id = app.tenant_id 或 id = app.tenant_id）、固定 CRUD、唯一键与
 // 软删语义、子租户删除守卫、目标状态写与动态查询协议。种子数据见
-// sqlc/seed.sql：t-super-01 是树根（tenant_id = 自身 id），其名下直接子
-// 租户为 t-demo-01/t-test-01/t-dev-01/t-stg-01（tenant_id 均为
+// sqlc/seed.sql 与 sqlc/test_seed.sql：t-super-01 是树根（tenant_id =
+// 自身 id），其名下直接子租户为 t-test-01/t-test-02（tenant_id 均为
 // t-super-01）。各用例经 setupTestDB 重建数据库实现隔离；新建行由
 // newTenantID 发号（`t-` + 14 位十六进制），不与种子主键冲突。
 //
@@ -33,7 +33,9 @@ const (
 	// tenantTreeRoot 是种子租户树的根（平台租户）。
 	tenantTreeRoot = "t-super-01"
 	// tenantTreeSibling 是挂在根下的直接子租户，供树隔离断言使用。
-	tenantTreeSibling = "t-demo-01"
+	tenantTreeSibling = "t-test-01"
+	// tenantTreeOther 是另一棵兄弟子树（对 sibling 的树外目标）。
+	tenantTreeOther = "t-test-02"
 )
 
 // tenantIDPattern 是服务端字符串发号的形态：`t-` + 14 位小写十六进制
@@ -115,12 +117,12 @@ func backdateTenantUpdatedAt(t *testing.T, id string) time.Time {
 func TestTenantRepo_list_sees_parent_tree(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 平台租户视角：树根与其名下全部直接子租户（5 条种子），不含树外。
+	// 平台租户视角：树根与其名下全部直接子租户（3 条种子），不含树外。
 	superList := mustListTenants(t, d, tenantAuth(tenantTreeRoot), &dynq.Query{})
-	if len(superList.Items) != 5 || superList.Total == nil || *superList.Total != 5 {
-		t.Fatalf("root list = %d items (total %+v), want 5", len(superList.Items), superList.Total)
+	if len(superList.Items) != 3 || superList.Total == nil || *superList.Total != 3 {
+		t.Fatalf("root list = %d items (total %+v), want 3", len(superList.Items), superList.Total)
 	}
-	for _, code := range []string{"default", "demo", "test", "dev", "staging"} {
+	for _, code := range []string{"default", "test", "test2"} {
 		if _, ok := tenantCodes(superList)[code]; !ok {
 			t.Fatalf("root list missing seeded tenant %q", code)
 		}
@@ -143,7 +145,7 @@ func TestTenantRepo_list_sees_parent_tree(t *testing.T) {
 	if len(childList.Items) != 2 {
 		t.Fatalf("child list after create = %d items, want 2", len(childList.Items))
 	}
-	if _, ok := tenantCodes(childList)["test"]; ok {
+	if _, ok := tenantCodes(childList)["test2"]; ok {
 		t.Fatal("sibling tenant must stay invisible to child")
 	}
 
@@ -158,15 +160,15 @@ func TestTenantRepo_get_outside_tree_returns_not_found(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
 
-	if _, err := NewTenantRepo(d).Get(ctx, tenantAuth(tenantTreeSibling), "t-test-01"); !errors.Is(err, biz.ErrTenantNotFound) {
+	if _, err := NewTenantRepo(d).Get(ctx, tenantAuth(tenantTreeSibling), tenantTreeOther); !errors.Is(err, biz.ErrTenantNotFound) {
 		t.Fatalf("sibling get err = %v, want ErrTenantNotFound", err)
 	}
-	out, err := NewTenantRepo(d).Get(ctx, tenantAuth(tenantTreeRoot), "t-test-01")
+	out, err := NewTenantRepo(d).Get(ctx, tenantAuth(tenantTreeRoot), tenantTreeOther)
 	if err != nil {
 		t.Fatalf("root get child: %v", err)
 	}
-	if out.Code != "test" || out.TenantID != tenantTreeRoot {
-		t.Fatalf("row = (%s, %s), want (test, %s)", out.Code, out.TenantID, tenantTreeRoot)
+	if out.Code != "test2" || out.TenantID != tenantTreeRoot {
+		t.Fatalf("row = (%s, %s), want (test2, %s)", out.Code, out.TenantID, tenantTreeRoot)
 	}
 }
 
@@ -177,26 +179,26 @@ func TestTenantRepo_writes_outside_tree_return_not_found(t *testing.T) {
 	childAuth := tenantAuth(tenantTreeSibling)
 
 	if _, err := repo.UpdateSuper(ctx, childAuth, &biz.Tenant{
-		ID: "t-test-01", Status: biz.TenantStatusEnabled, Code: "hacked", Name: "hacked", DefaultLocale: "zh-CN",
+		ID: tenantTreeOther, Status: biz.TenantStatusEnabled, Code: "hacked", Name: "hacked", DefaultLocale: "zh-CN",
 	}); !errors.Is(err, biz.ErrTenantNotFound) {
 		t.Fatalf("update sibling err = %v, want ErrTenantNotFound", err)
 	}
-	if err := repo.DeleteSuper(ctx, childAuth, "t-test-01"); !errors.Is(err, biz.ErrTenantNotFound) {
+	if err := repo.DeleteSuper(ctx, childAuth, tenantTreeOther); !errors.Is(err, biz.ErrTenantNotFound) {
 		t.Fatalf("delete sibling err = %v, want ErrTenantNotFound", err)
 	}
-	if _, err := repo.DisableSuper(ctx, childAuth, "t-test-01"); !errors.Is(err, biz.ErrTenantNotFound) {
+	if _, err := repo.DisableSuper(ctx, childAuth, tenantTreeOther); !errors.Is(err, biz.ErrTenantNotFound) {
 		t.Fatalf("disable sibling err = %v, want ErrTenantNotFound", err)
 	}
-	if _, err := repo.RestoreSuper(ctx, childAuth, "t-test-01"); !errors.Is(err, biz.ErrTenantNotFound) {
+	if _, err := repo.RestoreSuper(ctx, childAuth, tenantTreeOther); !errors.Is(err, biz.ErrTenantNotFound) {
 		t.Fatalf("restore sibling err = %v, want ErrTenantNotFound", err)
 	}
 
 	// 目标行保持原值（跨树写没有产生副作用）。
-	out, err := repo.Get(ctx, tenantAuth(tenantTreeRoot), "t-test-01")
+	out, err := repo.Get(ctx, tenantAuth(tenantTreeRoot), tenantTreeOther)
 	if err != nil {
 		t.Fatalf("root re-read sibling: %v", err)
 	}
-	if out.Code != "test" || out.Name != "测试租户" || out.Status != biz.TenantStatusEnabled {
+	if out.Code != "test2" || out.Name != "测试租户 2" || out.Status != biz.TenantStatusEnabled {
 		t.Fatalf("row changed: %+v", out)
 	}
 }
@@ -230,7 +232,7 @@ func TestTenantUsecaseCreate_defaults_parent_to_caller_tenant(t *testing.T) {
 
 	// 树外父级引用（任何非调用方租户）按结构父级规则拒绝：用例直接
 	// 返回 INVALID_ARGUMENT，不做存在性探测。
-	outsideParent := "t-test-01"
+	outsideParent := tenantTreeOther
 	_, err = uc.CreateTenantSuper(ctx, tenantAuth(tenantTreeSibling), &biz.Tenant{
 		Status: biz.TenantStatusUnspecified, Code: "outside-parent", Name: "树外父级", ParentID: &outsideParent,
 	})
@@ -248,7 +250,7 @@ func TestTenantRepo_create_rejects_foreign_parent(t *testing.T) {
 	repo := NewTenantRepo(d)
 	childAuth := tenantAuth(tenantTreeSibling)
 
-	for _, parent := range []string{"t-test-01", "t-0000000000"} {
+	for _, parent := range []string{tenantTreeOther, "t-0000000000"} {
 		t.Run(parent, func(t *testing.T) {
 			code := "bad-parent-" + parent
 			_, err := repo.CreateSuper(ctx, childAuth, &biz.Tenant{
@@ -267,7 +269,7 @@ func TestTenantRepo_create_rejects_foreign_parent(t *testing.T) {
 		})
 	}
 
-	// 可见的其它租户同样不能作为父级：root 以直接子租户 t-demo-01 为
+	// 可见的其它租户同样不能作为父级：root 以直接子租户 t-test-01 为
 	// parent 创建被拒（与 biz 层规则一致）。
 	rootAuth := tenantAuth(tenantTreeRoot)
 	visibleParent := tenantTreeSibling
@@ -311,7 +313,7 @@ func TestTenantRepo_create_requires_live_caller(t *testing.T) {
 	repo := NewTenantRepo(d)
 	superAuth := tenantAuth(tenantTreeRoot)
 
-	// 正常调用：活租户 t-demo-01 创建自己的子租户成功。
+	// 正常调用：活租户 t-test-01 创建自己的子租户成功。
 	live := tenantAuth(tenantTreeSibling)
 	normal := mustCreateTenant(t, d, live, &biz.Tenant{
 		Status: biz.TenantStatusEnabled, Code: "caller-normal", Name: "活租户子租户", DefaultLocale: "zh-CN",
@@ -320,8 +322,8 @@ func TestTenantRepo_create_requires_live_caller(t *testing.T) {
 		t.Fatalf("normal parent = %v, want %s", normal.ParentID, tenantTreeSibling)
 	}
 
-	// 以父身份软删另一个调用方租户（t-test-01 无子租户）。
-	doomed := tenantAuth("t-test-01")
+	// 以父身份软删另一个调用方租户（t-test-02 无子租户）。
+	doomed := tenantAuth(tenantTreeOther)
 	if err := repo.DeleteSuper(ctx, superAuth, doomed.TenantID); err != nil {
 		t.Fatalf("soft delete caller tenant: %v", err)
 	}
@@ -431,8 +433,8 @@ func TestTenantRepo_delete_rejects_children_and_hides_row(t *testing.T) {
 }
 
 func TestTenantRepo_delete_rejects_invisible_grandchildren(t *testing.T) {
-	// 租户树 RLS 下祖父看不到孙行：t-demo-01 自己创建的子租户
-	//（tenant_id = t-demo-01）对 t-super-01 不可见。删除前置完整性判定
+	// 租户树 RLS 下祖父看不到孙行：t-test-01 自己创建的子租户
+	//（tenant_id = t-test-01）对 t-super-01 不可见。删除前置完整性判定
 	// 经 fn_tenant_active_child_count（SECURITY DEFINER，只返回计数）取得
 	// 全局事实，祖父删除子租户仍被拒绝，不会产生孤儿行。
 	d := setupTestDB(t)
@@ -481,7 +483,7 @@ func TestTenantGuard_active_child_count_denies_without_tenant(t *testing.T) {
 
 	var n int64
 	err := d.db.QueryRow(context.Background(),
-		`SELECT public.fn_tenant_active_child_count('t-demo-01')`).Scan(&n)
+		`SELECT public.fn_tenant_active_child_count('t-test-01')`).Scan(&n)
 	if err == nil {
 		t.Fatalf("function without app.tenant_id returned %d, want error", n)
 	}
@@ -504,7 +506,7 @@ func TestTenantGuard_active_child_count_denies_empty_tenant(t *testing.T) {
 		t.Fatalf("set empty tenant: %v", err)
 	}
 	var n int64
-	err = tx.QueryRow(ctx, `SELECT public.fn_tenant_active_child_count('t-demo-01')`).Scan(&n)
+	err = tx.QueryRow(ctx, `SELECT public.fn_tenant_active_child_count('t-test-01')`).Scan(&n)
 	if err == nil {
 		t.Fatalf("function with empty app.tenant_id returned %d, want error", n)
 	}
@@ -521,8 +523,8 @@ func TestTenantGuard_active_child_count_requires_visible_target(t *testing.T) {
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
 
-	// t-demo-01 创建自己的子租户；t-super-01 看不到该孙行，但计数函数
-	// 对可见目标 t-demo-01 返回 1。
+	// t-test-01 创建自己的子租户；t-super-01 看不到该孙行，但计数函数
+	// 对可见目标 t-test-01 返回 1。
 	parent := tenantAuth(tenantTreeSibling)
 	parentID := parent.TenantID
 	child := mustCreateTenant(t, d, parent, &biz.Tenant{
@@ -559,7 +561,7 @@ func TestTenantGuard_active_child_count_requires_visible_target(t *testing.T) {
 	}
 
 	// 树外目标（兄弟租户 / 不存在）一律拒绝。
-	for _, target := range []string{"t-test-01", "t-0000000000"} {
+	for _, target := range []string{tenantTreeOther, "t-0000000000"} {
 		err := d.IdentityTx(ctx, pgAuth(parent), func(s *IdentityTx) error {
 			return s.Tx().QueryRow(ctx,
 				`SELECT public.fn_tenant_active_child_count($1)`, target).Scan(&n)

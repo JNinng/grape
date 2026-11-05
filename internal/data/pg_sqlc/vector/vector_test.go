@@ -22,7 +22,7 @@ import (
 )
 
 // 向量存储介质集成测试：以真实 PostgreSQL 验证应用层租户隔离、嵌入空间
-// 隔离与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 deploy.DeployFiles
+// 隔离与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 deploy.TestDeployFiles()
 // 部署清单全量装载，含 agent_vector.sql），不触碰其他数据库。设置以下环境
 // 变量后运行，未设置时跳过：
 //
@@ -139,7 +139,7 @@ func setupVectorTestDB(t *testing.T) *pgsqlc.Data {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range deploy.DeployFiles {
+	for _, f := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

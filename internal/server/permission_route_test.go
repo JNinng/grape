@@ -254,11 +254,11 @@ func TestTenantRoutes_missing_token_returns_401(t *testing.T) {
 		body   string
 	}{
 		{http.MethodPost, "/v1/tenants/create", "{}"},
-		{http.MethodGet, "/v1/tenants/t-demo-01", ""},
+		{http.MethodGet, "/v1/tenants/t-test-02", ""},
 		{http.MethodPut, "/v1/tenants/update", "{}"},
-		{http.MethodDelete, "/v1/tenants/t-demo-01", ""},
-		{http.MethodPost, "/v1/tenants/t-demo-01/disable", ""},
-		{http.MethodPost, "/v1/tenants/t-demo-01/restore", ""},
+		{http.MethodDelete, "/v1/tenants/t-test-02", ""},
+		{http.MethodPost, "/v1/tenants/t-test-02/disable", ""},
+		{http.MethodPost, "/v1/tenants/t-test-02/restore", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.target, func(t *testing.T) {

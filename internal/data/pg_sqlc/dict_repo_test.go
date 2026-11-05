@@ -15,7 +15,7 @@ import (
 // 固定 CRUD、动态查询协议、两级写路径纪律（数据创建先锁宿主类型行、类型
 // 删除先校验活跃数据）与 RLS 租户边界。复用根包套件的 setupTestDB（deploy
 // 全清单装载，种子数据见 sqlc/seed.sql：t-super-01 有字典类型 1-3 与字典
-// 数据 1-11；t-demo-01 无字典种子）。各用例经 setupTestDB 重建数据库实现
+// 数据 1-11；t-test-02 无字典种子）。各用例经 setupTestDB 重建数据库实现
 // 隔离；新建行用 newID() 发号，不与种子主键冲突。
 //
 // 运行（PostgreSQL 必需，未设环境变量时跳过）：
@@ -28,7 +28,7 @@ const (
 	// dictTenantSeeded 是种子字典所在的租户。
 	dictTenantSeeded = "t-super-01"
 	// dictTenantEmpty 是无字典种子的租户，供新建与跨租户断言使用。
-	dictTenantEmpty = "t-demo-01"
+	dictTenantEmpty = "t-test-02"
 )
 
 // dictAuth 返回指定租户的操作者身份；字典表无 @scope，操作者仅落入审计列。

@@ -23,7 +23,7 @@ import (
 // 检索留痕集成测试：以真实 PostgreSQL 验证检索留痕
 // 行落库（query/top_k/命中与实际一致）、租户 RLS、RLS 关闭时读侧兜底、
 // 留痕失败不中断检索、管线摄取留痕来源与分页边界。测试自建专属库并
-// 重建（DROP+CREATE+按 deploy.DeployFiles 部署清单全量装载，含
+// 重建（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单全量装载，含
 // schema/97_agent_retrieval_log.sql 与 agent_vector.sql），不触碰其他
 // 数据库。设置以下环境变量后运行，未设置时跳过：
 //
@@ -101,7 +101,7 @@ func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range deploy.DeployFiles {
+	for _, f := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)

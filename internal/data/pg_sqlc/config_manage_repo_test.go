@@ -20,8 +20,9 @@ import (
 // 无 RLS）与 sys_tenant_config（租户表，RLS）的固定 CRUD、受控写面
 //（grape_u 对 sys_config 无直写权限，经 98_config_write.sql 的 SECURITY
 // DEFINER 写函数）、唯一键与软删语义、动态查询协议与租户边界。复用根包
-// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql：
-// t-super-01 有全局配置 1-7 与租户配置 1-2；t-demo-01 有租户配置 3-4）。
+// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql 与
+// sqlc/test_seed.sql：t-super-01 有全局配置 1-7 与租户配置 1-2；t-test-02
+// 有租户配置 3-4）。
 // 各用例经 setupTestDB 重建数据库实现隔离；新建行用 newID() 发号，不与
 // 种子主键冲突。
 //
@@ -35,7 +36,7 @@ const (
 	// configTenantSeeded 是种子全局/租户配置所在的租户。
 	configTenantSeeded = "t-super-01"
 	// configTenantOther 是种子租户配置 3-4 所在的租户，供跨租户断言使用。
-	configTenantOther = "t-demo-01"
+	configTenantOther = "t-test-02"
 )
 
 // configAuth 返回指定租户的操作者身份；配置表无 @scope，操作者仅落入
@@ -121,14 +122,13 @@ func TestConfigRepo_create_super_writes_via_controlled_function(t *testing.T) {
 }
 
 // assertPermissionDenied 断言直写被运行角色权限拒绝（SQLSTATE 42501）。
+// 只判错误码不判报错文案：服务端 lc_messages 本地化后文案随语言变化
+//（如中文「权限不够」），42501 已等价表达 permission denied。
 func assertPermissionDenied(t *testing.T, err error) {
 	t.Helper()
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("direct write err = %v, want permission denied (42501)", err)
-	}
-	if !strings.Contains(pgErr.Message, "permission denied") {
-		t.Fatalf("pg message = %q, want permission denied", pgErr.Message)
 	}
 }
 
@@ -582,7 +582,7 @@ func TestTenantConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
 func TestTenantConfigRepo_update_across_tenant_returns_not_found(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 种子租户配置 1 属 t-super-01；t-demo-01 视角等同不存在。
+	// 种子租户配置 1 属 t-super-01；t-test-02 视角等同不存在。
 	_, err := NewTenantConfigRepo(d).Update(context.Background(), configAuth(configTenantOther), &biz.TenantConfig{
 		ID: 1, Status: biz.ConfigStatusEnabled, Name: "x",
 	})
@@ -680,7 +680,7 @@ func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
 }
 
 func TestTenantConfigRepo_list_orders_by_requested_sort(t *testing.T) {
-	// 租户内动态 sort 生效（t-demo-01 种子租户配置 3/4，按 id 降序）。
+	// 租户内动态 sort 生效（t-test-02 种子租户配置 3/4，按 id 降序）。
 	d := setupTestDB(t)
 
 	q := &dynq.Query{Sort: []dynq.SortItem{{Field: "id", Order: "desc"}}}
@@ -1351,7 +1351,7 @@ func TestFeatureFlagRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_orders_and_paginates(t *testing.T) {
-	// t-demo-01 种子开关为 5/6/7/8：按 id 降序第 1 页 8/7，第 2 页 6/5；
+	// t-test-02 种子开关为 5/6/7/8：按 id 降序第 1 页 8/7，第 2 页 6/5；
 	// 共 4 条且 total 不随翻页位置递减。
 	d := setupTestDB(t)
 	pageSize := 2
@@ -1954,7 +1954,7 @@ func TestPlatformTenantGuard_classifies_seed_tenants(t *testing.T) {
 		want   bool
 	}{
 		{tenant: configTenantSeeded, want: true}, // t-super-01：树根
-		{tenant: configTenantOther, want: false}, // t-demo-01：直接子租户
+		{tenant: configTenantOther, want: false}, // t-test-02：直接子租户
 		{tenant: "t-config-none", want: false},   // 不存在的租户
 	} {
 		got, err := guard.IsPlatformTenant(ctx, configAuth(tc.tenant))
@@ -1989,7 +1989,7 @@ func TestPlatformTenantGuard_soft_deleted_tenant_is_not_platform(t *testing.T) {
 }
 
 // TestConfigUsecase_global_write_requires_platform_tenant 验证全局配置写
-// 路径的平台信任边界在真实存储上成立：直接子租户（t-demo-01）经完整用例
+// 路径的平台信任边界在真实存储上成立：直接子租户（t-test-02）经完整用例
 // 写全局配置返回 ErrConfigPlatformRequired（403），新建行不落库、更新与
 // 删除不触碰种子行；树根（t-super-01）正常写入。
 func TestConfigUsecase_global_write_requires_platform_tenant(t *testing.T) {

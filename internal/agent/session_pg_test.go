@@ -105,7 +105,7 @@ func sessionSetupDatabase(t *testing.T) string {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, name := range deploy.DeployFiles {
+	for _, name := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(deployDir + "/" + name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
