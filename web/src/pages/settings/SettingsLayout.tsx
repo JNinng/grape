@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type ComponentType } from 'react'
-import { NavLink, Outlet } from 'react-router'
+import { createContext, useContext, useEffect, useRef, useState, type ComponentType } from 'react'
+import { Link, Navigate, NavLink, Outlet } from 'react-router'
 import {
+  ArrowLeftIcon,
   BuildingIcon,
   ClipboardListIcon,
   FileCogIcon,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import { cn } from 'cn'
 import { fetchMyPermissions } from '@/api/permissions'
+import { Spinner } from '@/components/ui/spinner'
 import { GrapeMark } from '@/ui/icons'
 
 // SettingsModule 描述左侧导航的一个模块项：code 是打开该模块页面的页面级
@@ -42,6 +44,38 @@ const SETTINGS_MODULES: SettingsModule[] = [
   { key: 'configs', label: '配置', icon: FileCogIcon, code: 'sys:config', path: '/settings/configs' },
   { key: 'tenants', label: '租户', icon: BuildingIcon, code: 'sys:tenant', path: '/settings/tenants' },
 ]
+
+// SettingsAccess 是布局向索引路由共享的权限视图：loading 期间不下结论
+//（避免先跳到无权页再纠正）；visible 已按权限码过滤且保持模块声明顺序。
+interface SettingsAccess {
+  loading: boolean
+  visible: SettingsModule[]
+}
+
+const SettingsAccessContext = createContext<SettingsAccess>({ loading: true, visible: [] })
+
+// SettingsIndexRedirect 是 /settings 的索引路由：权限码加载完成后跳到导
+// 航清单中第一个有权限且已开放的模块；加载失败沿用全量回落，无任何可见
+// 模块时给出空状态而不是硬跳固定页面。与左侧导航共用同一份过滤结果。
+export function SettingsIndexRedirect() {
+  const { loading, visible } = useContext(SettingsAccessContext)
+  if (loading) {
+    return (
+      <div className="flex min-h-32 items-center justify-center" aria-label="管理模块加载中">
+        <Spinner aria-hidden className="size-6" />
+      </div>
+    )
+  }
+  const target = visible.find((module) => module.path !== undefined)
+  if (target?.path === undefined) {
+    return (
+      <p className="grid min-h-32 place-items-center text-sm text-muted-foreground">
+        暂无可访问的管理模块
+      </p>
+    )
+  }
+  return <Navigate to={target.path} replace />
+}
 
 // SettingsLayout 是管理页布局：左侧模块导航 + 右侧子路由内容区。挂载时拉
 // 取当前用户的功能权限码（GET /v1/permissions/mine）过滤导航项；拉取失败
@@ -83,51 +117,64 @@ export function SettingsLayout() {
       : SETTINGS_MODULES.filter((module) => granted.has(module.code))
 
   return (
-    <div className="flex h-full overflow-hidden bg-background">
-      <aside aria-label="管理导航" className="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-        <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
-          <GrapeMark className="h-9 w-9" />
-          <div className="min-w-0 flex-1">
-            <h2 className="text-sm font-semibold text-foreground">系统管理</h2>
-            <p className="truncate text-xs text-muted-foreground">租户内资源管理</p>
+    <SettingsAccessContext.Provider value={{ loading, visible }}>
+      <div className="flex h-full overflow-hidden bg-background">
+        <aside aria-label="管理导航" className="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+          <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+            <GrapeMark className="h-9 w-9" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold text-foreground">系统管理</h2>
+              <p className="truncate text-xs text-muted-foreground">租户内资源管理</p>
+            </div>
           </div>
-        </div>
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4" aria-busy={loading}>
-          <ul aria-label="管理模块" className="space-y-1">
-            {visible.map((module) => (
-              <li key={module.key}>
-                {module.path !== undefined ? (
-                  <NavLink
-                    to={module.path}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors select-none hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring',
-                        isActive ? 'bg-brand-soft text-brand-text hover:bg-brand-soft' : 'text-foreground',
-                      )
-                    }
-                  >
-                    <module.icon aria-hidden className="size-4 shrink-0" />
-                    {module.label}
-                  </NavLink>
-                ) : (
-                  <span
-                    aria-disabled="true"
-                    title="该模块尚未开放"
-                    className="flex cursor-not-allowed items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground/60 select-none"
-                  >
-                    <module.icon aria-hidden className="size-4 shrink-0" />
-                    {module.label}
-                    <span className="ml-auto text-[10px] leading-none">待接入</span>
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
-      <main aria-label="管理内容区" className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-        <Outlet />
-      </main>
-    </div>
+          <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4" aria-busy={loading}>
+            <ul aria-label="管理模块" className="space-y-1">
+              {visible.map((module) => (
+                <li key={module.key}>
+                  {module.path !== undefined ? (
+                    <NavLink
+                      to={module.path}
+                      className={({ isActive }) =>
+                        cn(
+                          'flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors select-none hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring',
+                          isActive ? 'bg-brand-soft text-brand-text hover:bg-brand-soft' : 'text-foreground',
+                        )
+                      }
+                    >
+                      <module.icon aria-hidden className="size-4 shrink-0" />
+                      {module.label}
+                    </NavLink>
+                  ) : (
+                    <span
+                      aria-disabled="true"
+                      title="该模块尚未开放"
+                      className="flex cursor-not-allowed items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground/60 select-none"
+                    >
+                      <module.icon aria-hidden className="size-4 shrink-0" />
+                      {module.label}
+                      <span className="ml-auto text-[10px] leading-none">待接入</span>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </nav>
+          {/* 工作台是应用主界面（对话页）：设置面提供显式返回入口，
+           * 不依赖浏览器后退。 */}
+          <div className="shrink-0 border-t border-sidebar-border p-3">
+            <Link
+              to="/"
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring"
+            >
+              <ArrowLeftIcon aria-hidden className="size-4 shrink-0" />
+              返回工作台
+            </Link>
+          </div>
+        </aside>
+        <main aria-label="管理内容区" className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <Outlet />
+        </main>
+      </div>
+    </SettingsAccessContext.Provider>
   )
 }

@@ -57,13 +57,16 @@ export interface CreateDeptInput {
   ownerUserGroupId?: string
 }
 
-// UpdateDeptInput 对齐 org.v1.UpdateDeptRequest.dept：仅 name/status
-// 可改（status 在更新语义下必填）；parentId 与 owner_* 在输入中被忽略
-//（移动走 moveDept）。
+// UpdateDeptInput 对齐 org.v1.UpdateDeptRequest.dept：PUT 覆盖语义，须携带
+// 完整可变字段集合（status 必填）；parentId 缺省表示移为根部门，
+// ownerUserGroupId 缺省表示清空归属用户组。
 export interface UpdateDeptInput {
   id: string
   status: number
   name: string
+  parentId?: string
+  ownerUserId: string
+  ownerUserGroupId?: string
 }
 
 // compact 序列化请求体：JSON.stringify 本就省略值为 undefined 的键，对

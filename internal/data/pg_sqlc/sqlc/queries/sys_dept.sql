@@ -37,13 +37,18 @@ VALUES (sqlc.arg('id'), current_setting('app.tenant_id'), sqlc.arg('status'), sq
         sqlc.arg('created_by'), sqlc.arg('updated_by'))
 RETURNING *;
 
--- 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
--- 走专项口径）；updated_at 由触发器刷新
+-- 覆盖可变字段（name/status/parent_id/owner_user_id/owner_user_group_id）；
+-- parent_id 为 NULL 表示移为根部门（闭包路径由 trg_maintain_dept_closure
+-- 在同事务内校验并重写，父级合法性/防环兜底），owner_user_group_id 为
+-- NULL 表示清空；updated_at 由触发器刷新
 -- name: UpdateSysDept :one
 UPDATE public.sys_dept
-SET "name"     = sqlc.arg('name'),
-    status     = sqlc.arg('status'),
-    updated_by = sqlc.arg('updated_by')
+SET "name"              = sqlc.arg('name'),
+    status              = sqlc.arg('status'),
+    parent_id           = sqlc.narg('parent_id'),
+    owner_user_id       = sqlc.arg('owner_user_id'),
+    owner_user_group_id = sqlc.narg('owner_user_group_id'),
+    updated_by          = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL
 RETURNING *;

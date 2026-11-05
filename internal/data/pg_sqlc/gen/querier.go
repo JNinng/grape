@@ -44,6 +44,10 @@ type Querier interface {
 	CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRetrievalLogsParams) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 统计给定角色中携带指定权限码的有效角色数（角色/菜单均活跃未删，与
+	// fn_has_permission 的活跃联结同口径）；供自锁保护判定最终集合是否仍
+	// 至少保留一个能授予分配权限的角色
+	CountRolesGrantingPermission(ctx context.Context, arg CountRolesGrantingPermissionParams) (int64, error)
 	// 统计部门未软删的直接子部门数（删除前置校验；触发器兜底同口径）
 	CountSysDeptActiveChildren(ctx context.Context, id *int64) (int64, error)
 	// 统计字典类型下未删除字典数据数（类型删除前置校验：计数大于 0 即拒绝软删，
@@ -83,6 +87,10 @@ type Querier interface {
 	DeleteSysRoleIDScope(ctx context.Context, arg DeleteSysRoleIDScopeParams) (int64, error)
 	// 清除指定的一条角色-菜单映射（物理删除；解除授权即删除）
 	DeleteSysRoleMenu(ctx context.Context, arg DeleteSysRoleMenuParams) (int64, error)
+	// 批量解除用户-角色映射：只删除操作者按 fn_can_assign_role 仍可分配
+	// （授予/撤销同口径）的角色；调用方要求受影响行数等于请求数，否则整批
+	// 回滚。映射行无可变业务字段，解除走物理删除
+	DeleteUserRoles(ctx context.Context, arg DeleteUserRolesParams) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
 	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
 	GetActiveAgentToolGrantForSession(ctx context.Context, arg GetActiveAgentToolGrantForSessionParams) (AgentToolGrant, error)
@@ -285,12 +293,39 @@ type Querier interface {
 	ListActiveAgentToolGrantsByTenant(ctx context.Context, tenantID string) ([]AgentToolGrant, error)
 	// 指定用户的活跃授权列表（本人视图），新授权在前；id 为同秒 tie-break
 	ListActiveAgentToolGrantsByUser(ctx context.Context, arg ListActiveAgentToolGrantsByUserParams) ([]AgentToolGrant, error)
+	// 按 ID 读取活跃角色（启用且未软删）的 id/name，按 name/id 稳定排序；
+	// 用于可管理集合的标签与 desired 集合的存在性校验
+	ListActiveRoleOptionsByIDs(ctx context.Context, ids []int64) ([]ListActiveRoleOptionsByIDsRow, error)
 	// 按会话过滤分页查询授权确认审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentConfirmationLogs(ctx context.Context, arg ListAgentConfirmationLogsParams) ([]AgentConfirmationLog, error)
 	// 按会话/来源过滤分页查询检索留痕（时间倒序）；NULL 参数不过滤
 	ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetrievalLogsParams) ([]AgentRetrievalLog, error)
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
+	// 用户分配选择器与「管理范围内的整组替换」的固定命名查询。
+	// 角色分配复用 operate.sql 的判定函数与写入查询（fn_can_assign_role /
+	// fn_can_assign_roles / AssignUserRoles），本文件只补选择器候选、当前
+	// 角色集合、撤销写入与指定权限码的角色计数。全部查询经 IdentityTx 在
+	// 租户事务内执行（RLS 承担租户边界），操作者由认证上下文注入。
+	//
+	// 关键字搜索统一用 strpos(lower(col), lower(keyword)) > 0（避免 LIKE
+	// 通配符转义），keyword 为空串不过滤；分页以 limit+1 / offset 实现，
+	// total 不计算（调用方裁掉多取的一行判定 has_more）。
+	// 读取目标用户可分配、且尚未拥有的活跃角色（操作者按 fn_can_assign_role
+	// 判定；角色匹配 name/code，按 name/id 稳定排序）；limit 由调用方传
+	// page_size+1 以判定 has_more
+	ListAssignableRoleOptions(ctx context.Context, arg ListAssignableRoleOptionsParams) ([]ListAssignableRoleOptionsRow, error)
+	// 归属部门候选：fn_accessible_dept_ids 三态过滤，只返回活跃且未删除的
+	// 部门；关键字匹配 name，label 取 name
+	ListOwnerDeptOptions(ctx context.Context, arg ListOwnerDeptOptionsParams) ([]ListOwnerDeptOptionsRow, error)
+	// 归属用户组候选：fn_accessible_group_ids 三态过滤，只返回活跃且未删除
+	// 的用户组；关键字匹配 name/code，label 取 name
+	ListOwnerGroupOptions(ctx context.Context, arg ListOwnerGroupOptionsParams) ([]ListOwnerGroupOptionsRow, error)
+	// 归属用户候选：fn_accessible_user_ids 三态过滤（NULL=全租户、
+	// '{}'=无有效角色、数组=可见 ID 并集），只返回活跃且未删除的用户；
+	// 关键字匹配 name/nickname，label 取 nickname 优先、空则 name；
+	// limit 由调用方传 page_size+1
+	ListOwnerUserOptions(ctx context.Context, arg ListOwnerUserOptionsParams) ([]ListOwnerUserOptionsRow, error)
 	// 读取租户内全部未软删部门（组织树装配与环检测的专用列表，租户规模内
 	// 全量返回；created_at ASC、id ASC 稳定排序）
 	ListSysDeptAll(ctx context.Context) ([]SysDept, error)
@@ -311,6 +346,9 @@ type Querier interface {
 	// 分页返回组成员（联结用户表展示字段；按添加时间升序、user_id 升序稳定
 	// 排序）。已软删用户不出现在结果中（残留映射行被联结过滤）
 	ListSysUserGroupMembers(ctx context.Context, arg ListSysUserGroupMembersParams) ([]ListSysUserGroupMembersRow, error)
+	// 读取用户的全部角色映射（含停用/软删角色的残留映射），升序稳定排序；
+	// 供当前集合与 locked 差集计算
+	ListUserRoleIDs(ctx context.Context, userID int64) ([]int64, error)
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
@@ -397,8 +435,10 @@ type Querier interface {
 	//（config_key/value_type 是身份/值语义列不经本路径变更）；目标未命中
 	// 函数返回 NULL 复合行，以 id IS NOT NULL 过滤成空集（映射 NotFound）
 	UpdateSysConfig(ctx context.Context, arg UpdateSysConfigParams) (SysConfig, error)
-	// 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
-	// 走专项口径）；updated_at 由触发器刷新
+	// 覆盖可变字段（name/status/parent_id/owner_user_id/owner_user_group_id）；
+	// parent_id 为 NULL 表示移为根部门（闭包路径由 trg_maintain_dept_closure
+	// 在同事务内校验并重写，父级合法性/防环兜底），owner_user_group_id 为
+	// NULL 表示清空；updated_at 由触发器刷新
 	UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error)
 	// 更新可变字段（label/status/sort_order/remark；不含 value/value_type 与
 	// dict_type_id——值语义列与宿主归属列不经本路径变更）；updated_at 由触发器刷新

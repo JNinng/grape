@@ -87,6 +87,58 @@ service UserService {
       body: "*"
     };
   }
+
+  // ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+  // （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+  // 等同不存在（NOT_FOUND）。
+  rpc ListAssignableRoles (ListAssignableRolesRequest) returns (query.v1.OptionSet) {
+    option (google.api.http) = {
+      post: "/v1/users/assignable-roles"
+      body: "*"
+    };
+  }
+
+  // ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+  // 只计数不暴露明细）与版本号；不可见等同不存在。
+  rpc ListUserRoles (ListUserRolesRequest) returns (UserRoleSet) {
+    option (google.api.http) = {
+      get: "/v1/users/{user_id}/roles"
+    };
+  }
+
+  // SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+  // 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+  // 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+  rpc SetUserRoles (SetUserRolesRequest) returns (UserRoleSet) {
+    option (google.api.http) = {
+      post: "/v1/users/set-roles"
+      body: "*"
+    };
+  }
+
+  // ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+  rpc ListOwnerUserOptions (ListOwnerOptionsRequest) returns (query.v1.OptionSet) {
+    option (google.api.http) = {
+      post: "/v1/users/owner-user-options"
+      body: "*"
+    };
+  }
+
+  // ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+  rpc ListOwnerDeptOptions (ListOwnerOptionsRequest) returns (query.v1.OptionSet) {
+    option (google.api.http) = {
+      post: "/v1/users/owner-dept-options"
+      body: "*"
+    };
+  }
+
+  // ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+  rpc ListOwnerGroupOptions (ListOwnerOptionsRequest) returns (query.v1.OptionSet) {
+    option (google.api.http) = {
+      post: "/v1/users/owner-group-options"
+      body: "*"
+    };
+  }
 }
 
 // User 是用户的规范表示。password 列为 @internal，不跨越 API 边界；
@@ -205,4 +257,44 @@ message TransferUserOwnerRequest {
   optional int64 owner_dept_id = 3;
   // 新归属用户组；null 表示清掉该归属。
   optional int64 owner_user_group_id = 4;
+}
+
+// ListAssignableRolesRequest 是 UserService.ListAssignableRoles 的输入。
+message ListAssignableRolesRequest {
+  // 目标用户的服务端标识（决定可分配角色集与已拥有过滤）。
+  int64 target_user_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 关键字与分页。
+  query.v1.OptionQuery query = 2;
+}
+
+// ListUserRolesRequest 是 UserService.ListUserRoles 的输入。
+message ListUserRolesRequest {
+  // 目标用户的服务端标识。
+  int64 user_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SetUserRolesRequest 是 UserService.SetUserRoles 的输入。
+message SetUserRolesRequest {
+  // 目标用户的服务端标识。
+  int64 user_id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 只表达调用方可管理范围内的目标集合；不得包含 locked 角色。
+  repeated int64 role_ids = 2;
+  // ListUserRoles 返回的 version；必填，不一致返回 409。
+  string expected_version = 3 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListOwnerOptionsRequest 是归属候选三端点的输入。
+message ListOwnerOptionsRequest {
+  // 关键字与分页。
+  query.v1.OptionQuery query = 1;
+}
+
+// UserRoleSet 是 UserService.ListUserRoles / SetUserRoles 的输出。
+message UserRoleSet {
+  // 当前可管理范围的角色（assigned=true）；按名称、ID 稳定排序。
+  repeated query.v1.Option items = 1;
+  // locked 角色数量（不在调用方管理范围的既有角色；不暴露明细）。
+  int64 unmanaged_count = 2;
+  // 含 user_id 与排序后可管理角色 ID 的 hash；提交 SetUserRoles 时原样回传。
+  string version = 3;
 }

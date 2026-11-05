@@ -242,17 +242,46 @@ func TestOperationPermissionCodes_match_tenant_codes(t *testing.T) {
 	}
 }
 
+// TestOperationPermissionCodes_match_assignment_codes 验证用户分配选择器
+// 6 个端点逐一映射到预期的权限码常量（精确相等）：角色选择器、当前角色
+// 与整组替换并入 assign-role；三个归属候选并入 transfer-owner。
+func TestOperationPermissionCodes_match_assignment_codes(t *testing.T) {
+	want := map[string]string{
+		userv1.OperationUserServiceListAssignableRoles:   biz.PermUserAssignRole,
+		userv1.OperationUserServiceListUserRoles:         biz.PermUserAssignRole,
+		userv1.OperationUserServiceSetUserRoles:          biz.PermUserAssignRole,
+		userv1.OperationUserServiceListOwnerUserOptions:  biz.PermUserTransferOwner,
+		userv1.OperationUserServiceListOwnerDeptOptions:  biz.PermUserTransferOwner,
+		userv1.OperationUserServiceListOwnerGroupOptions: biz.PermUserTransferOwner,
+	}
+	for operation, code := range want {
+		got, ok := operationPermissionCodes[operation]
+		if !ok {
+			t.Fatalf("operation %s not covered", operation)
+		}
+		if got != code {
+			t.Fatalf("operation %s maps to %q, want %q", operation, got, code)
+		}
+	}
+}
+
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 	covered := map[string]struct{}{
 		// 用户管理
-		userv1.OperationUserServiceGetUser:           {},
-		userv1.OperationUserServiceListUsers:         {},
-		userv1.OperationUserServiceCreateUser:        {},
-		userv1.OperationUserServiceUpdateUser:        {},
-		userv1.OperationUserServiceSetUserPassword:   {},
-		userv1.OperationUserServiceDeleteUser:        {},
-		userv1.OperationUserServiceAssignRoles:       {},
-		userv1.OperationUserServiceTransferUserOwner: {},
+		userv1.OperationUserServiceGetUser:               {},
+		userv1.OperationUserServiceListUsers:             {},
+		userv1.OperationUserServiceCreateUser:            {},
+		userv1.OperationUserServiceUpdateUser:            {},
+		userv1.OperationUserServiceSetUserPassword:       {},
+		userv1.OperationUserServiceDeleteUser:            {},
+		userv1.OperationUserServiceAssignRoles:           {},
+		userv1.OperationUserServiceTransferUserOwner:     {},
+		userv1.OperationUserServiceListAssignableRoles:   {},
+		userv1.OperationUserServiceListUserRoles:         {},
+		userv1.OperationUserServiceSetUserRoles:          {},
+		userv1.OperationUserServiceListOwnerUserOptions:  {},
+		userv1.OperationUserServiceListOwnerDeptOptions:  {},
+		userv1.OperationUserServiceListOwnerGroupOptions: {},
 		// 部门管理
 		orgv1.OperationDeptServiceGetDeptTree: {},
 		orgv1.OperationDeptServiceGetDept:     {},

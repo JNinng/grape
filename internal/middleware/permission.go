@@ -38,6 +38,15 @@ var operationPermissionCodes = map[string]string{
 	userv1.OperationUserServiceDeleteUser:        biz.PermUserDelete,
 	userv1.OperationUserServiceAssignRoles:       biz.PermUserAssignRole,
 	userv1.OperationUserServiceTransferUserOwner: biz.PermUserTransferOwner,
+	// 用户分配选择器与角色整组替换：候选接口按分配动作设权限码（角色
+	// 选择器与当前/设置角色并入 assign-role，三个归属候选并入
+	// transfer-owner）。
+	userv1.OperationUserServiceListAssignableRoles:   biz.PermUserAssignRole,
+	userv1.OperationUserServiceListUserRoles:         biz.PermUserAssignRole,
+	userv1.OperationUserServiceSetUserRoles:          biz.PermUserAssignRole,
+	userv1.OperationUserServiceListOwnerUserOptions:  biz.PermUserTransferOwner,
+	userv1.OperationUserServiceListOwnerDeptOptions:  biz.PermUserTransferOwner,
+	userv1.OperationUserServiceListOwnerGroupOptions: biz.PermUserTransferOwner,
 	// 部门管理
 	orgv1.OperationDeptServiceGetDeptTree: biz.PermDeptQuery,
 	orgv1.OperationDeptServiceGetDept:     biz.PermDeptQuery,

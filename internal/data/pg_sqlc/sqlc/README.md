@@ -27,13 +27,13 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 16 个文件、130 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、用户分配选择器/角色整组替换、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 17 个文件、138 条命名查询 |
 | 17 | 98_menu_write.sql | 定义 sys_menu 受控写面：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
 | 18 | 98_config_write.sql | 定义 sys_config 受控写面：fn_config_create/update/delete 三个 SECURITY DEFINER 固定口径写函数（建/改/软删），认证事务纪律校验（app.tenant_id 未设置即拒绝）与软删口径收在函数内；config_key/value_type 身份/值语义列不经更新路径；role.sql 对 sys_config 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款） | 是（只读函数签名） | 3 个受控写函数 |
 | 19 | 98_tenant_guard.sql | 定义 sys_tenant 删除前置完整性判定（受控读取面）：fn_tenant_active_child_count 一个 SECURITY DEFINER 计数函数——租户树 RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、不返回行数据，不构成跨租户数据读面，函数内校验 app.tenant_id 已设置（空串/未设置即拒绝，fail-closed）且目标对调用方可见（消除结构侧信道）；EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC | 是（只读函数签名） | 1 个受控判定函数 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 生产默认种子：平台树根租户 t-super-01 的自举数据（含授权管理权限码菜单 25x） | 否 | 租户/角色 101/用户 1（admin）/菜单/配置/开关/翻译 |
-| — | test_seed.sql | 集成测试专用种子：t-test-01/t-test-02 测试租户及其演示数据（部门树、角色 102-110、用户 2-12、用户组、basic 归属矩阵、菜单副本 12xx/32xx、示例日志、租户配置与开关、字典演示——t-test-01 证件类型/客户来源/行业分类，t-test-02 无字典作对照；用户 12 superplain 属平台租户 t-super-01）；不入生产清单，仅由 deploy.TestDeployFiles（测试装载）在完整生产清单之后追加执行；仅用于全新建库，历史残留在文件头守卫显式报错 | 否 | 测试租户 2 个、部门/角色/用户/用户组/字典演示 3 类型 14 数据/菜单副本/映射/日志等 |
+| — | test_seed.sql | 集成测试专用种子：t-test-01/t-test-02 测试租户及其演示数据（部门树、角色 102-110、用户 2-12、用户组、basic 归属矩阵、菜单副本 12xx/32xx（含用户分配/转归属权限点 3208/3209）、示例日志、租户配置与开关、字典演示——t-test-01 证件类型/客户来源/行业分类，t-test-02 无字典作对照；用户 12 superplain 属平台租户 t-super-01）；不入生产清单，仅由 deploy.TestDeployFiles（测试装载）在完整生产清单之后追加执行；仅用于全新建库，历史残留在文件头守卫显式报错 | 否 | 测试租户 2 个、部门/角色/用户/用户组/字典演示 3 类型 14 数据/菜单副本/映射/日志等 |
 | — | 99_perm_seed.sql | 管理面功能权限码种子：sys_menu 操作权限点（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点、257 通用翻译页面、258-265 配置族全局/租户操作码、266-269 功能开关操作码、270-273 翻译操作码）与超级管理员（101）的角色-菜单映射 | 否 | 24 条菜单、24 条角色-菜单映射 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
@@ -50,8 +50,8 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `sqlc.yaml` 的 schema 列表 = schema/ 十一个域文件（10–90 九个域 +
   95_agent_audit + 97_agent_retrieval_log）+ rls/operate/expose +
   96_agent_grant.sql + 98_menu_write.sql + 98_config_write.sql +
-  98_tenant_guard.sql，queries 列表 = queries/ 十六个文件
-  （operate/basic/perm、业务表固定 CRUD sys_user/sys_dept/sys_user_group/
+  98_tenant_guard.sql，queries 列表 = queries/ 十七个文件
+  （operate/basic/perm/assign_options、业务表固定 CRUD sys_user/sys_dept/sys_user_group/
   sys_dict/sys_audit_log/sys_role/sys_menu/sys_config/sys_tenant/sys_session 与 Agent
   审计 agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。
   schema 列表里的函数声明文件提供 queries 调用所需的签名：
@@ -299,6 +299,32 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | AssignUserRoles | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过 |
 | HasUserRole | :one | 用户/角色 → bool | 判断用户是否拥有指定角色 |
 
+### assign_options.sql（用户分配选择器与角色整组替换）
+
+用户页分配动作的候选与撤销面：可分配角色、当前角色集合、三个归属候选与
+`SetUserRoles` 的撤销/自锁计数。角色分配复用 operate.sql 的
+`fn_can_assign_role` / `fn_can_assign_roles` / `AssignUserRoles`，本文件只补
+差集与查询。关键字统一 `strpos(lower(col), lower(keyword)) > 0`（避免 LIKE
+通配符转义），空串不过滤；分页 `limit+1`/`offset`、`total` 不计算。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| ListAssignableRoleOptions | :many | 操作者/目标/keyword/limit/offset → (id, name) 行 | 目标用户可分配、尚未拥有的活跃角色；`fn_can_assign_role` 过滤，匹配 name/code，按 name/id 升序 |
+| ListUserRoleIDs | :many | 用户 → role_id 列表 | 用户的全部角色映射（含停用/软删角色残留），升序；供 locked 差集计算 |
+| ListActiveRoleOptionsByIDs | :many | role_id 数组 → (id, name) 行 | 活跃角色（status=1 且未软删）的标签与 desired 存在性校验，按 name/id 升序 |
+| DeleteUserRoles | :execrows | 用户/role_id 数组/操作者 → 行数 | 批量解除映射：只删 `fn_can_assign_role` 仍为 true 的角色；调用方要求行数等于请求数，否则回滚 |
+| CountRolesGrantingPermission | :one | role_id 数组/权限码 → 角色数 | 统计携带指定权限码的有效角色数（角色/菜单活跃联结，与 fn_has_permission 同口径）；自锁保护 |
+| ListOwnerUserOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属用户候选：`fn_accessible_user_ids` 三态过滤，label=`COALESCE(NULLIF(nickname,''),name)`，匹配 name/nickname |
+| ListOwnerDeptOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属部门候选：`fn_accessible_dept_ids` 三态过滤，label=name，匹配 name |
+| ListOwnerGroupOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属用户组候选：`fn_accessible_group_ids` 三态过滤，label=name，匹配 name/code |
+
+`SetUserRoles` 的权威顺序（同一 IdentityTx）：`LockSysUserPermitted` 锁目标 →
+`ListUserRoleIDs` → `ListActiveRoleOptionsByIDs` → `CanAssignRoles` 分区
+managed/locked → 触及 locked / desired 失活 / 新增不可分配即拒绝 → 版本比对
+（`sha256("<user_id>|<升序 manageable ID>")`，biz helper）→ 自锁计数 →
+`DeleteUserRoles`（行数必须相等）→ `AssignUserRoles`。不变量与错误语义见
+根目录 [permission.md](../../../../permission.md)。
+
 ### perm.sql（权限查询接口）
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
@@ -346,7 +372,7 @@ parent_id 重写路径并校验父级与防环），本文件不写闭包表的�
 | ListSysDeptAll | :many | → 行集 | 读取租户内全部未软删部门（组织树装配与环检测的专用列表；created_at ASC、id ASC 稳定排序） |
 | CountSysDeptActiveChildren | :one | id → 行数 | 统计未软删的直接子部门数（删除前置校验，触发器兜底同口径） |
 | InsertSysDept | :one | 部门字段 + 操作者 → SysDept | 插入部门记录；租户取会话 app.tenant_id，闭包路径由触发器建立 |
-| UpdateSysDept | :one | name/status + 操作者 + id → SysDept | 更新可变字段（不含 parent_id 与 owner_*——结构与归属变更走专项口径）；updated_at 由触发器刷新 |
+| UpdateSysDept | :one | name/status/parent_id/owner_user_id/owner_user_group_id（可空）+ 操作者 + id → SysDept | 覆盖可变字段（PUT 覆盖语义）；parent_id 为 NULL 移为根、owner_user_group_id 为 NULL 清空；闭包路径由触发器同事务校验并重写；updated_at 由触发器刷新 |
 | MoveSysDept | :one | 新父级（可空）+ 操作者 + id → SysDept | 移动部门；NULL 表示移为根部门，闭包路径由触发器重写（父级/防环校验兜底） |
 | SoftDeleteSysDept | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除部门；存在未软删直接子部门时由触发器拒绝 |
 

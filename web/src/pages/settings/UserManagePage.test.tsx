@@ -2,13 +2,14 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { OptionSetDTO, UserRoleSetDTO } from '@/api/assignOptions'
 import type { UserDTO } from '@/api/users'
+import { ApiError } from '@/api/toApiError'
 import { getListSchema, type ListSchemaDTO } from '@/api/querySchema'
 import { SettingsLayout } from './SettingsLayout'
 import { UserManagePage } from './UserManagePage'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import {
-  assignRoles,
   createUser,
   deleteUser,
   listUsers,
@@ -16,6 +17,14 @@ import {
   transferUserOwner,
   updateUser,
 } from '@/api/users'
+import {
+  listAssignableRoles,
+  listOwnerDeptOptions,
+  listOwnerGroupOptions,
+  listOwnerUserOptions,
+  listUserRoles,
+  setUserRoles,
+} from '@/api/assignOptions'
 import { fetchMyPermissions } from '@/api/permissions'
 
 vi.mock('@/api/users', async (importOriginal) => ({
@@ -25,8 +34,16 @@ vi.mock('@/api/users', async (importOriginal) => ({
   updateUser: vi.fn(),
   setUserPassword: vi.fn(),
   deleteUser: vi.fn(),
-  assignRoles: vi.fn(),
   transferUserOwner: vi.fn(),
+}))
+
+vi.mock('@/api/assignOptions', () => ({
+  listAssignableRoles: vi.fn(),
+  listUserRoles: vi.fn(),
+  setUserRoles: vi.fn(),
+  listOwnerUserOptions: vi.fn(),
+  listOwnerDeptOptions: vi.fn(),
+  listOwnerGroupOptions: vi.fn(),
 }))
 
 vi.mock('@/api/permissions', () => ({
@@ -42,8 +59,13 @@ const mockCreateUser = vi.mocked(createUser)
 const mockUpdateUser = vi.mocked(updateUser)
 const mockSetPassword = vi.mocked(setUserPassword)
 const mockDeleteUser = vi.mocked(deleteUser)
-const mockAssignRoles = vi.mocked(assignRoles)
 const mockTransferOwner = vi.mocked(transferUserOwner)
+const mockListAssignableRoles = vi.mocked(listAssignableRoles)
+const mockListUserRoles = vi.mocked(listUserRoles)
+const mockSetUserRoles = vi.mocked(setUserRoles)
+const mockListOwnerUserOptions = vi.mocked(listOwnerUserOptions)
+const mockListOwnerDeptOptions = vi.mocked(listOwnerDeptOptions)
+const mockListOwnerGroupOptions = vi.mocked(listOwnerGroupOptions)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
@@ -63,6 +85,23 @@ function user(overrides: Partial<UserDTO> = {}): UserDTO {
 
 function bob(): UserDTO {
   return user({ id: '12', name: 'bob', nickname: 'Bob' })
+}
+
+// roleSet 构造当前角色集合基线（用户 11 持有测试管理员角色 110）。
+function roleSet(overrides: Partial<UserRoleSetDTO> = {}): UserRoleSetDTO {
+  return {
+    items: [
+      { value: '110', label: '测试管理员', enabled: true, reason: '', assigned: true },
+    ],
+    unmanagedCount: '0',
+    version: 'ver-1',
+    ...overrides,
+  }
+}
+
+// optionSet 构造候选首页基线；items 缺省即零命中。
+function optionSet(items: OptionSetDTO['items'] = []): OptionSetDTO {
+  return { items, hasMore: false, page: 1 }
 }
 
 // schema 基线对齐 GetListSchema 响应口径：字段 label/ops/dataType 直取
@@ -95,6 +134,20 @@ beforeEach(() => {
   mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
   mockGetListSchema.mockResolvedValue(schema())
   mockListUsers.mockResolvedValue({ items: [user(), bob()], total: '2', hasMore: false, nextCursor: '', page: 1 })
+  mockListUserRoles.mockResolvedValue(roleSet())
+  mockListAssignableRoles.mockResolvedValue(
+    optionSet([{ value: '103', label: '普通用户', enabled: true, reason: '', assigned: false }]),
+  )
+  mockSetUserRoles.mockResolvedValue(roleSet({ version: 'ver-2' }))
+  mockListOwnerUserOptions.mockResolvedValue(
+    optionSet([{ value: '9', label: '李四', enabled: true, reason: '', assigned: false }]),
+  )
+  mockListOwnerDeptOptions.mockResolvedValue(
+    optionSet([{ value: '2', label: '技术部', enabled: true, reason: '', assigned: false }]),
+  )
+  mockListOwnerGroupOptions.mockResolvedValue(
+    optionSet([{ value: '1', label: '核心开发组', enabled: true, reason: '', assigned: false }]),
+  )
 })
 
 afterEach(() => {
@@ -374,41 +427,94 @@ describe('UserManagePage password', () => {
   })
 })
 
-describe('UserManagePage assign roles', () => {
-  it('parses_deduplicates_and_assigns_the_role_ids', async () => {
+describe('UserManagePage set roles', () => {
+  it('preloads_the_current_roles_and_submits_the_managed_set_with_the_version', async () => {
     const user2 = userEvent.setup()
-    mockAssignRoles.mockResolvedValue({ added: '2' })
     renderPage()
     const menu = await openRowActions(user2, 'alice')
 
-    await user2.click(menu.getByRole('menuitem', { name: '分配角色' }))
-    const dialog = screen.getByRole('dialog')
-    await user2.type(within(dialog).getByLabelText('角色 ID'), '3, 5 3')
-    await user2.click(within(dialog).getByRole('button', { name: '分配' }))
+    await user2.click(menu.getByRole('menuitem', { name: '设置角色' }))
+    const dialog = await screen.findByRole('dialog')
+    const trigger = await within(dialog).findByRole('combobox', { name: '角色' })
+    // 当前角色预勾选并回显 label；候选来自 ListAssignableRoles 首页。
+    expect(trigger).toHaveTextContent('测试管理员')
+    await user2.click(trigger)
+    await user2.click(await screen.findByRole('option', { name: /普通用户/ }))
+    await user2.click(within(dialog).getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(mockAssignRoles).toHaveBeenCalledWith('11', ['3', '5']))
-    expect(await screen.findByRole('status')).toHaveTextContent('已为用户 alice 新增 2 个角色')
+    await waitFor(() =>
+      expect(mockSetUserRoles).toHaveBeenCalledWith('11', ['110', '103'], 'ver-1'),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent('用户 alice 的角色已更新')
+    expect(mockListUserRoles).toHaveBeenCalledWith('11')
+    expect(mockListAssignableRoles).toHaveBeenCalledWith('11', { page: 1, pageSize: 20 })
   })
 
-  it('rejects_non_numeric_role_ids_inline', async () => {
+  it('shows_the_unmanaged_role_notice_without_listing_locked_roles', async () => {
+    const user2 = userEvent.setup()
+    mockListUserRoles.mockResolvedValue(roleSet({ unmanagedCount: '2' }))
+    renderPage()
+    const menu = await openRowActions(user2, 'alice')
+
+    await user2.click(menu.getByRole('menuitem', { name: '设置角色' }))
+    const dialog = await screen.findByRole('dialog')
+
+    expect(
+      await within(dialog).findByText('另有 2 个角色不在你的管理范围，本次保存不会改动'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps_the_current_roles_listed_after_clearing_so_they_can_be_reselected', async () => {
     const user2 = userEvent.setup()
     renderPage()
     const menu = await openRowActions(user2, 'alice')
 
-    await user2.click(menu.getByRole('menuitem', { name: '分配角色' }))
-    const dialog = screen.getByRole('dialog')
-    await user2.type(within(dialog).getByLabelText('角色 ID'), 'abc')
-    await user2.click(within(dialog).getByRole('button', { name: '分配' }))
+    await user2.click(menu.getByRole('menuitem', { name: '设置角色' }))
+    const dialog = await screen.findByRole('dialog')
+    const trigger = await within(dialog).findByRole('combobox', { name: '角色' })
+    await user2.click(trigger)
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent(
-      'enter at least one positive role id',
+    // 当前角色不在可分配候选里（后端排除已拥有角色），但必须固定列在
+    // 列表中作为可勾选项。
+    const current = await screen.findByRole('option', { name: /测试管理员/ })
+    expect(current).toHaveAttribute('data-checked', 'true')
+
+    await user2.click(screen.getByRole('button', { name: '清除选择' }))
+    expect(trigger).toHaveTextContent('选择角色')
+    expect(current).toHaveAttribute('data-checked', 'false')
+
+    await user2.click(current)
+    await user2.click(within(dialog).getByRole('button', { name: '保存' }))
+    await waitFor(() =>
+      expect(mockSetUserRoles).toHaveBeenCalledWith('11', ['110'], 'ver-1'),
     )
-    expect(mockAssignRoles).not.toHaveBeenCalled()
+  })
+
+  it('reloads_on_a_version_conflict_without_retrying_the_write', async () => {
+    const user2 = userEvent.setup()
+    mockListUserRoles.mockResolvedValueOnce(roleSet())
+    mockListUserRoles.mockResolvedValueOnce(roleSet({ version: 'ver-2' }))
+    mockSetUserRoles.mockRejectedValue(
+      new ApiError('user role set changed', 'USER_ROLE_SET_CHANGED'),
+    )
+    renderPage()
+    const menu = await openRowActions(user2, 'alice')
+
+    await user2.click(menu.getByRole('menuitem', { name: '设置角色' }))
+    const dialog = await screen.findByRole('dialog')
+    await within(dialog).findByRole('combobox', { name: '角色' })
+    await user2.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      '角色集合已被他人修改，已重新加载，请确认后再次提交',
+    )
+    await waitFor(() => expect(mockListUserRoles).toHaveBeenCalledTimes(2))
+    expect(mockSetUserRoles).toHaveBeenCalledTimes(1)
   })
 })
 
 describe('UserManagePage transfer owner', () => {
-  it('prefills_current_owners_and_sends_the_complete_triple', async () => {
+  it('echoes_the_current_owner_ids_and_submits_the_selected_triple', async () => {
     const user2 = userEvent.setup()
     mockListUsers.mockResolvedValue({
       items: [user({ ownerUserId: '8', ownerDeptId: '3' }), bob()],
@@ -417,57 +523,111 @@ describe('UserManagePage transfer owner', () => {
       nextCursor: '',
       page: 1,
     })
-    mockTransferOwner.mockResolvedValue(user({ ownerUserId: '8', ownerDeptId: '3', ownerUserGroupId: '5' }))
+    mockTransferOwner.mockResolvedValue(user({ ownerUserId: '9', ownerDeptId: '3' }))
     renderPage()
     const menu = await openRowActions(user2, 'alice')
 
     await user2.click(menu.getByRole('menuitem', { name: '转移归属' }))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByLabelText('归属用户 ID')).toHaveValue('8')
-    expect(within(dialog).getByLabelText('归属部门 ID')).toHaveValue('3')
-    await user2.type(within(dialog).getByLabelText('归属用户组 ID'), '5')
+    // 当前值不在候选内时回显原始 ID（无 label → 标记不可见）。
+    expect(within(dialog).getByRole('combobox', { name: '归属用户' })).toHaveTextContent(
+      'ID 8（不可见）',
+    )
+    expect(within(dialog).getByRole('combobox', { name: '归属部门' })).toHaveTextContent(
+      'ID 3（不可见）',
+    )
+
+    await user2.click(within(dialog).getByRole('combobox', { name: '归属用户' }))
+    await user2.click(await screen.findByRole('option', { name: /李四/ }))
     await user2.click(within(dialog).getByRole('button', { name: '转移' }))
 
     await waitFor(() =>
       expect(mockTransferOwner).toHaveBeenCalledWith('11', {
-        ownerUserId: '8',
+        ownerUserId: '9',
         ownerDeptId: '3',
-        ownerUserGroupId: '5',
+        ownerUserGroupId: null,
       }),
     )
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
   })
 
-  it('clears_left_blank_owner_fields_as_null', async () => {
+  it('clears_the_selection_as_null_when_the_owner_is_removed', async () => {
     const user2 = userEvent.setup()
+    mockListUsers.mockResolvedValue({
+      items: [user({ ownerUserId: '8', ownerDeptId: '3' })],
+      total: '1',
+      hasMore: false,
+      nextCursor: '',
+      page: 1,
+    })
     mockTransferOwner.mockResolvedValue(user())
     renderPage()
     const menu = await openRowActions(user2, 'alice')
 
     await user2.click(menu.getByRole('menuitem', { name: '转移归属' }))
-    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '转移' }))
+    const dialog = screen.getByRole('dialog')
+    await user2.click(within(dialog).getByRole('combobox', { name: '归属用户' }))
+    await user2.click(await screen.findByRole('button', { name: '清除选择' }))
+    await user2.click(within(dialog).getByRole('button', { name: '转移' }))
 
     await waitFor(() =>
       expect(mockTransferOwner).toHaveBeenCalledWith('11', {
         ownerUserId: null,
+        ownerDeptId: '3',
+        ownerUserGroupId: null,
+      }),
+    )
+  })
+
+  it('keeps_the_current_owner_listed_after_clearing_and_allows_reselecting', async () => {
+    const user2 = userEvent.setup()
+    mockListUsers.mockResolvedValue({
+      items: [user({ ownerUserId: '8' })],
+      total: '1',
+      hasMore: false,
+      nextCursor: '',
+      page: 1,
+    })
+    mockTransferOwner.mockResolvedValue(user({ ownerUserId: '8' }))
+    renderPage()
+    const menu = await openRowActions(user2, 'alice')
+
+    await user2.click(menu.getByRole('menuitem', { name: '转移归属' }))
+    const dialog = screen.getByRole('dialog')
+    const trigger = within(dialog).getByRole('combobox', { name: '归属用户' })
+    await user2.click(trigger)
+
+    // 当前归属不在可见候选里时以 ID 形式固定列出，清除后仍可重新选中。
+    const current = await screen.findByRole('option', { name: /ID 8（不可见）/ })
+    expect(current).toHaveAttribute('data-checked', 'true')
+    await user2.click(screen.getByRole('button', { name: '清除选择' }))
+    expect(trigger).toHaveTextContent('不设归属用户')
+    expect(current).toHaveAttribute('data-checked', 'false')
+
+    await user2.click(current)
+    await user2.click(within(dialog).getByRole('button', { name: '转移' }))
+    await waitFor(() =>
+      expect(mockTransferOwner).toHaveBeenCalledWith('11', {
+        ownerUserId: '8',
         ownerDeptId: null,
         ownerUserGroupId: null,
       }),
     )
   })
 
-  it('rejects_non_numeric_owner_ids_inline', async () => {
+  it('reports_the_transfer_failure_inline_without_closing', async () => {
     const user2 = userEvent.setup()
+    mockTransferOwner.mockRejectedValue(new Error('owner not reachable'))
     renderPage()
     const menu = await openRowActions(user2, 'alice')
 
     await user2.click(menu.getByRole('menuitem', { name: '转移归属' }))
-    const dialog = screen.getByRole('dialog')
-    await user2.type(within(dialog).getByLabelText('归属用户 ID'), 'x9')
-    await user2.click(within(dialog).getByRole('button', { name: '转移' }))
+    await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '转移' }))
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('owner user must be a positive id')
-    expect(mockTransferOwner).not.toHaveBeenCalled()
+    expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(
+      'owner not reachable',
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 })
 

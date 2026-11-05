@@ -53,7 +53,7 @@ type DictServiceClient interface {
 	// 返回 ALREADY_EXISTS。
 	CreateDictType(ctx context.Context, in *CreateDictTypeRequest, opts ...grpc.CallOption) (*DictType, error)
 	// GetDictType 按 id 查询单个字典类型。跨租户不可见等同不存在
-	// （NOT_FOUND）。
+	//（NOT_FOUND）。
 	GetDictType(ctx context.Context, in *GetDictTypeRequest, opts ...grpc.CallOption) (*DictType, error)
 	// ListDictTypes 按动态查询协议返回一页字典类型（供检索与分页表格）。
 	// 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
@@ -71,7 +71,7 @@ type DictServiceClient interface {
 	// 返回 ALREADY_EXISTS。value_type 限定 string/integer/boolean/float/json。
 	CreateDictData(ctx context.Context, in *CreateDictDataRequest, opts ...grpc.CallOption) (*DictData, error)
 	// GetDictData 按 id 查询单个字典数据。跨租户不可见等同不存在
-	// （NOT_FOUND）。
+	//（NOT_FOUND）。
 	GetDictData(ctx context.Context, in *GetDictDataRequest, opts ...grpc.CallOption) (*DictData, error)
 	// ListDictDatas 按动态查询协议返回一页字典数据。协议错误返回
 	// INVALID_ARGUMENT。注意：整型过滤值是 JSON number，newID() 发号的主键
@@ -81,7 +81,7 @@ type DictServiceClient interface {
 	// ListDictTypeDatas 分页返回指定字典类型下的全部数据项（管理面子列表
 	// 专用端点，同用户组成员列表先例）：宿主类型 id 在路径参数、固定 offset
 	// 分页，按 sort_order 升序（同序按 id 升序）稳定排序，不接动态查询协议
-	// ——动态协议的整型过滤值是 JSON number，对 newID() 发号的大 id 宿主有
+	//——动态协议的整型过滤值是 JSON number，对 newID() 发号的大 id 宿主有
 	// 精度限制。宿主不存在或跨租户返回 NOT_FOUND。
 	ListDictTypeDatas(ctx context.Context, in *ListDictTypeDatasRequest, opts ...grpc.CallOption) (*DictDataSet, error)
 	// UpdateDictData 覆盖可变字段（label、status、sort_order、remark）。
@@ -232,7 +232,7 @@ type DictServiceServer interface {
 	// 返回 ALREADY_EXISTS。
 	CreateDictType(context.Context, *CreateDictTypeRequest) (*DictType, error)
 	// GetDictType 按 id 查询单个字典类型。跨租户不可见等同不存在
-	// （NOT_FOUND）。
+	//（NOT_FOUND）。
 	GetDictType(context.Context, *GetDictTypeRequest) (*DictType, error)
 	// ListDictTypes 按动态查询协议返回一页字典类型（供检索与分页表格）。
 	// 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
@@ -250,7 +250,7 @@ type DictServiceServer interface {
 	// 返回 ALREADY_EXISTS。value_type 限定 string/integer/boolean/float/json。
 	CreateDictData(context.Context, *CreateDictDataRequest) (*DictData, error)
 	// GetDictData 按 id 查询单个字典数据。跨租户不可见等同不存在
-	// （NOT_FOUND）。
+	//（NOT_FOUND）。
 	GetDictData(context.Context, *GetDictDataRequest) (*DictData, error)
 	// ListDictDatas 按动态查询协议返回一页字典数据。协议错误返回
 	// INVALID_ARGUMENT。注意：整型过滤值是 JSON number，newID() 发号的主键
@@ -260,7 +260,7 @@ type DictServiceServer interface {
 	// ListDictTypeDatas 分页返回指定字典类型下的全部数据项（管理面子列表
 	// 专用端点，同用户组成员列表先例）：宿主类型 id 在路径参数、固定 offset
 	// 分页，按 sort_order 升序（同序按 id 升序）稳定排序，不接动态查询协议
-	// ——动态协议的整型过滤值是 JSON number，对 newID() 发号的大 id 宿主有
+	//——动态协议的整型过滤值是 JSON number，对 newID() 发号的大 id 宿主有
 	// 精度限制。宿主不存在或跨租户返回 NOT_FOUND。
 	ListDictTypeDatas(context.Context, *ListDictTypeDatasRequest) (*DictDataSet, error)
 	// UpdateDictData 覆盖可变字段（label、status、sort_order、remark）。

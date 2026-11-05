@@ -64,7 +64,7 @@ type Tenant struct {
 	DeletedAt *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
 	// 行的归属父租户。只读：由服务端按认证身份的租户落值，请求中的值被
 	// 忽略；创建时与 parent_id 一致（恒等于调用方租户）。租户树根行
-	// （id = tenant_id）的该列等于自身 id。
+	//（id = tenant_id）的该列等于自身 id。
 	TenantId      string `protobuf:"bytes,16,opt,name=tenant_id,json=tenantId,proto3" json:"tenant_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

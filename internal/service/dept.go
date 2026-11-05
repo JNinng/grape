@@ -99,8 +99,9 @@ func (s *DeptService) ListDepts(ctx context.Context, req *orgv1.ListDeptsRequest
 	}, nil
 }
 
-// UpdateDept 覆盖可变字段（name、status）；status 必填（optional 传达禁用
-// 语义），parent_id 与 owner_* 在输入中被忽略。
+// UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+// owner_user_group_id）；status 必填（optional 传达禁用语义），parent_id
+// 未设置表示移为根部门，owner_user_group_id 未设置表示清空。
 func (s *DeptService) UpdateDept(ctx context.Context, req *orgv1.UpdateDeptRequest) (*orgv1.Dept, error) {
 	auth, err := authOf(ctx)
 	if err != nil {
@@ -111,9 +112,12 @@ func (s *DeptService) UpdateDept(ctx context.Context, req *orgv1.UpdateDeptReque
 		return nil, biz.ErrDeptInvalidArgument
 	}
 	out, err := s.uc.UpdateDept(ctx, auth, &biz.Dept{
-		ID:     in.GetId(),
-		Status: *in.Status,
-		Name:   in.GetName(),
+		ID:               in.GetId(),
+		Status:           *in.Status,
+		Name:             in.GetName(),
+		ParentID:         in.ParentId,
+		OwnerUserID:      in.GetOwnerUserId(),
+		OwnerUserGroupID: in.OwnerUserGroupId,
 	})
 	if err != nil {
 		return nil, err

@@ -260,11 +260,43 @@ func TestDeptRepo_update_changes_name_and_status(t *testing.T) {
 	}
 }
 
+func TestDeptRepo_update_owner_and_parent_rewrites_closure(t *testing.T) {
+	d := setupTestDB(t)
+	auth := deptAuth(testTenantEmpty)
+	repo := NewDeptRepo(d)
+
+	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 1})
+	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 1})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child", OwnerUserID: 1, ParentID: &rootA.ID})
+
+	group := int64(42)
+	child.ParentID = &rootB.ID
+	child.OwnerUserID = 7
+	child.OwnerUserGroupID = &group
+	updated, err := repo.Update(context.Background(), auth, child)
+	if err != nil {
+		t.Fatalf("update dept: %v", err)
+	}
+	if updated.OwnerUserID != 7 || updated.OwnerUserGroupID == nil || *updated.OwnerUserGroupID != group {
+		t.Fatalf("owner = (%d, %v), want (7, %d)", updated.OwnerUserID, updated.OwnerUserGroupID, group)
+	}
+	if updated.ParentID == nil || *updated.ParentID != rootB.ID {
+		t.Fatalf("parent = %v, want %d", updated.ParentID, rootB.ID)
+	}
+	paths := closureSet(t, d, auth)
+	if _, ok := paths[closureKey(rootB.ID, child.ID)]; !ok {
+		t.Fatalf("closure missing new parent path: %v", paths)
+	}
+	if _, ok := paths[closureKey(rootA.ID, child.ID)]; ok {
+		t.Fatalf("closure kept stale parent path: %v", paths)
+	}
+}
+
 func TestDeptRepo_update_missing_dept_maps_not_found(t *testing.T) {
 	d := setupTestDB(t)
 
 	_, err := NewDeptRepo(d).Update(context.Background(), deptAuth(testTenantSeeded),
-		&biz.Dept{ID: 424242, Name: "ghost", Status: biz.DeptStatusEnabled})
+		&biz.Dept{ID: 424242, Name: "ghost", Status: biz.DeptStatusEnabled, OwnerUserID: 1})
 	if !errors.Is(err, biz.ErrDeptNotFound) {
 		t.Fatalf("err = %v, want ErrDeptNotFound", err)
 	}

@@ -10,6 +10,7 @@ import (
 	context "context"
 	http "github.com/go-kratos/kratos/v3/transport/http"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	v1 "grape/api/query/v1"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -22,8 +23,14 @@ const OperationUserServiceAssignRoles = "/user.v1.UserService/AssignRoles"
 const OperationUserServiceCreateUser = "/user.v1.UserService/CreateUser"
 const OperationUserServiceDeleteUser = "/user.v1.UserService/DeleteUser"
 const OperationUserServiceGetUser = "/user.v1.UserService/GetUser"
+const OperationUserServiceListAssignableRoles = "/user.v1.UserService/ListAssignableRoles"
+const OperationUserServiceListOwnerDeptOptions = "/user.v1.UserService/ListOwnerDeptOptions"
+const OperationUserServiceListOwnerGroupOptions = "/user.v1.UserService/ListOwnerGroupOptions"
+const OperationUserServiceListOwnerUserOptions = "/user.v1.UserService/ListOwnerUserOptions"
+const OperationUserServiceListUserRoles = "/user.v1.UserService/ListUserRoles"
 const OperationUserServiceListUsers = "/user.v1.UserService/ListUsers"
 const OperationUserServiceSetUserPassword = "/user.v1.UserService/SetUserPassword"
+const OperationUserServiceSetUserRoles = "/user.v1.UserService/SetUserRoles"
 const OperationUserServiceTransferUserOwner = "/user.v1.UserService/TransferUserOwner"
 const OperationUserServiceUpdateUser = "/user.v1.UserService/UpdateUser"
 
@@ -39,12 +46,29 @@ type UserServiceHTTPServer interface {
 	DeleteUser(context.Context, *DeleteUserRequest) (*emptypb.Empty, error)
 	// GetUser GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
 	GetUser(context.Context, *GetUserRequest) (*User, error)
+	// ListAssignableRoles ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+	// 等同不存在（NOT_FOUND）。
+	ListAssignableRoles(context.Context, *ListAssignableRolesRequest) (*v1.OptionSet, error)
+	// ListOwnerDeptOptions ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+	ListOwnerDeptOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// ListOwnerGroupOptions ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+	ListOwnerGroupOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// ListOwnerUserOptions ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+	ListOwnerUserOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// ListUserRoles ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	ListUserRoles(context.Context, *ListUserRolesRequest) (*UserRoleSet, error)
 	// ListUsers ListUsers 按动态查询协议返回一页用户。过滤表达式非法、字段未知、
 	// 操作符不允许、条件冲突、跨表游标均返回 INVALID_ARGUMENT。
 	ListUsers(context.Context, *ListUsersRequest) (*UserSet, error)
 	// SetUserPassword SetUserPassword 设置新密码（服务端哈希后落库）。
 	// 密码不出现在任何读接口的响应中。
 	SetUserPassword(context.Context, *SetUserPasswordRequest) (*emptypb.Empty, error)
+	// SetUserRoles SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	SetUserRoles(context.Context, *SetUserRolesRequest) (*UserRoleSet, error)
 	// TransferUserOwner TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
@@ -64,6 +88,12 @@ func RegisterUserServiceHTTPServer(s *http.Server, srv UserServiceHTTPServer) {
 	r.Handle("DELETE", "/v1/users/{id}", _UserService_DeleteUser0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/users/assign-roles", _UserService_AssignRoles0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/users/transfer-owner", _UserService_TransferUserOwner0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/assignable-roles", _UserService_ListAssignableRoles0_HTTP_Handler(srv))
+	r.Handle("GET", "/v1/users/{user_id}/roles", _UserService_ListUserRoles0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/set-roles", _UserService_SetUserRoles0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/owner-user-options", _UserService_ListOwnerUserOptions0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/owner-dept-options", _UserService_ListOwnerDeptOptions0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/users/owner-group-options", _UserService_ListOwnerGroupOptions0_HTTP_Handler(srv))
 }
 
 func _UserService_CreateUser0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
@@ -230,6 +260,123 @@ func _UserService_TransferUserOwner0_HTTP_Handler(srv UserServiceHTTPServer) fun
 	}
 }
 
+func _UserService_ListAssignableRoles0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListAssignableRolesRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceListAssignableRoles)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListAssignableRoles(ctx, req.(*ListAssignableRolesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*v1.OptionSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_ListUserRoles0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListUserRolesRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceListUserRoles)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListUserRoles(ctx, req.(*ListUserRolesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*UserRoleSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_SetUserRoles0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SetUserRolesRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceSetUserRoles)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SetUserRoles(ctx, req.(*SetUserRolesRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*UserRoleSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_ListOwnerUserOptions0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListOwnerOptionsRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceListOwnerUserOptions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListOwnerUserOptions(ctx, req.(*ListOwnerOptionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*v1.OptionSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_ListOwnerDeptOptions0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListOwnerOptionsRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceListOwnerDeptOptions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListOwnerDeptOptions(ctx, req.(*ListOwnerOptionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*v1.OptionSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_ListOwnerGroupOptions0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListOwnerOptionsRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceListOwnerGroupOptions)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListOwnerGroupOptions(ctx, req.(*ListOwnerOptionsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*v1.OptionSet)
+		return ctx.Result(200, reply)
+	}
+}
+
 type UserServiceHTTPClient interface {
 	// AssignRoles AssignRoles 把多个角色分配给目标用户：先库内批量判定
 	// （fn_can_assign_role），全部通过才写入映射；任一不通过整批拒绝
@@ -242,12 +389,29 @@ type UserServiceHTTPClient interface {
 	DeleteUser(ctx context.Context, req *DeleteUserRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// GetUser GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
 	GetUser(ctx context.Context, req *GetUserRequest, opts ...http.CallOption) (rsp *User, err error)
+	// ListAssignableRoles ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+	// 等同不存在（NOT_FOUND）。
+	ListAssignableRoles(ctx context.Context, req *ListAssignableRolesRequest, opts ...http.CallOption) (rsp *v1.OptionSet, err error)
+	// ListOwnerDeptOptions ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+	ListOwnerDeptOptions(ctx context.Context, req *ListOwnerOptionsRequest, opts ...http.CallOption) (rsp *v1.OptionSet, err error)
+	// ListOwnerGroupOptions ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+	ListOwnerGroupOptions(ctx context.Context, req *ListOwnerOptionsRequest, opts ...http.CallOption) (rsp *v1.OptionSet, err error)
+	// ListOwnerUserOptions ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+	ListOwnerUserOptions(ctx context.Context, req *ListOwnerOptionsRequest, opts ...http.CallOption) (rsp *v1.OptionSet, err error)
+	// ListUserRoles ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	ListUserRoles(ctx context.Context, req *ListUserRolesRequest, opts ...http.CallOption) (rsp *UserRoleSet, err error)
 	// ListUsers ListUsers 按动态查询协议返回一页用户。过滤表达式非法、字段未知、
 	// 操作符不允许、条件冲突、跨表游标均返回 INVALID_ARGUMENT。
 	ListUsers(ctx context.Context, req *ListUsersRequest, opts ...http.CallOption) (rsp *UserSet, err error)
 	// SetUserPassword SetUserPassword 设置新密码（服务端哈希后落库）。
 	// 密码不出现在任何读接口的响应中。
 	SetUserPassword(ctx context.Context, req *SetUserPasswordRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// SetUserRoles SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	SetUserRoles(ctx context.Context, req *SetUserRolesRequest, opts ...http.CallOption) (rsp *UserRoleSet, err error)
 	// TransferUserOwner TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
@@ -338,6 +502,98 @@ func (c *UserServiceHTTPClientImpl) GetUser(ctx context.Context, in *GetUserRequ
 	return &out, nil
 }
 
+// ListAssignableRoles ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+// 等同不存在（NOT_FOUND）。
+func (c *UserServiceHTTPClientImpl) ListAssignableRoles(ctx context.Context, in *ListAssignableRolesRequest, opts ...http.CallOption) (*v1.OptionSet, error) {
+	var out v1.OptionSet
+	pattern := "/v1/users/assignable-roles"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceListAssignableRoles),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListOwnerDeptOptions ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+func (c *UserServiceHTTPClientImpl) ListOwnerDeptOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...http.CallOption) (*v1.OptionSet, error) {
+	var out v1.OptionSet
+	pattern := "/v1/users/owner-dept-options"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceListOwnerDeptOptions),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListOwnerGroupOptions ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+func (c *UserServiceHTTPClientImpl) ListOwnerGroupOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...http.CallOption) (*v1.OptionSet, error) {
+	var out v1.OptionSet
+	pattern := "/v1/users/owner-group-options"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceListOwnerGroupOptions),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListOwnerUserOptions ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+func (c *UserServiceHTTPClientImpl) ListOwnerUserOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...http.CallOption) (*v1.OptionSet, error) {
+	var out v1.OptionSet
+	pattern := "/v1/users/owner-user-options"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceListOwnerUserOptions),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListUserRoles ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+// 只计数不暴露明细）与版本号；不可见等同不存在。
+func (c *UserServiceHTTPClientImpl) ListUserRoles(ctx context.Context, in *ListUserRolesRequest, opts ...http.CallOption) (*UserRoleSet, error) {
+	var out UserRoleSet
+	pattern := "/v1/users/{user_id}/roles"
+	path := http.BuildPath(pattern, in, http.WithQueryParams())
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.Operation(OperationUserServiceListUserRoles),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // ListUsers ListUsers 按动态查询协议返回一页用户。过滤表达式非法、字段未知、
 // 操作符不允许、条件冲突、跨表游标均返回 INVALID_ARGUMENT。
 func (c *UserServiceHTTPClientImpl) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...http.CallOption) (*UserSet, error) {
@@ -367,6 +623,26 @@ func (c *UserServiceHTTPClientImpl) SetUserPassword(ctx context.Context, in *Set
 		http.Accept("application/protojson"),
 		http.ContentType("application/protojson"),
 		http.Operation(OperationUserServiceSetUserPassword),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetUserRoles SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+func (c *UserServiceHTTPClientImpl) SetUserRoles(ctx context.Context, in *SetUserRolesRequest, opts ...http.CallOption) (*UserRoleSet, error) {
+	var out UserRoleSet
+	pattern := "/v1/users/set-roles"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceSetUserRoles),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)

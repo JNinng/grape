@@ -235,27 +235,38 @@ func (q *Queries) SoftDeleteSysDept(ctx context.Context, arg SoftDeleteSysDeptPa
 
 const updateSysDept = `-- name: UpdateSysDept :one
 UPDATE public.sys_dept
-SET "name"     = $1,
-    status     = $2,
-    updated_by = $3
-WHERE id = $4
+SET "name"              = $1,
+    status              = $2,
+    parent_id           = $3,
+    owner_user_id       = $4,
+    owner_user_group_id = $5,
+    updated_by          = $6
+WHERE id = $7
   AND deleted_at IS NULL
 RETURNING id, status, name, parent_id, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_user_group_id
 `
 
 type UpdateSysDeptParams struct {
-	Name      string `db:"name" json:"name"`
-	Status    int16  `db:"status" json:"status"`
-	UpdatedBy int64  `db:"updated_by" json:"updated_by"`
-	ID        int64  `db:"id" json:"id"`
+	Name             string `db:"name" json:"name"`
+	Status           int16  `db:"status" json:"status"`
+	ParentID         *int64 `db:"parent_id" json:"parent_id"`
+	OwnerUserID      int64  `db:"owner_user_id" json:"owner_user_id"`
+	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
+	UpdatedBy        int64  `db:"updated_by" json:"updated_by"`
+	ID               int64  `db:"id" json:"id"`
 }
 
-// 更新可变字段（name/status；不含 parent_id 与 owner_*——结构与归属变更
-// 走专项口径）；updated_at 由触发器刷新
+// 覆盖可变字段（name/status/parent_id/owner_user_id/owner_user_group_id）；
+// parent_id 为 NULL 表示移为根部门（闭包路径由 trg_maintain_dept_closure
+// 在同事务内校验并重写，父级合法性/防环兜底），owner_user_group_id 为
+// NULL 表示清空；updated_at 由触发器刷新
 func (q *Queries) UpdateSysDept(ctx context.Context, arg UpdateSysDeptParams) (SysDept, error) {
 	row := q.db.QueryRow(ctx, updateSysDept,
 		arg.Name,
 		arg.Status,
+		arg.ParentID,
+		arg.OwnerUserID,
+		arg.OwnerUserGroupID,
 		arg.UpdatedBy,
 		arg.ID,
 	)

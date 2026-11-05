@@ -427,6 +427,18 @@ INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, men
 VALUES (3207, 1, '重置密码', 'sys:user:reset-pwd', 3202, 3, 5, 1, '2026-06-02 09:00:00.000', 1, '2026-06-02 09:00:00.000',
         NULL, 't-test-01') ON CONFLICT DO NOTHING;
 
+-- 三级按钮：用户管理-分配角色（t-test-01）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (3208, 1, '分配角色', 'sys:user:assign-role', 3202, 3, 6, 1, '2026-06-02 09:00:00.000', 1, '2026-06-02 09:00:00.000',
+        NULL, 't-test-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：用户管理-转移归属（t-test-01）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (3209, 1, '转移归属', 'sys:user:transfer-owner', 3202, 3, 7, 1, '2026-06-02 09:00:00.000', 1, '2026-06-02 09:00:00.000',
+        NULL, 't-test-01') ON CONFLICT DO NOTHING;
+
 -- 二级菜单：字典管理（t-test-01）
 INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
                              sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
@@ -546,6 +558,8 @@ VALUES (1237, 1, '部门查询', 'sys:dept:query', 1236, 3, 1, 1, '2026-06-02 09
 --     104 审计员     → 审计管理全部菜单（只读，无写权限按钮）+
 --                      系统管理目录 + 用户管理与字典查询
 --     105 测试租户 2 管理员 → 12xx 副本
+--     110 测试管理员 → 32xx 用户管理查询/分配角色/转移归属
+--                      （分配选择器与角色整组替换用例的授权身份）
 -- ===========================
 
 -- 部门管理员 (102) → 32xx 副本
@@ -569,6 +583,22 @@ INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (102, 3238, 't-test-01', 1) ON CONFLICT DO NOTHING;
 INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (102, 3239, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (102, 3208, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (102, 3209, 't-test-01', 1) ON CONFLICT DO NOTHING;
+
+-- 测试管理员 (110) → 用户管理查询/分配角色/转移归属
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (110, 3201, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (110, 3202, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (110, 3203, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (110, 3208, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (110, 3209, 't-test-01', 1) ON CONFLICT DO NOTHING;
 
 -- 普通用户 (103) → 32xx 副本
 INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)

@@ -25,7 +25,7 @@ func (f *fakeUserRepo) GetByID(_ context.Context, auth biz.Identity, _ int64) (*
 
 func TestUserServiceReadsIdentityFromContext(t *testing.T) {
 	repo := &fakeUserRepo{}
-	svc := NewUserService(biz.NewUserUsecase(repo))
+	svc := NewUserService(biz.NewUserUsecase(repo), biz.NewAssignmentUsecase(nil))
 	auth := biz.Identity{TenantID: "t-1", UserID: 7}
 
 	out, err := svc.GetUser(biz.WithIdentity(context.Background(), auth), &userv1.GetUserRequest{Id: 5})
@@ -42,7 +42,7 @@ func TestUserServiceReadsIdentityFromContext(t *testing.T) {
 
 func TestUserServiceFailsClosedWithoutIdentity(t *testing.T) {
 	repo := &fakeUserRepo{}
-	svc := NewUserService(biz.NewUserUsecase(repo))
+	svc := NewUserService(biz.NewUserUsecase(repo), biz.NewAssignmentUsecase(nil))
 
 	_, err := svc.GetUser(context.Background(), &userv1.GetUserRequest{Id: 5})
 	if !errors.Is(err, biz.ErrSessionInvalid) {

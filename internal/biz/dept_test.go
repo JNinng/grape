@@ -223,19 +223,67 @@ func TestDeptUsecaseUpdateDeptRejectsInvalidStatus(t *testing.T) {
 	}
 }
 
-func TestDeptUsecaseUpdateDeptForwardsMutableFieldsOnly(t *testing.T) {
-	repo := &mockDeptRepo{}
+func TestDeptUsecaseUpdateDeptForwardsMutableFields(t *testing.T) {
+	repo := &mockDeptRepo{all: moveTestTree()}
 	uc := NewDeptUsecase(repo)
+	parent := int64(1)
+	group := int64(9)
 
-	out, err := uc.UpdateDept(context.Background(), Identity{TenantID: "t-1", UserID: 1}, &Dept{ID: 5, Name: "eng-2", Status: DeptStatusDisabled})
+	out, err := uc.UpdateDept(context.Background(), Identity{TenantID: "t-1", UserID: 1}, &Dept{
+		ID: 5, Name: "eng-2", Status: DeptStatusDisabled,
+		ParentID: &parent, OwnerUserID: 8, OwnerUserGroupID: &group,
+	})
 	if err != nil {
 		t.Fatalf("update dept: %v", err)
 	}
-	if repo.updated == nil || repo.updated.ID != 5 || repo.updated.Name != "eng-2" || repo.updated.Status != DeptStatusDisabled {
-		t.Fatalf("repo updated = %+v, want id 5 name eng-2 disabled", repo.updated)
+	got := repo.updated
+	if got == nil || got.ID != 5 || got.Name != "eng-2" || got.Status != DeptStatusDisabled {
+		t.Fatalf("repo updated = %+v, want id 5 name eng-2 disabled", got)
+	}
+	if got.ParentID == nil || *got.ParentID != parent {
+		t.Fatalf("parent = %v, want %d", got.ParentID, parent)
+	}
+	if got.OwnerUserID != 8 || got.OwnerUserGroupID == nil || *got.OwnerUserGroupID != group {
+		t.Fatalf("owner = (%d, %v), want (8, %d)", got.OwnerUserID, got.OwnerUserGroupID, group)
 	}
 	if out.ID != 5 {
 		t.Fatalf("out id = %d, want 5", out.ID)
+	}
+}
+
+// TestDeptUsecaseUpdateDeptRejectsInvalidOwner 校验更新路径的新管理员与
+// 归属组取值：owner 必填为正、组非空时为正。
+func TestDeptUsecaseUpdateDeptRejectsInvalidOwner(t *testing.T) {
+	uc := NewDeptUsecase(&mockDeptRepo{all: moveTestTree()})
+	zero := int64(0)
+
+	if _, err := uc.UpdateDept(context.Background(), Identity{TenantID: "t-1", UserID: 1}, &Dept{
+		ID: 5, Name: "eng", Status: DeptStatusEnabled,
+	}); !errors.Is(err, ErrDeptInvalidArgument) {
+		t.Fatalf("missing owner err = %v, want ErrDeptInvalidArgument", err)
+	}
+	if _, err := uc.UpdateDept(context.Background(), Identity{TenantID: "t-1", UserID: 1}, &Dept{
+		ID: 5, Name: "eng", Status: DeptStatusEnabled, OwnerUserID: 1, OwnerUserGroupID: &zero,
+	}); !errors.Is(err, ErrDeptInvalidArgument) {
+		t.Fatalf("zero group err = %v, want ErrDeptInvalidArgument", err)
+	}
+}
+
+// TestDeptUsecaseUpdateDeptRejectsCycle 校验更新路径复用移动校验：将部门
+// 移入自身子树返回 INVALID_ARGUMENT 且不触仓储。
+func TestDeptUsecaseUpdateDeptRejectsCycle(t *testing.T) {
+	repo := &mockDeptRepo{all: moveTestTree()}
+	uc := NewDeptUsecase(repo)
+	descendant := int64(3)
+
+	_, err := uc.UpdateDept(context.Background(), Identity{TenantID: "t-1", UserID: 1}, &Dept{
+		ID: 1, Name: "root", Status: DeptStatusEnabled, OwnerUserID: 1, ParentID: &descendant,
+	})
+	if !errors.Is(err, ErrDeptInvalidArgument) {
+		t.Fatalf("err = %v, want ErrDeptInvalidArgument", err)
+	}
+	if repo.updated != nil {
+		t.Fatalf("repo updated = %+v, want nil", repo.updated)
 	}
 }
 

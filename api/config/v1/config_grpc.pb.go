@@ -388,7 +388,7 @@ type TenantConfigServiceClient interface {
 	// updated_by 与时间戳在输入中被忽略。
 	CreateTenantConfig(ctx context.Context, in *CreateTenantConfigRequest, opts ...grpc.CallOption) (*TenantConfig, error)
 	// GetTenantConfig 按 id 查询单个租户配置。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetTenantConfig(ctx context.Context, in *GetTenantConfigRequest, opts ...grpc.CallOption) (*TenantConfig, error)
 	// ListTenantConfigs 按动态查询协议返回一页租户配置（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
@@ -484,7 +484,7 @@ type TenantConfigServiceServer interface {
 	// updated_by 与时间戳在输入中被忽略。
 	CreateTenantConfig(context.Context, *CreateTenantConfigRequest) (*TenantConfig, error)
 	// GetTenantConfig 按 id 查询单个租户配置。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetTenantConfig(context.Context, *GetTenantConfigRequest) (*TenantConfig, error)
 	// ListTenantConfigs 按动态查询协议返回一页租户配置（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
@@ -696,7 +696,7 @@ type FeatureFlagServiceClient interface {
 	// 值；id、created_by/updated_by 与时间戳在输入中被忽略。
 	CreateFeatureFlag(ctx context.Context, in *CreateFeatureFlagRequest, opts ...grpc.CallOption) (*FeatureFlag, error)
 	// GetFeatureFlag 按 id 查询单个功能开关。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetFeatureFlag(ctx context.Context, in *GetFeatureFlagRequest, opts ...grpc.CallOption) (*FeatureFlag, error)
 	// ListFeatureFlags 按动态查询协议返回一页功能开关（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
@@ -791,7 +791,7 @@ type FeatureFlagServiceServer interface {
 	// 值；id、created_by/updated_by 与时间戳在输入中被忽略。
 	CreateFeatureFlag(context.Context, *CreateFeatureFlagRequest) (*FeatureFlag, error)
 	// GetFeatureFlag 按 id 查询单个功能开关。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetFeatureFlag(context.Context, *GetFeatureFlagRequest) (*FeatureFlag, error)
 	// ListFeatureFlags 按动态查询协议返回一页功能开关（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
@@ -1006,7 +1006,7 @@ type TranslationServiceClient interface {
 	// 忽略。
 	CreateTranslation(ctx context.Context, in *CreateTranslationRequest, opts ...grpc.CallOption) (*Translation, error)
 	// GetTranslation 按 id 查询单个翻译。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetTranslation(ctx context.Context, in *GetTranslationRequest, opts ...grpc.CallOption) (*Translation, error)
 	// ListTranslations 按动态查询协议返回一页翻译（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
@@ -1105,7 +1105,7 @@ type TranslationServiceServer interface {
 	// 忽略。
 	CreateTranslation(context.Context, *CreateTranslationRequest) (*Translation, error)
 	// GetTranslation 按 id 查询单个翻译。跨租户不可见等同不存在
-	// （NOT_FOUND）；已软删同样返回 NOT_FOUND。
+	//（NOT_FOUND）；已软删同样返回 NOT_FOUND。
 	GetTranslation(context.Context, *GetTranslationRequest) (*Translation, error)
 	// ListTranslations 按动态查询协议返回一页翻译（仅本租户可见）。
 	// 协议错误返回 INVALID_ARGUMENT。
