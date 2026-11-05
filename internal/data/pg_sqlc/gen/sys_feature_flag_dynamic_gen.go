@@ -18,7 +18,7 @@
 //	column sys_feature_flag.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_feature_flag.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_feature_flag.deleted_at: [@internal]
-//	column sys_feature_flag.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_feature_flag.tenant_id: [@internal]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -176,10 +176,9 @@ var sys_feature_flagRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
@@ -221,7 +220,6 @@ var SysFeatureFlagField = struct {
 	CreatedAt   dynq.FieldName
 	UpdatedBy   dynq.FieldName
 	UpdatedAt   dynq.FieldName
-	TenantID    dynq.FieldName
 }{
 	ID:          "id",
 	Status:      "status",
@@ -234,7 +232,6 @@ var SysFeatureFlagField = struct {
 	CreatedAt:   "createdAt",
 	UpdatedBy:   "updatedBy",
 	UpdatedAt:   "updatedAt",
-	TenantID:    "tenantId",
 }
 
 // ListSysFeatureFlagParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -296,8 +293,6 @@ type ListSysFeatureFlagParams struct {
 	UpdatedAtGte        *time.Time
 	UpdatedAtLt         *time.Time
 	UpdatedAtLte        *time.Time
-	TenantID            *string
-	TenantIDNeq         *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -927,27 +922,6 @@ func ParseSysFeatureFlagQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysF
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		}
 	}
 
@@ -1025,9 +999,6 @@ func validateSysFeatureFlagParams(params ListSysFeatureFlagParams, cfg *dynq.Que
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_feature_flagRegistry)
 }
@@ -1197,12 +1168,6 @@ func buildSysFeatureFlagWhere(params ListSysFeatureFlagParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	return conds
 }

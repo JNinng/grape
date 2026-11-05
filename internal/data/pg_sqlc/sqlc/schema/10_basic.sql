@@ -34,7 +34,7 @@ COMMENT ON COLUMN public.basic.created_at IS '创建时间 [@dynamic: exact, in,
 COMMENT ON COLUMN public.basic.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.basic.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.basic.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.basic.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.basic.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.basic.owner_user_id IS '归属用户 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.owner_dept_id IS '归属部门 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.basic.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';

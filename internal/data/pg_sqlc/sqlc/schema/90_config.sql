@@ -80,7 +80,7 @@ COMMENT ON COLUMN public.sys_tenant_config.created_at IS '创建时间 [@dynamic
 COMMENT ON COLUMN public.sys_tenant_config.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_tenant_config.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_tenant_config.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_tenant_config.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_tenant_config.tenant_id IS '租户 ID [@internal]';
 
 
 -- ============================================================================
@@ -123,7 +123,7 @@ COMMENT ON COLUMN public.sys_feature_flag.created_at IS '创建时间 [@dynamic:
 COMMENT ON COLUMN public.sys_feature_flag.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_feature_flag.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_feature_flag.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_feature_flag.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_feature_flag.tenant_id IS '租户 ID [@internal]';
 
 
 -- ============================================================================
@@ -171,4 +171,4 @@ COMMENT ON COLUMN public.sys_translation.created_at IS '创建时间 [@dynamic: 
 COMMENT ON COLUMN public.sys_translation.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_translation.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_translation.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_translation.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_translation.tenant_id IS '租户 ID [@internal]';

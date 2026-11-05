@@ -154,7 +154,7 @@ type Basic struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 归属用户 ID [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -212,7 +212,7 @@ type SysDept struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 部门管理员用户 [@dynamic: exact, in]
 	OwnerUserID int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -260,7 +260,7 @@ type SysDictDatum struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -286,7 +286,7 @@ type SysDictType struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -316,7 +316,7 @@ type SysFeatureFlag struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -328,7 +328,7 @@ type SysLoginLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 用户名（冗余，便于快速查看） [@dynamic: fuzzy, exact @sortable @hideable]
 	Username string `db:"username" json:"username"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 登录 IP 地址 [@dynamic: exact, prefix @hideable]
 	IpAddress *string `db:"ip_address" json:"ip_address"`
@@ -384,7 +384,7 @@ type SysMenu struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -396,7 +396,7 @@ type SysOperationLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 用户名（冗余） [@dynamic: fuzzy, exact @sortable @hideable]
 	Username string `db:"username" json:"username"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等 [@dynamic: exact, in @hideable]
 	OperationType string `db:"operation_type" json:"operation_type"`
@@ -469,7 +469,7 @@ type SysRole struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -493,7 +493,7 @@ type SysRoleAllowedDept struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -519,7 +519,7 @@ type SysRoleIDScope struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -545,7 +545,7 @@ type SysSession struct {
 	Status int16 `db:"status" json:"status"`
 	// 用户 ID [@dynamic: exact, in @hideable]
 	UserID int64 `db:"user_id" json:"user_id"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@internal]
 	TokenHash string `db:"token_hash" json:"token_hash"`
@@ -635,7 +635,7 @@ type SysTenantConfig struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -667,7 +667,7 @@ type SysTranslation struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -707,7 +707,7 @@ type SysUser struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 归属用户 ID [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -739,7 +739,7 @@ type SysUserGroup struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 组长/归属用户 [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`

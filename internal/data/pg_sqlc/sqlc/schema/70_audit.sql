@@ -28,7 +28,7 @@ COMMENT ON TABLE public.sys_login_log IS '登录日志表，记录用户登录�
 COMMENT ON COLUMN public.sys_login_log.id IS '日志 ID，自增序列 [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_login_log.user_id IS '用户 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_login_log.username IS '用户名（冗余，便于快速查看） [@dynamic: fuzzy, exact @sortable @hideable]';
-COMMENT ON COLUMN public.sys_login_log.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_login_log.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_login_log.ip_address IS '登录 IP 地址 [@dynamic: exact, prefix @hideable]';
 COMMENT ON COLUMN public.sys_login_log.user_agent IS '浏览器/客户端 User-Agent';
 COMMENT ON COLUMN public.sys_login_log.login_type IS '登录方式：password-密码登录 sms-短信验证码 oauth-第三方授权 refresh_token-刷新令牌 [@dynamic: exact, in @hideable]';
@@ -71,7 +71,7 @@ COMMENT ON TABLE public.sys_operation_log IS '操作日志表，记录用户对�
 COMMENT ON COLUMN public.sys_operation_log.id IS '日志 ID，自增序列 [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_operation_log.user_id IS '操作用户 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_operation_log.username IS '用户名（冗余） [@dynamic: fuzzy, exact @sortable @hideable]';
-COMMENT ON COLUMN public.sys_operation_log.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_operation_log.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_operation_log.operation_type IS '操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等 [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_operation_log.target_table IS '操作目标表名 [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_operation_log.target_id IS '操作目标记录 ID [@dynamic: exact, prefix @hideable]';

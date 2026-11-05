@@ -68,12 +68,10 @@ func (r *embedderResolver) ResolveDefaultEmbedder(ctx context.Context) (string, 
 		return "", 0, err
 	}
 	configKey := embedderConfigKey
-	tenantID := auth.TenantID
 	status := tenantConfigEnabledStatus
 	var chosen string
 	err := r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
 		res, err := gen.ListSysTenantConfig(ctx, s.Tx(), gen.ListSysTenantConfigParams{
-			TenantID:  &tenantID,
 			ConfigKey: &configKey,
 			Status:    &status,
 			Limit:     1,

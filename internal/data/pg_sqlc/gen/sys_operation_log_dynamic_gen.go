@@ -8,7 +8,7 @@
 //	column sys_operation_log.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_operation_log.user_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_operation_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
-//	column sys_operation_log.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_operation_log.tenant_id: [@internal]
 //	column sys_operation_log.operation_type: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_operation_log.target_table: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_operation_log.target_id: [@dynamic: eq, neq, prefix @hideable]
@@ -80,10 +80,9 @@ var sys_operation_logRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 		{
 			Key:        "operationType",
@@ -296,7 +295,6 @@ var SysOperationLogField = struct {
 	ID            dynq.FieldName
 	UserID        dynq.FieldName
 	Username      dynq.FieldName
-	TenantID      dynq.FieldName
 	OperationType dynq.FieldName
 	TargetTable   dynq.FieldName
 	TargetID      dynq.FieldName
@@ -317,7 +315,6 @@ var SysOperationLogField = struct {
 	ID:            "id",
 	UserID:        "userId",
 	Username:      "username",
-	TenantID:      "tenantId",
 	OperationType: "operationType",
 	TargetTable:   "targetTable",
 	TargetID:      "targetId",
@@ -358,8 +355,6 @@ type ListSysOperationLogParams struct {
 	UsernameContains   string
 	UsernamePrefix     string
 	UsernameSuffix     string
-	TenantID           *string
-	TenantIDNeq        *string
 	OperationType      *string
 	OperationTypeNeq   *string
 	OperationTypeIn    []string
@@ -620,27 +615,6 @@ func ParseSysOperationLogQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSys
 					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "username")
 				}
 				out.UsernameSuffix = v
-			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
 			}
 		case "operationType":
 			switch op {
@@ -1296,9 +1270,6 @@ func validateSysOperationLogParams(params ListSysOperationLogParams, cfg *dynq.Q
 	if cfg.WhereDisabled("username") && (params.Username != nil || params.UsernameNeq != nil || params.UsernameContains != "" || params.UsernamePrefix != "" || params.UsernameSuffix != "") {
 		return dynq.NewErr(dynq.KindWhere, "username", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
-	}
 	if cfg.WhereDisabled("operationType") && (params.OperationType != nil || params.OperationTypeNeq != nil || params.OperationTypeIn != nil || params.OperationTypeNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "operationType", "field disabled in this context", -1)
 	}
@@ -1386,12 +1357,6 @@ func buildSysOperationLogWhere(params ListSysOperationLogParams) []sq.Sqlizer {
 	}
 	if params.UsernameSuffix != "" {
 		conds = append(conds, sq.Expr("username ILIKE ? ESCAPE '\\'", dynq.SuffixPattern(params.UsernameSuffix)))
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	if params.OperationType != nil {
 		conds = append(conds, sq.Eq{"operation_type": *params.OperationType})

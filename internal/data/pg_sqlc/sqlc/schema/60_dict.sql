@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.sys_dict_type.created_at IS '创建时间 [@dynamic: ex
 COMMENT ON COLUMN public.sys_dict_type.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_type.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_dict_type.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_dict_type.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dict_type.tenant_id IS '租户 ID [@internal]';
 
 
 -- public.sys_dict_data 定义
@@ -75,4 +75,4 @@ COMMENT ON COLUMN public.sys_dict_data.created_at IS '创建时间 [@dynamic: ex
 COMMENT ON COLUMN public.sys_dict_data.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_dict_data.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID [@internal]';

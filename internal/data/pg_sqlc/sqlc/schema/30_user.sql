@@ -53,7 +53,7 @@ COMMENT ON COLUMN public.sys_user.created_at IS '创建时间 [@dynamic: exact, 
 COMMENT ON COLUMN public.sys_user.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_user.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_user.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_user.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_user.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_user.owner_user_id IS '归属用户 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';
@@ -118,7 +118,7 @@ COMMENT ON COLUMN public.sys_user_group.created_at IS '创建时间 [@dynamic: e
 COMMENT ON COLUMN public.sys_user_group.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_user_group.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_user_group.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_user_group.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_user_group.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_user_group.owner_user_id IS '组长/归属用户 [@dynamic: exact, in]';
 
 

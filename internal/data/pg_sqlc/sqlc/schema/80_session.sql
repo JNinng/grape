@@ -34,7 +34,7 @@ COMMENT ON TABLE public.sys_session IS '用户会话/令牌表，管理登录访
 COMMENT ON COLUMN public.sys_session.id IS '会话 ID [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]';
 COMMENT ON COLUMN public.sys_session.user_id IS '用户 ID [@dynamic: exact, in @hideable]';
-COMMENT ON COLUMN public.sys_session.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_session.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_session.token_hash IS '访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@internal]';
 COMMENT ON COLUMN public.sys_session.refresh_token_hash IS '刷新令牌哈希，用于令牌刷新轮换 [@internal]';
 COMMENT ON COLUMN public.sys_session.expires_at IS '访问令牌过期时间 [@dynamic: exact, range @sortable]';

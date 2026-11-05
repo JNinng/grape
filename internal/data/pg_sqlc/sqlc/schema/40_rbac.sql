@@ -44,7 +44,7 @@ COMMENT ON COLUMN public.sys_role.created_at IS '创建时间 [@dynamic: exact, 
 COMMENT ON COLUMN public.sys_role.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_role.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_role.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_role.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_role.tenant_id IS '租户 ID [@internal]';
 
 
 -- public.sys_role_id_scope 定义
@@ -81,7 +81,7 @@ COMMENT ON COLUMN public.sys_role_id_scope.created_at IS '创建时间 [@dynamic
 COMMENT ON COLUMN public.sys_role_id_scope.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_role_id_scope.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_role_id_scope.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_role_id_scope.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_role_id_scope.tenant_id IS '租户 ID [@internal]';
 
 
 -- public.sys_role_allowed_dept 定义
@@ -115,7 +115,7 @@ COMMENT ON COLUMN public.sys_role_allowed_dept.created_at IS '创建时间 [@dyn
 COMMENT ON COLUMN public.sys_role_allowed_dept.updated_by IS '更新人 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_role_allowed_dept.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_role_allowed_dept.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_role_allowed_dept.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_role_allowed_dept.tenant_id IS '租户 ID [@internal]';
 -- 1a. sys_menu — 菜单/权限树
 -- menu_type: 1-目录 2-菜单 3-按钮（操作权限点）
 CREATE TABLE public.sys_menu
@@ -162,7 +162,7 @@ COMMENT ON COLUMN public.sys_menu.created_at IS '创建时间 [@dynamic: exact, 
 COMMENT ON COLUMN public.sys_menu.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_menu.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_menu.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_menu.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_menu.tenant_id IS '租户 ID [@internal]';
 
 -- 1b. sys_role_menu — 角色-菜单映射
 --     映射行无可变业务字段，解除授权走物理删除，
