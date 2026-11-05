@@ -101,7 +101,7 @@ func setUserStatus(t *testing.T, d *Data, auth biz.Identity, userID int64, statu
 func TestPermissionRepo_held_code_judged_granted(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 用户 1 持角色 101（全部菜单）+102：用户管理的查询与创建码均命中。
+	// 用户 1 持角色 101（全部菜单）：用户管理的查询与创建码均命中。
 	if !mustHasPermission(t, d, permAuth("t-super-01", 1), "sys:user:create") {
 		t.Fatal("admin must hold sys:user:create")
 	}
@@ -135,7 +135,7 @@ func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
 
 func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 	// 99_perm_seed.sql 的 258-265 配置族权限点只授予超级管理员（角色 101）：
-	// 用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:config:global:query",
@@ -153,7 +153,7 @@ func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-test-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}
@@ -161,7 +161,7 @@ func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 
 func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only(t *testing.T) {
 	// 99_perm_seed.sql 的 266-273 功能开关/翻译权限点只授予超级管理员（角色
-	// 101）：用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 101）：用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:config:feature-flag:query",
@@ -179,7 +179,7 @@ func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-test-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}
@@ -187,7 +187,7 @@ func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only
 
 func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 	// seed.sql 的 220-223 租户管理权限点只授予超级管理员（角色 101）：
-	// 用户 1 四个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 用户 1 四个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:tenant:query",
@@ -201,7 +201,7 @@ func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-test-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}

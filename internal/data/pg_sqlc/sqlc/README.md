@@ -37,7 +37,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 19 | 98_tenant_guard.sql | 定义 sys_tenant 删除前置完整性判定（受控读取面）：fn_tenant_active_child_count 一个 SECURITY DEFINER 计数函数——租户树 RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、不返回行数据，不构成跨租户数据读面，函数内校验 app.tenant_id 已设置（空串/未设置即拒绝，fail-closed）且目标对调用方可见（消除结构侧信道）；EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC | 是（只读函数签名） | 1 个受控判定函数 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 生产默认种子：平台树根租户 t-super-01 的自举数据（含授权管理权限码菜单 25x） | 否 | 租户/角色 101/用户 1（admin）/菜单/配置/开关/翻译 |
-| — | test_seed.sql | 集成测试专用种子：t-test-01/t-test-02 测试租户及其演示数据（部门树、角色 102-110、用户 2-11、用户组、basic 归属矩阵、菜单副本 12xx/32xx、示例日志、租户配置与开关、字典演示——t-test-01 证件类型/客户来源/行业分类，t-test-02 无字典作对照）；不入生产清单，仅由 deploy.TestDeployFiles（测试装载）在 seed.sql 之后执行 | 否 | 测试租户 2 个、部门/角色/用户/用户组/字典演示 3 类型 14 数据/菜单副本/映射/日志等 |
+| — | test_seed.sql | 集成测试专用种子：t-test-01/t-test-02 测试租户及其演示数据（部门树、角色 102-110、用户 2-12、用户组、basic 归属矩阵、菜单副本 12xx/32xx、示例日志、租户配置与开关、字典演示——t-test-01 证件类型/客户来源/行业分类，t-test-02 无字典作对照；用户 12 superplain 属平台租户 t-super-01）；不入生产清单，仅由 deploy.TestDeployFiles（测试装载）在完整生产清单之后追加执行；仅用于全新建库，历史残留在文件头守卫显式报错 | 否 | 测试租户 2 个、部门/角色/用户/用户组/字典演示 3 类型 14 数据/菜单副本/映射/日志等 |
 | — | 99_perm_seed.sql | 管理面功能权限码种子：sys_menu 操作权限点（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点、257 通用翻译页面、258-265 配置族全局/租户操作码、266-269 功能开关操作码、270-273 翻译操作码）与超级管理员（101）的角色-菜单映射 | 否 | 24 条菜单、24 条角色-菜单映射 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
@@ -467,7 +467,9 @@ tenant_id、无 RLS），读面为普通读、写面经 98_config_write.sql 的�
 函数（运行角色无直写权限，本文件只写函数的 SELECT 调用）；
 sys_tenant_config、sys_feature_flag、sys_translation 是租户表（RLS 承担
 租户边界），读走固定点查、写为普通 DML（tenant_id 取
-会话 app.tenant_id）。动态查询能力由 schema/90_config.sql 的列注释 DSL
+会话 app.tenant_id）。三张租户表的 `tenant_id` 为 `@internal` 列，动态
+协议不接受 `tenantId` 过滤/投影，List 响应由服务端按认证身份回填。
+动态查询能力由 schema/90_config.sql 的列注释 DSL
 声明（ParseSysConfigQuery / ParseSysTenantConfigQuery /
 ParseSysFeatureFlagQuery / ParseSysTranslationQuery 等顶层函数为生成
 物），本文件只写固定命名查询。配置/功能开关的 config_key/flag_key 与翻译

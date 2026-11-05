@@ -777,35 +777,35 @@ VALUES (45, 1, 'sys_menu', 245, 'name', 'en-US', 'User Group Delete', NULL, 1, '
 -- ---------------------------
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (46, 1, 'sys_config', 1, 'name', 'en-US', 'Session Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (57, 1, 'sys_config', 1, 'name', 'en-US', 'Session Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (47, 1, 'sys_config', 2, 'name', 'en-US', 'Refresh Token Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (58, 1, 'sys_config', 2, 'name', 'en-US', 'Refresh Token Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (48, 1, 'sys_config', 3, 'name', 'en-US', 'Password Lockout Threshold', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (59, 1, 'sys_config', 3, 'name', 'en-US', 'Password Lockout Threshold', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (49, 1, 'sys_config', 4, 'name', 'en-US', 'Password Lockout Duration', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (60, 1, 'sys_config', 4, 'name', 'en-US', 'Password Lockout Duration', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (50, 1, 'sys_config', 5, 'name', 'en-US', 'Password Min Length', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (61, 1, 'sys_config', 5, 'name', 'en-US', 'Password Min Length', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (51, 1, 'sys_config', 6, 'name', 'en-US', 'SMTP Host', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (62, 1, 'sys_config', 6, 'name', 'en-US', 'SMTP Host', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (52, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (63, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;

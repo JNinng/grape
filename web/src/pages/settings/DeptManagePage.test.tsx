@@ -128,6 +128,18 @@ describe('DeptManagePage tree rendering', () => {
     expect(mockFetchTree).toHaveBeenCalledTimes(1)
   })
 
+  it('shows_the_full_page_description_from_the_info_icon_tooltip', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+
+    const trigger = await screen.findByRole('button', { name: '关于部门管理' })
+    await user2.hover(trigger)
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '租户组织树的维护入口；树一次返回租户内全部未删除部门，无分页。',
+    )
+  })
+
   it('collapses_and_expands_a_subtree_without_unmounting_the_parent_row', async () => {
     const user2 = userEvent.setup()
     renderPage()

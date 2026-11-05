@@ -66,15 +66,15 @@ function bob(): UserDTO {
 }
 
 // schema 基线对齐 GetListSchema 响应口径：字段 label/ops/dataType 直取
-// 响应（status 为 integer 即数字编辑器），hideable 驱动列显隐，默认排序
-// 与页大小驱动表格。
+// 响应（status 带 @options 静态字典即下拉），hideable 驱动列显隐，默认
+// 排序与页大小驱动表格。
 function schema(): ListSchemaDTO {
   return {
     resource: 'sys_user',
     hash: 'test-hash',
     fields: [
       { field: 'id', label: '用户 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'] },
-      { field: 'status', label: '状态', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq'] },
+      { field: 'status', label: '状态', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'], options: [{ value: 0, label: '禁用' }, { value: 1, label: '启用' }] },
       { field: 'name', label: '用户名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
       { field: 'nickname', label: '昵称', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
       { field: 'email', label: '邮箱', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
@@ -161,15 +161,15 @@ describe('UserManagePage list & filters', () => {
     })
   })
 
-  it('applies_the_status_equality_filter_with_the_number_editor_from_the_schema', async () => {
+  it('applies_the_status_equality_filter_with_the_schema_options', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('alice')
 
-    // status 的 dataType 为 integer：值编辑器为数字框，默认 op 即 eq。
+    // status 带 @options 静态字典：值编辑器为内联选项列表，默认 op 即 eq；
+    // 点选后最终 where 值保持 number 类型。
     await openFilter(user2, '状态')
-    await user2.type(screen.getByLabelText('筛选值'), '0')
-    await user2.click(screen.getByRole('button', { name: '确定' }))
+    await user2.click(await screen.findByRole('option', { name: '禁用' }))
 
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
     expect(mockListUsers.mock.calls[1][0]).toMatchObject({
@@ -183,12 +183,11 @@ describe('UserManagePage list & filters', () => {
     await screen.findByText('alice')
 
     await openFilter(user2, '状态')
-    await user2.type(screen.getByLabelText('筛选值'), '0')
-    await user2.click(screen.getByRole('button', { name: '确定' }))
+    await user2.click(await screen.findByRole('option', { name: '禁用' }))
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
 
     // chip ✕ 移除即重查（落条即查的对称行为）。
-    await user2.click(screen.getByRole('button', { name: '移除条件：状态 等于 0' }))
+    await user2.click(screen.getByRole('button', { name: '移除条件：状态 等于 禁用' }))
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(3))
     expect(mockListUsers.mock.calls[2][0]).toMatchObject({ where: [] })
   })

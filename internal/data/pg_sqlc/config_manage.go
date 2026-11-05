@@ -258,7 +258,11 @@ func (r *tenantConfigRepo) List(ctx context.Context, auth biz.Identity, q *dynq.
 			NextCursor: res.NextCursor,
 		}
 		for i := range res.Items {
-			list.Items = append(list.Items, toBizTenantConfig(&res.Items[i]))
+			// tenant_id 是 @internal 列，动态投影不返回；按认证身份回填，
+			// 与 Get/Create/Update 的响应契约保持一致。
+			item := toBizTenantConfig(&res.Items[i])
+			item.TenantID = auth.TenantID
+			list.Items = append(list.Items, item)
 		}
 		// total 与翻页位置无关，计数前剥离游标（口径同全局配置）。
 		if dynq.IncludeTotalOf(q.Pagination) {
@@ -464,7 +468,10 @@ func (r *featureFlagRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Q
 			NextCursor: res.NextCursor,
 		}
 		for i := range res.Items {
-			list.Items = append(list.Items, toBizFeatureFlag(&res.Items[i]))
+			// tenant_id 是 @internal 列，动态投影不返回；按认证身份回填。
+			item := toBizFeatureFlag(&res.Items[i])
+			item.TenantID = auth.TenantID
+			list.Items = append(list.Items, item)
 		}
 		// total 与翻页位置无关，计数前剥离游标（口径同配置族）。
 		if dynq.IncludeTotalOf(q.Pagination) {
@@ -603,7 +610,10 @@ func (r *translationRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Q
 			NextCursor: res.NextCursor,
 		}
 		for i := range res.Items {
-			list.Items = append(list.Items, toBizTranslation(&res.Items[i]))
+			// tenant_id 是 @internal 列，动态投影不返回；按认证身份回填。
+			item := toBizTranslation(&res.Items[i])
+			item.TenantID = auth.TenantID
+			list.Items = append(list.Items, item)
 		}
 		// total 与翻页位置无关，计数前剥离游标（口径同配置族）。
 		if dynq.IncludeTotalOf(q.Pagination) {

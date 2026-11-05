@@ -11,7 +11,7 @@ package tools
 //	GRAPE_SEARCH_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent/tools -run TestPGDocumentSearch -count=1 -v
 //
-// 装载取舍与会话/确认集成测试一致：DeployFiles 全清单部署 + 跨包部署
+// 装载取舍与会话/确认集成测试一致：TestDeployFiles 全清单部署 + 跨包部署
 // 锁互斥，绝不触碰其他套件的测试库。
 
 import (
@@ -133,7 +133,7 @@ func searchNewFixture(t *testing.T) *searchFixture {
 	}
 }
 
-// searchSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// searchSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署，返回
 // grape_u 连接的存储门面与 DSN（pg_catalog 断言用）。
 func searchSetupDatabase(t *testing.T) (*pg_sqlc.Data, string) {
 	t.Helper()

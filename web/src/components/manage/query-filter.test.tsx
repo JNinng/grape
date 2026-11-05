@@ -13,7 +13,7 @@ const fields: FilterField[] = [
   { field: 'name', label: '用户名', valueType: 'text', ops: ['contains', 'prefix', 'eq'] },
   { field: 'count', label: '数量', valueType: 'number', ops: ['eq', 'in', 'between'] },
   { field: 'status', label: '状态', valueType: 'select', ops: ['eq'], options: [{ label: '启用', value: 1 }, { label: '禁用', value: 0 }] },
-  { field: 'level', label: '等级', valueType: 'select', ops: ['eq', 'in'], options: [{ label: '普通', value: 1 }, { label: '管理员', value: 9 }] },
+  { field: 'level', label: '等级', valueType: 'select', ops: ['eq', 'in', 'not_in'], options: [{ label: '普通', value: 1 }, { label: '管理员', value: 9 }] },
   { field: 'kind', label: '类型', valueType: 'select', ops: ['eq', 'in'], options: [{ label: '基础', value: 'basic' }, { label: '代理', value: 'agent' }] },
   { field: 'createdAt', label: '创建时间', valueType: 'date', ops: ['between', 'eq'] },
   { field: 'lastLoginAt', label: '最后登录', valueType: 'date', ops: ['between', 'is_null', 'not_null'] },
@@ -55,7 +55,8 @@ describe('filterFieldsFromSchema', () => {
         { field: 'count', label: '数量', dataType: 'integer', ops: ['eq', 'in', 'between'] },
         { field: 'createdAt', label: '创建时间', dataType: 'datetime', ops: ['eq', 'between', 'gte', 'lte'] },
         { field: 'kind', label: '类型', dataType: 'enum', ops: ['eq'], enum: ['basic', 'agent'] },
-        { field: 'password', label: '密码', dataType: 'string', ops: [] },
+        // protojson 省略空 repeated：ops 缺键等价于不可筛。
+        { field: 'password', label: '密码', dataType: 'string' },
         { field: 'future', label: '未知操作符', dataType: 'string', ops: ['regex'] },
       ],
     }
@@ -82,6 +83,19 @@ describe('filterFieldsFromSchema', () => {
         { label: 'agent', value: 'agent' },
       ],
     })
+  })
+
+  it('falls_back_to_the_data_type_editor_when_options_is_empty', () => {
+    const schema: ListSchemaDTO = {
+      resource: 'sys_user',
+      hash: 'h',
+      fields: [{ field: 'status', label: '状态', dataType: 'integer', ops: ['eq'], options: [] }],
+    }
+
+    const fields = filterFieldsFromSchema(schema)
+    expect(fields).toHaveLength(1)
+    expect(fields[0]).toMatchObject({ valueType: 'number', ops: ['eq'] })
+    expect(fields[0]?.options).toBeUndefined()
   })
 
   it('maps_default_sort_desc_flags_to_query_sorts', () => {
@@ -127,7 +141,7 @@ describe('QueryFilter progressive flow', () => {
     await user2.click(screen.getByRole('button', { name: '确定' }))
 
     await openField(user2, '状态')
-    // 单选下拉进入值步即自动展开（defaultOpen），直接点选项落条。
+    // 单选选项内联展示，点选即落条。
     await user2.click(await screen.findByRole('option', { name: '禁用' }))
 
     expect(onConditions).toHaveBeenLastCalledWith([
@@ -211,6 +225,57 @@ describe('QueryFilter progressive flow', () => {
 
     expect(onConditions).toHaveBeenCalledWith([{ field: 'level', op: 'in', value: [1, 9] }])
     expect(screen.getByText('等级 属于 普通、管理员')).toBeInTheDocument()
+  })
+
+  it('commits_a_string_single_select_condition_with_the_option_value', async () => {
+    const user2 = userEvent.setup()
+    const onConditions = vi.fn()
+    render(<Harness onConditions={onConditions} />)
+
+    await openField(user2, '类型')
+    await user2.click(await screen.findByRole('option', { name: '基础' }))
+
+    expect(onConditions).toHaveBeenCalledWith([{ field: 'kind', op: 'eq', value: 'basic' }])
+    expect(screen.getByText('类型 等于 基础')).toBeInTheDocument()
+  })
+
+  it('commits_a_not_in_multi_select_condition_as_an_array', async () => {
+    const user2 = userEvent.setup()
+    const onConditions = vi.fn()
+    render(<Harness onConditions={onConditions} />)
+
+    await openField(user2, '等级')
+    await user2.click(screen.getByRole('combobox', { name: '操作符' }))
+    await user2.click(await screen.findByRole('option', { name: '不属于' }))
+    await user2.click(screen.getByRole('checkbox', { name: '普通' }))
+    await user2.click(screen.getByRole('checkbox', { name: '管理员' }))
+    await user2.click(screen.getByRole('button', { name: '确定' }))
+
+    expect(onConditions).toHaveBeenCalledWith([{ field: 'level', op: 'not_in', value: [1, 9] }])
+    expect(screen.getByText('等级 不属于 普通、管理员')).toBeInTheDocument()
+  })
+
+  it('backfills_checked_options_when_editing_a_multi_select_condition', async () => {
+    const user2 = userEvent.setup()
+    const onConditions = vi.fn()
+    render(<Harness onConditions={onConditions} />)
+
+    await openField(user2, '等级')
+    await user2.click(screen.getByRole('combobox', { name: '操作符' }))
+    await user2.click(await screen.findByRole('option', { name: '属于' }))
+    await user2.click(screen.getByRole('checkbox', { name: '普通' }))
+    await user2.click(screen.getByRole('checkbox', { name: '管理员' }))
+    await user2.click(screen.getByRole('button', { name: '确定' }))
+
+    await user2.click(screen.getByRole('button', { name: '编辑条件：等级 属于 普通、管理员' }))
+    expect(screen.getByRole('checkbox', { name: '普通' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: '管理员' })).toBeChecked()
+    await user2.click(screen.getByRole('checkbox', { name: '管理员' }))
+    await user2.click(screen.getByRole('button', { name: '确定' }))
+
+    expect(onConditions).toHaveBeenLastCalledWith([{ field: 'level', op: 'in', value: [1] }])
+    expect(screen.getByText('等级 属于 普通')).toBeInTheDocument()
+    expect(screen.queryByText('等级 属于 普通、管理员')).not.toBeInTheDocument()
   })
 
   it('commits_a_number_between_only_when_both_bounds_are_valid', async () => {

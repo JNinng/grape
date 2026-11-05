@@ -3355,8 +3355,8 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaFieldAPI'
                     description: |-
-                        选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
-                         响应键省略。
+                        选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
+                         options）。未声明时 JSON 响应键省略。
                 desc:
                     type: string
                     description: |-
@@ -3396,7 +3396,9 @@ components:
                 value:
                     allOf:
                         - $ref: '#/components/schemas/google.protobuf.Value'
-                    description: 选项值，number 或 string，与字段 data_type 定型一致。
+                    description: |-
+                        选项值，仅整数或字符串，与字段 data_type 定型一致；整数按 JSON
+                         number 表达，限制在 JS 安全整数范围内。
                 label:
                     type: string
                     description: 选项展示文本。

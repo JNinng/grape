@@ -1,17 +1,19 @@
 -- ======================================================================
 -- test_seed.sql — 集成测试专用种子数据
--- 依赖：seed.sql 之后执行（依赖其树根租户 t-super-01 存在）；
+-- 依赖：完整生产清单（DeployFiles，seed.sql 提供树根租户 t-super-01）之后执行；
 -- 仅由测试部署清单（deploy.TestDeployFiles）装载，生产 dbdeploy 不执行。
 -- 以超级用户/表 owner 连接执行（RLS 已启用，超级用户绕过 RLS）。
+-- 仅用于全新建库的一次性部署；重复执行会重复追加登录/操作日志。
 --
--- 组成（全部属测试租户 t-test-01 / t-test-02，与生产默认数据分离）：
+-- 组成（除用户 12 superplain 属 t-super-01 外，全部属测试租户
+-- t-test-01 / t-test-02，与生产默认数据分离）：
 --   1. 测试租户（t-test-01 主测试租户；t-test-02 跨租户对照租户）；
 --   2. 部门树（t-test-01：总公司 → 技术部/产品部/设计部/市场部/财务部，
 --      技术部 → 前端组/后端组）；
 --   3. 角色与数据范围（102-109 覆盖 data_scope=2/3/4/5/6 逐档演示，
 --      110 为测试管理员 data_scope=7；105 属 t-test-02 作对照）；
---   4. 用户与角色映射（1-5 基础 + 6-10 数据范围演示 + 11 测试管理员；
---      用户 5 属 t-test-02 作跨租户对照）；
+--   4. 用户与角色映射（2-5 基础 + 6-10 数据范围演示 + 11 测试管理员 +
+--      12 平台租户无角色用户；用户 5 属 t-test-02 作跨租户对照）；
 --   5. 用户组与成员映射（用户组档位演示）；
 --   6. basic 表归属矩阵（11 行，覆盖归属三元组各维度 + 无归属行 +
 --      跨租户对照行），期望可见性由部署方验收场景断言；
@@ -26,6 +28,21 @@
 --
 -- 密码统一为 "123456"（scrypt 加密）；登录校验通过后由应用透明重哈希为 argon2id。
 -- ======================================================================
+
+-- 历史库守卫：test_seed 复用固定主键，仅适用于全新建库。检测到旧演示/
+-- 测试租户、平台租户旧字典或已播种日志时显式失败，避免
+-- ON CONFLICT DO NOTHING 静默产生残缺行或跨租户孤儿数据。
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM public.sys_tenant
+               WHERE id IN ('t-test-01', 't-test-02', 't-demo-01', 't-dev-01', 't-stg-01'))
+       OR EXISTS (SELECT 1 FROM public.sys_dict_type WHERE tenant_id = 't-super-01')
+       OR EXISTS (SELECT 1 FROM public.sys_dict_data WHERE tenant_id = 't-super-01')
+       OR EXISTS (SELECT 1 FROM public.sys_login_log WHERE tenant_id = 't-test-01') THEN
+        RAISE EXCEPTION 'test_seed.sql requires a fresh database; rebuild it before applying test seed';
+    END IF;
+END
+$$;
 
 -- ===========================
 -- 1. 测试租户 (sys_tenant)：树根 t-super-01 名下的直接子租户

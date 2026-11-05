@@ -98,7 +98,7 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("close admin: %v", err)
 	}
 
-	// 装载部署文件：清单即 deploy 子包的 DeployFiles（与 dbdeploy 共用）；
+	// 装载部署文件：清单为 deploy.TestDeployFiles()（生产清单 + 测试种子）；
 	// 文件内含多语句与函数体，走 simple protocol
 	deployCfg, err := pgx.ParseConfig(adminDSN)
 	if err != nil {
@@ -169,7 +169,8 @@ func countBasicInIdentityTx(ctx context.Context, t *testing.T, d *Data, auth biz
 func TestSessionDiscipline(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
-	seeded := biz.Identity{TenantID: "t-test-01", UserID: 1}
+	// 用户 11 是 t-test-01 的种子管理员（testadmin），身份与租户一致。
+	seeded := biz.Identity{TenantID: "t-test-01", UserID: 11}
 
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	// 这是连接纪律的数据库层兜底，门面只是让它不可能被绕过。
@@ -189,8 +190,47 @@ func TestSessionDiscipline(t *testing.T) {
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
 			}
-			if n == 0 {
-				t.Fatal("dict data invisible inside session tenant")
+			if n != 14 {
+				t.Fatalf("dict rows in tenant session = %d, want 14", n)
+			}
+			var types int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_type").Scan(&types); err != nil {
+				return err
+			}
+			if types != 3 {
+				t.Fatalf("dict types in tenant session = %d, want 3", types)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("session: %v", err)
+		}
+	})
+
+	t.Run("other test tenant sees no seeded dict data", func(t *testing.T) {
+		err := d.IdentityTx(ctx, Identity{TenantID: "t-test-02", UserID: 5}, func(s *IdentityTx) error {
+			var n int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
+				return err
+			}
+			if n != 0 {
+				t.Fatalf("t-test-02 saw %d dict rows, want 0", n)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("session: %v", err)
+		}
+	})
+
+	t.Run("platform tenant sees no seeded dict data", func(t *testing.T) {
+		err := d.IdentityTx(ctx, Identity{TenantID: "t-super-01", UserID: 1}, func(s *IdentityTx) error {
+			var n int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
+				return err
+			}
+			if n != 0 {
+				t.Fatalf("t-super-01 saw %d dict rows, want 0", n)
 			}
 			return nil
 		})
@@ -217,8 +257,8 @@ func TestSessionDiscipline(t *testing.T) {
 
 	// 种子事实（test_seed.sql）：t-test-01 内 basic 共 10 行；用户 11
 	// （testadmin）持全租户角色 110（data_scope=7），用户 3 持仅本人角色
-	// 103（data_scope=1）。t-test-01 内含字典演示数据（类型 1-3、数据
-	// 1-14），租户可见性用它验证；t-super-01 已不播种字典。
+	// 103（data_scope=1）。t-test-01 内含字典演示数据（类型 3、数据 14），
+	// 租户可见性用它验证；t-super-01 与 t-test-02 不播种字典。
 	testAdmin := biz.Identity{TenantID: "t-test-01", UserID: 11}
 
 	t.Run("scope 7 sees all basic rows of tenant", func(t *testing.T) {
@@ -228,8 +268,8 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("scope 1 sees only own basic rows", func(t *testing.T) {
-		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: testAdmin.TenantID, UserID: 3}); got == 0 || got >= 10 {
-			t.Fatalf("data_scope=1 total = %d, want (0, 10)", got)
+		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: testAdmin.TenantID, UserID: 3}); got != 1 {
+			t.Fatalf("data_scope=1 total = %d, want 1", got)
 		}
 	})
 

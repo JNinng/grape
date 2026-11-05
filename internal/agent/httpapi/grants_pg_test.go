@@ -61,7 +61,7 @@ var (
 	grantTestTenantPlain = biz.Identity{TenantID: "t-super-01", UserID: 12}
 )
 
-// grantSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// grantSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署，返回
 // grape_u DSN。形态与既有套件一致（单一事实源的部署清单 +
 // 跨包互斥锁）。
 func grantSetupDatabase(t *testing.T) string {
@@ -503,7 +503,7 @@ func TestPGGrant_when_rls_disabled_cross_tenant_invisible(t *testing.T) {
 // TestPGGrant_when_management_permission_boundary_over_seed_roles 验证
 // 管理端点的权限码边界（种子角色经 fn_has_permission 库内判定）：
 // 持 agent:grant:query/revoke 的管理员（种子用户 1）可全租户列表与
-// 吊销他人授权；普通用户（种子用户 2，无 agent 授权码）403、本人
+// 吊销他人授权；普通用户（种子用户 12 superplain，无 agent 授权码）403、本人
 // 视角不受影响。
 func TestPGGrant_when_management_permission_boundary_over_seed_roles(t *testing.T) {
 	dsn := grantSetupDatabase(t)

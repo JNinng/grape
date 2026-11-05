@@ -464,8 +464,8 @@ type ListSchemaField struct {
 	// 枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
 	// 不输出），客户端按空数组处理。
 	EnumValues []string `protobuf:"bytes,9,rep,name=enum_values,json=enum,proto3" json:"enum_values,omitempty"`
-	// 选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
-	// 响应键省略。
+	// 选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
+	// options）。未声明时 JSON 响应键省略。
 	Api *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
 	// 字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
 	// JSON 响应键省略。
@@ -595,7 +595,8 @@ func (x *ListSchemaField) GetOptions() []*ListSchemaFieldOption {
 // ListSchemaFieldOption 是静态字典选项的单个键值对。
 type ListSchemaFieldOption struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 选项值，number 或 string，与字段 data_type 定型一致。
+	// 选项值，仅整数或字符串，与字段 data_type 定型一致；整数按 JSON
+	// number 表达，限制在 JS 安全整数范围内。
 	Value *structpb.Value `protobuf:"bytes,1,opt,name=value,proto3" json:"value,omitempty"`
 	// 选项展示文本。
 	Label         string `protobuf:"bytes,2,opt,name=label,proto3" json:"label,omitempty"`

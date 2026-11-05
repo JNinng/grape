@@ -7,7 +7,7 @@ package agent
 //	GRAPE_SESSION_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent -run TestPGSession -count=1 -v
 //
-// 装载取舍：按 DeployFiles 全清单部署（清单已尾随 agent_session.sql），
+// 装载取舍：按 TestDeployFiles 全清单部署（清单已尾随 agent_session.sql），
 // 不裁剪最小子集。理由：role.sql 的授权/回收语句引用 public 业务表
 // （sys_menu、sys_config 等），任何「最小子集」都随 role.sql 的授权
 // 面漂移而脆断；agent schema 虽与 public 域零耦合，grape_u 角色却
@@ -56,7 +56,7 @@ const (
 	sessionUserID  = int64(7)
 )
 
-// sessionSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署（清单尾部
+// sessionSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署（清单尾部
 // 即 agent_session.sql），返回 grape_u DSN。
 func sessionSetupDatabase(t *testing.T) string {
 	t.Helper()
@@ -82,7 +82,7 @@ func sessionSetupDatabase(t *testing.T) string {
 		t.Fatalf("create test database: %v", err)
 	}
 
-	// 全清单装载：DeployFiles（与 dbdeploy 共用单一事实源）尾随
+	// 全清单装载：TestDeployFiles（生产清单 + 测试种子）尾随
 	// agent_session.sql。文件含多语句与 DO 块，走 simple protocol。
 	deployDir, err := deploy.DeployDir()
 	if err != nil {

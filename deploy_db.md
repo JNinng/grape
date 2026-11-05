@@ -1,6 +1,6 @@
 # 数据库部署
 
-grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 23 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令与集成测试共用），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。生产部署的其余口径（多实例粘性、优雅停机、密钥管理、框架升级检查单）见 [operations.md](operations.md)。
+grape 关系存储（PostgreSQL）的部署：对目标库按序执行 `internal/data/pg_sqlc/sqlc/` 下的 23 个 SQL 文件，最后补一次连接授权。执行顺序的单一事实源是 `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令执行生产清单；集成测试经 `TestDeployFiles()` 追加测试种子），本文表格是其镜像；SQL 对象的函数与命名查询索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)。生产部署的其余口径（多实例粘性、优雅停机、密钥管理、框架升级检查单）见 [operations.md](operations.md)。
 
 ## 一键部署（推荐）
 
@@ -63,7 +63,7 @@ done
 # role.sql 的口令占位符需在执行前自行替换，随后补 CONNECT 授权（见下节）
 ```
 
-> 集成测试专用种子 [test_seed.sql](internal/data/pg_sqlc/sqlc/test_seed.sql)（t-test-01/t-test-02 测试租户及其演示数据）**不在生产部署清单内**：仅由测试部署清单 `deploy.TestDeployFiles()`（生产清单 + 追加 test_seed.sql）装载，依赖 seed.sql 的树根租户存在。开发/演示库如需测试数据（如以 zhangsan/123456 登录演示），在生产清单执行完后以超级用户单独执行该文件即可。
+> 集成测试专用种子 [test_seed.sql](internal/data/pg_sqlc/sqlc/test_seed.sql)（t-test-01/t-test-02 测试租户及其演示数据）**不在生产部署清单内**：仅由测试部署清单 `deploy.TestDeployFiles()`（生产清单 + 追加 test_seed.sql）装载，依赖 seed.sql 的树根租户存在。开发/演示库如需测试数据（如以 zhangsan/123456 登录演示），在生产清单执行完后以超级用户单独执行该文件即可。该文件仅适用于**全新建库**：它复用固定主键，历史库（含旧演示租户或平台租户旧字典）会被文件头守卫显式拒绝；重复执行会重复追加登录/操作日志。历史库请先重建。
 
 ## 幂等性与全量重建
 
@@ -82,6 +82,8 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 ## 升级
 
 [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) 的语句均带 `ON CONFLICT DO NOTHING`，对已部署库重复执行不报错、也不覆盖已有行：涉及种子行修正的变更，对历史版本部署过的库需手工执行 UPDATE 或重建库。
+
+本次种子拆分（生产 seed.sql 只保留平台树根自举数据，测试租户/部门/用户/basic 矩阵/示例日志/字典移至 test_seed.sql）**只对全新建库生效**：历史库中由旧种子写入的 `t-demo-01`/`t-dev-01`/`t-stg-01`、演示用户、部门树、basic 矩阵与字典不会被新 seed 删除；如需与新建库对齐，请重建库或手工停用/删除这些演示数据。旧库的字典标签翻译曾占用 `sys_translation` 46-56、配置翻译为 57-63；新 seed 保持 57-63，重放不会与旧字典翻译冲突。旧库也不应再执行 test_seed.sql，其文件头守卫会在检测到历史残留时报错。
 
 [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) 对历史版本部署过的库属追加对象：以超级用户连接目标库单独执行即可（扩展与 schema 判存沿用，建表/建索引为裸创建，重复执行在表已存在时报错）。调整嵌入空间时须 conf 与 DDL 成对变更：`conf.vector.embedders` 加条目（模型/版本/维度）+ 该文件加对应维度的表达式部分 HNSW 索引，装配期探针逐维度对账（缺索引启动即失败）；单维度旧表升级到多空间形状（裸 vector + embedder/embed_dim 列 + CHECK）是结构变更，与改维度一样走全量重建（DROP DATABASE 后从步骤 1 重部署），存量向量数据本身无跨空间迁移语义——换默认空间后的迁移由应用侧重摄取完成（source_id 幂等覆盖，跨空间清除旧切片）。
 

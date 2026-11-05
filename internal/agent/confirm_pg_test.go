@@ -11,7 +11,7 @@ package agent
 //	GRAPE_CONFIRM_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent -run TestPGConfirm -count=1 -v
 //
-// 装载取舍与会话集成测试（session_pg_test.go）一致：DeployFiles 全清单
+// 装载取舍与会话集成测试（session_pg_test.go）一致：TestDeployFiles 全清单
 // 部署 + 跨包部署锁互斥，绝不触碰其他套件的测试库。
 //
 // 「重启」的模拟口径：不关闭旧栈（其阻塞运行随测试进程存活，模拟进程
@@ -45,7 +45,7 @@ var confirmSuite = testsupport.SuiteDatabase{
 	SkipMessage:    "GRAPE_CONFIRM_TEST_ADMIN_DSN not set, skip confirm recovery integration tests",
 }
 
-// confirmSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// confirmSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署，返回
 // grape_u DSN。
 func confirmSetupDatabase(t *testing.T) string {
 	t.Helper()

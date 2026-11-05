@@ -25,8 +25,9 @@ import {
 // 完成即落 chip 并回调 onChange（落条即查，无查询按钮）。字段的 ops 子集
 // 须与存储层 schema 列注释声明（@dynamic）对齐，服务端会按列校验。
 
-// FilterValueType 是值编辑器类型：text/number 用输入框、select 用枚举
-// 下拉（options 必填）、date 用日历（between 渲染为区间选择）。
+// FilterValueType 是值编辑器类型：text/number 用输入框、select 用静态
+// options 内联列表（options 可选，缺省回退 enum）、date 用日历（between
+// 渲染为区间选择）。
 export type FilterValueType = 'text' | 'number' | 'select' | 'date'
 
 // FilterField 是页面声明的可筛字段：field 为查询字段名（小驼峰），ops 为
@@ -116,9 +117,9 @@ const SCHEMA_VALUE_TYPES: Record<string, FilterValueType> = {
 // 操作符剔除后无可用 op 的字段一并丢弃。
 export function filterFieldsFromSchema(schema: ListSchemaDTO): FilterField[] {
   return schema.fields
-    .filter((field) => field.ops.length > 0)
+    .filter((field) => (field.ops ?? []).length > 0)
     .map((field) => {
-      const ops = field.ops.filter((op): op is QueryOp => OP_LABELS[op as QueryOp] !== undefined)
+      const ops = (field.ops ?? []).filter((op): op is QueryOp => OP_LABELS[op as QueryOp] !== undefined)
       if (field.options !== undefined && field.options.length > 0) {
         return { field: field.field, label: field.label, ops, valueType: 'select' as const, options: field.options }
       }
@@ -271,8 +272,9 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
   const [lowerText, setLowerText] = useState('')
   const [upperText, setUpperText] = useState('')
   // multiText 是 in/not_in 的多值输入（逗号/空白分隔）；selectedEnum 是
-  // 枚举多选的勾选集、selectedSingle 是枚举单选的当前值（二者供编辑态
-  // 回填，编辑器打开即回显原条件值）。
+  // select 多选的勾选集（字符串键，提交时按 options 还原原始类型）、
+  // selectedSingle 是 select 单选的当前值（二者供编辑态回填，编辑器打开
+  // 即回显原条件值）。
   const [multiText, setMultiText] = useState('')
   const [selectedEnum, setSelectedEnum] = useState<string[]>([])
   const [selectedSingle, setSelectedSingle] = useState<string>()

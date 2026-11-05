@@ -4,7 +4,7 @@ package audit_test
 // grape_agent_permission_test）验证 allow 层级工具调用经授权终态观察
 // 挂点落一条 auto 授权行——真实 biz.AuditUsecase + audit 仓储写入
 // agent_confirmation_log，RLS 租户边界生效。环境变量门控（未设置时
-// 跳过），形态与会话/确认集成测试一致（DeployFiles 全清单部署 + 跨包
+// 跳过），形态与会话/确认集成测试一致（TestDeployFiles 全清单部署 + 跨包
 // 部署锁互斥）：
 //
 //	GRAPE_PERMISSION_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
@@ -37,7 +37,7 @@ var permissionSuite = testsupport.SuiteDatabase{
 	SkipMessage:    "GRAPE_PERMISSION_TEST_ADMIN_DSN not set, skip permission audit integration tests",
 }
 
-// permissionSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，
+// permissionSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署，
 // 返回 grape_u DSN（形态与确认集成测试一致）。
 func permissionSetupDatabase(t *testing.T) string {
 	t.Helper()

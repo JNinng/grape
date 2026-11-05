@@ -15,10 +15,10 @@ import (
 	"time"
 )
 
-// DeployFiles 是数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
-// 这是 dbdeploy 命令与集成测试（setupTestDB）共用的单一事实源，
-// 顺序与仓库根 deploy_db.md 的「执行顺序」表互为镜像，两处禁止另行
-// 维护副本；各步骤的依赖关系、执行者身份与幂等边界以该表为准
+// DeployFiles 是生产数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
+// dbdeploy 命令执行本清单；集成测试经 TestDeployFiles() 在本清单之后追加
+// test_seed.sql。顺序与仓库根 deploy_db.md 的「执行顺序」表互为镜像，
+// 两处禁止另行维护副本；各步骤的依赖关系、执行者身份与幂等边界以该表为准
 // （要点：role.sql 先于 rls/operate/expose——函数授权依赖角色先行；
 // seed.sql 在 RLS 启用后以超级用户/表 owner 执行；agent 域尾部追加，
 // 只依赖 role.sql 的角色存在）。
@@ -99,8 +99,9 @@ var DeployFiles = []string{
 
 // TestSeedFiles 是测试专用种子清单：在 DeployFiles 全清单之后追加执行，
 // 仅由集成测试装载（setupTestDB 与 testsupport 套件部署，经 TestDeployFiles），
-// dbdeploy 生产部署不包含。文件依赖 seed.sql 的树根租户 t-super-01 存在，
-// 内容全部属测试租户（t-test-*），与生产默认数据分离。
+// dbdeploy 生产部署不包含。文件依赖 seed.sql 的树根租户 t-super-01 存在；
+// 除平台租户用户 12（superplain）外，内容属测试租户（t-test-*），与生产
+// 默认数据分离。
 var TestSeedFiles = []string{
 	"test_seed.sql",
 }

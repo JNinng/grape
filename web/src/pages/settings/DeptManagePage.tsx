@@ -588,7 +588,7 @@ export function DeptManagePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex items-center gap-1">
           <h1 className="text-lg font-semibold text-foreground">部门管理</h1>
-          {/* 描述悬停标题弹出（与 DataTable 标题行同款）。 */}
+          {/* 信息图标悬停/聚焦显示页面说明（与 DataTable 标题行同款）。 */}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -601,7 +601,7 @@ export function DeptManagePage() {
                   <InfoIcon aria-hidden className="size-4" />
                 </span>
               </TooltipTrigger>
-              <TooltipContent className="max-w-72">租户组织树的维护入口。</TooltipContent>
+              <TooltipContent className="max-w-72">租户组织树的维护入口；树一次返回租户内全部未删除部门，无分页。</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>

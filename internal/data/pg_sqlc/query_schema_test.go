@@ -1,9 +1,12 @@
 package pg_sqlc
 
 import (
+	"reflect"
 	"testing"
 
 	"grape/internal/biz"
+
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 // TestQuerySchemaRegistryCoversExposedResources 验证注册表收录的资源均能
@@ -32,6 +35,111 @@ func TestQuerySchemaRegistryCoversExposedResources(t *testing.T) {
 			t.Fatalf("hash of %q = %s then %s, want deterministic", resource, s.Hash(), again.Hash())
 		}
 	}
+}
+
+// TestQuerySchemaRegistry_excludes_internal_tenant_field 验证 tenant_id 作为
+// 服务端内部列不出现在业务资源 schema 中；sys_tenant.tenant_id 是租户树结构
+// 例外，仍保留为可查询字段。
+func TestQuerySchemaRegistry_excludes_internal_tenant_field(t *testing.T) {
+	for resource := range querySchemaRegistry {
+		s, err := NewQuerySchemaRepo().ListSchema(resource)
+		if err != nil {
+			t.Fatalf("ListSchema(%q): %v", resource, err)
+		}
+		found := false
+		for _, f := range s.Fields {
+			if f.Field == "tenantId" {
+				found = true
+				break
+			}
+		}
+		if resource == "sys_tenant" {
+			if !found {
+				t.Fatal("sys_tenant schema must keep tenantId as structural exception")
+			}
+			continue
+		}
+		if found {
+			t.Fatalf("resource %q schema exposes internal tenantId field", resource)
+		}
+	}
+}
+
+// TestQuerySchemaRegistry_carries_desc_and_options 验证列注释 DSL 的展示
+// 注解经生成 registry 原样进入 schema：整数/字符串选项定型正确、标签顺序
+// 稳定、无注解字段保持空 desc 与 nil options。
+func TestQuerySchemaRegistry_carries_desc_and_options(t *testing.T) {
+	schemaOf := func(t *testing.T, resource string) dynq.ResourceSchema {
+		t.Helper()
+		s, err := NewQuerySchemaRepo().ListSchema(resource)
+		if err != nil {
+			t.Fatalf("ListSchema(%q): %v", resource, err)
+		}
+		return s
+	}
+	fieldOf := func(t *testing.T, s dynq.ResourceSchema, key string) dynq.FieldSchema {
+		t.Helper()
+		for _, f := range s.Fields {
+			if f.Field == key {
+				return f
+			}
+		}
+		t.Fatalf("field %q not found in %q schema", key, s.Resource)
+		return dynq.FieldSchema{}
+	}
+
+	t.Run("integer options keep int64 values and order", func(t *testing.T) {
+		f := fieldOf(t, schemaOf(t, "sys_role"), "dataScope")
+		if f.DataType != string(dynq.DataTypeInteger) {
+			t.Fatalf("dataScope data type = %q, want integer", f.DataType)
+		}
+		want := []dynq.FieldOption{
+			{Value: int64(1), Label: "仅本人"},
+			{Value: int64(2), Label: "本部门"},
+			{Value: int64(3), Label: "本部门及子部门"},
+			{Value: int64(4), Label: "指定人"},
+			{Value: int64(5), Label: "指定部门"},
+			{Value: int64(6), Label: "用户组"},
+			{Value: int64(7), Label: "全租户"},
+		}
+		if !reflect.DeepEqual(f.Options, want) {
+			t.Fatalf("dataScope options = %+v, want %+v", f.Options, want)
+		}
+	})
+
+	t.Run("string options keep string values and order", func(t *testing.T) {
+		f := fieldOf(t, schemaOf(t, "sys_dict_data"), "valueType")
+		if f.DataType != string(dynq.DataTypeString) {
+			t.Fatalf("valueType data type = %q, want string", f.DataType)
+		}
+		want := []dynq.FieldOption{
+			{Value: "string", Label: "字符串"},
+			{Value: "integer", Label: "整数"},
+			{Value: "boolean", Label: "布尔"},
+			{Value: "float", Label: "浮点"},
+			{Value: "json", Label: "JSON"},
+		}
+		if !reflect.DeepEqual(f.Options, want) {
+			t.Fatalf("valueType options = %+v, want %+v", f.Options, want)
+		}
+	})
+
+	t.Run("desc is carried", func(t *testing.T) {
+		f := fieldOf(t, schemaOf(t, "sys_user"), "lockedUntil")
+		if f.Desc != "NULL 表示未锁定" {
+			t.Fatalf("lockedUntil desc = %q, want NULL 表示未锁定", f.Desc)
+		}
+	})
+
+	t.Run("field without annotations stays empty", func(t *testing.T) {
+		f := fieldOf(t, schemaOf(t, "sys_user"), "name")
+		if f.Desc != "" {
+			t.Fatalf("name desc = %q, want empty", f.Desc)
+		}
+		if f.Options != nil {
+			t.Fatalf("name options = %+v, want nil", f.Options)
+		}
+	})
 }
 
 // TestQuerySchemaRegistryIncludesAllDynamicListResources 验证已暴露动态
