@@ -92,10 +92,8 @@ function configSchema(resource: 'sys_config' | 'sys_tenant_config'): ListSchemaD
   return {
     resource,
     hash: `test-hash-${resource}`,
-    fields:
-      resource === 'sys_tenant_config'
-        ? [...CONFIG_FIELDS, { field: 'tenantId', label: '租户 ID', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'neq'] }]
-        : CONFIG_FIELDS,
+    // tenant_id 是服务端 @internal 列，不出现在 ListSchema 中。
+    fields: CONFIG_FIELDS,
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 200, modes: ['offset', 'cursor'], includeTotal: true },
   }

@@ -130,6 +130,18 @@ describe('MenuManagePage tree rendering', () => {
     expect(mockFetchTree).toHaveBeenCalledTimes(1)
   })
 
+  it('shows_the_full_page_description_from_the_info_icon_tooltip', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+
+    const trigger = await screen.findByRole('button', { name: '关于菜单管理' })
+    await user2.hover(trigger)
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '功能权限码宿主树的维护入口；树一次返回租户内全部未删除菜单，无分页。',
+    )
+  })
+
   it('renders_leaves_without_the_children_key_from_the_raw_protojson_tree', async () => {
     // 真实后端形状：叶子节点（菜单查询）的 children 未填充即省略该键。
     // 经真实客户端（stub 全局 fetch + 原实现）归一化后，页面不得因缺键崩溃。

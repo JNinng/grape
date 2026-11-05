@@ -76,7 +76,7 @@ func TestEmbedderResolver_tenant_config_overrides_global_default(t *testing.T) {
 		t.Fatalf("resolve with tenant config = (%s, %d, %v), want (bge-m3@v2, 1024, nil)", space, dim, err)
 	}
 
-	// 其他租户不受该租户配置影响（RLS 与显式租户参数双重隔离）。
+	// 其他租户不受该租户配置影响（RLS 隔离）。
 	other := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-reslv-b", UserID: 2})
 	space, _, err = resolver.ResolveDefaultEmbedder(other)
 	if err != nil || space != "bge-m3@v1" {

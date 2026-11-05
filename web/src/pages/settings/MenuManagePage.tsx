@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import {
   createMenu,
   deleteMenu,
@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogClose,
@@ -690,11 +691,24 @@ export function MenuManagePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-1">
           <h1 className="text-lg font-semibold text-foreground">菜单管理</h1>
-          <p className="text-sm text-muted-foreground">
-            功能权限码宿主树的维护入口；树一次返回租户内全部未删除菜单，无分页。
-          </p>
+          {/* 信息图标悬停/聚焦显示页面说明（与 DataTable 标题行同款）。 */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  role="button"
+                  aria-label="关于菜单管理"
+                  className="cursor-help rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <InfoIcon aria-hidden className="size-4" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-72">功能权限码宿主树的维护入口；树一次返回租户内全部未删除菜单，无分页。</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p aria-label="列表统计" className="text-sm text-muted-foreground">

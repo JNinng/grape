@@ -12,6 +12,7 @@ import (
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	v1 "grape/api/query/v1"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -20,14 +21,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	UserService_CreateUser_FullMethodName        = "/user.v1.UserService/CreateUser"
-	UserService_GetUser_FullMethodName           = "/user.v1.UserService/GetUser"
-	UserService_ListUsers_FullMethodName         = "/user.v1.UserService/ListUsers"
-	UserService_UpdateUser_FullMethodName        = "/user.v1.UserService/UpdateUser"
-	UserService_SetUserPassword_FullMethodName   = "/user.v1.UserService/SetUserPassword"
-	UserService_DeleteUser_FullMethodName        = "/user.v1.UserService/DeleteUser"
-	UserService_AssignRoles_FullMethodName       = "/user.v1.UserService/AssignRoles"
-	UserService_TransferUserOwner_FullMethodName = "/user.v1.UserService/TransferUserOwner"
+	UserService_CreateUser_FullMethodName            = "/user.v1.UserService/CreateUser"
+	UserService_GetUser_FullMethodName               = "/user.v1.UserService/GetUser"
+	UserService_ListUsers_FullMethodName             = "/user.v1.UserService/ListUsers"
+	UserService_UpdateUser_FullMethodName            = "/user.v1.UserService/UpdateUser"
+	UserService_SetUserPassword_FullMethodName       = "/user.v1.UserService/SetUserPassword"
+	UserService_DeleteUser_FullMethodName            = "/user.v1.UserService/DeleteUser"
+	UserService_AssignRoles_FullMethodName           = "/user.v1.UserService/AssignRoles"
+	UserService_TransferUserOwner_FullMethodName     = "/user.v1.UserService/TransferUserOwner"
+	UserService_ListAssignableRoles_FullMethodName   = "/user.v1.UserService/ListAssignableRoles"
+	UserService_ListUserRoles_FullMethodName         = "/user.v1.UserService/ListUserRoles"
+	UserService_SetUserRoles_FullMethodName          = "/user.v1.UserService/SetUserRoles"
+	UserService_ListOwnerUserOptions_FullMethodName  = "/user.v1.UserService/ListOwnerUserOptions"
+	UserService_ListOwnerDeptOptions_FullMethodName  = "/user.v1.UserService/ListOwnerDeptOptions"
+	UserService_ListOwnerGroupOptions_FullMethodName = "/user.v1.UserService/ListOwnerGroupOptions"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -63,6 +70,23 @@ type UserServiceClient interface {
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(ctx context.Context, in *TransferUserOwnerRequest, opts ...grpc.CallOption) (*User, error)
+	// ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+	// 等同不存在（NOT_FOUND）。
+	ListAssignableRoles(ctx context.Context, in *ListAssignableRolesRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
+	// ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	ListUserRoles(ctx context.Context, in *ListUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error)
+	// SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	SetUserRoles(ctx context.Context, in *SetUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error)
+	// ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+	ListOwnerUserOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
+	// ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+	ListOwnerDeptOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
+	// ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+	ListOwnerGroupOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
 }
 
 type userServiceClient struct {
@@ -153,6 +177,66 @@ func (c *userServiceClient) TransferUserOwner(ctx context.Context, in *TransferU
 	return out, nil
 }
 
+func (c *userServiceClient) ListAssignableRoles(ctx context.Context, in *ListAssignableRolesRequest, opts ...grpc.CallOption) (*v1.OptionSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.OptionSet)
+	err := c.cc.Invoke(ctx, UserService_ListAssignableRoles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListUserRoles(ctx context.Context, in *ListUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserRoleSet)
+	err := c.cc.Invoke(ctx, UserService_ListUserRoles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) SetUserRoles(ctx context.Context, in *SetUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserRoleSet)
+	err := c.cc.Invoke(ctx, UserService_SetUserRoles_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListOwnerUserOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.OptionSet)
+	err := c.cc.Invoke(ctx, UserService_ListOwnerUserOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListOwnerDeptOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.OptionSet)
+	err := c.cc.Invoke(ctx, UserService_ListOwnerDeptOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ListOwnerGroupOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(v1.OptionSet)
+	err := c.cc.Invoke(ctx, UserService_ListOwnerGroupOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -186,6 +270,23 @@ type UserServiceServer interface {
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(context.Context, *TransferUserOwnerRequest) (*User, error)
+	// ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+	// 等同不存在（NOT_FOUND）。
+	ListAssignableRoles(context.Context, *ListAssignableRolesRequest) (*v1.OptionSet, error)
+	// ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	ListUserRoles(context.Context, *ListUserRolesRequest) (*UserRoleSet, error)
+	// SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	SetUserRoles(context.Context, *SetUserRolesRequest) (*UserRoleSet, error)
+	// ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+	ListOwnerUserOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+	ListOwnerDeptOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+	ListOwnerGroupOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -219,6 +320,24 @@ func (UnimplementedUserServiceServer) AssignRoles(context.Context, *AssignRolesR
 }
 func (UnimplementedUserServiceServer) TransferUserOwner(context.Context, *TransferUserOwnerRequest) (*User, error) {
 	return nil, status.Error(codes.Unimplemented, "method TransferUserOwner not implemented")
+}
+func (UnimplementedUserServiceServer) ListAssignableRoles(context.Context, *ListAssignableRolesRequest) (*v1.OptionSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListAssignableRoles not implemented")
+}
+func (UnimplementedUserServiceServer) ListUserRoles(context.Context, *ListUserRolesRequest) (*UserRoleSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUserRoles not implemented")
+}
+func (UnimplementedUserServiceServer) SetUserRoles(context.Context, *SetUserRolesRequest) (*UserRoleSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUserRoles not implemented")
+}
+func (UnimplementedUserServiceServer) ListOwnerUserOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOwnerUserOptions not implemented")
+}
+func (UnimplementedUserServiceServer) ListOwnerDeptOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOwnerDeptOptions not implemented")
+}
+func (UnimplementedUserServiceServer) ListOwnerGroupOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOwnerGroupOptions not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -385,6 +504,114 @@ func _UserService_TransferUserOwner_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_ListAssignableRoles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAssignableRolesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListAssignableRoles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListAssignableRoles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListAssignableRoles(ctx, req.(*ListAssignableRolesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListUserRoles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUserRolesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListUserRoles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListUserRoles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListUserRoles(ctx, req.(*ListUserRolesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_SetUserRoles_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRolesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).SetUserRoles(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_SetUserRoles_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).SetUserRoles(ctx, req.(*SetUserRolesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListOwnerUserOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOwnerOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListOwnerUserOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListOwnerUserOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListOwnerUserOptions(ctx, req.(*ListOwnerOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListOwnerDeptOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOwnerOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListOwnerDeptOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListOwnerDeptOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListOwnerDeptOptions(ctx, req.(*ListOwnerOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ListOwnerGroupOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOwnerOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListOwnerGroupOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListOwnerGroupOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListOwnerGroupOptions(ctx, req.(*ListOwnerOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -423,6 +650,30 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TransferUserOwner",
 			Handler:    _UserService_TransferUserOwner_Handler,
+		},
+		{
+			MethodName: "ListAssignableRoles",
+			Handler:    _UserService_ListAssignableRoles_Handler,
+		},
+		{
+			MethodName: "ListUserRoles",
+			Handler:    _UserService_ListUserRoles_Handler,
+		},
+		{
+			MethodName: "SetUserRoles",
+			Handler:    _UserService_SetUserRoles_Handler,
+		},
+		{
+			MethodName: "ListOwnerUserOptions",
+			Handler:    _UserService_ListOwnerUserOptions_Handler,
+		},
+		{
+			MethodName: "ListOwnerDeptOptions",
+			Handler:    _UserService_ListOwnerDeptOptions_Handler,
+		},
+		{
+			MethodName: "ListOwnerGroupOptions",
+			Handler:    _UserService_ListOwnerGroupOptions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

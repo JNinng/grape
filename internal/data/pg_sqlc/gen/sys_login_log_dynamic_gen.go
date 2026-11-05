@@ -8,11 +8,11 @@
 //	column sys_login_log.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_login_log.user_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_login_log.username: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable]
-//	column sys_login_log.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_login_log.tenant_id: [@internal]
 //	column sys_login_log.ip_address: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_login_log.login_type: [@dynamic: eq, neq, in, not_in @hideable @label: 登录方式 @options: password=密码登录 sms=短信验证码 oauth=第三方授权 refresh_token=刷新令牌]
 //	column sys_login_log.is_success: [@dynamic: eq, neq, in, not_in @hideable]
-//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @hideable]
+//	column sys_login_log.failure_reason: [@dynamic: contains, prefix, suffix @hideable @label: 失败原因 @desc: 如密码错误、账号已禁用、租户已过期、验证码错误]
 //	column sys_login_log.login_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_login_log.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_login_log.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
@@ -75,10 +75,9 @@ var sys_login_logRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 		{
 			Key:        "ipAddress",
@@ -104,13 +103,19 @@ var sys_login_logRegistry = dynq.TableMeta{
 		{
 			Key:        "loginType",
 			Column:     "login_type",
-			Label:      "登录方式：password-密码登录 sms-短信验证码 oauth-第三方授权 refresh_token-刷新令牌",
+			Label:      "登录方式",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: "password", Label: "密码登录"},
+				{Value: "sms", Label: "短信验证码"},
+				{Value: "oauth", Label: "第三方授权"},
+				{Value: "refresh_token", Label: "刷新令牌"},
+			},
 		},
 		{
 			Key:        "isSuccess",
@@ -126,13 +131,14 @@ var sys_login_logRegistry = dynq.TableMeta{
 		{
 			Key:        "failureReason",
 			Column:     "failure_reason",
-			Label:      "失败原因：如密码错误、账号已禁用、租户已过期、验证码错误",
+			Label:      "失败原因",
 			DataType:   dynq.DataTypeString,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpContains, dynq.OpPrefix, dynq.OpSuffix},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "如密码错误、账号已禁用、租户已过期、验证码错误",
 		},
 		{
 			Key:        "loginAt",
@@ -198,7 +204,6 @@ var SysLoginLogField = struct {
 	ID            dynq.FieldName
 	UserID        dynq.FieldName
 	Username      dynq.FieldName
-	TenantID      dynq.FieldName
 	IPAddress     dynq.FieldName
 	UserAgent     dynq.FieldName
 	LoginType     dynq.FieldName
@@ -211,7 +216,6 @@ var SysLoginLogField = struct {
 	ID:            "id",
 	UserID:        "userId",
 	Username:      "username",
-	TenantID:      "tenantId",
 	IPAddress:     "ipAddress",
 	UserAgent:     "userAgent",
 	LoginType:     "loginType",
@@ -244,8 +248,6 @@ type ListSysLoginLogParams struct {
 	UsernameContains      string
 	UsernamePrefix        string
 	UsernameSuffix        string
-	TenantID              *string
-	TenantIDNeq           *string
 	IPAddress             *string
 	IPAddressNeq          *string
 	IPAddressPrefix       string
@@ -487,27 +489,6 @@ func ParseSysLoginLogQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysLogi
 					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "username")
 				}
 				out.UsernameSuffix = v
-			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
 			}
 		case "ipAddress":
 			switch op {
@@ -954,9 +935,6 @@ func validateSysLoginLogParams(params ListSysLoginLogParams, cfg *dynq.QueryConf
 	if cfg.WhereDisabled("username") && (params.Username != nil || params.UsernameNeq != nil || params.UsernameContains != "" || params.UsernamePrefix != "" || params.UsernameSuffix != "") {
 		return dynq.NewErr(dynq.KindWhere, "username", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
-	}
 	if cfg.WhereDisabled("ipAddress") && (params.IPAddress != nil || params.IPAddressNeq != nil || params.IPAddressPrefix != "") {
 		return dynq.NewErr(dynq.KindWhere, "ipAddress", "field disabled in this context", -1)
 	}
@@ -1029,12 +1007,6 @@ func buildSysLoginLogWhere(params ListSysLoginLogParams) []sq.Sqlizer {
 	}
 	if params.UsernameSuffix != "" {
 		conds = append(conds, sq.Expr("username ILIKE ? ESCAPE '\\'", dynq.SuffixPattern(params.UsernameSuffix)))
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	if params.IPAddress != nil {
 		conds = append(conds, sq.Eq{"ip_address": *params.IPAddress})

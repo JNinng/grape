@@ -15,16 +15,19 @@ import (
 // 审计日志与会话管理面集成测试：以真实 PostgreSQL 验证 sys_login_log /
 // sys_operation_log 只读查询（点查 + 动态 List + RLS 租户隔离）与
 // sys_session 管理面 List（签发后可查、令牌哈希不出现、跨租户隔离）。
-// 复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql：
-// t-super-01 有登录日志 4 条与操作日志 5 条，t-demo-01 仅登录日志 1 条
-//（zhaoliu）；两表 append-only，种子即全部事实）。各用例经 setupTestDB
-// 重建数据库实现隔离。
+// 复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见
+// sqlc/test_seed.sql：t-test-01 有登录日志 4 条与操作日志 5 条，t-test-02
+// 仅登录日志 1 条（zhaoliu）；两表 append-only，种子即全部事实）。各用例
+// 经 setupTestDB 重建数据库实现隔离。
 //
 // 运行（PostgreSQL 必需，未设环境变量时跳过）：
 //
 //	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
 //	go test ./internal/data/pg_sqlc/ -run "TestAuditLogRepo|TestSessionAdminList" -count=1
+
+// auditTenantSeeded 是种子日志所在的租户（test_seed.sql）。
+const auditTenantSeeded = "t-test-01"
 
 // auditLogQuery 构造按用户名精确过滤的动态查询（两表同名语义列）。
 func auditLogQuery(username string) *dynq.Query {
@@ -37,7 +40,7 @@ func TestAuditLogRepoGetLoginLogByIDReturnsSeededRow(t *testing.T) {
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
-	out, err := repo.GetLoginLogByID(context.Background(), dictAuth(dictTenantSeeded), 3)
+	out, err := repo.GetLoginLogByID(context.Background(), dictAuth(auditTenantSeeded), 3)
 	if err != nil {
 		t.Fatalf("get login log 3: %v", err)
 	}
@@ -56,8 +59,8 @@ func TestAuditLogRepoGetLoginLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
-	// 种子日志 5 属 t-demo-01（zhaoliu）。
-	_, err := repo.GetLoginLogByID(context.Background(), dictAuth(dictTenantSeeded), 5)
+	// 种子日志 5 属 t-test-02（zhaoliu）。
+	_, err := repo.GetLoginLogByID(context.Background(), dictAuth(auditTenantSeeded), 5)
 	if !errors.Is(err, biz.ErrAuditLogNotFound) {
 		t.Fatalf("err = %v, want ErrAuditLogNotFound", err)
 	}
@@ -77,7 +80,7 @@ func TestAuditLogRepoListLoginLogsFiltersByUsernameAndIsolatesTenant(t *testing.
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
-	out, err := repo.ListLoginLogs(context.Background(), dictAuth(dictTenantSeeded), auditLogQuery("lisi"))
+	out, err := repo.ListLoginLogs(context.Background(), dictAuth(auditTenantSeeded), auditLogQuery("lisi"))
 	if err != nil {
 		t.Fatalf("list login logs: %v", err)
 	}
@@ -111,7 +114,7 @@ func TestAuditLogRepoGetOperationLogByIDReturnsSnapshots(t *testing.T) {
 	repo := NewAuditLogRepo(d)
 
 	// 种子操作日志 2：UPDATE sys_role，old/new 快照均为 JSON 对象。
-	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(dictTenantSeeded), 2)
+	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(auditTenantSeeded), 2)
 	if err != nil {
 		t.Fatalf("get operation log 2: %v", err)
 	}
@@ -127,7 +130,7 @@ func TestAuditLogRepoGetOperationLogByIDReturnsSnapshots(t *testing.T) {
 }
 
 func TestAuditLogRepoGetOperationLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
-	// 种子操作日志全部属 t-super-01：无种子租户点查等同不存在。
+	// 种子操作日志全部属 t-test-01：无种子租户点查等同不存在。
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -142,7 +145,7 @@ func TestAuditLogRepoGetOperationLogByIDNullSnapshotStaysNil(t *testing.T) {
 	repo := NewAuditLogRepo(d)
 
 	// 种子操作日志 1：old_value 为 NULL，DO 侧保持 nil（非空字节串）。
-	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(dictTenantSeeded), 1)
+	out, err := repo.GetOperationLogByID(context.Background(), dictAuth(auditTenantSeeded), 1)
 	if err != nil {
 		t.Fatalf("get operation log 1: %v", err)
 	}
@@ -162,7 +165,7 @@ func TestAuditLogRepoListOperationLogsCountsTotalIndependentOfPage(t *testing.T)
 	pageSize := 3
 
 	q := &dynq.Query{Pagination: &dynq.Pagination{Page: &page, PageSize: &pageSize}}
-	out, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), q)
+	out, err := repo.ListOperationLogs(context.Background(), dictAuth(auditTenantSeeded), q)
 	if err != nil {
 		t.Fatalf("list operation logs page 2: %v", err)
 	}
@@ -183,7 +186,7 @@ func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T
 	includeTotal := true
 
 	first := &dynq.Query{Pagination: &dynq.Pagination{PageSize: &pageSize, IncludeTotal: &includeTotal}}
-	out, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), first)
+	out, err := repo.ListOperationLogs(context.Background(), dictAuth(auditTenantSeeded), first)
 	if err != nil {
 		t.Fatalf("list first cursor page: %v", err)
 	}
@@ -193,7 +196,7 @@ func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T
 
 	after := out.NextCursor
 	second := &dynq.Query{Pagination: &dynq.Pagination{After: &after, PageSize: &pageSize, IncludeTotal: &includeTotal}}
-	secondOut, err := repo.ListOperationLogs(context.Background(), dictAuth(dictTenantSeeded), second)
+	secondOut, err := repo.ListOperationLogs(context.Background(), dictAuth(auditTenantSeeded), second)
 	if err != nil {
 		t.Fatalf("list second cursor page: %v", err)
 	}

@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
+	queryv1 "grape/api/query/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/biz"
 
@@ -16,12 +18,13 @@ import (
 // 转换，委托给 biz 用例，不实现业务规则。
 type UserService struct {
 	userv1.UnimplementedUserServiceServer
-	uc *biz.UserUsecase
+	uc         *biz.UserUsecase
+	assignment *biz.AssignmentUsecase
 }
 
 // NewUserService 构造用户服务。
-func NewUserService(uc *biz.UserUsecase) *UserService {
-	return &UserService{uc: uc}
+func NewUserService(uc *biz.UserUsecase, assignment *biz.AssignmentUsecase) *UserService {
+	return &UserService{uc: uc, assignment: assignment}
 }
 
 // authOf 读取认证中间件注入的身份事实。受保护端点已由中间件完成令牌
@@ -179,6 +182,141 @@ func (s *UserService) TransferUserOwner(ctx context.Context, req *userv1.Transfe
 		return nil, err
 	}
 	return toProtoUser(out), nil
+}
+
+// ListAssignableRoles 返回目标用户可分配且尚未拥有的活跃角色。
+func (s *UserService) ListAssignableRoles(ctx context.Context, req *userv1.ListAssignableRolesRequest) (*queryv1.OptionSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.ListAssignableRoles(ctx, auth, req.GetTargetUserId(), optionQueryOf(req.GetQuery()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoOptionSet(out), nil
+}
+
+// ListUserRoles 返回目标用户当前可管理角色集合与版本。
+func (s *UserService) ListUserRoles(ctx context.Context, req *userv1.ListUserRolesRequest) (*userv1.UserRoleSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.ListUserRoles(ctx, auth, req.GetUserId())
+	if err != nil {
+		return nil, err
+	}
+	return toProtoUserRoleSet(out), nil
+}
+
+// SetUserRoles 以「管理范围内整组替换」写入角色集合；版本不一致返回 409。
+func (s *UserService) SetUserRoles(ctx context.Context, req *userv1.SetUserRolesRequest) (*userv1.UserRoleSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.SetUserRoles(ctx, auth, biz.SetUserRolesInput{
+		UserID:          req.GetUserId(),
+		RoleIDs:         req.GetRoleIds(),
+		ExpectedVersion: req.GetExpectedVersion(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoUserRoleSet(out), nil
+}
+
+// ListOwnerUserOptions 返回归属用户候选。
+func (s *UserService) ListOwnerUserOptions(ctx context.Context, req *userv1.ListOwnerOptionsRequest) (*queryv1.OptionSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.ListOwnerUserOptions(ctx, auth, optionQueryOf(req.GetQuery()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoOptionSet(out), nil
+}
+
+// ListOwnerDeptOptions 返回归属部门候选。
+func (s *UserService) ListOwnerDeptOptions(ctx context.Context, req *userv1.ListOwnerOptionsRequest) (*queryv1.OptionSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.ListOwnerDeptOptions(ctx, auth, optionQueryOf(req.GetQuery()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoOptionSet(out), nil
+}
+
+// ListOwnerGroupOptions 返回归属用户组候选。
+func (s *UserService) ListOwnerGroupOptions(ctx context.Context, req *userv1.ListOwnerOptionsRequest) (*queryv1.OptionSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.assignment.ListOwnerGroupOptions(ctx, auth, optionQueryOf(req.GetQuery()))
+	if err != nil {
+		return nil, err
+	}
+	return toProtoOptionSet(out), nil
+}
+
+// optionQueryOf 把 DTO 选项查询转换为领域入参；未设置即零值（由用例
+// 归一化为缺省页码与页大小）。
+func optionQueryOf(q *queryv1.OptionQuery) biz.OptionQuery {
+	if q == nil {
+		return biz.OptionQuery{}
+	}
+	return biz.OptionQuery{
+		Keyword:  q.GetKeyword(),
+		Page:     q.GetPage(),
+		PageSize: q.GetPageSize(),
+	}
+}
+
+// toProtoOptionSet 渲染选项分页信封：int64 ID 转十进制字符串（前端不丢
+// 精度）；total v1 恒不设置。
+func toProtoOptionSet(set *biz.OptionSet) *queryv1.OptionSet {
+	items := make([]*queryv1.Option, 0, len(set.Items))
+	for _, o := range set.Items {
+		items = append(items, toProtoOption(o))
+	}
+	return &queryv1.OptionSet{
+		Items:   items,
+		HasMore: set.HasMore,
+		Total:   set.Total,
+		Page:    set.Page,
+	}
+}
+
+// toProtoUserRoleSet 渲染角色集合：条目同 Option 口径，unmanaged_count
+// 只暴露数量。
+func toProtoUserRoleSet(set *biz.UserRoleSet) *userv1.UserRoleSet {
+	items := make([]*queryv1.Option, 0, len(set.Items))
+	for _, o := range set.Items {
+		items = append(items, toProtoOption(o))
+	}
+	return &userv1.UserRoleSet{
+		Items:          items,
+		UnmanagedCount: set.UnmanagedCount,
+		Version:        set.Version,
+	}
+}
+
+// toProtoOption 渲染单个候选项。
+func toProtoOption(o *biz.Option) *queryv1.Option {
+	return &queryv1.Option{
+		Value:    strconv.FormatInt(o.Value, 10),
+		Label:    o.Label,
+		Enabled:  o.Enabled,
+		Reason:   o.Reason,
+		Assigned: o.Assigned,
+	}
 }
 
 // toProtoUser 将领域模型转换为 DTO。Password 不存在于 DO 读取路径，

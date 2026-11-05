@@ -34,11 +34,12 @@ type Dept struct {
 	Status *int32 `protobuf:"varint,2,opt,name=status,proto3,oneof" json:"status,omitempty"`
 	// 部门名，租户内未删除部门间唯一。
 	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	// 父部门 ID；根部门为 null。创建时生效，更新时忽略（移动走 MoveDept）。
+	// 父部门 ID；根部门为 null。创建与更新时生效：更新即移动（校验父级与
+	// 防环，闭包路径由触发器重写）；专用移动入口 MoveDept 语义相同。
 	ParentId *int64 `protobuf:"varint,4,opt,name=parent_id,json=parentId,proto3,oneof" json:"parent_id,omitempty"`
-	// 部门管理员用户 ID，必填。
+	// 部门管理员用户 ID，创建与更新均必填。
 	OwnerUserId int64 `protobuf:"varint,5,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
-	// 归属用户组 ID，可空。创建时生效，更新时忽略。
+	// 归属用户组 ID，可空。创建与更新时生效；更新传 null 表示清空该归属。
 	OwnerUserGroupId *int64 `protobuf:"varint,6,opt,name=owner_user_group_id,json=ownerUserGroupId,proto3,oneof" json:"owner_user_group_id,omitempty"`
 	// 创建人。只读。
 	CreatedBy int64 `protobuf:"varint,7,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
@@ -535,8 +536,8 @@ func (x *ListDeptsRequest) GetQuery() *v1.Query {
 // UpdateDeptRequest 是 DeptService.UpdateDept 的输入。
 type UpdateDeptRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 携带新字段值的部门。id 标识目标记录，必须设置；parent_id 与 owner_*
-	// 在输入中被忽略。
+	// 携带完整可变字段值的部门。id 标识目标记录，必须设置；parent_id 为
+	// null 表示移为根部门，owner_user_group_id 为 null 表示清空归属用户组。
 	Dept          *Dept `protobuf:"bytes,1,opt,name=dept,proto3" json:"dept,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

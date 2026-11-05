@@ -35,12 +35,12 @@ func (s *QueryService) GetListSchema(ctx context.Context, req *queryv1.GetListSc
 	if err != nil {
 		return nil, err
 	}
-	return toProtoListSchema(schema), nil
+	return toProtoListSchema(schema)
 }
 
-// toProtoListSchema 将存储层 schema 契约转换为 DTO。字段键、操作符与
-// 枚举名直接透传，前端渲染的唯一事实源是存储层 schema。
-func toProtoListSchema(s dynq.ResourceSchema) *queryv1.ListSchema {
+// toProtoListSchema 将存储层 schema 契约转换为 DTO。字段键、操作符、枚举名
+// 与展示注解（desc/options）直接透传，前端渲染的唯一事实源是存储层 schema。
+func toProtoListSchema(s dynq.ResourceSchema) (*queryv1.ListSchema, error) {
 	fields := make([]*queryv1.ListSchemaField, 0, len(s.Fields))
 	for _, f := range s.Fields {
 		pf := &queryv1.ListSchemaField{
@@ -53,6 +53,7 @@ func toProtoListSchema(s dynq.ResourceSchema) *queryv1.ListSchema {
 			Selectable: f.Selectable,
 			Ops:        f.Ops,
 			EnumValues: f.Enum,
+			Desc:       f.Desc,
 		}
 		if f.API != nil {
 			pf.Api = &queryv1.ListSchemaFieldAPI{
@@ -61,6 +62,13 @@ func toProtoListSchema(s dynq.ResourceSchema) *queryv1.ListSchema {
 				LabelKey: f.API.LabelKey,
 				Mode:     f.API.Mode,
 			}
+		}
+		for _, o := range f.Options {
+			v, err := structpb.NewValue(o.Value)
+			if err != nil {
+				return nil, fmt.Errorf("unsupported option value for field %q: %w", f.Field, err)
+			}
+			pf.Options = append(pf.Options, &queryv1.ListSchemaFieldOption{Value: v, Label: o.Label})
 		}
 		fields = append(fields, pf)
 	}
@@ -79,7 +87,7 @@ func toProtoListSchema(s dynq.ResourceSchema) *queryv1.ListSchema {
 			Modes:           s.Pagination.Modes,
 			IncludeTotal:    s.Pagination.IncludeTotal,
 		},
-	}
+	}, nil
 }
 
 // errPageAfterConflict 表示分页同时指定了 page 与 after；二者互斥。

@@ -49,9 +49,10 @@ type DeptServiceHTTPServer interface {
 	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
 	// 重写。parent_id 传 null（缺省）表示移为根部门。
 	MoveDept(context.Context, *MoveDeptRequest) (*Dept, error)
-	// UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
-	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（管理 API 不提供，由部署面维护）。
+	// UpdateDept UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+	// owner_user_group_id）。PUT 覆盖语义：请求须携带完整的可变字段集合；
+	// parent_id 变更等价于移动（校验父级与防环，闭包路径由触发器在同一事务
+	// 内重写；null 表示移为根部门），owner_user_group_id 传 null 表示清空。
 	UpdateDept(context.Context, *UpdateDeptRequest) (*Dept, error)
 }
 
@@ -234,9 +235,10 @@ type DeptServiceHTTPClient interface {
 	//（防环），违反返回 INVALID_ARGUMENT；闭包路径由触发器在同一事务内
 	// 重写。parent_id 传 null（缺省）表示移为根部门。
 	MoveDept(ctx context.Context, req *MoveDeptRequest, opts ...http.CallOption) (rsp *Dept, err error)
-	// UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
-	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（管理 API 不提供，由部署面维护）。
+	// UpdateDept UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+	// owner_user_group_id）。PUT 覆盖语义：请求须携带完整的可变字段集合；
+	// parent_id 变更等价于移动（校验父级与防环，闭包路径由触发器在同一事务
+	// 内重写；null 表示移为根部门），owner_user_group_id 传 null 表示清空。
 	UpdateDept(ctx context.Context, req *UpdateDeptRequest, opts ...http.CallOption) (rsp *Dept, err error)
 }
 
@@ -363,9 +365,10 @@ func (c *DeptServiceHTTPClientImpl) MoveDept(ctx context.Context, in *MoveDeptRe
 	return &out, nil
 }
 
-// UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
-// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-// 专项口径（管理 API 不提供，由部署面维护）。
+// UpdateDept UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+// owner_user_group_id）。PUT 覆盖语义：请求须携带完整的可变字段集合；
+// parent_id 变更等价于移动（校验父级与防环，闭包路径由触发器在同一事务
+// 内重写；null 表示移为根部门），owner_user_group_id 传 null 表示清空。
 func (c *DeptServiceHTTPClientImpl) UpdateDept(ctx context.Context, in *UpdateDeptRequest, opts ...http.CallOption) (*Dept, error) {
 	var out Dept
 	pattern := "/v1/depts/update"

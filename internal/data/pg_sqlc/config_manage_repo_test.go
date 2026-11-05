@@ -20,8 +20,9 @@ import (
 // 无 RLS）与 sys_tenant_config（租户表，RLS）的固定 CRUD、受控写面
 //（grape_u 对 sys_config 无直写权限，经 98_config_write.sql 的 SECURITY
 // DEFINER 写函数）、唯一键与软删语义、动态查询协议与租户边界。复用根包
-// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql：
-// t-super-01 有全局配置 1-7 与租户配置 1-2；t-demo-01 有租户配置 3-4）。
+// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql 与
+// sqlc/test_seed.sql：t-super-01 有全局配置 1-7 与租户配置 1-2；t-test-02
+// 有租户配置 3-4）。
 // 各用例经 setupTestDB 重建数据库实现隔离；新建行用 newID() 发号，不与
 // 种子主键冲突。
 //
@@ -35,7 +36,7 @@ const (
 	// configTenantSeeded 是种子全局/租户配置所在的租户。
 	configTenantSeeded = "t-super-01"
 	// configTenantOther 是种子租户配置 3-4 所在的租户，供跨租户断言使用。
-	configTenantOther = "t-demo-01"
+	configTenantOther = "t-test-02"
 )
 
 // configAuth 返回指定租户的操作者身份；配置表无 @scope，操作者仅落入
@@ -121,14 +122,13 @@ func TestConfigRepo_create_super_writes_via_controlled_function(t *testing.T) {
 }
 
 // assertPermissionDenied 断言直写被运行角色权限拒绝（SQLSTATE 42501）。
+// 只判错误码不判报错文案：服务端 lc_messages 本地化后文案随语言变化
+// （如中文「权限不够」），42501 已等价表达 permission denied。
 func assertPermissionDenied(t *testing.T, err error) {
 	t.Helper()
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("direct write err = %v, want permission denied (42501)", err)
-	}
-	if !strings.Contains(pgErr.Message, "permission denied") {
-		t.Fatalf("pg message = %q, want permission denied", pgErr.Message)
 	}
 }
 
@@ -582,7 +582,7 @@ func TestTenantConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
 func TestTenantConfigRepo_update_across_tenant_returns_not_found(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 种子租户配置 1 属 t-super-01；t-demo-01 视角等同不存在。
+	// 种子租户配置 1 属 t-super-01；t-test-02 视角等同不存在。
 	_, err := NewTenantConfigRepo(d).Update(context.Background(), configAuth(configTenantOther), &biz.TenantConfig{
 		ID: 1, Status: biz.ConfigStatusEnabled, Name: "x",
 	})
@@ -631,6 +631,9 @@ func TestTenantConfigRepo_list_isolates_tenant(t *testing.T) {
 	if len(out.Items) != 1 || out.Items[0].ID != 2 {
 		t.Fatalf("items = %+v, want single seeded config 2", out.Items)
 	}
+	if out.Items[0].TenantID != configTenantSeeded {
+		t.Fatalf("tenant id = %q, want %q (backfilled from identity)", out.Items[0].TenantID, configTenantSeeded)
+	}
 
 	// 同一查询在其他租户内命中该租户自己的行（id 3），不是跨租户行。
 	other, err := repo.List(context.Background(), configAuth(configTenantOther), configKeyQuery("tenant.display-name"))
@@ -639,6 +642,9 @@ func TestTenantConfigRepo_list_isolates_tenant(t *testing.T) {
 	}
 	if len(other.Items) != 1 || other.Items[0].ID != 3 {
 		t.Fatalf("items = %+v, want single seeded config 3", other.Items)
+	}
+	if other.Items[0].TenantID != configTenantOther {
+		t.Fatalf("tenant id = %q, want %q (backfilled from identity)", other.Items[0].TenantID, configTenantOther)
 	}
 
 	// 未知租户（无种子）为空集，不报错。
@@ -651,13 +657,21 @@ func TestTenantConfigRepo_list_isolates_tenant(t *testing.T) {
 	}
 }
 
-func TestTenantConfigRepo_list_rejects_unknown_field(t *testing.T) {
+func TestTenantConfigRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 	d := setupTestDB(t)
-
-	q := &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}
-	_, err := NewTenantConfigRepo(d).List(context.Background(), configAuth(configTenantSeeded), q)
-	if !errors.Is(err, biz.ErrTenantConfigInvalidArgument) {
-		t.Fatalf("err = %v, want ErrTenantConfigInvalidArgument", err)
+	repo := NewTenantConfigRepo(d)
+	cases := map[string]*dynq.Query{
+		"unknown where field":       {Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}},
+		"hidden tenantId in where":  {Where: []dynq.Condition{{Field: "tenantId", Op: "eq", Value: configTenantSeeded}}},
+		"hidden tenantId in fields": {Fields: []string{"tenantId"}},
+	}
+	for name, q := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := repo.List(context.Background(), configAuth(configTenantSeeded), q)
+			if !errors.Is(err, biz.ErrTenantConfigInvalidArgument) {
+				t.Fatalf("err = %v, want ErrTenantConfigInvalidArgument", err)
+			}
+		})
 	}
 }
 
@@ -680,7 +694,7 @@ func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
 }
 
 func TestTenantConfigRepo_list_orders_by_requested_sort(t *testing.T) {
-	// 租户内动态 sort 生效（t-demo-01 种子租户配置 3/4，按 id 降序）。
+	// 租户内动态 sort 生效（t-test-02 种子租户配置 3/4，按 id 降序）。
 	d := setupTestDB(t)
 
 	q := &dynq.Query{Sort: []dynq.SortItem{{Field: "id", Order: "desc"}}}
@@ -1309,6 +1323,9 @@ func TestFeatureFlagRepo_list_isolates_tenant(t *testing.T) {
 	if len(seeded.Items) != 1 || seeded.Items[0].ID != 1 {
 		t.Fatalf("items = %+v, want single seeded flag 1", seeded.Items)
 	}
+	if seeded.Items[0].TenantID != configTenantSeeded {
+		t.Fatalf("tenant id = %q, want %q (backfilled from identity)", seeded.Items[0].TenantID, configTenantSeeded)
+	}
 
 	other, err := repo.List(context.Background(), configAuth(configTenantOther), featureFlagKeyQuery("export_enabled"))
 	if err != nil {
@@ -1316,6 +1333,9 @@ func TestFeatureFlagRepo_list_isolates_tenant(t *testing.T) {
 	}
 	if len(other.Items) != 1 || other.Items[0].ID != 5 {
 		t.Fatalf("items = %+v, want single seeded flag 5", other.Items)
+	}
+	if other.Items[0].TenantID != configTenantOther {
+		t.Fatalf("tenant id = %q, want %q (backfilled from identity)", other.Items[0].TenantID, configTenantOther)
 	}
 
 	empty, err := repo.List(context.Background(), configAuth("t-config-none"), featureFlagKeyQuery("export_enabled"))
@@ -1351,7 +1371,7 @@ func TestFeatureFlagRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_orders_and_paginates(t *testing.T) {
-	// t-demo-01 种子开关为 5/6/7/8：按 id 降序第 1 页 8/7，第 2 页 6/5；
+	// t-test-02 种子开关为 5/6/7/8：按 id 降序第 1 页 8/7，第 2 页 6/5；
 	// 共 4 条且 total 不随翻页位置递减。
 	d := setupTestDB(t)
 	pageSize := 2
@@ -1416,13 +1436,21 @@ func TestFeatureFlagRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 	}
 }
 
-func TestFeatureFlagRepo_list_rejects_unknown_field(t *testing.T) {
+func TestFeatureFlagRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 	d := setupTestDB(t)
-
-	q := &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}
-	_, err := NewFeatureFlagRepo(d).List(context.Background(), configAuth(configTenantSeeded), q)
-	if !errors.Is(err, biz.ErrFeatureFlagInvalidArgument) {
-		t.Fatalf("err = %v, want ErrFeatureFlagInvalidArgument", err)
+	repo := NewFeatureFlagRepo(d)
+	cases := map[string]*dynq.Query{
+		"unknown where field":       {Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}},
+		"hidden tenantId in where":  {Where: []dynq.Condition{{Field: "tenantId", Op: "eq", Value: configTenantSeeded}}},
+		"hidden tenantId in fields": {Fields: []string{"tenantId"}},
+	}
+	for name, q := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := repo.List(context.Background(), configAuth(configTenantSeeded), q)
+			if !errors.Is(err, biz.ErrFeatureFlagInvalidArgument) {
+				t.Fatalf("err = %v, want ErrFeatureFlagInvalidArgument", err)
+			}
+		})
 	}
 }
 
@@ -1771,6 +1799,11 @@ func TestTranslationRepo_list_filters_and_counts_total(t *testing.T) {
 	if len(out.Items) != 7 {
 		t.Fatalf("items = %d, want 7", len(out.Items))
 	}
+	for _, item := range out.Items {
+		if item.TenantID != configTenantSeeded {
+			t.Fatalf("tenant id = %q, want %q (backfilled from identity)", item.TenantID, configTenantSeeded)
+		}
+	}
 	if out.Total == nil || *out.Total != 7 {
 		t.Fatalf("total = %+v, want 7", out.Total)
 	}
@@ -1814,12 +1847,15 @@ func TestTranslationRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
-	// 种子翻译 63 条：按 id 降序第 2 页（页大小 2）为 61/60，total 63。
+	// 种子中来源表为 sys_config 的翻译共 7 条（id 57-63）：按 id 降序
+	// 第 2 页（页大小 2）为 61/60，total 7。按来源表过滤，避免菜单翻译
+	// 数量变化影响本用例。
 	d := setupTestDB(t)
 	pageSize := 2
 	page := 2
 
 	q := &dynq.Query{
+		Where:      []dynq.Condition{{Field: "tableName", Op: "eq", Value: "sys_config"}},
 		Sort:       []dynq.SortItem{{Field: "id", Order: "desc"}},
 		Pagination: &dynq.Pagination{Page: &page, PageSize: &pageSize},
 	}
@@ -1830,20 +1866,23 @@ func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
 	if len(out.Items) != 2 || out.Items[0].ID != 61 || out.Items[1].ID != 60 {
 		t.Fatalf("page 2 items = %+v, want ids 61/60", out.Items)
 	}
-	if out.Total == nil || *out.Total != 63 {
-		t.Fatalf("total = %+v, want 63", out.Total)
+	if out.Total == nil || *out.Total != 7 {
+		t.Fatalf("total = %+v, want 7", out.Total)
 	}
 }
 
 func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
-	// 游标模式：种子翻译 63 条，首屏（页大小 2，id 降序）为 63/62 并给出
-	// NextCursor；次屏为 61/60。两屏 total 均为全集 63，不随游标收窄。
+	// 游标模式：来源表为 sys_config 的翻译 7 条（id 57-63），首屏
+	// （页大小 2，id 降序）为 63/62 并给出 NextCursor；次屏为 61/60。
+	// 两屏 total 均为 7，不随游标收窄。
 	d := setupTestDB(t)
 	repo := NewTranslationRepo(d)
 	pageSize := 2
 	includeTotal := true
+	where := []dynq.Condition{{Field: "tableName", Op: "eq", Value: "sys_config"}}
 
 	first := &dynq.Query{
+		Where:      where,
 		Sort:       []dynq.SortItem{{Field: "id", Order: "desc"}},
 		Pagination: &dynq.Pagination{PageSize: &pageSize, IncludeTotal: &includeTotal},
 	}
@@ -1857,12 +1896,13 @@ func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 	if out.NextCursor == "" {
 		t.Fatal("first page next cursor is empty, want a cursor")
 	}
-	if out.Total == nil || *out.Total != 63 {
-		t.Fatalf("first page total = %+v, want 63", out.Total)
+	if out.Total == nil || *out.Total != 7 {
+		t.Fatalf("first page total = %+v, want 7", out.Total)
 	}
 
 	after := out.NextCursor
 	second := &dynq.Query{
+		Where:      where,
 		Sort:       []dynq.SortItem{{Field: "id", Order: "desc"}},
 		Pagination: &dynq.Pagination{After: &after, PageSize: &pageSize, IncludeTotal: &includeTotal},
 	}
@@ -1873,18 +1913,26 @@ func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 	if len(secondOut.Items) != 2 || secondOut.Items[0].ID != 61 || secondOut.Items[1].ID != 60 {
 		t.Fatalf("second page items = %+v, want ids 61/60", secondOut.Items)
 	}
-	if secondOut.Total == nil || *secondOut.Total != 63 {
-		t.Fatalf("second page total = %+v, want 63 (not narrowed by cursor)", secondOut.Total)
+	if secondOut.Total == nil || *secondOut.Total != 7 {
+		t.Fatalf("second page total = %+v, want 7 (not narrowed by cursor)", secondOut.Total)
 	}
 }
 
-func TestTranslationRepo_list_rejects_unknown_field(t *testing.T) {
+func TestTranslationRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 	d := setupTestDB(t)
-
-	q := &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}
-	_, err := NewTranslationRepo(d).List(context.Background(), configAuth(configTenantSeeded), q)
-	if !errors.Is(err, biz.ErrTranslationInvalidArgument) {
-		t.Fatalf("err = %v, want ErrTranslationInvalidArgument", err)
+	repo := NewTranslationRepo(d)
+	cases := map[string]*dynq.Query{
+		"unknown where field":       {Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}},
+		"hidden tenantId in where":  {Where: []dynq.Condition{{Field: "tenantId", Op: "eq", Value: configTenantSeeded}}},
+		"hidden tenantId in fields": {Fields: []string{"tenantId"}},
+	}
+	for name, q := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := repo.List(context.Background(), configAuth(configTenantSeeded), q)
+			if !errors.Is(err, biz.ErrTranslationInvalidArgument) {
+				t.Fatalf("err = %v, want ErrTranslationInvalidArgument", err)
+			}
+		})
 	}
 }
 
@@ -1954,7 +2002,7 @@ func TestPlatformTenantGuard_classifies_seed_tenants(t *testing.T) {
 		want   bool
 	}{
 		{tenant: configTenantSeeded, want: true}, // t-super-01：树根
-		{tenant: configTenantOther, want: false}, // t-demo-01：直接子租户
+		{tenant: configTenantOther, want: false}, // t-test-02：直接子租户
 		{tenant: "t-config-none", want: false},   // 不存在的租户
 	} {
 		got, err := guard.IsPlatformTenant(ctx, configAuth(tc.tenant))
@@ -1989,7 +2037,7 @@ func TestPlatformTenantGuard_soft_deleted_tenant_is_not_platform(t *testing.T) {
 }
 
 // TestConfigUsecase_global_write_requires_platform_tenant 验证全局配置写
-// 路径的平台信任边界在真实存储上成立：直接子租户（t-demo-01）经完整用例
+// 路径的平台信任边界在真实存储上成立：直接子租户（t-test-02）经完整用例
 // 写全局配置返回 ErrConfigPlatformRequired（403），新建行不落库、更新与
 // 删除不触碰种子行；树根（t-super-01）正常写入。
 func TestConfigUsecase_global_write_requires_platform_tenant(t *testing.T) {

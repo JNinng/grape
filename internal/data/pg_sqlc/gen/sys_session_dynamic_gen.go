@@ -6,9 +6,9 @@
 //	table sys_session: [@default_sort: updated_at DESC]
 //	table sys_session: [@pk: id]
 //	column sys_session.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_session.status: [@dynamic: eq, neq, in, not_in @sortable @hideable]
+//	column sys_session.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_session.user_id: [@dynamic: eq, neq, in, not_in @hideable]
-//	column sys_session.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_session.tenant_id: [@internal]
 //	column sys_session.token_hash: [@internal]
 //	column sys_session.refresh_token_hash: [@internal]
 //	column sys_session.expires_at: [@dynamic: eq, neq, gt, gte, lt, lte, between @sortable]
@@ -54,13 +54,17 @@ var sys_sessionRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "userId",
@@ -79,10 +83,9 @@ var sys_sessionRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 		{
 			Key:        "tokenHash",
@@ -248,7 +251,6 @@ var SysSessionField = struct {
 	ID               dynq.FieldName
 	Status           dynq.FieldName
 	UserID           dynq.FieldName
-	TenantID         dynq.FieldName
 	ExpiresAt        dynq.FieldName
 	RefreshExpiresAt dynq.FieldName
 	LastActivityAt   dynq.FieldName
@@ -263,7 +265,6 @@ var SysSessionField = struct {
 	ID:               "id",
 	Status:           "status",
 	UserID:           "userId",
-	TenantID:         "tenantId",
 	ExpiresAt:        "expiresAt",
 	RefreshExpiresAt: "refreshExpiresAt",
 	LastActivityAt:   "lastActivityAt",
@@ -297,8 +298,6 @@ type ListSysSessionParams struct {
 	UserIDNeq               *int64
 	UserIDIn                []int64
 	UserIDNotIn             []int64
-	TenantID                *string
-	TenantIDNeq             *string
 	ExpiresAt               *time.Time
 	ExpiresAtNeq            *time.Time
 	ExpiresAtGt             *time.Time
@@ -552,27 +551,6 @@ func ParseSysSessionQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysSessi
 					return out, dynq.AsError(err).At(dynq.KindWhere, i, "userId")
 				}
 				out.UserIDNotIn = vs
-			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
 			}
 		case "expiresAt":
 			switch op {
@@ -1201,9 +1179,6 @@ func validateSysSessionParams(params ListSysSessionParams, cfg *dynq.QueryConfig
 	if cfg.WhereDisabled("userId") && (params.UserID != nil || params.UserIDNeq != nil || params.UserIDIn != nil || params.UserIDNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "userId", "field disabled in this context", -1)
 	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
-	}
 	if cfg.WhereDisabled("expiresAt") && (params.ExpiresAt != nil || params.ExpiresAtNeq != nil || params.ExpiresAtGt != nil || params.ExpiresAtGte != nil || params.ExpiresAtLt != nil || params.ExpiresAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "expiresAt", "field disabled in this context", -1)
 	}
@@ -1285,12 +1260,6 @@ func buildSysSessionWhere(params ListSysSessionParams) []sq.Sqlizer {
 	}
 	if params.UserIDNotIn != nil {
 		conds = append(conds, sq.NotEq{"user_id": params.UserIDNotIn})
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	if params.ExpiresAt != nil {
 		conds = append(conds, sq.Eq{"expires_at": *params.ExpiresAt})

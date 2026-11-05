@@ -14,9 +14,9 @@ import (
 // 字典仓储集成测试：以真实 PostgreSQL 验证 sys_dict_type / sys_dict_data
 // 固定 CRUD、动态查询协议、两级写路径纪律（数据创建先锁宿主类型行、类型
 // 删除先校验活跃数据）与 RLS 租户边界。复用根包套件的 setupTestDB（deploy
-// 全清单装载，种子数据见 sqlc/seed.sql：t-super-01 有字典类型 1-3 与字典
-// 数据 1-11；t-demo-01 无字典种子）。各用例经 setupTestDB 重建数据库实现
-// 隔离；新建行用 newID() 发号，不与种子主键冲突。
+// 全清单装载，种子数据见 sqlc/test_seed.sql：t-test-01 有字典类型 1-3 与
+// 字典数据 1-14；t-test-02 无字典种子）。各用例经 setupTestDB 重建数据库
+// 实现隔离；新建行用 newID() 发号，不与种子主键冲突。
 //
 // 运行（PostgreSQL 必需，未设环境变量时跳过）：
 //
@@ -25,10 +25,10 @@ import (
 //	go test ./internal/data/pg_sqlc/ -run TestDictRepo -count=1
 
 const (
-	// dictTenantSeeded 是种子字典所在的租户。
-	dictTenantSeeded = "t-super-01"
+	// dictTenantSeeded 是种子字典所在的租户（test_seed.sql 的主测试租户）。
+	dictTenantSeeded = "t-test-01"
 	// dictTenantEmpty 是无字典种子的租户，供新建与跨租户断言使用。
-	dictTenantEmpty = "t-demo-01"
+	dictTenantEmpty = "t-test-02"
 )
 
 // dictAuth 返回指定租户的操作者身份；字典表无 @scope，操作者仅落入审计列。
@@ -87,8 +87,8 @@ func TestDictRepoGetDictTypeByIDReturnsSeededRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get dict type 1: %v", err)
 	}
-	if out.Code != "sys_data_scope" || out.Name != "数据范围" {
-		t.Fatalf("row = (%s, %s), want (sys_data_scope, 数据范围)", out.Code, out.Name)
+	if out.Code != "cert_type" || out.Name != "证件类型" {
+		t.Fatalf("row = (%s, %s), want (cert_type, 证件类型)", out.Code, out.Name)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestDictRepoCreateDictTypeDuplicateCodeReturnsAlreadyExists(t *testing.T) {
 	repo := NewDictRepo(d)
 
 	_, err := repo.CreateType(context.Background(), dictAuth(dictTenantSeeded), &biz.DictType{
-		Status: biz.DictStatusEnabled, Name: "重复", Code: "sys_data_scope",
+		Status: biz.DictStatusEnabled, Name: "重复", Code: "cert_type",
 	})
 	if !errors.Is(err, biz.ErrDictTypeAlreadyExists) {
 		t.Fatalf("err = %v, want ErrDictTypeAlreadyExists", err)
@@ -203,7 +203,7 @@ func TestDictRepoSoftDeleteTypeWithActiveDataReturnsHasData(t *testing.T) {
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
-	// 种子类型 1 下有 7 条活跃数据，软删必须被拒绝。
+	// 种子类型 1 下有 6 条活跃数据，软删必须被拒绝。
 	err := repo.SoftDeleteType(context.Background(), dictAuth(dictTenantSeeded), 1)
 	if !errors.Is(err, biz.ErrDictTypeHasData) {
 		t.Fatalf("err = %v, want ErrDictTypeHasData", err)
@@ -236,7 +236,7 @@ func TestDictRepoListDictTypesFiltersByCodeAndIsolatesTenant(t *testing.T) {
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
-	out, err := repo.ListTypes(context.Background(), dictAuth(dictTenantSeeded), dictTypeQuery("sys_role_type"))
+	out, err := repo.ListTypes(context.Background(), dictAuth(dictTenantSeeded), dictTypeQuery("customer_source"))
 	if err != nil {
 		t.Fatalf("list dict types: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestDictRepoListDictTypesFiltersByCodeAndIsolatesTenant(t *testing.T) {
 	}
 
 	// 同一查询在无种子租户内必须为空集（RLS 隔离），不报错。
-	empty, err := repo.ListTypes(context.Background(), dictAuth(dictTenantEmpty), dictTypeQuery("sys_role_type"))
+	empty, err := repo.ListTypes(context.Background(), dictAuth(dictTenantEmpty), dictTypeQuery("customer_source"))
 	if err != nil {
 		t.Fatalf("list dict types in empty tenant: %v", err)
 	}
@@ -293,8 +293,8 @@ func TestDictRepoGetDictDataByIDReturnsSeededRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get dict data 7: %v", err)
 	}
-	if out.Value != "7" || out.DictTypeID != 1 || out.ValueType != "integer" {
-		t.Fatalf("row = (%s, type %d, vt %s), want (7, 1, integer)", out.Value, out.DictTypeID, out.ValueType)
+	if out.Value != "ad" || out.DictTypeID != 2 || out.ValueType != "string" {
+		t.Fatalf("row = (%s, type %d, vt %s), want (ad, 2, string)", out.Value, out.DictTypeID, out.ValueType)
 	}
 }
 
@@ -346,9 +346,9 @@ func TestDictRepoCreateDictDataDuplicateValueReturnsAlreadyExists(t *testing.T) 
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
-	// 种子类型 1 下 value "1" 已存在（数据行 1）。
+	// 种子类型 1 下 value "id-card" 已存在（数据行 1）。
 	_, err := repo.CreateData(context.Background(), dictAuth(dictTenantSeeded), &biz.DictData{
-		Status: biz.DictStatusEnabled, DictTypeID: 1, Label: "重复", Value: "1", ValueType: "integer",
+		Status: biz.DictStatusEnabled, DictTypeID: 1, Label: "重复", Value: "id-card", ValueType: "string",
 	})
 	if !errors.Is(err, biz.ErrDictDataAlreadyExists) {
 		t.Fatalf("err = %v, want ErrDictDataAlreadyExists", err)
@@ -361,7 +361,7 @@ func TestDictRepoCreateDictDataValueUniqueScopeIsPerType(t *testing.T) {
 	repo := NewDictRepo(d)
 
 	out, err := repo.CreateData(context.Background(), dictAuth(dictTenantSeeded), &biz.DictData{
-		Status: biz.DictStatusEnabled, DictTypeID: 3, Label: "其他类型同值", Value: "7", ValueType: "integer",
+		Status: biz.DictStatusEnabled, DictTypeID: 3, Label: "其他类型同值", Value: "id-card", ValueType: "string",
 	})
 	if err != nil {
 		t.Fatalf("create dict data with same value in another type: %v", err)
@@ -485,7 +485,7 @@ func TestDictRepoSoftDeleteDataKeepsHostReadable(t *testing.T) {
 	if _, err := repo.GetTypeByID(context.Background(), auth, 1); err != nil {
 		t.Fatalf("host must stay readable: %v", err)
 	}
-	// 剩余 6 条活跃数据仍在，类型 1 的删除仍被拒绝。
+	// 剩余 5 条活跃数据仍在，类型 1 的删除仍被拒绝。
 	if err := repo.SoftDeleteType(context.Background(), auth, 1); !errors.Is(err, biz.ErrDictTypeHasData) {
 		t.Fatalf("err = %v, want ErrDictTypeHasData with remaining active data", err)
 	}
@@ -499,8 +499,8 @@ func TestDictRepoListDictDatasFiltersByHostType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list dict datas: %v", err)
 	}
-	if len(out.Items) != 2 || out.Total == nil || *out.Total != 2 {
-		t.Fatalf("items/total = %d/%+v, want 2/2", len(out.Items), out.Total)
+	if len(out.Items) != 4 || out.Total == nil || *out.Total != 4 {
+		t.Fatalf("items/total = %d/%+v, want 4/4", len(out.Items), out.Total)
 	}
 	for _, item := range out.Items {
 		if item.DictTypeID != 2 {

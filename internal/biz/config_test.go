@@ -455,7 +455,7 @@ func configWriteCalls() []configWriteCall {
 		{
 			name: "create",
 			call: func(uc *ConfigUsecase) error {
-				_, err := uc.CreateConfigSuper(context.Background(), Identity{TenantID: "t-demo-01", UserID: 7},
+				_, err := uc.CreateConfigSuper(context.Background(), Identity{TenantID: "t-test-02", UserID: 7},
 					&Config{Name: "cfg", ConfigKey: "test.platform", ValueType: "string"})
 				return err
 			},
@@ -464,7 +464,7 @@ func configWriteCalls() []configWriteCall {
 		{
 			name: "update",
 			call: func(uc *ConfigUsecase) error {
-				_, err := uc.UpdateConfigSuper(context.Background(), Identity{TenantID: "t-demo-01", UserID: 7},
+				_, err := uc.UpdateConfigSuper(context.Background(), Identity{TenantID: "t-test-02", UserID: 7},
 					&Config{ID: 1, Name: "cfg", Status: ConfigStatusEnabled})
 				return err
 			},
@@ -473,7 +473,7 @@ func configWriteCalls() []configWriteCall {
 		{
 			name: "delete",
 			call: func(uc *ConfigUsecase) error {
-				return uc.DeleteConfigSuper(context.Background(), Identity{TenantID: "t-demo-01", UserID: 7}, 1)
+				return uc.DeleteConfigSuper(context.Background(), Identity{TenantID: "t-test-02", UserID: 7}, 1)
 			},
 			repoCalled: func(r *mockConfigRepo) bool { return len(r.deleted) != 0 },
 		},
@@ -544,7 +544,7 @@ func TestConfigUsecaseReadsDoNotCheckPlatformTenant(t *testing.T) {
 	guard := &fakePlatformTenantGuard{platform: false}
 	uc := NewConfigUsecase(repo, guard)
 	ctx := context.Background()
-	auth := Identity{TenantID: "t-demo-01", UserID: 7}
+	auth := Identity{TenantID: "t-test-02", UserID: 7}
 
 	if _, err := uc.GetConfig(ctx, auth, 1); err != nil {
 		t.Fatalf("get config: %v", err)

@@ -142,7 +142,7 @@ type AgentToolGrant struct {
 type Basic struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 创建人 [@dynamic: exact, in]
 	CreatedBy int64 `db:"created_by" json:"created_by"`
@@ -154,7 +154,7 @@ type Basic struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 归属用户 ID [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -168,7 +168,7 @@ type Basic struct {
 type SysConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 配置名称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -176,7 +176,7 @@ type SysConfig struct {
 	ConfigKey string `db:"config_key" json:"config_key"`
 	// 配置值 [@updatable: set]
 	Value *string `db:"value" json:"value"`
-	// 值类型：string/integer/boolean/float/json [@dynamic: exact @hideable]
+	// 值类型：string/integer/boolean/float/json [@label: 值类型 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON @dynamic: exact @hideable]
 	ValueType string `db:"value_type" json:"value_type"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
@@ -196,7 +196,7 @@ type SysConfig struct {
 type SysDept struct {
 	// 部门 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 部门名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -212,7 +212,7 @@ type SysDept struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 部门管理员用户 [@dynamic: exact, in]
 	OwnerUserID int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -236,7 +236,7 @@ type SysDeptClosure struct {
 type SysDictDatum struct {
 	// 字典数据 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 字典类型 ID [@dynamic: exact, in @hideable]
 	DictTypeID int64 `db:"dict_type_id" json:"dict_type_id"`
@@ -244,7 +244,7 @@ type SysDictDatum struct {
 	Label string `db:"label" json:"label"`
 	// 字典值 [@dynamic: exact, prefix @hideable]
 	Value string `db:"value" json:"value"`
-	// 值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理 [@dynamic: exact @hideable]
+	// 值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理 [@label: 值类型 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON @desc: 系统获取值时根据此类型做预处理 @dynamic: exact @hideable]
 	ValueType string `db:"value_type" json:"value_type"`
 	// 排序号 [@dynamic: exact, range @sortable @updatable: set]
 	SortOrder int32 `db:"sort_order" json:"sort_order"`
@@ -260,7 +260,7 @@ type SysDictDatum struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -268,7 +268,7 @@ type SysDictDatum struct {
 type SysDictType struct {
 	// 字典类型 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 字典类型名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -286,7 +286,7 @@ type SysDictType struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -294,7 +294,7 @@ type SysDictType struct {
 type SysFeatureFlag struct {
 	// 特性 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 特性名称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -302,7 +302,7 @@ type SysFeatureFlag struct {
 	FlagKey string `db:"flag_key" json:"flag_key"`
 	// 特性描述，说明该功能的作用和使用场景 [@dynamic: fuzzy @hideable @updatable: set]
 	Description *string `db:"description" json:"description"`
-	// 是否启用：true-开启功能 false-关闭功能 [@dynamic: exact, in @hideable @updatable: set]
+	// 是否启用：true-开启功能 false-关闭功能 [@label: 是否启用 @desc: true-开启功能、false-关闭功能 @dynamic: exact, in @hideable @updatable: set]
 	IsEnabled bool `db:"is_enabled" json:"is_enabled"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
@@ -316,7 +316,7 @@ type SysFeatureFlag struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -328,17 +328,17 @@ type SysLoginLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 用户名（冗余，便于快速查看） [@dynamic: fuzzy, exact @sortable @hideable]
 	Username string `db:"username" json:"username"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 登录 IP 地址 [@dynamic: exact, prefix @hideable]
 	IpAddress *string `db:"ip_address" json:"ip_address"`
 	// 浏览器/客户端 User-Agent
 	UserAgent *string `db:"user_agent" json:"user_agent"`
-	// 登录方式：password-密码登录 sms-短信验证码 oauth-第三方授权 refresh_token-刷新令牌 [@dynamic: exact, in @hideable]
+	// 登录方式：password-密码登录 sms-短信验证码 oauth-第三方授权 refresh_token-刷新令牌 [@label: 登录方式 @options: password=密码登录 sms=短信验证码 oauth=第三方授权 refresh_token=刷新令牌 @dynamic: exact, in @hideable]
 	LoginType string `db:"login_type" json:"login_type"`
 	// 是否登录成功 [@dynamic: exact, in @hideable]
 	IsSuccess bool `db:"is_success" json:"is_success"`
-	// 失败原因：如密码错误、账号已禁用、租户已过期、验证码错误 [@dynamic: fuzzy @hideable]
+	// 失败原因：如密码错误、账号已禁用、租户已过期、验证码错误 [@label: 失败原因 @desc: 如密码错误、账号已禁用、租户已过期、验证码错误 @dynamic: fuzzy @hideable]
 	FailureReason *string `db:"failure_reason" json:"failure_reason"`
 	// 登录时间 [@dynamic: exact, in, range @sortable @hideable]
 	LoginAt pgtype.Timestamp `db:"login_at" json:"login_at"`
@@ -352,7 +352,7 @@ type SysLoginLog struct {
 type SysMenu struct {
 	// 菜单 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 菜单/权限名称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -360,7 +360,7 @@ type SysMenu struct {
 	PermissionCode string `db:"permission_code" json:"permission_code"`
 	// 父级菜单 ID，NULL 为根菜单/顶级权限分组 [@dynamic: exact, in]
 	ParentID *int64 `db:"parent_id" json:"parent_id"`
-	// 菜单类型：1-目录 2-菜单 3-按钮（操作权限点） [@dynamic: exact, in @hideable]
+	// 菜单类型：1-目录 2-菜单 3-按钮（操作权限点） [@label: 菜单类型 @options: 1=目录 2=菜单 3=按钮 @desc: 按钮即操作权限点 @dynamic: exact, in @hideable]
 	MenuType int16 `db:"menu_type" json:"menu_type"`
 	// 菜单图标 [@updatable: set]
 	Icon *string `db:"icon" json:"icon"`
@@ -384,7 +384,7 @@ type SysMenu struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -396,9 +396,9 @@ type SysOperationLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 用户名（冗余） [@dynamic: fuzzy, exact @sortable @hideable]
 	Username string `db:"username" json:"username"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
-	// 操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等 [@dynamic: exact, in @hideable]
+	// 操作类型：CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等 [@label: 操作类型 @desc: CREATE/UPDATE/DELETE/LOGIN/EXPORT/IMPORT/BATCH_DELETE 等 @dynamic: exact, in @hideable]
 	OperationType string `db:"operation_type" json:"operation_type"`
 	// 操作目标表名 [@dynamic: exact, in @hideable]
 	TargetTable *string `db:"target_table" json:"target_table"`
@@ -414,11 +414,11 @@ type SysOperationLog struct {
 	UserAgent *string `db:"user_agent" json:"user_agent"`
 	// API 路径
 	ApiPath *string `db:"api_path" json:"api_path"`
-	// HTTP 方法：GET/POST/PUT/DELETE/PATCH [@dynamic: exact, in @hideable]
+	// HTTP 方法：GET/POST/PUT/DELETE/PATCH [@label: HTTP 方法 @desc: GET/POST/PUT/DELETE/PATCH @dynamic: exact, in @hideable]
 	HttpMethod *string `db:"http_method" json:"http_method"`
 	// 请求耗时（毫秒） [@dynamic: exact, range @sortable]
 	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
-	// 结果码：200/400/403/404/500 等 [@dynamic: exact, prefix @hideable]
+	// 结果码：200/400/403/404/500 等 [@label: 结果码 @desc: 200/400/403/404/500 等 @dynamic: exact, prefix @hideable]
 	ResultCode *string `db:"result_code" json:"result_code"`
 	// 结果消息 [@dynamic: fuzzy @hideable]
 	ResultMsg *string `db:"result_msg" json:"result_msg"`
@@ -445,17 +445,17 @@ type SysPermVersion struct {
 type SysRole struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 角色名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
 	// 权限编码 [@dynamic: exact, prefix @hideable]
 	Code string `db:"code" json:"code"`
-	// 角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义 [@dynamic: exact, in @hideable]
+	// 角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义 [@label: 角色类型 @options: 1=系统预置 2=租户自定义 @desc: 系统预置不可删除，核心权限不可剥离 @dynamic: exact, in @hideable]
 	RoleType int16 `db:"role_type" json:"role_type"`
-	// 数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户 [@dynamic: exact, in @hideable @updatable: set]
+	// 数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户 [@label: 数据范围 @options: 1=仅本人 2=本部门 3=本部门及子部门 4=指定人 5=指定部门 6=用户组 7=全租户 @dynamic: exact, in @hideable @updatable: set]
 	DataScope int16 `db:"data_scope" json:"data_scope"`
-	// 组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 [@dynamic: exact, in @updatable: set]
+	// 组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 [@label: 组织可见范围 @desc: 限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 @dynamic: exact, in @updatable: set]
 	ScopeDeptID *int64 `db:"scope_dept_id" json:"scope_dept_id"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
@@ -469,7 +469,7 @@ type SysRole struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -477,7 +477,7 @@ type SysRole struct {
 type SysRoleAllowedDept struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]
 	Status int16 `db:"status" json:"status"`
 	// 角色 ID [@dynamic: exact, in @hideable]
 	RoleID int64 `db:"role_id" json:"role_id"`
@@ -493,7 +493,7 @@ type SysRoleAllowedDept struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -501,9 +501,9 @@ type SysRoleAllowedDept struct {
 type SysRoleIDScope struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]
 	Status int16 `db:"status" json:"status"`
-	// 数据 ID 类型，1：用户ID、2：部门ID、3：用户组ID [@dynamic: exact, in @hideable]
+	// 数据 ID 类型，1：用户ID、2：部门ID、3：用户组ID [@label: 数据 ID 类型 @options: 1=用户ID 2=部门ID 3=用户组ID @dynamic: exact, in @hideable]
 	Type int16 `db:"type" json:"type"`
 	// 角色 ID [@dynamic: exact, in @hideable]
 	RoleID int64 `db:"role_id" json:"role_id"`
@@ -519,7 +519,7 @@ type SysRoleIDScope struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -541,11 +541,11 @@ type SysRoleMenu struct {
 type SysSession struct {
 	// 会话 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable]
 	Status int16 `db:"status" json:"status"`
 	// 用户 ID [@dynamic: exact, in @hideable]
 	UserID int64 `db:"user_id" json:"user_id"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 访问令牌哈希（SHA-256），用于查找和验证令牌，不存明文 [@internal]
 	TokenHash string `db:"token_hash" json:"token_hash"`
@@ -577,7 +577,7 @@ type SysSession struct {
 type SysTenant struct {
 	// 租户 ID [@dynamic: exact, in @sortable @hideable]
 	ID string `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 租户编码 [@dynamic: exact, prefix @hideable]
 	Code string `db:"code" json:"code"`
@@ -593,7 +593,7 @@ type SysTenant struct {
 	ExpiredAt pgtype.Timestamp `db:"expired_at" json:"expired_at"`
 	// 最大用户数 [@dynamic: exact, in, range @sortable @updatable: set]
 	MaxUserCount *int32 `db:"max_user_count" json:"max_user_count"`
-	// 租户默认语言（BCP-47），如 zh-CN、en-US [@dynamic: exact @hideable @updatable: set]
+	// 租户默认语言（BCP-47），如 zh-CN、en-US [@label: 默认语言 @desc: BCP-47，如 zh-CN、en-US @dynamic: exact @hideable @updatable: set]
 	DefaultLocale string `db:"default_locale" json:"default_locale"`
 	// 创建人 [@dynamic: exact, in]
 	CreatedBy int64 `db:"created_by" json:"created_by"`
@@ -613,7 +613,7 @@ type SysTenant struct {
 type SysTenantConfig struct {
 	// 配置 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 配置名称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -621,7 +621,7 @@ type SysTenantConfig struct {
 	ConfigKey string `db:"config_key" json:"config_key"`
 	// 配置值 [@updatable: set]
 	Value *string `db:"value" json:"value"`
-	// 值类型：string/integer/boolean/float/json [@dynamic: exact @hideable]
+	// 值类型：string/integer/boolean/float/json [@label: 值类型 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON @dynamic: exact @hideable]
 	ValueType string `db:"value_type" json:"value_type"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
@@ -635,7 +635,7 @@ type SysTenantConfig struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -643,7 +643,7 @@ type SysTenantConfig struct {
 type SysTranslation struct {
 	// 翻译 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值） [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值） [@label: 状态 @desc: 暂缺翻译时可禁用，消费方回退原始值 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 来源表名，如 sys_menu、sys_dict_data、sys_dept [@dynamic: exact, in @hideable]
 	TableName string `db:"table_name" json:"table_name"`
@@ -667,7 +667,7 @@ type SysTranslation struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
@@ -675,7 +675,7 @@ type SysTranslation struct {
 type SysUser struct {
 	// 用户 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 用户名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -689,13 +689,13 @@ type SysUser struct {
 	Phone *string `db:"phone" json:"phone"`
 	// 备注 [@dynamic: fuzzy @hideable @updatable: set]
 	Remark *string `db:"remark" json:"remark"`
-	// 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言 [@dynamic: exact @hideable @updatable: set]
+	// 用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言 [@label: 语言 @desc: 用户语言偏好（BCP-47），影响界面展示语言 @dynamic: exact @hideable @updatable: set]
 	Locale string `db:"locale" json:"locale"`
 	// 最后登录时间 [@dynamic: range, is_null, not_null @sortable @updatable: set]
 	LastLoginAt pgtype.Timestamp `db:"last_login_at" json:"last_login_at"`
 	// 连续密码错误次数 [@dynamic: exact, in, range @sortable @updatable: set]
 	FailedCount int32 `db:"failed_count" json:"failed_count"`
-	// 账号锁定截止时间，NULL 表示未锁定 [@dynamic: range, is_null, not_null @updatable: set]
+	// 账号锁定截止时间，NULL 表示未锁定 [@label: 锁定截止时间 @desc: NULL 表示未锁定 @dynamic: range, is_null, not_null @updatable: set]
 	LockedUntil pgtype.Timestamp `db:"locked_until" json:"locked_until"`
 	// 创建人 [@dynamic: exact, in]
 	CreatedBy int64 `db:"created_by" json:"created_by"`
@@ -707,7 +707,7 @@ type SysUser struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 归属用户 ID [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`
@@ -721,7 +721,7 @@ type SysUser struct {
 type SysUserGroup struct {
 	// 用户组 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
-	// 数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]
+	// 数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 组名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]
 	Name string `db:"name" json:"name"`
@@ -739,7 +739,7 @@ type SysUserGroup struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
-	// 租户 ID [@dynamic: exact @hideable]
+	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 组长/归属用户 [@dynamic: exact, in]
 	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`

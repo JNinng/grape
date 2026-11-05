@@ -94,15 +94,15 @@ func TestTenantServiceReadsIdentityFromContext(t *testing.T) {
 	svc := NewTenantService(biz.NewTenantUsecase(repo))
 	auth := biz.Identity{TenantID: "t-super-01", UserID: 7}
 
-	out, err := svc.GetTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.GetTenantSuperRequest{Id: "t-demo-01"})
+	out, err := svc.GetTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.GetTenantSuperRequest{Id: "t-test-02"})
 	if err != nil {
 		t.Fatalf("get tenant: %v", err)
 	}
-	if out.GetId() != "t-demo-01" {
-		t.Fatalf("tenant id = %q, want t-demo-01", out.GetId())
+	if out.GetId() != "t-test-02" {
+		t.Fatalf("tenant id = %q, want t-test-02", out.GetId())
 	}
-	if repo.callsCount != 1 || repo.gotAuth != auth || repo.gotID != "t-demo-01" {
-		t.Fatalf("repo call = (%+v, %q, %d), want (%+v, t-demo-01, 1)", repo.gotAuth, repo.gotID, repo.callsCount, auth)
+	if repo.callsCount != 1 || repo.gotAuth != auth || repo.gotID != "t-test-02" {
+		t.Fatalf("repo call = (%+v, %q, %d), want (%+v, t-test-02, 1)", repo.gotAuth, repo.gotID, repo.callsCount, auth)
 	}
 }
 
@@ -110,7 +110,7 @@ func TestTenantServiceFailsClosedWithoutIdentity(t *testing.T) {
 	repo := &fakeTenantRepo{}
 	svc := NewTenantService(biz.NewTenantUsecase(repo))
 
-	if _, err := svc.GetTenantSuper(context.Background(), &tenantv1.GetTenantSuperRequest{Id: "t-demo-01"}); !errors.Is(err, biz.ErrSessionInvalid) {
+	if _, err := svc.GetTenantSuper(context.Background(), &tenantv1.GetTenantSuperRequest{Id: "t-test-02"}); !errors.Is(err, biz.ErrSessionInvalid) {
 		t.Fatalf("err = %v, want ErrSessionInvalid", err)
 	}
 	if _, err := svc.CreateTenantSuper(context.Background(), &tenantv1.CreateTenantSuperRequest{
@@ -236,7 +236,7 @@ func TestTenantServiceUpdateRequiresStatus(t *testing.T) {
 	auth := biz.Identity{TenantID: "t-super-01", UserID: 7}
 
 	_, err := svc.UpdateTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.UpdateTenantSuperRequest{
-		Tenant: &tenantv1.Tenant{Id: "t-demo-01", Code: "demo", Name: "租户"},
+		Tenant: &tenantv1.Tenant{Id: "t-test-02", Code: "demo", Name: "租户"},
 	})
 	if !errors.Is(err, biz.ErrTenantInvalidArgument) {
 		t.Fatalf("err = %v, want ErrTenantInvalidArgument", err)
@@ -257,7 +257,7 @@ func TestTenantServiceUpdateRejectsInvalidStatus(t *testing.T) {
 			value := status
 
 			_, err := svc.UpdateTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.UpdateTenantSuperRequest{
-				Tenant: &tenantv1.Tenant{Id: "t-demo-01", Code: "demo", Name: "租户", Status: &value},
+				Tenant: &tenantv1.Tenant{Id: "t-test-02", Code: "demo", Name: "租户", Status: &value},
 			})
 			if !errors.Is(err, biz.ErrTenantInvalidArgument) {
 				t.Fatalf("err = %v, want ErrTenantInvalidArgument", err)
@@ -280,7 +280,7 @@ func TestTenantServiceUpdateDropsIdentityColumns(t *testing.T) {
 
 	_, err := svc.UpdateTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.UpdateTenantSuperRequest{
 		Tenant: &tenantv1.Tenant{
-			Id:        "t-demo-01",
+			Id:        "t-test-02",
 			Status:    &one,
 			Code:      "hijacked",
 			Name:      "租户",
@@ -309,7 +309,7 @@ func TestTenantServiceListReturnsEnvelope(t *testing.T) {
 	parent := "t-super-01"
 	repo := &fakeTenantRepo{list: &biz.TenantList{
 		Items: []*biz.Tenant{{
-			ID: "t-demo-01", Status: biz.TenantStatusEnabled, Code: "demo", Name: "演示租户",
+			ID: "t-test-02", Status: biz.TenantStatusEnabled, Code: "demo", Name: "演示租户",
 			ParentID: &parent, TenantID: "t-super-01",
 		}},
 		Total:      &total,
@@ -326,8 +326,8 @@ func TestTenantServiceListReturnsEnvelope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tenants: %v", err)
 	}
-	if len(out.GetItems()) != 1 || out.GetItems()[0].GetId() != "t-demo-01" {
-		t.Fatalf("items = %+v, want single id t-demo-01", out.GetItems())
+	if len(out.GetItems()) != 1 || out.GetItems()[0].GetId() != "t-test-02" {
+		t.Fatalf("items = %+v, want single id t-test-02", out.GetItems())
 	}
 	if out.GetItems()[0].GetParentId() != parent || out.GetItems()[0].GetTenantId() != "t-super-01" {
 		t.Fatalf("row parent/tenant = (%q, %q), want (%q, t-super-01)",
@@ -367,7 +367,7 @@ func TestTenantServiceGetMapsTimestampsAndOptionals(t *testing.T) {
 	contactPhone := "13800000000"
 	maxUsers := int32(50)
 	repo := &fakeTenantRepo{getOut: &biz.Tenant{
-		ID: "t-demo-01", Status: biz.TenantStatusEnabled, Code: "demo", Name: "演示租户",
+		ID: "t-test-02", Status: biz.TenantStatusEnabled, Code: "demo", Name: "演示租户",
 		ParentID: &parent, ContactName: &contactName, ContactPhone: &contactPhone,
 		ExpiredAt: &expired, MaxUserCount: &maxUsers, DefaultLocale: "zh-CN",
 		TenantID:  "t-super-01",
@@ -377,7 +377,7 @@ func TestTenantServiceGetMapsTimestampsAndOptionals(t *testing.T) {
 	svc := NewTenantService(biz.NewTenantUsecase(repo))
 
 	out, err := svc.GetTenantSuper(biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-super-01", UserID: 7}),
-		&tenantv1.GetTenantSuperRequest{Id: "t-demo-01"})
+		&tenantv1.GetTenantSuperRequest{Id: "t-test-02"})
 	if err != nil {
 		t.Fatalf("get tenant: %v", err)
 	}
@@ -405,11 +405,11 @@ func TestTenantServiceDeleteForwardsID(t *testing.T) {
 	svc := NewTenantService(biz.NewTenantUsecase(repo))
 	auth := biz.Identity{TenantID: "t-super-01", UserID: 7}
 
-	if _, err := svc.DeleteTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.DeleteTenantSuperRequest{Id: "t-demo-01"}); err != nil {
+	if _, err := svc.DeleteTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.DeleteTenantSuperRequest{Id: "t-test-02"}); err != nil {
 		t.Fatalf("delete tenant: %v", err)
 	}
-	if len(repo.deleted) != 1 || repo.deleted[0] != "t-demo-01" {
-		t.Fatalf("deleted = %v, want [t-demo-01]", repo.deleted)
+	if len(repo.deleted) != 1 || repo.deleted[0] != "t-test-02" {
+		t.Fatalf("deleted = %v, want [t-test-02]", repo.deleted)
 	}
 }
 
@@ -418,25 +418,25 @@ func TestTenantServiceDisableRestoreForwardID(t *testing.T) {
 	svc := NewTenantService(biz.NewTenantUsecase(repo))
 	auth := biz.Identity{TenantID: "t-super-01", UserID: 7}
 
-	disabled, err := svc.DisableTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.DisableTenantSuperRequest{Id: "t-demo-01"})
+	disabled, err := svc.DisableTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.DisableTenantSuperRequest{Id: "t-test-02"})
 	if err != nil {
 		t.Fatalf("disable tenant: %v", err)
 	}
 	if disabled.GetStatus() != biz.TenantStatusDisabled {
 		t.Fatalf("disabled status = %d, want 0", disabled.GetStatus())
 	}
-	restored, err := svc.RestoreTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.RestoreTenantSuperRequest{Id: "t-demo-01"})
+	restored, err := svc.RestoreTenantSuper(biz.WithIdentity(context.Background(), auth), &tenantv1.RestoreTenantSuperRequest{Id: "t-test-02"})
 	if err != nil {
 		t.Fatalf("restore tenant: %v", err)
 	}
 	if restored.GetStatus() != biz.TenantStatusEnabled {
 		t.Fatalf("restored status = %d, want 1", restored.GetStatus())
 	}
-	if len(repo.disabled) != 1 || repo.disabled[0] != "t-demo-01" {
-		t.Fatalf("disabled = %v, want [t-demo-01]", repo.disabled)
+	if len(repo.disabled) != 1 || repo.disabled[0] != "t-test-02" {
+		t.Fatalf("disabled = %v, want [t-test-02]", repo.disabled)
 	}
-	if len(repo.restored) != 1 || repo.restored[0] != "t-demo-01" {
-		t.Fatalf("restored = %v, want [t-demo-01]", repo.restored)
+	if len(repo.restored) != 1 || repo.restored[0] != "t-test-02" {
+		t.Fatalf("restored = %v, want [t-test-02]", repo.restored)
 	}
 }
 

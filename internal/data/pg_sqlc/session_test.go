@@ -49,14 +49,14 @@ func TestTokenLookupValidate(t *testing.T) {
 }
 
 // 存储边界集成测试：以真实 PostgreSQL 验证会话门面、RLS/@scope 运行
-// 纪律与用户/会话仓储（断言基于 sqlc/seed.sql 的种子事实）。设置以下环境
-// 变量后运行，未设置时跳过：
+// 纪律与用户/会话仓储（断言基于 sqlc/seed.sql 与 sqlc/test_seed.sql 的
+// 种子事实）。设置以下环境变量后运行，未设置时跳过：
 //
 //	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
 //	go test ./internal/data/pg_sqlc -run TestSession -count=1 -v
 //
-// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 deploy.DeployFiles 部署清单
+// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单
 // 装载 sqlc/ 全部文件，见 deploy 子包），不触碰其他数据库。
 
 const testDatabase = "grape_pgsqlc_test"
@@ -98,7 +98,7 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("close admin: %v", err)
 	}
 
-	// 装载部署文件：清单即 deploy 子包的 DeployFiles（与 dbdeploy 共用）；
+	// 装载部署文件：清单为 deploy.TestDeployFiles()（生产清单 + 测试种子）；
 	// 文件内含多语句与函数体，走 simple protocol
 	deployCfg, err := pgx.ParseConfig(adminDSN)
 	if err != nil {
@@ -124,7 +124,7 @@ func setupTestDB(t *testing.T) *Data {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, f := range deploy.DeployFiles {
+	for _, f := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(filepath.Join(deployDir, f))
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
@@ -169,7 +169,8 @@ func countBasicInIdentityTx(ctx context.Context, t *testing.T, d *Data, auth biz
 func TestSessionDiscipline(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
-	super := biz.Identity{TenantID: "t-super-01", UserID: 1}
+	// 用户 11 是 t-test-01 的种子管理员（testadmin），身份与租户一致。
+	seeded := biz.Identity{TenantID: "t-test-01", UserID: 11}
 
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	// 这是连接纪律的数据库层兜底，门面只是让它不可能被绕过。
@@ -184,13 +185,52 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("session sees tenant data", func(t *testing.T) {
-		err := d.IdentityTx(ctx, Identity{TenantID: super.TenantID, UserID: super.UserID}, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: seeded.TenantID, UserID: seeded.UserID}, func(s *IdentityTx) error {
 			var n int
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
 			}
-			if n == 0 {
-				t.Fatal("dict data invisible inside session tenant")
+			if n != 14 {
+				t.Fatalf("dict rows in tenant session = %d, want 14", n)
+			}
+			var types int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_type").Scan(&types); err != nil {
+				return err
+			}
+			if types != 3 {
+				t.Fatalf("dict types in tenant session = %d, want 3", types)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("session: %v", err)
+		}
+	})
+
+	t.Run("other test tenant sees no seeded dict data", func(t *testing.T) {
+		err := d.IdentityTx(ctx, Identity{TenantID: "t-test-02", UserID: 5}, func(s *IdentityTx) error {
+			var n int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
+				return err
+			}
+			if n != 0 {
+				t.Fatalf("t-test-02 saw %d dict rows, want 0", n)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("session: %v", err)
+		}
+	})
+
+	t.Run("platform tenant sees no seeded dict data", func(t *testing.T) {
+		err := d.IdentityTx(ctx, Identity{TenantID: "t-super-01", UserID: 1}, func(s *IdentityTx) error {
+			var n int
+			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
+				return err
+			}
+			if n != 0 {
+				t.Fatalf("t-super-01 saw %d dict rows, want 0", n)
 			}
 			return nil
 		})
@@ -215,29 +255,33 @@ func TestSessionDiscipline(t *testing.T) {
 		}
 	})
 
-	// 种子事实：t-super-01 内 basic 共 10 行；用户 1 持全租户角色
-	// （data_scope=7），用户 3 持仅本人角色（data_scope=1）。
+	// 种子事实（test_seed.sql）：t-test-01 内 basic 共 10 行；用户 11
+	// （testadmin）持全租户角色 110（data_scope=7），用户 3 持仅本人角色
+	// 103（data_scope=1）。t-test-01 内含字典演示数据（类型 3、数据 14），
+	// 租户可见性用它验证；t-super-01 与 t-test-02 不播种字典。
+	testAdmin := biz.Identity{TenantID: "t-test-01", UserID: 11}
+
 	t.Run("scope 7 sees all basic rows of tenant", func(t *testing.T) {
-		if got := countBasicInIdentityTx(ctx, t, d, super); got != 10 {
+		if got := countBasicInIdentityTx(ctx, t, d, testAdmin); got != 10 {
 			t.Fatalf("data_scope=7 total = %d, want 10", got)
 		}
 	})
 
 	t.Run("scope 1 sees only own basic rows", func(t *testing.T) {
-		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: super.TenantID, UserID: 3}); got == 0 || got >= 10 {
-			t.Fatalf("data_scope=1 total = %d, want (0, 10)", got)
+		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: testAdmin.TenantID, UserID: 3}); got != 1 {
+			t.Fatalf("data_scope=1 total = %d, want 1", got)
 		}
 	})
 
 	t.Run("identity mismatch with tenant sees nothing", func(t *testing.T) {
-		// 用户 3 不存在于 t-demo-01：RLS 查不到其行，守卫函数返回空集
-		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: "t-demo-01", UserID: 3}); got != 0 {
+		// 用户 3 不存在于 t-test-02：RLS 查不到其行，守卫函数返回空集
+		if got := countBasicInIdentityTx(ctx, t, d, biz.Identity{TenantID: "t-test-02", UserID: 3}); got != 0 {
 			t.Fatalf("mismatched identity total = %d, want 0", got)
 		}
 	})
 
 	t.Run("list fails closed without scope", func(t *testing.T) {
-		err := d.IdentityTx(ctx, Identity{TenantID: super.TenantID, UserID: super.UserID}, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: testAdmin.TenantID, UserID: testAdmin.UserID}, func(s *IdentityTx) error {
 			p, err := gen.ParseBasicQuery(&dynq.Query{})
 			if err != nil {
 				return err
@@ -265,15 +309,16 @@ func TestSessionDiscipline(t *testing.T) {
 }
 
 // TestUserRepo 以种子事实验证用户仓储：读写路径都在门面与判定函数的
-// 纪律内。种子事实：用户 1 全租户（scope 7）、用户 3 仅本人（scope 1）、
-// 用户 6 sunqi 前端组、用户 7 zhouba 技术部部门管理员（scope 3）。
+// 纪律内。种子事实（test_seed.sql，均在 t-test-01）：用户 11 testadmin
+// 全租户（scope 7）、用户 3 仅本人（scope 1）、用户 6 sunqi 前端组、
+// 用户 7 zhouba 技术部部门管理员（scope 3）。
 func TestUserRepo(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewUserRepo(d)
-	super := biz.Identity{TenantID: "t-super-01", UserID: 1}
-	selfOnly := biz.Identity{TenantID: "t-super-01", UserID: 3}
-	deptAdmin := biz.Identity{TenantID: "t-super-01", UserID: 7}
+	super := biz.Identity{TenantID: "t-test-01", UserID: 11}
+	selfOnly := biz.Identity{TenantID: "t-test-01", UserID: 3}
+	deptAdmin := biz.Identity{TenantID: "t-test-01", UserID: 7}
 
 	newUser := func(t *testing.T, name string) *biz.User {
 		t.Helper()
@@ -505,7 +550,7 @@ func TestSessionRepo(t *testing.T) {
 	ctx := context.Background()
 	repo := NewSessionRepo(d)
 	owner := biz.Identity{TenantID: "t-super-01", UserID: 1}
-	otherTenant := biz.Identity{TenantID: "t-demo-01", UserID: 5}
+	otherTenant := biz.Identity{TenantID: "t-test-02", UserID: 5}
 
 	issue := func(t *testing.T, owner biz.Identity, access, refresh string, accessTTL, refreshTTL time.Duration) *biz.Session {
 		t.Helper()
@@ -970,8 +1015,8 @@ func TestAuthLogin(t *testing.T) {
 	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-super-01", UserName: "nobody", Password: "123456"}); !errors.Is(err, biz.ErrInvalidCredentials) {
 		t.Fatalf("unknown user: want ErrInvalidCredentials, got %v", err)
 	}
-	// 跨租户的用户名等同不存在
-	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-demo-01", UserName: "admin", Password: "123456"}); !errors.Is(err, biz.ErrInvalidCredentials) {
+	// 跨租户的用户名等同不存在（admin 仅存在于 t-super-01）
+	if _, err := authUC.Login(ctx, &biz.LoginInput{TenantID: "t-test-02", UserName: "admin", Password: "123456"}); !errors.Is(err, biz.ErrInvalidCredentials) {
 		t.Fatalf("cross-tenant name: want ErrInvalidCredentials, got %v", err)
 	}
 	// 软删除用户等同不存在

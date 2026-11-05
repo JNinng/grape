@@ -26,7 +26,8 @@ var (
 // Dept 是部门领域模型。组织树是租户内资源：租户边界由存储层 RLS 承担，
 // 表无 @scope（租户内全可见），故仓储方法不携带 Scope；闭包表
 // sys_dept_closure 是派生数据，由数据库触发器随增删改自动维护，不进领域
-// 模型。parent_id 与 owner_* 属结构/归属列，不经 Update 用例修改。
+// 模型。parent_id 变更等价于移动（校验父级/防环后由触发器重写闭包）；
+// owner_user_id 与 owner_user_group_id 是可变归属列。
 type Dept struct {
 	ID       int64
 	Status   int32 // 0 禁用、1 启用
@@ -72,7 +73,8 @@ type DeptRepo interface {
 	// Create 创建部门（闭包路径由触发器建立）；父部门不存在/已删除/
 	// 跨租户返回 ErrDeptInvalidArgument，部门名冲突映射 ErrDeptAlreadyExists。
 	Create(ctx context.Context, auth Identity, d *Dept) (*Dept, error)
-	// Update 覆盖可变字段（name、status；不含 parent_id 与 owner_*）。
+	// Update 覆盖可变字段（name、status、parent_id、owner_user_id、
+	// owner_user_group_id）；parent_id 变更由触发器重写闭包路径。
 	Update(ctx context.Context, auth Identity, d *Dept) (*Dept, error)
 	// Move 移动部门到新父级（parentID 为 nil 表示移为根部门）；闭包路径
 	// 由触发器在同一事务内重写，父级非法/成环由触发器兜底拒绝。
@@ -156,13 +158,18 @@ func (uc *DeptUsecase) CreateDept(ctx context.Context, auth Identity, d *Dept) (
 	return uc.repo.Create(ctx, auth, d)
 }
 
-// UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 由服务端
-// 管理：移动走 MoveDept。
+// UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+// owner_user_group_id）：PUT 覆盖语义，请求须携带完整的可变字段集合。
+// parent_id 变更等价于移动，先做与 MoveDept 相同的领域校验（父级存在、
+// 非自身、不落入自身子树），闭包路径由触发器在同一事务内重写。
 func (uc *DeptUsecase) UpdateDept(ctx context.Context, auth Identity, d *Dept) (*Dept, error) {
 	if d == nil || d.ID <= 0 {
 		return nil, ErrDeptInvalidArgument
 	}
 	if err := validateDept(d, true); err != nil {
+		return nil, err
+	}
+	if err := uc.validateDeptParent(ctx, auth, d.ID, d.ParentID); err != nil {
 		return nil, err
 	}
 	return uc.repo.Update(ctx, auth, d)
@@ -175,36 +182,46 @@ func (uc *DeptUsecase) MoveDept(ctx context.Context, auth Identity, id int64, pa
 	if id <= 0 {
 		return nil, ErrDeptInvalidArgument
 	}
-	if parentID != nil {
-		if *parentID == id {
-			return nil, ErrDeptInvalidArgument
-		}
-		all, err := uc.repo.ListAll(ctx, auth)
-		if err != nil {
-			return nil, err
-		}
-		parents := make(map[int64]*int64, len(all))
-		for _, d := range all {
-			parents[d.ID] = d.ParentID
-		}
-		if _, ok := parents[*parentID]; !ok {
-			// 父部门不存在、已删除或跨租户：引用无效。
-			return nil, ErrDeptInvalidArgument
-		}
-		// 沿新父级的祖先链上溯：命中被移动部门即成环（移入自身子树）。
-		cur := *parentID
-		for i := 0; cur != 0 && i <= len(all); i++ {
-			if cur == id {
-				return nil, ErrDeptInvalidArgument
-			}
-			next := parents[cur]
-			if next == nil {
-				break
-			}
-			cur = *next
-		}
+	if err := uc.validateDeptParent(ctx, auth, id, parentID); err != nil {
+		return nil, err
 	}
 	return uc.repo.Move(ctx, auth, id, parentID)
+}
+
+// validateDeptParent 校验目标父级：存在且未删除（租户内）、不是自身、
+// 沿父链上溯不能命中被移动部门（防环）。parentID 为 nil 表示移为根，恒合法。
+func (uc *DeptUsecase) validateDeptParent(ctx context.Context, auth Identity, id int64, parentID *int64) error {
+	if parentID == nil {
+		return nil
+	}
+	if *parentID == id {
+		return ErrDeptInvalidArgument
+	}
+	all, err := uc.repo.ListAll(ctx, auth)
+	if err != nil {
+		return err
+	}
+	parents := make(map[int64]*int64, len(all))
+	for _, d := range all {
+		parents[d.ID] = d.ParentID
+	}
+	if _, ok := parents[*parentID]; !ok {
+		// 父部门不存在、已删除或跨租户：引用无效。
+		return ErrDeptInvalidArgument
+	}
+	// 沿新父级的祖先链上溯：命中被移动部门即成环（移入自身子树）。
+	cur := *parentID
+	for i := 0; cur != 0 && i <= len(all); i++ {
+		if cur == id {
+			return ErrDeptInvalidArgument
+		}
+		next := parents[cur]
+		if next == nil {
+			break
+		}
+		cur = *next
+	}
+	return nil
 }
 
 // DeleteDept 软删除部门；存在未删除直接子部门时仓储返回 ErrDeptHasChildren。
@@ -229,8 +246,8 @@ const (
 const deptNameMaxRunes = 256
 
 // validateDept 校验部门可变字段：name 必填且不超列宽、owner_user_id 必填
-// （创建路径）、status 合法（创建路径额外接受未指定哨兵，缺省由用例落
-// 启用；更新路径必填，只认 0/1）。
+// （创建与更新同口径）、owner_user_group_id 非空时须为正 ID、status 合法
+// （创建路径额外接受未指定哨兵，缺省由用例落启用；更新路径必填，只认 0/1）。
 func validateDept(d *Dept, update bool) error {
 	if d == nil || strings.TrimSpace(d.Name) == "" ||
 		utf8.RuneCountInString(strings.TrimSpace(d.Name)) > deptNameMaxRunes {
@@ -245,7 +262,10 @@ func validateDept(d *Dept, update bool) error {
 		d.Status != DeptStatusDisabled && d.Status != DeptStatusEnabled:
 		return ErrDeptInvalidArgument
 	}
-	if !update && d.OwnerUserID <= 0 {
+	if d.OwnerUserID <= 0 {
+		return ErrDeptInvalidArgument
+	}
+	if d.OwnerUserGroupID != nil && *d.OwnerUserGroupID <= 0 {
 		return ErrDeptInvalidArgument
 	}
 	return nil

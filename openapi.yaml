@@ -361,9 +361,10 @@ paths:
             tags:
                 - DeptService
             description: |-
-                UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
-                 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-                 专项口径（管理 API 不提供，由部署面维护）。
+                UpdateDept 覆盖可变字段（name、status、parent_id、owner_user_id、
+                 owner_user_group_id）。PUT 覆盖语义：请求须携带完整的可变字段集合；
+                 parent_id 变更等价于移动（校验父级与防环，闭包路径由触发器在同一事务
+                 内重写；null 表示移为根部门），owner_user_group_id 传 null 表示清空。
             operationId: DeptService_UpdateDept
             requestBody:
                 content:
@@ -1771,6 +1772,28 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/user.v1.AssignRolesReply'
+    /v1/users/assignable-roles:
+        post:
+            tags:
+                - UserService
+            description: |-
+                ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
+                 （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
+                 等同不存在（NOT_FOUND）。
+            operationId: UserService_ListAssignableRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.ListAssignableRolesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/query.v1.OptionSet'
     /v1/users/create:
         post:
             tags:
@@ -1813,6 +1836,63 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/user.v1.UserSet'
+    /v1/users/owner-dept-options:
+        post:
+            tags:
+                - UserService
+            description: ListOwnerDeptOptions 返回归属部门候选（操作者可见范围内的活跃部门）。
+            operationId: UserService_ListOwnerDeptOptions
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.ListOwnerOptionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/query.v1.OptionSet'
+    /v1/users/owner-group-options:
+        post:
+            tags:
+                - UserService
+            description: ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
+            operationId: UserService_ListOwnerGroupOptions
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.ListOwnerOptionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/query.v1.OptionSet'
+    /v1/users/owner-user-options:
+        post:
+            tags:
+                - UserService
+            description: ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
+            operationId: UserService_ListOwnerUserOptions
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.ListOwnerOptionsRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/query.v1.OptionSet'
     /v1/users/password:
         post:
             tags:
@@ -1831,6 +1911,28 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/users/set-roles:
+        post:
+            tags:
+                - UserService
+            description: |-
+                SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
+                 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
+                 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+            operationId: UserService_SetUserRoles
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.SetUserRolesRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.UserRoleSet'
     /v1/users/transfer-owner:
         post:
             tags:
@@ -1910,6 +2012,28 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/users/{userId}/roles:
+        get:
+            tags:
+                - UserService
+            description: |-
+                ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
+                 只计数不暴露明细）与版本号；不可见等同不存在。
+            operationId: UserService_ListUserRoles
+            parameters:
+                - name: userId
+                  in: path
+                  description: 目标用户的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.UserRoleSet'
 components:
     schemas:
         audit.v1.LoginLog:
@@ -2699,13 +2823,15 @@ components:
                     description: 部门名，租户内未删除部门间唯一。
                 parentId:
                     type: string
-                    description: 父部门 ID；根部门为 null。创建时生效，更新时忽略（移动走 MoveDept）。
+                    description: |-
+                        父部门 ID；根部门为 null。创建与更新时生效：更新即移动（校验父级与
+                         防环，闭包路径由触发器重写）；专用移动入口 MoveDept 语义相同。
                 ownerUserId:
                     type: string
-                    description: 部门管理员用户 ID，必填。
+                    description: 部门管理员用户 ID，创建与更新均必填。
                 ownerUserGroupId:
                     type: string
-                    description: 归属用户组 ID，可空。创建时生效，更新时忽略。
+                    description: 归属用户组 ID，可空。创建与更新时生效；更新传 null 表示清空该归属。
                 createdBy:
                     type: string
                     description: 创建人。只读。
@@ -3355,8 +3481,21 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/query.v1.ListSchemaFieldAPI'
                     description: |-
-                        选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
-                         响应键省略。
+                        选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
+                         options）。未声明时 JSON 响应键省略。
+                desc:
+                    type: string
+                    description: |-
+                        字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
+                         JSON 响应键省略。
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.ListSchemaFieldOption'
+                    description: |-
+                        静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
+                         按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
+                         （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
             description: ListSchemaField 是单个查询字段的能力契约。
         query.v1.ListSchemaFieldAPI:
             type: object
@@ -3377,6 +3516,23 @@ components:
                 ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
                  GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
                  命名的顶层字段。
+
+                 本声明只服务 query-filter 的字段级选项来源；用户分配选择器使用的
+                 OptionQuery / Option / OptionSet 是并行的独立接口，不接入本字段
+                 （选择器端点按分配动作设权限码，不复用动态查询的 @api 解析）。
+        query.v1.ListSchemaFieldOption:
+            type: object
+            properties:
+                value:
+                    allOf:
+                        - $ref: '#/components/schemas/google.protobuf.Value'
+                    description: |-
+                        选项值，仅整数或字符串，与字段 data_type 定型一致；整数按 JSON
+                         number 表达，限制在 JS 安全整数范围内。
+                label:
+                    type: string
+                    description: 选项展示文本。
+            description: ListSchemaFieldOption 是静态字典选项的单个键值对。
         query.v1.ListSchemaPagination:
             type: object
             properties:
@@ -3407,6 +3563,67 @@ components:
                     type: boolean
                     description: true = desc。false 时 JSON 响应键省略。
             description: ListSchemaSort 是默认排序项。
+        query.v1.Option:
+            type: object
+            properties:
+                value:
+                    type: string
+                    description: 选项值；当前来源均为 int64 ID 的十进制字符串。
+                label:
+                    type: string
+                    description: 展示文本。
+                enabled:
+                    type: boolean
+                    description: 是否可选；v1 恒 true。
+                reason:
+                    type: string
+                    description: enabled=false 时的原因说明；v1 为空。
+                assigned:
+                    type: boolean
+                    description: 目标用户已拥有（角色场景）；owner 候选恒 false。
+            description: |-
+                Option 是选择器候选项。当前来源的 value 均为 int64 ID 的十进制字符串
+                 （前端不丢精度）；enabled/reason 为前向兼容字段，v1 恒 enabled=true、
+                 reason 为空。
+        query.v1.OptionQuery:
+            type: object
+            properties:
+                keyword:
+                    type: string
+                    description: 关键字；空串不过滤。大小写不敏感的子串匹配。
+                page:
+                    type: integer
+                    description: 页码，从 1 开始；缺省 1。
+                    format: int32
+                pageSize:
+                    type: integer
+                    description: 每页条数；缺省 20，上限 100。
+                    format: int32
+            description: |-
+                OptionQuery 是可搜索选项来源的查询输入：关键字 + offset 分页。匹配字段
+                 由来源定义（角色匹配 name/code，用户匹配 name/nickname，部门匹配 name，
+                 用户组匹配 name/code）；越界分页由服务端归一化。
+        query.v1.OptionSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.Option'
+                    description: 本页候选项；零命中时键省略（空集合不输出），客户端按空数组处理。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页。
+                total:
+                    type: string
+                    description: 匹配总数；v1 不使用。
+                page:
+                    type: integer
+                    description: 当前页码；服务端归一化后的值。
+                    format: int32
+            description: |-
+                OptionSet 是选项来源的一页结果。total v1 不返回（以 limit+1 判定
+                 has_more），保留字段供未来来源使用。
         query.v1.Pagination:
             type: object
             properties:
@@ -3683,6 +3900,27 @@ components:
                     type: string
                     description: 初始密码。仅存储，不出现在任何读接口的响应中。
             description: CreateUserRequest 是 UserService.CreateUser 的输入。
+        user.v1.ListAssignableRolesRequest:
+            required:
+                - targetUserId
+            type: object
+            properties:
+                targetUserId:
+                    type: string
+                    description: 目标用户的服务端标识（决定可分配角色集与已拥有过滤）。
+                query:
+                    allOf:
+                        - $ref: '#/components/schemas/query.v1.OptionQuery'
+                    description: 关键字与分页。
+            description: ListAssignableRolesRequest 是 UserService.ListAssignableRoles 的输入。
+        user.v1.ListOwnerOptionsRequest:
+            type: object
+            properties:
+                query:
+                    allOf:
+                        - $ref: '#/components/schemas/query.v1.OptionQuery'
+                    description: 关键字与分页。
+            description: ListOwnerOptionsRequest 是归属候选三端点的输入。
         user.v1.SetUserPasswordRequest:
             required:
                 - id
@@ -3696,6 +3934,24 @@ components:
                     type: string
                     description: 新密码。
             description: SetUserPasswordRequest 是 UserService.SetUserPassword 的输入。
+        user.v1.SetUserRolesRequest:
+            required:
+                - userId
+                - expectedVersion
+            type: object
+            properties:
+                userId:
+                    type: string
+                    description: 目标用户的服务端标识。
+                roleIds:
+                    type: array
+                    items:
+                        type: string
+                    description: 只表达调用方可管理范围内的目标集合；不得包含 locked 角色。
+                expectedVersion:
+                    type: string
+                    description: ListUserRoles 返回的 version；必填，不一致返回 409。
+            description: SetUserRolesRequest 是 UserService.SetUserRoles 的输入。
         user.v1.TransferUserOwnerRequest:
             required:
                 - id
@@ -3772,6 +4028,21 @@ components:
             description: |-
                 User 是用户的规范表示。password 列为 @internal，不跨越 API 边界；
                  审计列与时间戳只读。
+        user.v1.UserRoleSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/query.v1.Option'
+                    description: 当前可管理范围的角色（assigned=true）；按名称、ID 稳定排序。
+                unmanagedCount:
+                    type: string
+                    description: locked 角色数量（不在调用方管理范围的既有角色；不暴露明细）。
+                version:
+                    type: string
+                    description: 含 user_id 与排序后可管理角色 ID 的 hash；提交 SetUserRoles 时原样回传。
+            description: UserRoleSet 是 UserService.ListUserRoles / SetUserRoles 的输出。
         user.v1.UserSet:
             type: object
             properties:

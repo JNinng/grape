@@ -13,19 +13,21 @@ import (
 
 // typed Update 面（@updatable 声明生成的动态更新）集成测试：以真实
 // PostgreSQL 验证 SET 白名单、@pk 定位、@filter 不变量与守卫语义。
-// 断言基于 sqlc/seed.sql 的种子事实（用户 1-10 属 t-super-01，用户 5
-// 属 t-demo-01，basic 行 1-10 属 t-super-01）。环境变量未设置时跳过
+// 断言基于 sqlc/test_seed.sql 的种子事实（用户 2-4/6-11 属 t-test-01，
+// 用户 5 属 t-test-02，basic 行 1-10 属 t-test-01）与 sqlc/seed.sql 的
+// 生产默认事实（功能开关 1-4 属 t-super-01）。环境变量未设置时跳过
 // （同 session_test.go）。
 func TestDynamicUpdate(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
-	super := Identity{TenantID: "t-super-01", UserID: 1}
+	// testAdmin 是 t-test-01 的全租户操作者（用户 11，角色 110）。
+	testAdmin := Identity{TenantID: "t-test-01", UserID: 11}
 
-	// updateSysUser 在 super 身份事务内执行一次动态更新。
+	// updateSysUser 在 testAdmin 身份事务内执行一次动态更新。
 	updateSysUser := func(t *testing.T, opts ...gen.SysUserUpdateOption) (int64, error) {
 		t.Helper()
 		var n int64
-		err := d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, testAdmin, func(s *IdentityTx) error {
 			var err error
 			n, err = gen.UpdateSysUser(ctx, s.Tx(), opts...)
 			return err
@@ -36,7 +38,7 @@ func TestDynamicUpdate(t *testing.T) {
 	// 前提的子测试自备副作用（不依赖其他子测试的执行顺序）。
 	softDeleteSysUser := func(t *testing.T, id int64) {
 		t.Helper()
-		err := d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, testAdmin, func(s *IdentityTx) error {
 			_, err := s.Tx().Exec(ctx, "UPDATE public.sys_user SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1", id)
 			return err
 		})
@@ -48,7 +50,7 @@ func TestDynamicUpdate(t *testing.T) {
 	getSysUser := func(t *testing.T, id int64) *gen.SysUser {
 		t.Helper()
 		var po *gen.SysUser
-		err := d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, testAdmin, func(s *IdentityTx) error {
 			row, err := gen.New(s.Tx()).GetSysUserByID(ctx, id)
 			if err != nil {
 				return err
@@ -141,7 +143,7 @@ func TestDynamicUpdate(t *testing.T) {
 	})
 
 	t.Run("other_tenant_row_skipped_by_rls", func(t *testing.T) {
-		// 用户 5 属 t-demo-01；t-super-01 事务内按 id 点改必须 0 行。
+		// 用户 5 属 t-test-02；t-test-01 事务内按 id 点改必须 0 行。
 		n, err := updateSysUser(t,
 			gen.SysUserUpdate.SetRemark(dynq.Ptr("cross tenant")),
 			gen.SysUserUpdate.SetUpdatedBy(9),
@@ -288,8 +290,10 @@ func TestDynamicUpdate(t *testing.T) {
 
 	t.Run("boolean_column_toggled_on_flag_row", func(t *testing.T) {
 		// 非 int/string 形态冒烟：bool 列（NOT NULL）走白名单 Set。
+		// 功能开关 1 属生产默认租户（seed.sql），用其全租户操作者。
+		flagAdmin := Identity{TenantID: "t-super-01", UserID: 1}
 		var n int64
-		err := d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, flagAdmin, func(s *IdentityTx) error {
 			var err error
 			n, err = gen.UpdateSysFeatureFlag(ctx, s.Tx(),
 				gen.SysFeatureFlagUpdate.SetIsEnabled(false),
@@ -305,7 +309,7 @@ func TestDynamicUpdate(t *testing.T) {
 			t.Fatalf("affected rows = %d, want 1", n)
 		}
 		var enabled bool
-		err = d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err = d.IdentityTx(ctx, flagAdmin, func(s *IdentityTx) error {
 			return s.Tx().QueryRow(ctx, "SELECT is_enabled FROM public.sys_feature_flag WHERE id = 1").Scan(&enabled)
 		})
 		if err != nil {
@@ -318,7 +322,7 @@ func TestDynamicUpdate(t *testing.T) {
 
 	t.Run("basic_row_status_updated", func(t *testing.T) {
 		var n int64
-		err := d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, testAdmin, func(s *IdentityTx) error {
 			var err error
 			n, err = gen.UpdateBasic(ctx, s.Tx(),
 				gen.BasicUpdate.SetStatus(0),
@@ -334,7 +338,7 @@ func TestDynamicUpdate(t *testing.T) {
 			t.Fatalf("affected rows = %d, want 1", n)
 		}
 		var status int64
-		err = d.IdentityTx(ctx, super, func(s *IdentityTx) error {
+		err = d.IdentityTx(ctx, testAdmin, func(s *IdentityTx) error {
 			return s.Tx().QueryRow(ctx, "SELECT status FROM public.basic WHERE id = 1").Scan(&status)
 		})
 		if err != nil {

@@ -35,8 +35,8 @@ func AdminDSN(t *testing.T, s SuiteDatabase) string {
 	return adminDSN
 }
 
-// SetupSuiteDatabase 重建套件专属测试库并按 DeployFiles 全清单部署（与
-// dbdeploy 共用单一事实源；清单尾部含 agent_session.sql 等设施面），返回
+// SetupSuiteDatabase 重建套件专属测试库并按 TestDeployFiles()（生产清单 +
+// 测试种子）全清单部署；清单尾部含 agent_session.sql 等设施面，返回
 // grape_u 连接专属库的 DSN。不裁剪最小子集：role.sql 的授权/回收语句引用
 // public 业务表，任何「最小子集」都随 role.sql 的授权面漂移而脆断；全清单
 // 是唯一稳态，且回归面与 dbdeploy 一致。role.sql 的角色目录操作是集群级
@@ -86,7 +86,7 @@ func SetupSuiteDatabase(t *testing.T, s SuiteDatabase) (grapeUDSN string) {
 		t.Fatalf("acquire deploy lock: %v", err)
 	}
 	defer release()
-	for _, name := range deploy.DeployFiles {
+	for _, name := range deploy.TestDeployFiles() {
 		sql, err := os.ReadFile(deployDir + "/" + name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)

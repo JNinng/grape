@@ -10,11 +10,11 @@ import (
 
 // 功能权限码仓储集成测试：以真实 PostgreSQL 验证 fn_has_permission 判定
 // 链路与 GetPermissionCodes 枚举（入口层判定中间件与权限码查询端点的
-// 存储底座）。种子事实（sqlc/seed.sql + sqlc/99_perm_seed.sql）：
-//   - 用户 1（admin，t-super-01）持角色 101+102，角色 101 授予全部菜单；
-//   - 用户 3（lisi，t-super-01）持角色 103，菜单 201/202/203/236/237；
-//   - 用户 2（zhangsan，t-super-01）持角色 103+108，角色 108 无菜单授权；
-//   - 用户 5（zhaoliu，t-demo-01）持角色 105，菜单为 12xx 演示副本。
+// 存储底座）。种子事实（sqlc/seed.sql、sqlc/test_seed.sql + sqlc/99_perm_seed.sql）：
+//   - 用户 1（admin，t-super-01）持角色 101，角色 101 授予全部菜单；
+//   - 用户 3（lisi，t-test-01）持角色 103，菜单副本 3201/3202/3203/3236/3237；
+//   - 用户 2（zhangsan，t-test-01）持角色 103+108，角色 108 无菜单授权；
+//   - 用户 5（zhaoliu，t-test-02）持角色 105，菜单为 12xx 副本。
 // 各用例经 setupTestDB 重建数据库实现隔离；sys_role_menu 的种子外授权
 // 变更用直接 SQL 写入（grape_u 对该表有 DML 授权，RoleService.SetMenus
 // 的仓储原语同型），trg_bump_perm_version_tenant 随之 bump 租户级版本。
@@ -101,7 +101,7 @@ func setUserStatus(t *testing.T, d *Data, auth biz.Identity, userID int64, statu
 func TestPermissionRepo_held_code_judged_granted(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 用户 1 持角色 101（全部菜单）+102：用户管理的查询与创建码均命中。
+	// 用户 1 持角色 101（全部菜单）：用户管理的查询与创建码均命中。
 	if !mustHasPermission(t, d, permAuth("t-super-01", 1), "sys:user:create") {
 		t.Fatal("admin must hold sys:user:create")
 	}
@@ -121,10 +121,10 @@ func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
 	d := setupTestDB(t)
 
 	// 用户 3 持角色 103（仅查询/部门查询码）：创建码不命中、查询码命中。
-	if mustHasPermission(t, d, permAuth("t-super-01", 3), "sys:user:create") {
+	if mustHasPermission(t, d, permAuth("t-test-01", 3), "sys:user:create") {
 		t.Fatal("user 3 must not hold sys:user:create")
 	}
-	if !mustHasPermission(t, d, permAuth("t-super-01", 3), "sys:user:query") {
+	if !mustHasPermission(t, d, permAuth("t-test-01", 3), "sys:user:query") {
 		t.Fatal("user 3 must hold sys:user:query")
 	}
 	// 未知权限码等同不持有。
@@ -135,7 +135,7 @@ func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
 
 func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 	// 99_perm_seed.sql 的 258-265 配置族权限点只授予超级管理员（角色 101）：
-	// 用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:config:global:query",
@@ -153,7 +153,7 @@ func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}
@@ -161,7 +161,7 @@ func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 
 func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only(t *testing.T) {
 	// 99_perm_seed.sql 的 266-273 功能开关/翻译权限点只授予超级管理员（角色
-	// 101）：用户 1 八个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 101）：用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:config:feature-flag:query",
@@ -179,7 +179,7 @@ func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}
@@ -187,7 +187,7 @@ func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only
 
 func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 	// seed.sql 的 220-223 租户管理权限点只授予超级管理员（角色 101）：
-	// 用户 1 四个码全部命中；普通用户 3（角色 103）一个都不持有。
+	// 用户 1 四个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
 	codes := []string{
 		"sys:tenant:query",
@@ -201,7 +201,7 @@ func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 		}
 	}
 	for _, code := range codes {
-		if mustHasPermission(t, d, permAuth("t-super-01", 3), code) {
+		if mustHasPermission(t, d, permAuth("t-super-01", 12), code) {
 			t.Fatalf("ordinary user must not hold %s", code)
 		}
 	}
@@ -210,20 +210,20 @@ func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 func TestPermissionRepo_cross_tenant_grant_invisible_to_other_tenant(t *testing.T) {
 	d := setupTestDB(t)
 
-	// sys:menu:query 只存在于 t-super-01 的菜单树（214 子树）：t-demo-01
+	// sys:menu:query 只存在于 t-super-01 的菜单树（214 子树）：t-test-02
 	// 的用户 5 即便码值存在也判 false（RLS 租户联结不可见跨租户授权）。
-	if mustHasPermission(t, d, permAuth("t-demo-01", 5), "sys:menu:query") {
-		t.Fatal("cross-tenant code must be denied for t-demo-01 user")
+	if mustHasPermission(t, d, permAuth("t-test-02", 5), "sys:menu:query") {
+		t.Fatal("cross-tenant code must be denied for t-test-02 user")
 	}
-	// 同一码在授予方租户内命中（t-demo-01 自身的 sys:user:create 副本 1204）。
-	if !mustHasPermission(t, d, permAuth("t-demo-01", 5), "sys:user:create") {
+	// 同一码在授予方租户内命中（t-test-02 自身的 sys:user:create 副本 1204）。
+	if !mustHasPermission(t, d, permAuth("t-test-02", 5), "sys:user:create") {
 		t.Fatal("tenant-local code must be granted within its tenant")
 	}
 }
 
 func TestPermissionRepo_disabled_user_holds_nothing(t *testing.T) {
 	d := setupTestDB(t)
-	auth := permAuth("t-super-01", 2)
+	auth := permAuth("t-test-01", 2)
 
 	if !mustHasPermission(t, d, auth, "sys:user:query") {
 		t.Fatal("enabled user must hold seeded code")
@@ -246,14 +246,14 @@ func TestPermissionRepo_codes_enumerated_deduped_and_sorted(t *testing.T) {
 
 	// 用户 3 仅持角色 103：码集合 = 其菜单授权的权限码并集（去重升序）。
 	want := []string{"sys:dept", "sys:dept:query", "sys:manage", "sys:user", "sys:user:query"}
-	got := mustPermissionCodes(t, d, permAuth("t-super-01", 3))
+	got := mustPermissionCodes(t, d, permAuth("t-test-01", 3))
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("codes = %v, want %v", got, want)
 	}
 
 	// 用户 2 持角色 103+108（多角色并集），108 无菜单授权：集合与单角色
 	// 用户 3 完全一致（并集不引入多余项）。
-	got2 := mustPermissionCodes(t, d, permAuth("t-super-01", 2))
+	got2 := mustPermissionCodes(t, d, permAuth("t-test-01", 2))
 	if !reflect.DeepEqual(got2, want) {
 		t.Fatalf("codes = %v, want %v", got2, want)
 	}
@@ -261,16 +261,16 @@ func TestPermissionRepo_codes_enumerated_deduped_and_sorted(t *testing.T) {
 
 func TestPermissionRepo_grant_change_flips_verdict_and_bumps_version(t *testing.T) {
 	d := setupTestDB(t)
-	auth := permAuth("t-super-01", 2)
+	auth := permAuth("t-test-01", 2)
 
 	if mustHasPermission(t, d, auth, "sys:user:create") {
 		t.Fatal("user 2 must not hold sys:user:create before grant")
 	}
 	before := permTenantVersion(t, d, auth)
 
-	// 授予：角色 103 挂上菜单 204（sys:user:create）→ 判定立即翻转，
+	// 授予：角色 103 挂上菜单副本 3204（sys:user:create）→ 判定立即翻转，
 	// trg_bump_perm_version_tenant bump 租户级版本（外部缓存失效信号）。
-	grantRoleMenu(t, d, auth, 103, 204)
+	grantRoleMenu(t, d, auth, 103, 3204)
 	if !mustHasPermission(t, d, auth, "sys:user:create") {
 		t.Fatal("user 2 must hold sys:user:create after grant")
 	}
@@ -280,7 +280,7 @@ func TestPermissionRepo_grant_change_flips_verdict_and_bumps_version(t *testing.
 	}
 
 	// 撤销：物理删除映射行 → 判定回落，版本继续递增。
-	revokeRoleMenu(t, d, auth, 103, 204)
+	revokeRoleMenu(t, d, auth, 103, 3204)
 	if mustHasPermission(t, d, auth, "sys:user:create") {
 		t.Fatal("user 2 must not hold sys:user:create after revoke")
 	}

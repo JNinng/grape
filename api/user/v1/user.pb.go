@@ -758,6 +758,281 @@ func (x *TransferUserOwnerRequest) GetOwnerUserGroupId() int64 {
 	return 0
 }
 
+// ListAssignableRolesRequest 是 UserService.ListAssignableRoles 的输入。
+type ListAssignableRolesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 目标用户的服务端标识（决定可分配角色集与已拥有过滤）。
+	TargetUserId int64 `protobuf:"varint,1,opt,name=target_user_id,json=targetUserId,proto3" json:"target_user_id,omitempty"`
+	// 关键字与分页。
+	Query         *v1.OptionQuery `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListAssignableRolesRequest) Reset() {
+	*x = ListAssignableRolesRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListAssignableRolesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListAssignableRolesRequest) ProtoMessage() {}
+
+func (x *ListAssignableRolesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListAssignableRolesRequest.ProtoReflect.Descriptor instead.
+func (*ListAssignableRolesRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ListAssignableRolesRequest) GetTargetUserId() int64 {
+	if x != nil {
+		return x.TargetUserId
+	}
+	return 0
+}
+
+func (x *ListAssignableRolesRequest) GetQuery() *v1.OptionQuery {
+	if x != nil {
+		return x.Query
+	}
+	return nil
+}
+
+// ListUserRolesRequest 是 UserService.ListUserRoles 的输入。
+type ListUserRolesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 目标用户的服务端标识。
+	UserId        int64 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListUserRolesRequest) Reset() {
+	*x = ListUserRolesRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListUserRolesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListUserRolesRequest) ProtoMessage() {}
+
+func (x *ListUserRolesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListUserRolesRequest.ProtoReflect.Descriptor instead.
+func (*ListUserRolesRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListUserRolesRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+// SetUserRolesRequest 是 UserService.SetUserRoles 的输入。
+type SetUserRolesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 目标用户的服务端标识。
+	UserId int64 `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// 只表达调用方可管理范围内的目标集合；不得包含 locked 角色。
+	RoleIds []int64 `protobuf:"varint,2,rep,packed,name=role_ids,json=roleIds,proto3" json:"role_ids,omitempty"`
+	// ListUserRoles 返回的 version；必填，不一致返回 409。
+	ExpectedVersion string `protobuf:"bytes,3,opt,name=expected_version,json=expectedVersion,proto3" json:"expected_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SetUserRolesRequest) Reset() {
+	*x = SetUserRolesRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserRolesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserRolesRequest) ProtoMessage() {}
+
+func (x *SetUserRolesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserRolesRequest.ProtoReflect.Descriptor instead.
+func (*SetUserRolesRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *SetUserRolesRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *SetUserRolesRequest) GetRoleIds() []int64 {
+	if x != nil {
+		return x.RoleIds
+	}
+	return nil
+}
+
+func (x *SetUserRolesRequest) GetExpectedVersion() string {
+	if x != nil {
+		return x.ExpectedVersion
+	}
+	return ""
+}
+
+// ListOwnerOptionsRequest 是归属候选三端点的输入。
+type ListOwnerOptionsRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 关键字与分页。
+	Query         *v1.OptionQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOwnerOptionsRequest) Reset() {
+	*x = ListOwnerOptionsRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOwnerOptionsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOwnerOptionsRequest) ProtoMessage() {}
+
+func (x *ListOwnerOptionsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOwnerOptionsRequest.ProtoReflect.Descriptor instead.
+func (*ListOwnerOptionsRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ListOwnerOptionsRequest) GetQuery() *v1.OptionQuery {
+	if x != nil {
+		return x.Query
+	}
+	return nil
+}
+
+// UserRoleSet 是 UserService.ListUserRoles / SetUserRoles 的输出。
+type UserRoleSet struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 当前可管理范围的角色（assigned=true）；按名称、ID 稳定排序。
+	Items []*v1.Option `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	// locked 角色数量（不在调用方管理范围的既有角色；不暴露明细）。
+	UnmanagedCount int64 `protobuf:"varint,2,opt,name=unmanaged_count,json=unmanagedCount,proto3" json:"unmanaged_count,omitempty"`
+	// 含 user_id 与排序后可管理角色 ID 的 hash；提交 SetUserRoles 时原样回传。
+	Version       string `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserRoleSet) Reset() {
+	*x = UserRoleSet{}
+	mi := &file_user_v1_user_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserRoleSet) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserRoleSet) ProtoMessage() {}
+
+func (x *UserRoleSet) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserRoleSet.ProtoReflect.Descriptor instead.
+func (*UserRoleSet) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *UserRoleSet) GetItems() []*v1.Option {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *UserRoleSet) GetUnmanagedCount() int64 {
+	if x != nil {
+		return x.UnmanagedCount
+	}
+	return 0
+}
+
+func (x *UserRoleSet) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
 var File_user_v1_user_proto protoreflect.FileDescriptor
 
 const file_user_v1_user_proto_rawDesc = "" +
@@ -827,7 +1102,22 @@ const file_user_v1_user_proto_rawDesc = "" +
 	"\x13owner_user_group_id\x18\x04 \x01(\x03H\x02R\x10ownerUserGroupId\x88\x01\x01B\x10\n" +
 	"\x0e_owner_user_idB\x10\n" +
 	"\x0e_owner_dept_idB\x16\n" +
-	"\x14_owner_user_group_id2\xfb\x05\n" +
+	"\x14_owner_user_group_id\"t\n" +
+	"\x1aListAssignableRolesRequest\x12)\n" +
+	"\x0etarget_user_id\x18\x01 \x01(\x03B\x03\xe0A\x02R\ftargetUserId\x12+\n" +
+	"\x05query\x18\x02 \x01(\v2\x15.query.v1.OptionQueryR\x05query\"4\n" +
+	"\x14ListUserRolesRequest\x12\x1c\n" +
+	"\auser_id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x06userId\"~\n" +
+	"\x13SetUserRolesRequest\x12\x1c\n" +
+	"\auser_id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x06userId\x12\x19\n" +
+	"\brole_ids\x18\x02 \x03(\x03R\aroleIds\x12.\n" +
+	"\x10expected_version\x18\x03 \x01(\tB\x03\xe0A\x02R\x0fexpectedVersion\"F\n" +
+	"\x17ListOwnerOptionsRequest\x12+\n" +
+	"\x05query\x18\x01 \x01(\v2\x15.query.v1.OptionQueryR\x05query\"x\n" +
+	"\vUserRoleSet\x12&\n" +
+	"\x05items\x18\x01 \x03(\v2\x10.query.v1.OptionR\x05items\x12'\n" +
+	"\x0funmanaged_count\x18\x02 \x01(\x03R\x0eunmanagedCount\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion2\xaa\v\n" +
 	"\vUserService\x12T\n" +
 	"\n" +
 	"CreateUser\x12\x1a.user.v1.CreateUserRequest\x1a\r.user.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/users/create\x12I\n" +
@@ -839,7 +1129,13 @@ const file_user_v1_user_proto_rawDesc = "" +
 	"\n" +
 	"DeleteUser\x12\x1a.user.v1.DeleteUserRequest\x1a\x16.google.protobuf.Empty\"\x16\x82\xd3\xe4\x93\x02\x10*\x0e/v1/users/{id}\x12h\n" +
 	"\vAssignRoles\x12\x1b.user.v1.AssignRolesRequest\x1a\x19.user.v1.AssignRolesReply\"!\x82\xd3\xe4\x93\x02\x1b:\x01*\"\x16/v1/users/assign-roles\x12j\n" +
-	"\x11TransferUserOwner\x12!.user.v1.TransferUserOwnerRequest\x1a\r.user.v1.User\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/users/transfer-ownerB=\n" +
+	"\x11TransferUserOwner\x12!.user.v1.TransferUserOwnerRequest\x1a\r.user.v1.User\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/users/transfer-owner\x12v\n" +
+	"\x13ListAssignableRoles\x12#.user.v1.ListAssignableRolesRequest\x1a\x13.query.v1.OptionSet\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/users/assignable-roles\x12g\n" +
+	"\rListUserRoles\x12\x1d.user.v1.ListUserRolesRequest\x1a\x14.user.v1.UserRoleSet\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/users/{user_id}/roles\x12b\n" +
+	"\fSetUserRoles\x12\x1c.user.v1.SetUserRolesRequest\x1a\x14.user.v1.UserRoleSet\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/users/set-roles\x12v\n" +
+	"\x14ListOwnerUserOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/users/owner-user-options\x12v\n" +
+	"\x14ListOwnerDeptOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/users/owner-dept-options\x12x\n" +
+	"\x15ListOwnerGroupOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"(\x82\xd3\xe4\x93\x02\":\x01*\"\x1d/v1/users/owner-group-optionsB=\n" +
 	"\x18io.grpc.examples.user.v1B\tUserProtoP\x01Z\x14grape/api/user/v1;v1b\x06proto3"
 
 var (
@@ -854,52 +1150,75 @@ func file_user_v1_user_proto_rawDescGZIP() []byte {
 	return file_user_v1_user_proto_rawDescData
 }
 
-var file_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
+var file_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_user_v1_user_proto_goTypes = []any{
-	(*User)(nil),                     // 0: user.v1.User
-	(*UserSet)(nil),                  // 1: user.v1.UserSet
-	(*CreateUserRequest)(nil),        // 2: user.v1.CreateUserRequest
-	(*GetUserRequest)(nil),           // 3: user.v1.GetUserRequest
-	(*ListUsersRequest)(nil),         // 4: user.v1.ListUsersRequest
-	(*UpdateUserRequest)(nil),        // 5: user.v1.UpdateUserRequest
-	(*SetUserPasswordRequest)(nil),   // 6: user.v1.SetUserPasswordRequest
-	(*DeleteUserRequest)(nil),        // 7: user.v1.DeleteUserRequest
-	(*AssignRolesRequest)(nil),       // 8: user.v1.AssignRolesRequest
-	(*AssignRolesReply)(nil),         // 9: user.v1.AssignRolesReply
-	(*TransferUserOwnerRequest)(nil), // 10: user.v1.TransferUserOwnerRequest
-	(*timestamppb.Timestamp)(nil),    // 11: google.protobuf.Timestamp
-	(*v1.Query)(nil),                 // 12: query.v1.Query
-	(*emptypb.Empty)(nil),            // 13: google.protobuf.Empty
+	(*User)(nil),                       // 0: user.v1.User
+	(*UserSet)(nil),                    // 1: user.v1.UserSet
+	(*CreateUserRequest)(nil),          // 2: user.v1.CreateUserRequest
+	(*GetUserRequest)(nil),             // 3: user.v1.GetUserRequest
+	(*ListUsersRequest)(nil),           // 4: user.v1.ListUsersRequest
+	(*UpdateUserRequest)(nil),          // 5: user.v1.UpdateUserRequest
+	(*SetUserPasswordRequest)(nil),     // 6: user.v1.SetUserPasswordRequest
+	(*DeleteUserRequest)(nil),          // 7: user.v1.DeleteUserRequest
+	(*AssignRolesRequest)(nil),         // 8: user.v1.AssignRolesRequest
+	(*AssignRolesReply)(nil),           // 9: user.v1.AssignRolesReply
+	(*TransferUserOwnerRequest)(nil),   // 10: user.v1.TransferUserOwnerRequest
+	(*ListAssignableRolesRequest)(nil), // 11: user.v1.ListAssignableRolesRequest
+	(*ListUserRolesRequest)(nil),       // 12: user.v1.ListUserRolesRequest
+	(*SetUserRolesRequest)(nil),        // 13: user.v1.SetUserRolesRequest
+	(*ListOwnerOptionsRequest)(nil),    // 14: user.v1.ListOwnerOptionsRequest
+	(*UserRoleSet)(nil),                // 15: user.v1.UserRoleSet
+	(*timestamppb.Timestamp)(nil),      // 16: google.protobuf.Timestamp
+	(*v1.Query)(nil),                   // 17: query.v1.Query
+	(*v1.OptionQuery)(nil),             // 18: query.v1.OptionQuery
+	(*v1.Option)(nil),                  // 19: query.v1.Option
+	(*emptypb.Empty)(nil),              // 20: google.protobuf.Empty
+	(*v1.OptionSet)(nil),               // 21: query.v1.OptionSet
 }
 var file_user_v1_user_proto_depIdxs = []int32{
-	11, // 0: user.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	11, // 1: user.v1.User.updated_at:type_name -> google.protobuf.Timestamp
-	11, // 2: user.v1.User.deleted_at:type_name -> google.protobuf.Timestamp
+	16, // 0: user.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	16, // 1: user.v1.User.updated_at:type_name -> google.protobuf.Timestamp
+	16, // 2: user.v1.User.deleted_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: user.v1.UserSet.items:type_name -> user.v1.User
 	0,  // 4: user.v1.CreateUserRequest.user:type_name -> user.v1.User
-	12, // 5: user.v1.ListUsersRequest.query:type_name -> query.v1.Query
+	17, // 5: user.v1.ListUsersRequest.query:type_name -> query.v1.Query
 	0,  // 6: user.v1.UpdateUserRequest.user:type_name -> user.v1.User
-	2,  // 7: user.v1.UserService.CreateUser:input_type -> user.v1.CreateUserRequest
-	3,  // 8: user.v1.UserService.GetUser:input_type -> user.v1.GetUserRequest
-	4,  // 9: user.v1.UserService.ListUsers:input_type -> user.v1.ListUsersRequest
-	5,  // 10: user.v1.UserService.UpdateUser:input_type -> user.v1.UpdateUserRequest
-	6,  // 11: user.v1.UserService.SetUserPassword:input_type -> user.v1.SetUserPasswordRequest
-	7,  // 12: user.v1.UserService.DeleteUser:input_type -> user.v1.DeleteUserRequest
-	8,  // 13: user.v1.UserService.AssignRoles:input_type -> user.v1.AssignRolesRequest
-	10, // 14: user.v1.UserService.TransferUserOwner:input_type -> user.v1.TransferUserOwnerRequest
-	0,  // 15: user.v1.UserService.CreateUser:output_type -> user.v1.User
-	0,  // 16: user.v1.UserService.GetUser:output_type -> user.v1.User
-	1,  // 17: user.v1.UserService.ListUsers:output_type -> user.v1.UserSet
-	0,  // 18: user.v1.UserService.UpdateUser:output_type -> user.v1.User
-	13, // 19: user.v1.UserService.SetUserPassword:output_type -> google.protobuf.Empty
-	13, // 20: user.v1.UserService.DeleteUser:output_type -> google.protobuf.Empty
-	9,  // 21: user.v1.UserService.AssignRoles:output_type -> user.v1.AssignRolesReply
-	0,  // 22: user.v1.UserService.TransferUserOwner:output_type -> user.v1.User
-	15, // [15:23] is the sub-list for method output_type
-	7,  // [7:15] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	18, // 7: user.v1.ListAssignableRolesRequest.query:type_name -> query.v1.OptionQuery
+	18, // 8: user.v1.ListOwnerOptionsRequest.query:type_name -> query.v1.OptionQuery
+	19, // 9: user.v1.UserRoleSet.items:type_name -> query.v1.Option
+	2,  // 10: user.v1.UserService.CreateUser:input_type -> user.v1.CreateUserRequest
+	3,  // 11: user.v1.UserService.GetUser:input_type -> user.v1.GetUserRequest
+	4,  // 12: user.v1.UserService.ListUsers:input_type -> user.v1.ListUsersRequest
+	5,  // 13: user.v1.UserService.UpdateUser:input_type -> user.v1.UpdateUserRequest
+	6,  // 14: user.v1.UserService.SetUserPassword:input_type -> user.v1.SetUserPasswordRequest
+	7,  // 15: user.v1.UserService.DeleteUser:input_type -> user.v1.DeleteUserRequest
+	8,  // 16: user.v1.UserService.AssignRoles:input_type -> user.v1.AssignRolesRequest
+	10, // 17: user.v1.UserService.TransferUserOwner:input_type -> user.v1.TransferUserOwnerRequest
+	11, // 18: user.v1.UserService.ListAssignableRoles:input_type -> user.v1.ListAssignableRolesRequest
+	12, // 19: user.v1.UserService.ListUserRoles:input_type -> user.v1.ListUserRolesRequest
+	13, // 20: user.v1.UserService.SetUserRoles:input_type -> user.v1.SetUserRolesRequest
+	14, // 21: user.v1.UserService.ListOwnerUserOptions:input_type -> user.v1.ListOwnerOptionsRequest
+	14, // 22: user.v1.UserService.ListOwnerDeptOptions:input_type -> user.v1.ListOwnerOptionsRequest
+	14, // 23: user.v1.UserService.ListOwnerGroupOptions:input_type -> user.v1.ListOwnerOptionsRequest
+	0,  // 24: user.v1.UserService.CreateUser:output_type -> user.v1.User
+	0,  // 25: user.v1.UserService.GetUser:output_type -> user.v1.User
+	1,  // 26: user.v1.UserService.ListUsers:output_type -> user.v1.UserSet
+	0,  // 27: user.v1.UserService.UpdateUser:output_type -> user.v1.User
+	20, // 28: user.v1.UserService.SetUserPassword:output_type -> google.protobuf.Empty
+	20, // 29: user.v1.UserService.DeleteUser:output_type -> google.protobuf.Empty
+	9,  // 30: user.v1.UserService.AssignRoles:output_type -> user.v1.AssignRolesReply
+	0,  // 31: user.v1.UserService.TransferUserOwner:output_type -> user.v1.User
+	21, // 32: user.v1.UserService.ListAssignableRoles:output_type -> query.v1.OptionSet
+	15, // 33: user.v1.UserService.ListUserRoles:output_type -> user.v1.UserRoleSet
+	15, // 34: user.v1.UserService.SetUserRoles:output_type -> user.v1.UserRoleSet
+	21, // 35: user.v1.UserService.ListOwnerUserOptions:output_type -> query.v1.OptionSet
+	21, // 36: user.v1.UserService.ListOwnerDeptOptions:output_type -> query.v1.OptionSet
+	21, // 37: user.v1.UserService.ListOwnerGroupOptions:output_type -> query.v1.OptionSet
+	24, // [24:38] is the sub-list for method output_type
+	10, // [10:24] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_user_v1_user_proto_init() }
@@ -916,7 +1235,7 @@ func file_user_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_user_v1_user_proto_rawDesc), len(file_user_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   11,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

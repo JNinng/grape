@@ -12,10 +12,10 @@ package httpapi_test
 //	GRAPE_GRANT_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
 //	go test ./internal/agent/httpapi -run TestPGGrant -count=1 -v
 //
-// 装载取舍与会话/确认恢复集成测试一致：DeployFiles 全清单部署（含
-// 96_agent_grant.sql 与权限码种子）+ 跨包部署锁互斥，绝不触碰其他
-// 套件的测试库。「重启」以全新连接池 + 全新栈模拟（不 Close 旧栈），
-// 与确认恢复路径（根包 confirm_pg_test.go）的口径一致。
+// 装载取舍与会话/确认恢复集成测试一致：TestDeployFiles 全清单部署（含
+// 96_agent_grant.sql、权限码种子与测试种子 test_seed.sql）+ 跨包部署锁
+// 互斥，绝不触碰其他套件的测试库。「重启」以全新连接池 + 全新栈模拟
+//（不 Close 旧栈），与确认恢复路径（根包 confirm_pg_test.go）的口径一致。
 //
 // 外部测试包（httpapi_test）形态：用例经完整 Stack（根包生产装配路径）
 // 与本包导出构造函数驱动，不触达包内私有符号。
@@ -52,14 +52,16 @@ var grantSuite = testsupport.SuiteDatabase{
 }
 
 // grantTestTenantAdmin / grantTestTenantPlain 是权限码边界用例的种子身份：
-// 用户 1（admin，角色 101 → 菜单含 agent:grant:query/revoke）与
-// 用户 2（zhangsan，角色 103/108 → 无 agent 授权码）。
+// 用户 1（admin，t-super-01，角色 101 → 菜单含 agent:grant:query/revoke）
+// 与用户 12（superplain，t-super-01，无角色 → 无 agent 授权码）。两者须
+// 同租户：吊销他人授权的 403 分支要求目标行对操作者可见（跨租户行在
+// 可见性判定即 404，走不到权限码判定）。
 var (
 	grantTestTenantAdmin = biz.Identity{TenantID: "t-super-01", UserID: 1}
-	grantTestTenantPlain = biz.Identity{TenantID: "t-super-01", UserID: 2}
+	grantTestTenantPlain = biz.Identity{TenantID: "t-super-01", UserID: 12}
 )
 
-// grantSetupDatabase 重建专属测试库并按 DeployFiles 全清单部署，返回
+// grantSetupDatabase 重建专属测试库并按 TestDeployFiles 全清单部署，返回
 // grape_u DSN。形态与既有套件一致（单一事实源的部署清单 +
 // 跨包互斥锁）。
 func grantSetupDatabase(t *testing.T) string {
@@ -501,7 +503,7 @@ func TestPGGrant_when_rls_disabled_cross_tenant_invisible(t *testing.T) {
 // TestPGGrant_when_management_permission_boundary_over_seed_roles 验证
 // 管理端点的权限码边界（种子角色经 fn_has_permission 库内判定）：
 // 持 agent:grant:query/revoke 的管理员（种子用户 1）可全租户列表与
-// 吊销他人授权；普通用户（种子用户 2，无 agent 授权码）403、本人
+// 吊销他人授权；普通用户（种子用户 12 superplain，无 agent 授权码）403、本人
 // 视角不受影响。
 func TestPGGrant_when_management_permission_boundary_over_seed_roles(t *testing.T) {
 	dsn := grantSetupDatabase(t)

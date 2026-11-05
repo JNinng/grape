@@ -7,18 +7,18 @@
 //	table sys_tenant_config: [@pk: id]
 //	table sys_tenant_config: [@filter: deleted_at is_null]
 //	column sys_tenant_config.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_tenant_config.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_tenant_config.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_tenant_config.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_tenant_config.config_key: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_tenant_config.value: [@updatable: set]
-//	column sys_tenant_config.value_type: [@dynamic: eq, neq @hideable]
+//	column sys_tenant_config.value_type: [@dynamic: eq, neq @hideable @label: 值类型 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON]
 //	column sys_tenant_config.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
 //	column sys_tenant_config.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_tenant_config.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_tenant_config.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_tenant_config.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_tenant_config.deleted_at: [@internal]
-//	column sys_tenant_config.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_tenant_config.tenant_id: [@internal]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -53,13 +53,17 @@ var sys_tenant_configRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -96,13 +100,20 @@ var sys_tenant_configRegistry = dynq.TableMeta{
 		{
 			Key:        "valueType",
 			Column:     "value_type",
-			Label:      "值类型：string/integer/boolean/float/json",
+			Label:      "值类型",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: "string", Label: "字符串"},
+				{Value: "integer", Label: "整数"},
+				{Value: "boolean", Label: "布尔"},
+				{Value: "float", Label: "浮点"},
+				{Value: "json", Label: "JSON"},
+			},
 		},
 		{
 			Key:        "remark",
@@ -175,10 +186,9 @@ var sys_tenant_configRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
@@ -220,7 +230,6 @@ var SysTenantConfigField = struct {
 	CreatedAt dynq.FieldName
 	UpdatedBy dynq.FieldName
 	UpdatedAt dynq.FieldName
-	TenantID  dynq.FieldName
 }{
 	ID:        "id",
 	Status:    "status",
@@ -233,7 +242,6 @@ var SysTenantConfigField = struct {
 	CreatedAt: "createdAt",
 	UpdatedBy: "updatedBy",
 	UpdatedAt: "updatedAt",
-	TenantID:  "tenantId",
 }
 
 // ListSysTenantConfigParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -290,8 +298,6 @@ type ListSysTenantConfigParams struct {
 	UpdatedAtGte    *time.Time
 	UpdatedAtLt     *time.Time
 	UpdatedAtLte    *time.Time
-	TenantID        *string
-	TenantIDNeq     *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -867,27 +873,6 @@ func ParseSysTenantConfigQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSys
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		}
 	}
 
@@ -962,9 +947,6 @@ func validateSysTenantConfigParams(params ListSysTenantConfigParams, cfg *dynq.Q
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_tenant_configRegistry)
 }
@@ -1119,12 +1101,6 @@ func buildSysTenantConfigWhere(params ListSysTenantConfigParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	return conds
 }
@@ -1286,7 +1262,7 @@ type SysTenantConfigUpdateOption = dynq.UpdateOption[SysTenantConfigTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysTenantConfigTable) SetStatus(v int64) SysTenantConfigUpdateOption {
 	return func(st *dynq.UpdateState[SysTenantConfigTable]) error {
 		return st.Set("status", "status", "", v)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from 'lucide-react'
+import { ChevronDownIcon, ChevronRightIcon, InfoIcon, PlusIcon } from 'lucide-react'
 import {
   createDept,
   deleteDept,
@@ -10,6 +10,7 @@ import {
   type DeptTreeNodeDTO,
   type DeptTreeReplyDTO,
 } from '@/api/depts'
+import { listOwnerGroupOptions, listOwnerUserOptions } from '@/api/assignOptions'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -23,6 +24,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   Dialog,
   DialogClose,
@@ -32,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { OptionSelect } from '@/components/manage/option-select'
 import { RowActionsMenu } from '@/components/manage/row-actions'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -141,19 +144,44 @@ function FormError({ message }: { message: string | null }) {
   )
 }
 
-// ParentSelect 是「上级部门」下拉：root 哨兵表示无父级（根部门）；excludeId
-// 供移动弹窗排除被移动部门自身（移向其余任意部门均可选，成环由后端拒绝）。
+// subtreeIDs 返回 rootId 及其全部后代部门 ID（按 parentId 关系遍历）：
+// 编辑/移动时把整棵子树从新父级选项中排除，避免提交后才被后端拒绝。
+function subtreeIDs(depts: DeptDTO[], rootId: string): ReadonlySet<string> {
+  const childrenByParent = new Map<string, string[]>()
+  for (const dept of depts) {
+    if (dept.parentId === undefined) {
+      continue
+    }
+    const siblings = childrenByParent.get(dept.parentId) ?? []
+    siblings.push(dept.id)
+    childrenByParent.set(dept.parentId, siblings)
+  }
+  const out = new Set<string>()
+  const stack = [rootId]
+  while (stack.length > 0) {
+    const id = stack.pop() as string
+    if (out.has(id)) {
+      continue
+    }
+    out.add(id)
+    stack.push(...(childrenByParent.get(id) ?? []))
+  }
+  return out
+}
+
+// ParentSelect 是「上级部门」下拉：root 哨兵表示无父级（根部门）；
+// excludeIds 供编辑/移动弹窗排除目标部门自身与其子树。
 function ParentSelect({
   id,
   value,
   depts,
-  excludeId,
+  excludeIds,
   onValueChange,
 }: {
   id: string
   value: string
   depts: DeptDTO[]
-  excludeId?: string
+  excludeIds?: ReadonlySet<string>
   onValueChange: (value: string) => void
 }) {
   return (
@@ -164,7 +192,7 @@ function ParentSelect({
       <SelectContent>
         <SelectItem value={ROOT_PARENT}>无（根部门）</SelectItem>
         {depts
-          .filter((dept) => dept.id !== excludeId)
+          .filter((dept) => !(excludeIds?.has(dept.id) ?? false))
           .map((dept) => (
             <SelectItem key={dept.id} value={dept.id}>
               {dept.name}
@@ -173,16 +201,6 @@ function ParentSelect({
       </SelectContent>
     </Select>
   )
-}
-
-// parsePositiveId 校验正整数形态的字符串 ID（int64 字符串口径），空值视为
-// 未填写返回 undefined。
-function parsePositiveId(raw: string): string | undefined | null {
-  const trimmed = raw.trim()
-  if (trimmed === '') {
-    return undefined
-  }
-  return /^[1-9]\d*$/.test(trimmed) ? trimmed : null
 }
 
 // ---------- 新建部门 ----------
@@ -200,22 +218,17 @@ function DeptCreateDialog({
 }) {
   const [parentId, setParentId] = useState(parent?.id ?? ROOT_PARENT)
   const [name, setName] = useState('')
-  const [ownerUserId, setOwnerUserId] = useState('')
-  const [ownerUserGroupId, setOwnerUserGroupId] = useState('')
+  const [ownerUserId, setOwnerUserId] = useState<string[]>([])
+  const [ownerUserGroupId, setOwnerUserGroupId] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     const trimmedName = name.trim()
-    const owner = parsePositiveId(ownerUserId)
-    const group = parsePositiveId(ownerUserGroupId)
+    const owner = ownerUserId[0]
     if (trimmedName === '' || owner === undefined) {
-      setError('name and owner user id are required')
-      return
-    }
-    if (owner === null || group === null) {
-      setError('owner ids must be positive ids')
+      setError('name and dept admin are required')
       return
     }
     setPending(true)
@@ -224,7 +237,7 @@ function DeptCreateDialog({
         name: trimmedName,
         parentId: parentId === ROOT_PARENT ? undefined : parentId,
         ownerUserId: owner,
-        ownerUserGroupId: group,
+        ownerUserGroupId: ownerUserGroupId[0],
       })
       toast.success(`部门 ${trimmedName} 已创建`)
       onCreated()
@@ -242,7 +255,7 @@ function DeptCreateDialog({
         <DialogHeader>
           <DialogTitle>新建部门</DialogTitle>
           <DialogDescription>
-            上级部门缺省为根部门；部门管理员用户 ID 必填，状态缺省启用。
+            上级部门缺省为根部门；部门管理员必选，归属用户组可选（候选均为当前可见范围内的活跃对象），状态缺省启用。
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
@@ -252,11 +265,27 @@ function DeptCreateDialog({
           <Field id="create-dept-name" label="部门名称">
             <Input id="create-dept-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
           </Field>
-          <Field id="create-dept-owner-user" label="部门管理员用户 ID">
-            <Input id="create-dept-owner-user" value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)} autoComplete="off" placeholder="如：7" />
+          <Field id="create-dept-owner-user" label="部门管理员">
+            <OptionSelect
+              id="create-dept-owner-user"
+              ariaLabel="部门管理员"
+              mode="single"
+              value={ownerUserId}
+              onChange={setOwnerUserId}
+              loadOptions={listOwnerUserOptions}
+              placeholder="选择部门管理员"
+            />
           </Field>
-          <Field id="create-dept-owner-group" label="归属用户组 ID（可选）">
-            <Input id="create-dept-owner-group" value={ownerUserGroupId} onChange={(e) => setOwnerUserGroupId(e.target.value)} autoComplete="off" />
+          <Field id="create-dept-owner-group" label="归属用户组（可选）">
+            <OptionSelect
+              id="create-dept-owner-group"
+              ariaLabel="归属用户组"
+              mode="single"
+              value={ownerUserGroupId}
+              onChange={setOwnerUserGroupId}
+              loadOptions={listOwnerGroupOptions}
+              placeholder="不设归属用户组"
+            />
           </Field>
           <FormError message={error} />
           <DialogActions pending={pending} submitLabel="创建" />
@@ -270,28 +299,44 @@ function DeptCreateDialog({
 
 function DeptEditDialog({
   dept,
+  depts,
   onClose,
   onSaved,
 }: {
   dept: DeptDTO
+  depts: DeptDTO[]
   onClose: () => void
   onSaved: () => void
 }) {
+  const [parentId, setParentId] = useState(dept.parentId ?? ROOT_PARENT)
   const [name, setName] = useState(dept.name)
+  const [ownerUserId, setOwnerUserId] = useState<string[]>([dept.ownerUserId])
+  const [ownerUserGroupId, setOwnerUserGroupId] = useState<string[]>(
+    dept.ownerUserGroupId === undefined ? [] : [dept.ownerUserGroupId],
+  )
   const [status, setStatus] = useState(dept.status === STATUS_DISABLED ? STATUS_DISABLED : STATUS_ENABLED)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (name.trim() === '') {
-      setError('name is required')
+    const owner = ownerUserId[0]
+    if (name.trim() === '' || owner === undefined) {
+      setError('name and dept admin are required')
       return
     }
     setPending(true)
     try {
-      // 更新只覆盖 name/status：父子结构走「移动」，归属不经更新面。
-      await updateDept({ id: dept.id, status, name: name.trim() })
+      // PUT 覆盖语义：携带完整可变字段集合；parentId 缺省即移为根，
+      // ownerUserGroupId 缺省即清空归属用户组。
+      await updateDept({
+        id: dept.id,
+        status,
+        name: name.trim(),
+        parentId: parentId === ROOT_PARENT ? undefined : parentId,
+        ownerUserId: owner,
+        ownerUserGroupId: ownerUserGroupId[0],
+      })
       toast.success(`部门 ${name.trim()} 已更新`)
       onSaved()
       onClose()
@@ -308,12 +353,45 @@ function DeptEditDialog({
         <DialogHeader>
           <DialogTitle>编辑部门</DialogTitle>
           <DialogDescription>
-            仅名称与状态可改；调整层级用「移动」，部门管理员与归属组走部署面专项口径。
+            覆盖上级部门、名称、部门管理员、归属用户组与状态；上级部门变更即移动，防环由后端校验。
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
+          <Field id="edit-dept-parent" label="上级部门">
+            <ParentSelect
+              id="edit-dept-parent"
+              value={parentId}
+              depts={depts}
+              excludeIds={subtreeIDs(depts, dept.id)}
+              onValueChange={setParentId}
+            />
+          </Field>
           <Field id="edit-dept-name" label="部门名称">
             <Input id="edit-dept-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+          </Field>
+          <Field id="edit-dept-owner-user" label="部门管理员">
+            <OptionSelect
+              id="edit-dept-owner-user"
+              ariaLabel="部门管理员"
+              mode="single"
+              value={ownerUserId}
+              onChange={setOwnerUserId}
+              loadOptions={listOwnerUserOptions}
+              pinnedValues={[dept.ownerUserId]}
+              placeholder="选择部门管理员"
+            />
+          </Field>
+          <Field id="edit-dept-owner-group" label="归属用户组（可选）">
+            <OptionSelect
+              id="edit-dept-owner-group"
+              ariaLabel="归属用户组"
+              mode="single"
+              value={ownerUserGroupId}
+              onChange={setOwnerUserGroupId}
+              loadOptions={listOwnerGroupOptions}
+              pinnedValues={dept.ownerUserGroupId === undefined ? [] : [dept.ownerUserGroupId]}
+              placeholder="不设归属用户组"
+            />
           </Field>
           <div className="flex items-center gap-2">
             {/* 开关的可访问名保持稳定，状态词另起展示位随开关联动。 */}
@@ -375,7 +453,13 @@ function DeptMoveDialog({
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
           <Field id="move-dept-parent" label="新上级部门">
-            <ParentSelect id="move-dept-parent" value={parentId} depts={depts} excludeId={dept.id} onValueChange={setParentId} />
+            <ParentSelect
+              id="move-dept-parent"
+              value={parentId}
+              depts={depts}
+              excludeIds={subtreeIDs(depts, dept.id)}
+              onValueChange={setParentId}
+            />
           </Field>
           <FormError message={error} />
           <DialogActions pending={pending} submitLabel="移动" />
@@ -585,11 +669,24 @@ export function DeptManagePage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <div className="flex items-center gap-1">
           <h1 className="text-lg font-semibold text-foreground">部门管理</h1>
-          <p className="text-sm text-muted-foreground">
-            租户组织树的维护入口；树一次返回租户内全部未删除部门，无分页。
-          </p>
+          {/* 信息图标悬停/聚焦显示页面说明（与 DataTable 标题行同款）。 */}
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  role="button"
+                  aria-label="关于部门管理"
+                  className="cursor-help rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <InfoIcon aria-hidden className="size-4" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-72">租户组织树的维护入口；树一次返回租户内全部未删除部门，无分页。</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p aria-label="列表统计" className="text-sm text-muted-foreground">
@@ -639,7 +736,7 @@ export function DeptManagePage() {
       {dialog === null ? null : dialog.kind === 'create' ? (
         <DeptCreateDialog parent={dialog.parent} depts={depts} onClose={() => setDialog(null)} onCreated={reload} />
       ) : dialog.kind === 'edit' ? (
-        <DeptEditDialog dept={dialog.dept} onClose={() => setDialog(null)} onSaved={reload} />
+        <DeptEditDialog dept={dialog.dept} depts={depts} onClose={() => setDialog(null)} onSaved={reload} />
       ) : dialog.kind === 'move' ? (
         <DeptMoveDialog dept={dialog.dept} depts={depts} onClose={() => setDialog(null)} onMoved={reload} />
       ) : (

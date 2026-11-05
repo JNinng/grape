@@ -7,11 +7,11 @@
 //	table sys_menu: [@pk: id]
 //	table sys_menu: [@filter: deleted_at is_null]
 //	column sys_menu.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_menu.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_menu.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_menu.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_menu.permission_code: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_menu.parent_id: [@dynamic: eq, neq, in, not_in]
-//	column sys_menu.menu_type: [@dynamic: eq, neq, in, not_in @hideable]
+//	column sys_menu.menu_type: [@dynamic: eq, neq, in, not_in @hideable @label: 菜单类型 @desc: 按钮即操作权限点 @options: 1=目录 2=菜单 3=按钮]
 //	column sys_menu.icon: [@updatable: set]
 //	column sys_menu.route_path: [@updatable: set]
 //	column sys_menu.component: [@updatable: set]
@@ -23,7 +23,7 @@
 //	column sys_menu.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_menu.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_menu.deleted_at: [@internal]
-//	column sys_menu.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_menu.tenant_id: [@internal]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -58,13 +58,17 @@ var sys_menuRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -102,13 +106,19 @@ var sys_menuRegistry = dynq.TableMeta{
 		{
 			Key:        "menuType",
 			Column:     "menu_type",
-			Label:      "菜单类型：1-目录 2-菜单 3-按钮（操作权限点）",
+			Label:      "菜单类型",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "按钮即操作权限点",
+			Options: []dynq.FieldOption{
+				{Value: int64(1), Label: "目录"},
+				{Value: int64(2), Label: "菜单"},
+				{Value: int64(3), Label: "按钮"},
+			},
 		},
 		{
 			Key:        "icon",
@@ -232,10 +242,9 @@ var sys_menuRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
@@ -287,7 +296,6 @@ var SysMenuField = struct {
 	CreatedAt      dynq.FieldName
 	UpdatedBy      dynq.FieldName
 	UpdatedAt      dynq.FieldName
-	TenantID       dynq.FieldName
 }{
 	ID:             "id",
 	Status:         "status",
@@ -305,7 +313,6 @@ var SysMenuField = struct {
 	CreatedAt:      "createdAt",
 	UpdatedBy:      "updatedBy",
 	UpdatedAt:      "updatedAt",
-	TenantID:       "tenantId",
 }
 
 // ListSysMenuParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -374,8 +381,6 @@ type ListSysMenuParams struct {
 	UpdatedAtGte         *time.Time
 	UpdatedAtLt          *time.Time
 	UpdatedAtLte         *time.Time
-	TenantID             *string
-	TenantIDNeq          *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -1094,27 +1099,6 @@ func ParseSysMenuQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysMenuPara
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		}
 	}
 
@@ -1195,9 +1179,6 @@ func validateSysMenuParams(params ListSysMenuParams, cfg *dynq.QueryConfig) erro
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_menuRegistry)
 }
@@ -1389,12 +1370,6 @@ func buildSysMenuWhere(params ListSysMenuParams) []sq.Sqlizer {
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
 	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
-	}
 	return conds
 }
 
@@ -1557,7 +1532,7 @@ type SysMenuUpdateOption = dynq.UpdateOption[SysMenuTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysMenuTable) SetStatus(v int64) SysMenuUpdateOption {
 	return func(st *dynq.UpdateState[SysMenuTable]) error {
 		return st.Set("status", "status", "", v)

@@ -172,26 +172,54 @@ func TestDeptServiceUpdateDeptRequiresStatus(t *testing.T) {
 	}
 }
 
-func TestDeptServiceUpdateDeptIgnoresParentAndOwner(t *testing.T) {
+func TestDeptServiceUpdateDeptForwardsOwnerAndParent(t *testing.T) {
 	repo := &fakeDeptRepo{}
 	svc := NewDeptService(biz.NewDeptUsecase(repo))
 	parent := int64(3)
+	group := int64(4)
 	status := int32(biz.DeptStatusDisabled)
 
 	_, err := svc.UpdateDept(biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7}), &orgv1.UpdateDeptRequest{
-		Dept: &orgv1.Dept{Id: 5, Name: "eng", Status: &status, ParentId: &parent, OwnerUserId: 99},
+		Dept: &orgv1.Dept{
+			Id: 5, Name: "eng", Status: &status,
+			ParentId: &parent, OwnerUserId: 99, OwnerUserGroupId: &group,
+		},
+	})
+	if err != nil {
+		t.Fatalf("update dept: %v", err)
+	}
+	if repo.updated.ParentID == nil || *repo.updated.ParentID != parent {
+		t.Fatalf("updated parent = %v, want %d", repo.updated.ParentID, parent)
+	}
+	if repo.updated.OwnerUserID != 99 {
+		t.Fatalf("updated owner user = %d, want 99", repo.updated.OwnerUserID)
+	}
+	if repo.updated.OwnerUserGroupID == nil || *repo.updated.OwnerUserGroupID != group {
+		t.Fatalf("updated owner group = %v, want %d", repo.updated.OwnerUserGroupID, group)
+	}
+	if repo.updated.Status != biz.DeptStatusDisabled {
+		t.Fatalf("updated status = %d, want disabled", repo.updated.Status)
+	}
+}
+
+// TestDeptServiceUpdateDeptUnsetParentMeansRoot 校验覆盖语义下 parent_id
+// 未设置即移为根部门（nil 透传），owner_user_group_id 未设置即清空。
+func TestDeptServiceUpdateDeptUnsetParentMeansRoot(t *testing.T) {
+	repo := &fakeDeptRepo{}
+	svc := NewDeptService(biz.NewDeptUsecase(repo))
+	status := int32(biz.DeptStatusEnabled)
+
+	_, err := svc.UpdateDept(biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7}), &orgv1.UpdateDeptRequest{
+		Dept: &orgv1.Dept{Id: 5, Name: "eng", Status: &status, OwnerUserId: 99},
 	})
 	if err != nil {
 		t.Fatalf("update dept: %v", err)
 	}
 	if repo.updated.ParentID != nil {
-		t.Fatalf("updated parent = %+v, want nil (move goes through MoveDept)", repo.updated.ParentID)
+		t.Fatalf("updated parent = %v, want nil (root)", repo.updated.ParentID)
 	}
-	if repo.updated.OwnerUserID != 0 {
-		t.Fatalf("updated owner user = %d, want 0", repo.updated.OwnerUserID)
-	}
-	if repo.updated.Status != biz.DeptStatusDisabled {
-		t.Fatalf("updated status = %d, want disabled", repo.updated.Status)
+	if repo.updated.OwnerUserGroupID != nil {
+		t.Fatalf("updated owner group = %v, want nil (cleared)", repo.updated.OwnerUserGroupID)
 	}
 }
 

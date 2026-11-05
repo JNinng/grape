@@ -152,8 +152,10 @@ func (r *deptRepo) Create(ctx context.Context, auth biz.Identity, d *biz.Dept) (
 	return out, nil
 }
 
-// Update 覆盖可变字段（name、status）。目标行先经 LockSysDeptByID 锁定：
-// 不存在或跨租户等同不存在（NotFound），锁持有到提交。
+// Update 覆盖可变字段（name、status、parent_id、owner_user_id、
+// owner_user_group_id）。目标行先经 LockSysDeptByID 锁定：不存在或跨租户
+// 等同不存在（NotFound），锁持有到提交；parent_id 变更由触发器在同一事务
+// 内校验并重写闭包路径。
 func (r *deptRepo) Update(ctx context.Context, auth biz.Identity, d *biz.Dept) (*biz.Dept, error) {
 	var out *biz.Dept
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -161,10 +163,13 @@ func (r *deptRepo) Update(ctx context.Context, auth biz.Identity, d *biz.Dept) (
 			return err
 		}
 		updated, err := s.Q().UpdateSysDept(ctx, gen.UpdateSysDeptParams{
-			Name:      d.Name,
-			Status:    int16(d.Status),
-			UpdatedBy: auth.UserID,
-			ID:        d.ID,
+			Name:             d.Name,
+			Status:           int16(d.Status),
+			ParentID:         d.ParentID,
+			OwnerUserID:      d.OwnerUserID,
+			OwnerUserGroupID: d.OwnerUserGroupID,
+			UpdatedBy:        auth.UserID,
+			ID:               d.ID,
 		})
 		if err != nil {
 			return err

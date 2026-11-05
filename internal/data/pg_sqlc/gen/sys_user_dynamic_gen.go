@@ -8,23 +8,23 @@
 //	table sys_user: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
 //	table sys_user: [@filter: deleted_at is_null]
 //	column sys_user.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_user.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_user.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_user.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_user.nickname: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_user.password: [@internal @updatable: set]
 //	column sys_user.email: [@dynamic: eq, neq, prefix @hideable @updatable: set]
 //	column sys_user.phone: [@dynamic: eq, neq, prefix @hideable @updatable: set]
 //	column sys_user.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
-//	column sys_user.locale: [@dynamic: eq, neq @hideable @updatable: set]
+//	column sys_user.locale: [@dynamic: eq, neq @hideable @updatable: set @label: 语言 @desc: 用户语言偏好（BCP-47），影响界面展示语言]
 //	column sys_user.last_login_at: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @sortable @updatable: set]
 //	column sys_user.failed_count: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @updatable: set]
-//	column sys_user.locked_until: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @updatable: set]
+//	column sys_user.locked_until: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @updatable: set @label: 锁定截止时间 @desc: NULL 表示未锁定]
 //	column sys_user.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_user.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_user.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_user.deleted_at: [@internal]
-//	column sys_user.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_user.tenant_id: [@internal]
 //	column sys_user.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.owner_dept_id: [@dynamic: eq, neq, in, not_in]
 //	column sys_user.owner_user_group_id: [@dynamic: eq, neq, in, not_in]
@@ -62,13 +62,17 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -138,13 +142,14 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "locale",
 			Column:     "locale",
-			Label:      "用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言",
+			Label:      "语言",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "用户语言偏好（BCP-47），影响界面展示语言",
 		},
 		{
 			Key:        "lastLoginAt",
@@ -171,13 +176,14 @@ var sys_userRegistry = dynq.TableMeta{
 		{
 			Key:        "lockedUntil",
 			Column:     "locked_until",
-			Label:      "账号锁定截止时间，NULL 表示未锁定",
+			Label:      "锁定截止时间",
 			DataType:   dynq.DataTypeDatetime,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween, dynq.OpIsNull, dynq.OpNotNull},
 			Sortable:   false,
 			Selectable: false,
 			Hidden:     false,
+			Desc:       "NULL 表示未锁定",
 		},
 		{
 			Key:        "createdBy",
@@ -239,10 +245,9 @@ var sys_userRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 		{
 			Key:        "ownerUserId",
@@ -329,7 +334,6 @@ var SysUserField = struct {
 	CreatedAt        dynq.FieldName
 	UpdatedBy        dynq.FieldName
 	UpdatedAt        dynq.FieldName
-	TenantID         dynq.FieldName
 	OwnerUserID      dynq.FieldName
 	OwnerDeptID      dynq.FieldName
 	OwnerUserGroupID dynq.FieldName
@@ -349,7 +353,6 @@ var SysUserField = struct {
 	CreatedAt:        "createdAt",
 	UpdatedBy:        "updatedBy",
 	UpdatedAt:        "updatedAt",
-	TenantID:         "tenantId",
 	OwnerUserID:      "ownerUserId",
 	OwnerDeptID:      "ownerDeptId",
 	OwnerUserGroupID: "ownerUserGroupId",
@@ -444,8 +447,6 @@ type ListSysUserParams struct {
 	UpdatedAtGte          *time.Time
 	UpdatedAtLt           *time.Time
 	UpdatedAtLte          *time.Time
-	TenantID              *string
-	TenantIDNeq           *string
 	OwnerUserID           *int64
 	OwnerUserIDNeq        *int64
 	OwnerUserIDIn         []int64
@@ -1346,27 +1347,6 @@ func ParseSysUserQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUserPara
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		case "ownerUserId":
 			switch op {
 			case dynq.OpEq:
@@ -1603,9 +1583,6 @@ func validateSysUserParams(params ListSysUserParams, cfg *dynq.QueryConfig) erro
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	if cfg.WhereDisabled("ownerUserId") && (params.OwnerUserID != nil || params.OwnerUserIDNeq != nil || params.OwnerUserIDIn != nil || params.OwnerUserIDNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "ownerUserId", "field disabled in this context", -1)
@@ -1871,12 +1848,6 @@ func buildSysUserWhere(params ListSysUserParams) []sq.Sqlizer {
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
 	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
-	}
 	if params.OwnerUserID != nil {
 		conds = append(conds, sq.Eq{"owner_user_id": *params.OwnerUserID})
 	}
@@ -2079,7 +2050,7 @@ type SysUserUpdateOption = dynq.UpdateOption[SysUserTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysUserTable) SetStatus(v int64) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("status", "status", "", v)
@@ -2128,7 +2099,7 @@ func (SysUserTable) SetRemark(v *string) SysUserUpdateOption {
 	}
 }
 
-// SetLocale 设置 locale（用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言）列值，无 nil。
+// SetLocale 设置 locale（语言）列值，无 nil。
 func (SysUserTable) SetLocale(v string) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("locale", "locale", "", v)
@@ -2149,7 +2120,7 @@ func (SysUserTable) SetFailedCount(v int64) SysUserUpdateOption {
 	}
 }
 
-// SetLockedUntil 设置 lockedUntil（账号锁定截止时间，NULL 表示未锁定）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+// SetLockedUntil 设置 lockedUntil（锁定截止时间）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (SysUserTable) SetLockedUntil(v *time.Time) SysUserUpdateOption {
 	return func(st *dynq.UpdateState[SysUserTable]) error {
 		return st.Set("lockedUntil", "locked_until", "", v)

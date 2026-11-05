@@ -61,7 +61,47 @@ func TestDeploy_fresh_database_deployment_succeeds(t *testing.T) {
 	if dictRows != 0 {
 		t.Fatalf("bare grape_u connection saw %d dict rows, want 0 (RLS must deny)", dictRows)
 	}
+
+	// 管理员连接绕过 RLS，核对生产种子只含平台自举数据：演示租户、
+	// 部门树、basic 矩阵与字典都由 test_seed.sql 承载，生产部署不得出现。
+	admin := connectAdmin(t, adminDSN, itDatabase)
+	defer admin.Close(context.Background())
+	assertSeedCount(t, admin, "tenant rows", "SELECT count(*) FROM public.sys_tenant", 1)
+	assertSeedCount(t, admin, "user rows", "SELECT count(*) FROM public.sys_user", 1)
+	assertSeedCount(t, admin, "department rows", "SELECT count(*) FROM public.sys_dept", 0)
+	assertSeedCount(t, admin, "basic rows", "SELECT count(*) FROM public.basic", 0)
+	assertSeedCount(t, admin, "dict type rows", "SELECT count(*) FROM public.sys_dict_type", 0)
+	assertSeedCount(t, admin, "dict data rows", "SELECT count(*) FROM public.sys_dict_data", 0)
+	assertSeedCount(t, admin, "test demo tenants",
+		"SELECT count(*) FROM public.sys_tenant WHERE id LIKE 't-test-%' OR id LIKE 't-demo-%' OR id LIKE 't-dev-%' OR id LIKE 't-stg-%'", 0)
+
+	var tenantID, userName string
+	if err := admin.QueryRow(context.Background(), "SELECT id FROM public.sys_tenant").Scan(&tenantID); err != nil {
+		t.Fatalf("query production tenant id: %v", err)
+	}
+	if tenantID != "t-super-01" {
+		t.Fatalf("production tenant id = %q, want t-super-01", tenantID)
+	}
+	if err := admin.QueryRow(context.Background(), "SELECT name FROM public.sys_user").Scan(&userName); err != nil {
+		t.Fatalf("query production user name: %v", err)
+	}
+	if userName != "admin" {
+		t.Fatalf("production user name = %q, want admin", userName)
+	}
+
 	assertNoPassword(t, logs, nil, opts.GrapeUPassword, opts.TestUPassword)
+}
+
+// assertSeedCount 以管理员连接断言生产种子行数。
+func assertSeedCount(t *testing.T, conn *pgx.Conn, label, query string, want int) {
+	t.Helper()
+	var got int
+	if err := conn.QueryRow(context.Background(), query).Scan(&got); err != nil {
+		t.Fatalf("query %s: %v", label, err)
+	}
+	if got != want {
+		t.Fatalf("%s = %d, want %d", label, got, want)
+	}
 }
 
 func TestDeploy_grape_u_password_with_quotes_deploys(t *testing.T) {
@@ -92,7 +132,7 @@ func TestDeploy_repeated_role_and_seed_apply_on_deployed_database(t *testing.T) 
 	conn := connectAdmin(t, adminDSN, itDatabase)
 	defer conn.Close(ctx)
 
-	// 重放前基线：种子租户 5 行
+	// 重放前基线：生产种子只含平台树根租户
 	var before int
 	if err := conn.QueryRow(ctx, "SELECT count(*) FROM public.sys_tenant").Scan(&before); err != nil {
 		t.Fatalf("count tenants before replay: %v", err)

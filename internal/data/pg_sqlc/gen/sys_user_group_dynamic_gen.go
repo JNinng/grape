@@ -7,7 +7,7 @@
 //	table sys_user_group: [@pk: id]
 //	table sys_user_group: [@filter: deleted_at is_null]
 //	column sys_user_group.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_user_group.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_user_group.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_user_group.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_user_group.code: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_user_group.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
@@ -16,7 +16,7 @@
 //	column sys_user_group.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_user_group.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_user_group.deleted_at: [@internal]
-//	column sys_user_group.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_user_group.tenant_id: [@internal]
 //	column sys_user_group.owner_user_id: [@dynamic: eq, neq, in, not_in]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
@@ -52,13 +52,17 @@ var sys_user_groupRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -153,10 +157,9 @@ var sys_user_groupRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 		{
 			Key:        "ownerUserId",
@@ -206,7 +209,6 @@ var SysUserGroupField = struct {
 	CreatedAt   dynq.FieldName
 	UpdatedBy   dynq.FieldName
 	UpdatedAt   dynq.FieldName
-	TenantID    dynq.FieldName
 	OwnerUserID dynq.FieldName
 }{
 	ID:          "id",
@@ -218,7 +220,6 @@ var SysUserGroupField = struct {
 	CreatedAt:   "createdAt",
 	UpdatedBy:   "updatedBy",
 	UpdatedAt:   "updatedAt",
-	TenantID:    "tenantId",
 	OwnerUserID: "ownerUserId",
 }
 
@@ -274,8 +275,6 @@ type ListSysUserGroupParams struct {
 	UpdatedAtGte     *time.Time
 	UpdatedAtLt      *time.Time
 	UpdatedAtLte     *time.Time
-	TenantID         *string
-	TenantIDNeq      *string
 	OwnerUserID      *int64
 	OwnerUserIDNeq   *int64
 	OwnerUserIDIn    []int64
@@ -834,27 +833,6 @@ func ParseSysUserGroupQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysUse
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		case "ownerUserId":
 			switch op {
 			case dynq.OpEq:
@@ -971,9 +949,6 @@ func validateSysUserGroupParams(params ListSysUserGroupParams, cfg *dynq.QueryCo
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	if cfg.WhereDisabled("ownerUserId") && (params.OwnerUserID != nil || params.OwnerUserIDNeq != nil || params.OwnerUserIDIn != nil || params.OwnerUserIDNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "ownerUserId", "field disabled in this context", -1)
@@ -1125,12 +1100,6 @@ func buildSysUserGroupWhere(params ListSysUserGroupParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
-	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
 	}
 	if params.OwnerUserID != nil {
 		conds = append(conds, sq.Eq{"owner_user_id": *params.OwnerUserID})
@@ -1304,7 +1273,7 @@ type SysUserGroupUpdateOption = dynq.UpdateOption[SysUserGroupTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysUserGroupTable) SetStatus(v int64) SysUserGroupUpdateOption {
 	return func(st *dynq.UpdateState[SysUserGroupTable]) error {
 		return st.Set("status", "status", "", v)

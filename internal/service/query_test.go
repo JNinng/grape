@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	queryv1 "grape/api/query/v1"
 	"grape/internal/biz"
 
 	dynq "github.com/jninng/sqlc_gen_dynamic/dynq"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // fakeSchemaProvider 记录请求的资源名，返回固定 schema 或错误。
@@ -26,6 +28,8 @@ func (f *fakeSchemaProvider) ListSchema(resource string) (dynq.ResourceSchema, e
 	return f.schema, nil
 }
 
+// stubListSchema 覆盖生成器真实可产出的形态：integer + int64 options、
+// string + string options、无注解字段，以及 API 选项源的转换分支。
 func stubListSchema() dynq.ResourceSchema {
 	return dynq.ResourceSchema{
 		Resource: "sys_user",
@@ -33,12 +37,36 @@ func stubListSchema() dynq.ResourceSchema {
 			{
 				Field:      "status",
 				Label:      "状态",
-				DataType:   "enum",
+				DataType:   "integer",
 				Sortable:   true,
 				Hideable:   true,
 				Selectable: true,
 				Ops:        []string{"eq", "in"},
-				Enum:       []string{"enabled", "disabled"},
+				Desc:       "0：禁用、1：启用",
+				Options: []dynq.FieldOption{
+					{Value: int64(7), Label: "禁用"},
+					{Value: int64(9), Label: "启用"},
+				},
+			},
+			{
+				Field:      "valueType",
+				Label:      "值类型",
+				DataType:   "string",
+				Hideable:   true,
+				Selectable: true,
+				Ops:        []string{"eq"},
+				Options: []dynq.FieldOption{
+					{Value: "string", Label: "字符串"},
+					{Value: "integer", Label: "整数"},
+				},
+			},
+			{
+				Field:      "name",
+				Label:      "名称",
+				DataType:   "string",
+				Hideable:   true,
+				Selectable: true,
+				Ops:        []string{"contains"},
 			},
 			{
 				Field: "ownerUserId",
@@ -72,14 +100,64 @@ func TestQueryServiceGetListSchemaConvertsContract(t *testing.T) {
 	if out.GetResource() != "sys_user" || out.GetHash() == "" {
 		t.Fatalf("resource/hash = %q/%q, want non-empty pair", out.GetResource(), out.GetHash())
 	}
-	if len(out.GetFields()) != 2 {
-		t.Fatalf("fields = %d, want 2", len(out.GetFields()))
+	if len(out.GetFields()) != 4 {
+		t.Fatalf("fields = %d, want 4", len(out.GetFields()))
 	}
-	status := out.GetFields()[0]
-	if status.GetField() != "status" || status.GetEnumValues() == nil {
-		t.Fatalf("status field = %+v, want enum values carried", status)
-	}
-	api := out.GetFields()[1].GetApi()
+
+	t.Run("integer options keep number kind", func(t *testing.T) {
+		status := out.GetFields()[0]
+		if status.GetField() != "status" || status.GetDesc() != "0：禁用、1：启用" {
+			t.Fatalf("status field/desc = %+v, want field status with carried desc", status)
+		}
+		opts := status.GetOptions()
+		if len(opts) != 2 {
+			t.Fatalf("status options = %d, want 2", len(opts))
+		}
+		if got := numberOption(t, opts[0]); got != 7 {
+			t.Fatalf("status option 0 value = %v, want 7", got)
+		}
+		if opts[0].GetLabel() != "禁用" {
+			t.Fatalf("status option 0 label = %q, want 禁用", opts[0].GetLabel())
+		}
+		if got := numberOption(t, opts[1]); got != 9 {
+			t.Fatalf("status option 1 value = %v, want 9", got)
+		}
+		if opts[1].GetLabel() != "启用" {
+			t.Fatalf("status option 1 label = %q, want 启用", opts[1].GetLabel())
+		}
+	})
+
+	t.Run("string options keep string kind", func(t *testing.T) {
+		valueType := out.GetFields()[1]
+		opts := valueType.GetOptions()
+		if len(opts) != 2 {
+			t.Fatalf("valueType options = %d, want 2", len(opts))
+		}
+		if got := stringOption(t, opts[0]); got != "string" {
+			t.Fatalf("valueType option 0 value = %q, want string", got)
+		}
+		if opts[0].GetLabel() != "字符串" {
+			t.Fatalf("valueType option 0 label = %q, want 字符串", opts[0].GetLabel())
+		}
+		if got := stringOption(t, opts[1]); got != "integer" {
+			t.Fatalf("valueType option 1 value = %q, want integer", got)
+		}
+		if opts[1].GetLabel() != "整数" {
+			t.Fatalf("valueType option 1 label = %q, want 整数", opts[1].GetLabel())
+		}
+	})
+
+	t.Run("field without annotations keeps empty desc and nil options", func(t *testing.T) {
+		name := out.GetFields()[2]
+		if name.GetDesc() != "" {
+			t.Fatalf("name desc = %q, want empty", name.GetDesc())
+		}
+		if name.GetOptions() != nil {
+			t.Fatalf("name options = %+v, want nil", name.GetOptions())
+		}
+	})
+
+	api := out.GetFields()[3].GetApi()
 	if api.GetEndpoint() != "/v1/users/list" || api.GetValueKey() != "id" || api.GetLabelKey() != "nickname" || api.GetMode() != "multi" {
 		t.Fatalf("api = %+v, want endpoint/valueKey/labelKey/mode carried", api)
 	}
@@ -90,6 +168,43 @@ func TestQueryServiceGetListSchemaConvertsContract(t *testing.T) {
 	pg := out.GetPagination()
 	if pg.GetDefaultPageSize() != 20 || pg.GetMaxPageSize() != 100 || !pg.GetIncludeTotal() || len(pg.GetModes()) != 2 {
 		t.Fatalf("pagination = %+v, want 20/100/offset+cursor/total", pg)
+	}
+}
+
+func numberOption(t *testing.T, opt *queryv1.ListSchemaFieldOption) float64 {
+	t.Helper()
+	value, ok := opt.GetValue().GetKind().(*structpb.Value_NumberValue)
+	if !ok {
+		t.Fatalf("option value kind = %T, want number", opt.GetValue().GetKind())
+	}
+	return value.NumberValue
+}
+
+func stringOption(t *testing.T, opt *queryv1.ListSchemaFieldOption) string {
+	t.Helper()
+	value, ok := opt.GetValue().GetKind().(*structpb.Value_StringValue)
+	if !ok {
+		t.Fatalf("option value kind = %T, want string", opt.GetValue().GetKind())
+	}
+	return value.StringValue
+}
+
+func TestQueryServiceRejectsUnsupportedOptionValue(t *testing.T) {
+	provider := &fakeSchemaProvider{schema: dynq.ResourceSchema{
+		Resource: "sys_user",
+		Fields: []dynq.FieldSchema{{
+			Field:   "bad",
+			Options: []dynq.FieldOption{{Value: struct{}{}, Label: "bad"}},
+		}},
+	}}
+	svc := NewQueryService(biz.NewQueryUsecase(provider))
+
+	_, err := svc.GetListSchema(biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7}), &queryv1.GetListSchemaRequest{Resource: "sys_user"})
+	if err == nil {
+		t.Fatal("unsupported option value must be rejected")
+	}
+	if !strings.Contains(err.Error(), "unsupported option value") {
+		t.Fatalf("err = %v, want unsupported option value", err)
 	}
 }
 

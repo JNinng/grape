@@ -7,6 +7,7 @@ import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
 import { DeptManagePage } from './DeptManagePage'
 import { createDept, deleteDept, fetchDeptTree, moveDept, updateDept } from '@/api/depts'
+import { listOwnerGroupOptions, listOwnerUserOptions } from '@/api/assignOptions'
 import { fetchMyPermissions } from '@/api/permissions'
 
 // realApi.fetchDeptTree 保留被 vi.mock 替换前的真实实现，供「真实 protojson
@@ -33,11 +34,18 @@ vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
 }))
 
+vi.mock('@/api/assignOptions', () => ({
+  listOwnerUserOptions: vi.fn(),
+  listOwnerGroupOptions: vi.fn(),
+}))
+
 const mockFetchTree = vi.mocked(fetchDeptTree)
 const mockCreateDept = vi.mocked(createDept)
 const mockUpdateDept = vi.mocked(updateDept)
 const mockMoveDept = vi.mocked(moveDept)
 const mockDeleteDept = vi.mocked(deleteDept)
+const mockListOwnerUsers = vi.mocked(listOwnerUserOptions)
+const mockListOwnerGroups = vi.mocked(listOwnerGroupOptions)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 
 // dept 构造 DTO 基线：可选字段缺省即未设置（protojson 口径）。
@@ -79,6 +87,19 @@ beforeEach(() => {
   // 不依赖 jsdom fetch 对相对地址抛错）。
   mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
   mockFetchTree.mockResolvedValue(sampleTree())
+  mockListOwnerUsers.mockResolvedValue({
+    items: [
+      { value: '7', label: '张管理员', enabled: true, reason: '', assigned: false },
+      { value: '9', label: '李四', enabled: true, reason: '', assigned: false },
+    ],
+    hasMore: false,
+    page: 1,
+  })
+  mockListOwnerGroups.mockResolvedValue({
+    items: [{ value: '1', label: '核心开发组', enabled: true, reason: '', assigned: false }],
+    hasMore: false,
+    page: 1,
+  })
 })
 
 afterEach(() => {
@@ -116,6 +137,16 @@ async function openRowActions(user2: ReturnType<typeof userEvent.setup>, name: s
   return within(menu)
 }
 
+// pickDeptOwner 打开「部门管理员」远程选择器并点选候选（单选取后即关）。
+async function pickDeptOwner(
+  user2: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+  label = '张管理员',
+) {
+  await user2.click(within(dialog).getByRole('combobox', { name: '部门管理员' }))
+  await user2.click(await screen.findByRole('option', { name: new RegExp(label) }))
+}
+
 describe('DeptManagePage tree rendering', () => {
   it('renders_the_nested_tree_with_the_total_on_mount', async () => {
     renderPage()
@@ -126,6 +157,18 @@ describe('DeptManagePage tree rendering', () => {
     expect(screen.getByText('市场部')).toBeInTheDocument()
     expect(screen.getByLabelText('列表统计')).toHaveTextContent('共 4 个部门')
     expect(mockFetchTree).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows_the_full_page_description_from_the_info_icon_tooltip', async () => {
+    const user2 = userEvent.setup()
+    renderPage()
+
+    const trigger = await screen.findByRole('button', { name: '关于部门管理' })
+    await user2.hover(trigger)
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(
+      '租户组织树的维护入口；树一次返回租户内全部未删除部门，无分页。',
+    )
   })
 
   it('collapses_and_expands_a_subtree_without_unmounting_the_parent_row', async () => {
@@ -205,7 +248,7 @@ describe('DeptManagePage create', () => {
     await user2.click(screen.getByRole('button', { name: '新建部门' }))
     const dialog = screen.getByRole('dialog')
     await user2.type(within(dialog).getByLabelText('部门名称'), '客服部')
-    await user2.type(within(dialog).getByLabelText('部门管理员用户 ID'), '7')
+    await pickDeptOwner(user2, dialog)
     await user2.click(within(dialog).getByRole('button', { name: '创建' }))
 
     // 上级部门保持缺省（根部门）即不发送 parentId。
@@ -228,7 +271,7 @@ describe('DeptManagePage create', () => {
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByRole('combobox', { name: '上级部门' })).toHaveTextContent('研发部')
     await user2.type(within(dialog).getByLabelText('部门名称'), '测试组')
-    await user2.type(within(dialog).getByLabelText('部门管理员用户 ID'), '7')
+    await pickDeptOwner(user2, dialog)
     await user2.click(within(dialog).getByRole('button', { name: '创建' }))
 
     await waitFor(() =>
@@ -245,24 +288,56 @@ describe('DeptManagePage create', () => {
     await user2.click(screen.getByRole('button', { name: '新建部门' }))
     await user2.click(within(screen.getByRole('dialog')).getByRole('button', { name: '创建' }))
 
-    expect(screen.getByRole('alert')).toHaveTextContent('name and owner user id are required')
+    expect(screen.getByRole('alert')).toHaveTextContent('name and dept admin are required')
     expect(mockCreateDept).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  it('rejects_non_numeric_owner_ids_inline', async () => {
+  it('loads_the_dept_admin_candidates_from_the_owner_options_endpoint', async () => {
     const user2 = userEvent.setup()
     renderPage()
     await screen.findByText('总公司')
 
     await user2.click(screen.getByRole('button', { name: '新建部门' }))
     const dialog = screen.getByRole('dialog')
+    const trigger = within(dialog).getByRole('combobox', { name: '部门管理员' })
+    await user2.click(trigger)
+
+    // 候选来自归属用户端点（可见范围内的活跃用户），选中后回显 label。
+    expect(await screen.findByRole('option', { name: /张管理员/ })).toBeInTheDocument()
+    expect(mockListOwnerUsers).toHaveBeenCalledWith({ keyword: '', page: 1, pageSize: 20 })
+    await user2.click(screen.getByRole('option', { name: /张管理员/ }))
+    expect(trigger).toHaveTextContent('张管理员')
+  })
+
+  it('creates_a_dept_with_the_selected_owner_group', async () => {
+    const user2 = userEvent.setup()
+    mockCreateDept.mockResolvedValue(dept({ id: '9', name: '客服部' }))
+    renderPage()
+    await screen.findByText('总公司')
+
+    await user2.click(screen.getByRole('button', { name: '新建部门' }))
+    const dialog = screen.getByRole('dialog')
     await user2.type(within(dialog).getByLabelText('部门名称'), '客服部')
-    await user2.type(within(dialog).getByLabelText('部门管理员用户 ID'), 'x7')
+    await pickDeptOwner(user2, dialog)
+
+    // 归属用户组可选：选择后随创建请求上送，未选时为 undefined。
+    const groupTrigger = within(dialog).getByRole('combobox', { name: '归属用户组' })
+    await user2.click(groupTrigger)
+    expect(await screen.findByRole('option', { name: /核心开发组/ })).toBeInTheDocument()
+    expect(mockListOwnerGroups).toHaveBeenCalledWith({ keyword: '', page: 1, pageSize: 20 })
+    await user2.click(screen.getByRole('option', { name: /核心开发组/ }))
+    expect(groupTrigger).toHaveTextContent('核心开发组')
     await user2.click(within(dialog).getByRole('button', { name: '创建' }))
 
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('owner ids must be positive ids')
-    expect(mockCreateDept).not.toHaveBeenCalled()
+    await waitFor(() =>
+      expect(mockCreateDept).toHaveBeenCalledWith({
+        name: '客服部',
+        ownerUserId: '7',
+        ownerUserGroupId: '1',
+      }),
+    )
+    await waitFor(() => expect(mockFetchTree).toHaveBeenCalledTimes(2))
   })
 
   it('surfaces_the_duplicate_name_rejection_inline_and_keeps_the_dialog_open', async () => {
@@ -274,7 +349,7 @@ describe('DeptManagePage create', () => {
     await user2.click(screen.getByRole('button', { name: '新建部门' }))
     const dialog = screen.getByRole('dialog')
     await user2.type(within(dialog).getByLabelText('部门名称'), '研发部')
-    await user2.type(within(dialog).getByLabelText('部门管理员用户 ID'), '7')
+    await pickDeptOwner(user2, dialog)
     await user2.click(within(dialog).getByRole('button', { name: '创建' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
@@ -302,9 +377,53 @@ describe('DeptManagePage edit', () => {
     await user2.click(within(dialog).getByRole('button', { name: '保存' }))
 
     await waitFor(() =>
-      expect(mockUpdateDept).toHaveBeenCalledWith({ id: '2', status: 0, name: '研发部' }),
+      expect(mockUpdateDept).toHaveBeenCalledWith({
+        id: '2',
+        status: 0,
+        name: '研发部',
+        parentId: '1',
+        ownerUserId: '7',
+      }),
     )
     expect(await screen.findByRole('status')).toHaveTextContent('部门 研发部 已更新')
+    await waitFor(() => expect(mockFetchTree).toHaveBeenCalledTimes(2))
+  })
+
+  it('edits_parent_admin_and_owner_group_in_one_save', async () => {
+    const user2 = userEvent.setup()
+    mockUpdateDept.mockResolvedValue(dept({ id: '2', name: '研发部', parentId: '3' }))
+    renderPage()
+    const menu = await openRowActions(user2, '研发部')
+
+    await user2.click(menu.getByRole('menuitem', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+
+    // 上级部门排除自身与子树（研发部 2 / 前端组 4），只剩总公司与市场部。
+    const parentTrigger = within(dialog).getByRole('combobox', { name: '上级部门' })
+    expect(parentTrigger).toHaveTextContent('总公司')
+    await user2.click(parentTrigger)
+    expect(screen.getByRole('option', { name: '市场部' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '前端组' })).not.toBeInTheDocument()
+    await user2.click(screen.getByRole('option', { name: '市场部' }))
+
+    // 部门管理员与归属用户组均为远程单选选择器。
+    await user2.click(within(dialog).getByRole('combobox', { name: '部门管理员' }))
+    await user2.click(await screen.findByRole('option', { name: /李四/ }))
+    await user2.click(within(dialog).getByRole('combobox', { name: '归属用户组' }))
+    await user2.click(await screen.findByRole('option', { name: /核心开发组/ }))
+
+    await user2.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitFor(() =>
+      expect(mockUpdateDept).toHaveBeenCalledWith({
+        id: '2',
+        status: 1,
+        name: '研发部',
+        parentId: '3',
+        ownerUserId: '9',
+        ownerUserGroupId: '1',
+      }),
+    )
     await waitFor(() => expect(mockFetchTree).toHaveBeenCalledTimes(2))
   })
 
@@ -368,8 +487,10 @@ describe('DeptManagePage move', () => {
 
     await user2.click(menu.getByRole('menuitem', { name: '移动' }))
     const dialog = screen.getByRole('dialog')
+    // 下拉已排除被移动部门的子树；后端兜底拒绝（如并发新增的子树）仍须
+    // 原样映射为内联提示。
     await user2.click(within(dialog).getByRole('combobox', { name: '上级部门' }))
-    await user2.click(screen.getByRole('option', { name: '前端组' }))
+    await user2.click(screen.getByRole('option', { name: '市场部' }))
     await user2.click(within(dialog).getByRole('button', { name: '移动' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
@@ -388,11 +509,12 @@ describe('DeptManagePage move', () => {
     const dialog = screen.getByRole('dialog')
     await user2.click(within(dialog).getByRole('combobox', { name: '上级部门' }))
 
-    // 选项里其余部门与根选项齐备，唯独不含被移动部门自身。
+    // 选项里其余部门与根选项齐备，被移动部门自身与其子树均被排除。
     expect(screen.getByRole('option', { name: '无（根部门）' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '总公司' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '市场部' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '研发部' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '前端组' })).not.toBeInTheDocument()
   })
 })
 

@@ -7,19 +7,19 @@
 //	table sys_role: [@pk: id]
 //	table sys_role: [@filter: deleted_at is_null]
 //	column sys_role.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_role.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_role.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_role.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_role.code: [@dynamic: eq, neq, prefix @hideable]
-//	column sys_role.role_type: [@dynamic: eq, neq, in, not_in @hideable]
-//	column sys_role.data_scope: [@dynamic: eq, neq, in, not_in @hideable @updatable: set]
-//	column sys_role.scope_dept_id: [@dynamic: eq, neq, in, not_in @updatable: set]
+//	column sys_role.role_type: [@dynamic: eq, neq, in, not_in @hideable @label: 角色类型 @desc: 系统预置不可删除，核心权限不可剥离 @options: 1=系统预置 2=租户自定义]
+//	column sys_role.data_scope: [@dynamic: eq, neq, in, not_in @hideable @updatable: set @label: 数据范围 @options: 1=仅本人 2=本部门 3=本部门及子部门 4=指定人 5=指定部门 6=用户组 7=全租户]
+//	column sys_role.scope_dept_id: [@dynamic: eq, neq, in, not_in @updatable: set @label: 组织可见范围 @desc: 限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配]
 //	column sys_role.remark: [@dynamic: contains, prefix, suffix @hideable @updatable: set]
 //	column sys_role.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_role.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_role.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_role.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_role.deleted_at: [@internal]
-//	column sys_role.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_role.tenant_id: [@internal]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -54,13 +54,17 @@ var sys_roleRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "name",
@@ -87,35 +91,50 @@ var sys_roleRegistry = dynq.TableMeta{
 		{
 			Key:        "roleType",
 			Column:     "role_type",
-			Label:      "角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义",
+			Label:      "角色类型",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "系统预置不可删除，核心权限不可剥离",
+			Options: []dynq.FieldOption{
+				{Value: int64(1), Label: "系统预置"},
+				{Value: int64(2), Label: "租户自定义"},
+			},
 		},
 		{
 			Key:        "dataScope",
 			Column:     "data_scope",
-			Label:      "数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户",
+			Label:      "数据范围",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(1), Label: "仅本人"},
+				{Value: int64(2), Label: "本部门"},
+				{Value: int64(3), Label: "本部门及子部门"},
+				{Value: int64(4), Label: "指定人"},
+				{Value: int64(5), Label: "指定部门"},
+				{Value: int64(6), Label: "用户组"},
+				{Value: int64(7), Label: "全租户"},
+			},
 		},
 		{
 			Key:        "scopeDeptId",
 			Column:     "scope_dept_id",
-			Label:      "组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配",
+			Label:      "组织可见范围",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   true,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   false,
 			Selectable: false,
 			Hidden:     false,
+			Desc:       "限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配",
 		},
 		{
 			Key:        "remark",
@@ -188,10 +207,9 @@ var sys_roleRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
@@ -235,7 +253,6 @@ var SysRoleField = struct {
 	CreatedAt   dynq.FieldName
 	UpdatedBy   dynq.FieldName
 	UpdatedAt   dynq.FieldName
-	TenantID    dynq.FieldName
 }{
 	ID:          "id",
 	Status:      "status",
@@ -249,7 +266,6 @@ var SysRoleField = struct {
 	CreatedAt:   "createdAt",
 	UpdatedBy:   "updatedBy",
 	UpdatedAt:   "updatedAt",
-	TenantID:    "tenantId",
 }
 
 // ListSysRoleParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -316,8 +332,6 @@ type ListSysRoleParams struct {
 	UpdatedAtGte     *time.Time
 	UpdatedAtLt      *time.Time
 	UpdatedAtLte     *time.Time
-	TenantID         *string
-	TenantIDNeq      *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -1007,27 +1021,6 @@ func ParseSysRoleQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysRolePara
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		}
 	}
 
@@ -1108,9 +1101,6 @@ func validateSysRoleParams(params ListSysRoleParams, cfg *dynq.QueryConfig) erro
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_roleRegistry)
 }
@@ -1296,12 +1286,6 @@ func buildSysRoleWhere(params ListSysRoleParams) []sq.Sqlizer {
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
 	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
-	}
 	return conds
 }
 
@@ -1462,7 +1446,7 @@ type SysRoleUpdateOption = dynq.UpdateOption[SysRoleTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysRoleTable) SetStatus(v int64) SysRoleUpdateOption {
 	return func(st *dynq.UpdateState[SysRoleTable]) error {
 		return st.Set("status", "status", "", v)
@@ -1476,14 +1460,14 @@ func (SysRoleTable) SetName(v string) SysRoleUpdateOption {
 	}
 }
 
-// SetDataScope 设置 dataScope（数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户）列值，无 nil。
+// SetDataScope 设置 dataScope（数据范围）列值，无 nil。
 func (SysRoleTable) SetDataScope(v int64) SysRoleUpdateOption {
 	return func(st *dynq.UpdateState[SysRoleTable]) error {
 		return st.Set("dataScope", "data_scope", "", v)
 	}
 }
 
-// SetScopeDeptID 设置 scopeDeptId（组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+// SetScopeDeptID 设置 scopeDeptId（组织可见范围）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (SysRoleTable) SetScopeDeptID(v *int64) SysRoleUpdateOption {
 	return func(st *dynq.UpdateState[SysRoleTable]) error {
 		return st.Set("scopeDeptId", "scope_dept_id", "", v)

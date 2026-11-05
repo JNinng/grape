@@ -15,16 +15,16 @@ import (
 // 部门仓储集成测试：以真实 PostgreSQL 验证 sys_dept 固定 CRUD、动态查询
 // 协议、RLS 租户边界与闭包表触发器（trg_maintain_dept_closure）的建立/
 // 移动重写/软删清理纪律。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/seed.sql：t-super-01 有部门树 1..8，t-demo-01 无部门）。
+// 种子数据见 sqlc/test_seed.sql：t-test-01 有部门树 1..8，t-test-02 无部门）。
 // 各用例经 setupTestDB 重建数据库实现隔离；新建部门用 newID() 发号，
 // 不与种子主键冲突。
 
 const (
 	// testTenantSeeded 是种子部门树所在的租户（1=总公司、2=技术部、
 	// 7/8=技术部的子组）。
-	testTenantSeeded = "t-super-01"
+	testTenantSeeded = "t-test-01"
 	// testTenantEmpty 是无部门种子的租户，供新建树的用例使用。
-	testTenantEmpty = "t-demo-01"
+	testTenantEmpty = "t-test-02"
 )
 
 // deptAuth 返回指定租户的操作者身份；部门表无 @scope，操作者仅落入审计列。
@@ -156,7 +156,7 @@ func TestDeptRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 
 func TestDeptRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 部门 1 属 t-super-01；t-demo-01 的身份经 RLS 不可见，等同不存在。
+	// 部门 1 属 t-test-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	other := deptAuth(testTenantEmpty)
 
 	_, err := NewDeptRepo(d).GetByID(context.Background(), other, 1)
@@ -260,11 +260,43 @@ func TestDeptRepo_update_changes_name_and_status(t *testing.T) {
 	}
 }
 
+func TestDeptRepo_update_owner_and_parent_rewrites_closure(t *testing.T) {
+	d := setupTestDB(t)
+	auth := deptAuth(testTenantEmpty)
+	repo := NewDeptRepo(d)
+
+	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 1})
+	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 1})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child", OwnerUserID: 1, ParentID: &rootA.ID})
+
+	group := int64(42)
+	child.ParentID = &rootB.ID
+	child.OwnerUserID = 7
+	child.OwnerUserGroupID = &group
+	updated, err := repo.Update(context.Background(), auth, child)
+	if err != nil {
+		t.Fatalf("update dept: %v", err)
+	}
+	if updated.OwnerUserID != 7 || updated.OwnerUserGroupID == nil || *updated.OwnerUserGroupID != group {
+		t.Fatalf("owner = (%d, %v), want (7, %d)", updated.OwnerUserID, updated.OwnerUserGroupID, group)
+	}
+	if updated.ParentID == nil || *updated.ParentID != rootB.ID {
+		t.Fatalf("parent = %v, want %d", updated.ParentID, rootB.ID)
+	}
+	paths := closureSet(t, d, auth)
+	if _, ok := paths[closureKey(rootB.ID, child.ID)]; !ok {
+		t.Fatalf("closure missing new parent path: %v", paths)
+	}
+	if _, ok := paths[closureKey(rootA.ID, child.ID)]; ok {
+		t.Fatalf("closure kept stale parent path: %v", paths)
+	}
+}
+
 func TestDeptRepo_update_missing_dept_maps_not_found(t *testing.T) {
 	d := setupTestDB(t)
 
 	_, err := NewDeptRepo(d).Update(context.Background(), deptAuth(testTenantSeeded),
-		&biz.Dept{ID: 424242, Name: "ghost", Status: biz.DeptStatusEnabled})
+		&biz.Dept{ID: 424242, Name: "ghost", Status: biz.DeptStatusEnabled, OwnerUserID: 1})
 	if !errors.Is(err, biz.ErrDeptNotFound) {
 		t.Fatalf("err = %v, want ErrDeptNotFound", err)
 	}

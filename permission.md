@@ -107,6 +107,40 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 | 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |
 | 改归属 `TransferUserOwner` | `LockSysUserPermitted`（旧归属）→ `fn_can_transfer_owner`（新归属可达）→ `UpdateSysUserOwner` |
 | 分配角色 `AssignRoles` | `fn_can_assign_roles` 逐角色判定（不锁目标行）→ `AssignUserRoles`；任一 false 整体回滚 |
+| 设置角色 `SetUserRoles` | `LockSysUserPermitted` 锁定目标 → 读全部映射并按 `fn_can_assign_role` 分出 manageable/locked → `fn_can_assign_role` 判新增、`DeleteUserRoles`（SQL 内再判一次）判撤销 → `AssignUserRoles`；版本冲突 Conflict，任意拒绝整批回滚 |
+
+### 角色整组替换（SetUserRoles）
+
+`SetUserRoles` 只表达调用方**可管理范围**内的目标集合：locked 角色（范围外、
+停用/软删角色的残留映射）原样保留，请求触及 locked 返回 Forbidden，绝不误删
+调用方看不见的分配。不变量：
+
+1. 目标必须可见：`LockSysUserPermitted` 锁定目标行，无行等同不存在（NotFound）。
+2. managed/locked 分区：`currentAll`（全部映射）→ `activeCurrent`（活跃角色）→
+   `fn_can_assign_role` 逐角色判定；`locked = currentAll - manageable`。
+3. `desired` 必须全部是活跃角色；新增/撤销同口径要求 `fn_can_assign_role=true`，
+   任一不通过整批回滚。`DeleteUserRoles` 在 SQL 内再带一次判定，受影响行数
+   与请求数不等同样回滚。
+4. 版本 `sha256("<user_id>|<升序 manageable ID 逗号列表>")`，`ListUserRoles` 与
+   `SetUserRoles` 共用同一 helper；与 `expected_version` 不一致返回 Conflict
+   （`USER_ROLE_SET_CHANGED`），客户端应重载而非重试。
+5. 自锁保护：目标为操作者本人时，最终集合（locked ∪ desired）至少保留一个
+   携带 `sys:user:assign-role` 的有效角色，否则 Forbidden。
+
+目标可见性是这个接口的硬前提；`fn_can_assign_role` 的「操作者部门命中分发
+映射但看不见目标」分支不进入本接口，只能走保留的只增 `AssignRoles`。
+
+### 选择器候选（Option 契约）
+
+角色候选 `ListAssignableRoles` 先经 `GetSysUserPermitted` 判目标可见，再以
+`fn_can_assign_role` 过滤活跃、可分配且目标尚未拥有的角色；三个归属候选
+（`ListOwnerUserOptions` / `ListOwnerDeptOptions` / `ListOwnerGroupOptions`）
+无目标参数，直接按 `fn_accessible_user_ids` / `fn_accessible_dept_ids` /
+`fn_accessible_group_ids` 的三态过滤活跃对象。候选不复用
+`ListUsers`/`ListRoles`/`ListDepts`/`ListUserGroups`：动态查询的 `@scope` 是
+按行归属过滤，不等于「人员可见集」或「可分配角色集」；`where` 恒为 AND 也
+无法做 name OR code 的跨字段关键字搜索。分页以 limit+1 判定 `has_more`，
+`total` v1 不返回。
 
 ## 读形态
 
@@ -114,6 +148,7 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 |---|---|
 | 列表 / 计数 | 动态查询协议；生成代码在 WHERE 头部注入 `@scope` 三维守卫，缺 Scope fail-closed；List 与 Count 共用守卫，`total` 与 `items` 权限视图一致 |
 | 单行 / 详情 | `GetXxxPermitted`：`fn_check_visible`（掩码 7）+ 可空权限码，一条查询完成取行与判定；不可见 → NotFound |
+| 选择器候选 | 专用命名查询：角色候选经 `GetSysUserPermitted` 判目标可见 + `fn_can_assign_role`；归属候选直接按 `fn_accessible_*` 三态过滤；不复用动态 List |
 | 外部批量过滤 | `fn_filter_visible_rows`；只读，拒绝表现为空集，不是错误 |
 
 ```sql
@@ -137,6 +172,8 @@ WHERE id = sqlc.arg('id')
 |---|---|
 | 列表 | `ParseSysUserQuery` → `params.Scope = s.SysUserScope()` → `ListSysUser` / `CountSysUser`；守卫由 `@scope` 注入，缺 Scope 报错 |
 | 详情 | `GetSysUserPermitted`（掩码 7；权限码可空）→ 不可见 NotFound，不泄露存在性 |
+| 角色设置/候选 | `ListUserRoles` / `SetUserRoles` / `ListAssignableRoles`：目标经 `GetSysUserPermitted` / `LockSysUserPermitted` 判可见；集合按 `fn_can_assign_role` 分区与过滤 |
+| 归属候选 | 三个 owner options 专用查询按 `fn_accessible_*` 三态过滤；无目标参数 |
 | 登录凭据 | `GetUserCredentialByName` 走 `TenantTx`：身份成立前只注入租户，不做数据范围判定；仅返回未软删行的口令哈希 |
 
 ## 错误语义
@@ -145,6 +182,10 @@ WHERE id = sqlc.arg('id')
 |---|---|---|
 | 行不存在 / 数据范围不可见 / 权限码不匹配 | NotFound | 不泄露存在性；`LockXxxPermitted` / `GetXxxPermitted` 未命中返回 `pgx.ErrNoRows`，由仓储 `mapErr` 统一映射 |
 | 看得见，但业务授权不允许（分配角色、转归属到不可达对象） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感，明确拒绝 |
+| `SetUserRoles` 请求触及 locked 角色、新增/撤销角色不可分配，或目标为操作者本人时移除最后一个带 `sys:user:assign-role` 的角色（自锁） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感；整批回滚，不产生部分写入 |
+| `SetUserRoles` 的 `expected_version` 与当前可管理集合不一致 | Conflict（`ErrUserRoleSetChanged` / `USER_ROLE_SET_CHANGED`） | 并发改动要求调用方重载，不是权限拒绝；客户端不自动重试写入 |
+| `expected_version` 缺失/空串、`user_id`/`role_ids` 非正 | InvalidArgument（`ErrUserInvalidArgument`） | 请求参数非法 |
+| `OptionQuery` 越界（page<1、page_size<1 或 >100） | 归一化后正常返回 | page→1、page_size→20/100（对齐成员列表先例） |
 | 只读判定的 false | 不是错误 | 调用方按布尔值处理 |
 
 取行查询里的权限码校验未命中同样落到 NotFound；需要 403 的功能权限拒绝，应在入口层单独判 `fn_has_permission`，取行查询传 NULL。权限失败不用「0 行」隐式表达：0 行既可能是没权限，也可能是并发删除，仓储层无法区分。
@@ -155,7 +196,7 @@ WHERE id = sqlc.arg('id')
 
 落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单/字典/配置族（全局/租户/功能开关/翻译）/租户管理面与审计日志/会话治理面的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
 
-已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单/字典/配置族（全局/租户/功能开关/翻译）/租户管理面与审计日志/会话治理面（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码；字典两级共用一组操作码、配置族按全局/租户/功能开关/翻译分设操作码、租户管理按 `sys:tenant:query|create|update|delete` 分设（停用/恢复并入 `:update`）、审计日志 List/点查并入各自页面码、会话治理查询/撤销单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。全局配置读取本身即全局口径（sys_config 无 tenant_id、无 RLS），读端点不设 super 例外；功能开关与翻译是租户表（RLS + 普通 DML），读写端点均不设 super。租户管理面（sys_tenant）方法名带 `super` 表达平台级租户实体管理（管理对象是一整个租户实体，见第 10 条），租户树边界仍由 RLS 承担，不设绕过例外。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
+已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单/字典/配置族（全局/租户/功能开关/翻译）/租户管理面与审计日志/会话治理面（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码；字典两级共用一组操作码、配置族按全局/租户/功能开关/翻译分设操作码、租户管理按 `sys:tenant:query|create|update|delete` 分设（停用/恢复并入 `:update`）、审计日志 List/点查并入各自页面码、会话治理查询/撤销单设码；用户分配选择器按分配动作设码——角色候选/当前角色/设置角色并入 `sys:user:assign-role`，三个归属候选并入 `sys:user:transfer-owner`）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。全局配置读取本身即全局口径（sys_config 无 tenant_id、无 RLS），读端点不设 super 例外；功能开关与翻译是租户表（RLS + 普通 DML），读写端点均不设 super。租户管理面（sys_tenant）方法名带 `super` 表达平台级租户实体管理（管理对象是一整个租户实体，见第 10 条），租户树边界仍由 RLS 承担，不设绕过例外。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 平台信任边界：`sys:config:global:*` 写码只应由平台根租户持有，且代码在全局配置用例的写路径强制校验调用方租户为根租户（`parent_id IS NULL`）——子租户即使自造或持有写码也返回 403（`ErrConfigPlatformRequired` / `CONFIG_PLATFORM_REQUIRED`）。读端点不设此守卫。
@@ -168,7 +209,7 @@ WHERE id = sqlc.arg('id')
 
 ## 新增资源 / 操作速查
 
-1. **建表**：`tenant_id` + 审计列 + 归属三元组；表注释声明 `@scope`、`@filter: deleted_at is_null`、`@pk`、`@page`；`owner_*` 建索引；`rls.sql` 补策略并 ENABLE + FORCE。
+1. **建表**：`tenant_id`（列注释 `[@internal]`，不参与动态 schema/投影/过滤/排序；`sys_tenant.tenant_id` 为租户树结构例外，保留 `[@dynamic: exact @hideable]`）+ 审计列 + 归属三元组；表注释声明 `@scope`、`@filter: deleted_at is_null`、`@pk`、`@page`；`owner_*` 建索引；`rls.sql` 补策略并 ENABLE + FORCE。
 2. **列表 / 计数**：复用 `query.v1.Query` 动态协议，Scope 由 `IdentityTx` 注入。
 3. **详情**：`GetXxxPermitted`（`fn_check_visible` 掩码 7，权限码可空），不可见返回 NotFound。
 4. **修改 / 删除 / 改密**：`LockXxxPermitted`（`fn_can_operate_row` + `FOR UPDATE`，权限码可空）→ 写入；业务授权另判。

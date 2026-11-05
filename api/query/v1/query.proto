@@ -65,6 +65,47 @@ message Pagination {
   optional bool include_total = 4;
 }
 
+// OptionQuery 是可搜索选项来源的查询输入：关键字 + offset 分页。匹配字段
+// 由来源定义（角色匹配 name/code，用户匹配 name/nickname，部门匹配 name，
+// 用户组匹配 name/code）；越界分页由服务端归一化。
+message OptionQuery {
+  // 关键字；空串不过滤。大小写不敏感的子串匹配。
+  string keyword = 1;
+  // 页码，从 1 开始；缺省 1。
+  int32 page = 2;
+  // 每页条数；缺省 20，上限 100。
+  int32 page_size = 3;
+}
+
+// Option 是选择器候选项。当前来源的 value 均为 int64 ID 的十进制字符串
+// （前端不丢精度）；enabled/reason 为前向兼容字段，v1 恒 enabled=true、
+// reason 为空。
+message Option {
+  // 选项值；当前来源均为 int64 ID 的十进制字符串。
+  string value = 1;
+  // 展示文本。
+  string label = 2;
+  // 是否可选；v1 恒 true。
+  bool enabled = 3;
+  // enabled=false 时的原因说明；v1 为空。
+  string reason = 4;
+  // 目标用户已拥有（角色场景）；owner 候选恒 false。
+  bool assigned = 5;
+}
+
+// OptionSet 是选项来源的一页结果。total v1 不返回（以 limit+1 判定
+// has_more），保留字段供未来来源使用。
+message OptionSet {
+  // 本页候选项；零命中时键省略（空集合不输出），客户端按空数组处理。
+  repeated Option items = 1;
+  // 是否还有后续页。
+  bool has_more = 2;
+  // 匹配总数；v1 不使用。
+  optional int64 total = 3;
+  // 当前页码；服务端归一化后的值。
+  int32 page = 4;
+}
+
 // QueryService 提供动态 List 的能力 schema 出口：前端据此渲染查询组件。
 // schema 是（生成期元数据，能力收窄选项）的确定性纯函数，同一资源恒产出
 // 字节级相同结果，内容 hash 可作 ETag。资源仅收录已暴露动态 List 的表；
@@ -127,14 +168,34 @@ message ListSchemaField {
   // 枚举字段的合法线上枚举名。JSON 键为 enum；非枚举字段时键省略（空集合
   // 不输出），客户端按空数组处理。
   repeated string enum_values = 9 [json_name = "enum"];
-  // 选项数据源为远程接口的声明；为空表示枚举取静态清单。未声明时 JSON
-  // 响应键省略。
+  // 选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
+  // options）。未声明时 JSON 响应键省略。
   ListSchemaFieldAPI api = 10;
+  // 字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
+  // JSON 响应键省略。
+  string desc = 11;
+  // 静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
+  // 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
+  // （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
+  repeated ListSchemaFieldOption options = 12;
+}
+
+// ListSchemaFieldOption 是静态字典选项的单个键值对。
+message ListSchemaFieldOption {
+  // 选项值，仅整数或字符串，与字段 data_type 定型一致；整数按 JSON
+  // number 表达，限制在 JS 安全整数范围内。
+  google.protobuf.Value value = 1;
+  // 选项展示文本。
+  string label = 2;
 }
 
 // ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
 // GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
 // 命名的顶层字段。
+//
+// 本声明只服务 query-filter 的字段级选项来源；用户分配选择器使用的
+// OptionQuery / Option / OptionSet 是并行的独立接口，不接入本字段
+// （选择器端点按分配动作设权限码，不复用动态查询的 @api 解析）。
 message ListSchemaFieldAPI {
   // 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
   string endpoint = 1;

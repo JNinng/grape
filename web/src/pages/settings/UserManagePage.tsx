@@ -1,8 +1,20 @@
-import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { PlusIcon } from 'lucide-react'
-import { assignRoles, createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type OwnerTripleInput, type UserDTO } from '@/api/users'
+import {
+  listAssignableRoles,
+  listOwnerDeptOptions,
+  listOwnerGroupOptions,
+  listOwnerUserOptions,
+  listUserRoles,
+  setUserRoles,
+  type OptionQueryInput,
+  type UserRoleSetDTO,
+} from '@/api/assignOptions'
+import { createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type OwnerTripleInput, type UserDTO } from '@/api/users'
+import { ApiError } from '@/api/toApiError'
 import type { QueryCondition, QuerySort } from '@/api/query'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
+import { OptionSelect, type OptionPage } from '@/components/manage/option-select'
 import { RowActionsMenu } from '@/components/manage/row-actions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import {
@@ -319,66 +331,146 @@ function UserPasswordDialog({ user, onClose }: { user: UserDTO; onClose: () => v
   )
 }
 
-// ---------- 分配角色 ----------
+// ---------- 设置角色 ----------
 
-// parseRoleIds 把逗号/空白分隔的 ID 串解析为去重后的字符串 ID 数组；
-// 非正整数输入返回 null 由调用方报错。
-function parseRoleIds(raw: string): string[] | null {
-  const parts = raw
-    .split(/[\s,，;；]+/)
-    .map((part) => part.trim())
-    .filter((part) => part !== '')
-  if (parts.length === 0) {
-    return null
-  }
-  const ids = new Set<string>()
-  for (const part of parts) {
-    if (!/^[1-9]\d*$/.test(part)) {
-      return null
-    }
-    ids.add(part)
-  }
-  return [...ids]
-}
-
+// UserRolesDialog 以「管理范围内整组替换」设置目标用户的角色：当前可
+// 管理角色预勾选，候选来自 ListAssignableRoles；locked 角色只显示数量。
+// 版本冲突（409 USER_ROLE_SET_CHANGED）提示并重载，不重试写入。
 function UserRolesDialog({ user, onClose }: { user: UserDTO; onClose: () => void }) {
-  const [raw, setRaw] = useState('')
+  const [current, setCurrent] = useState<UserRoleSetDTO | null>(null)
+  const [initialPage, setInitialPage] = useState<OptionPage | undefined>(undefined)
+  const [selected, setSelected] = useState<string[]>([])
+  const [selectedLabels, setSelectedLabels] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [pending, setPending] = useState(false)
+
+  const applyCurrent = (set: UserRoleSetDTO) => {
+    setCurrent(set)
+    setSelected(set.items.map((item) => item.value))
+    setSelectedLabels(Object.fromEntries(set.items.map((item) => [item.value, item.label])))
+  }
+
+  const reloadCurrent = useCallback(async () => {
+    applyCurrent(await listUserRoles(user.id))
+  }, [user.id])
+
+  // 并行加载当前角色集合与候选首页：当前集合决定预勾选与版本，候选首页
+  // 作为选择器首次展开的数据（避免打开弹窗后二次等待）。
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const [set, page] = await Promise.all([
+          listUserRoles(user.id),
+          listAssignableRoles(user.id, { page: 1, pageSize: 20 }),
+        ])
+        if (cancelled) {
+          return
+        }
+        applyCurrent(set)
+        setInitialPage({ items: page.items, hasMore: page.hasMore, page: page.page > 0 ? page.page : 1 })
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'load user roles failed')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [user.id])
+
+  const loadCandidates = useCallback(
+    (query: OptionQueryInput) => listAssignableRoles(user.id, query),
+    [user.id],
+  )
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const roleIds = parseRoleIds(raw)
-    if (roleIds === null) {
-      setError('enter at least one positive role id')
+    if (current === null) {
       return
     }
     setPending(true)
+    setError(null)
     try {
-      const reply = await assignRoles(user.id, roleIds)
-      toast.success(`已为用户 ${user.name} 新增 ${Number(reply.added)} 个角色`)
+      const result = await setUserRoles(user.id, selected, current.version)
+      toast.success(`用户 ${user.name} 的角色已更新（${Number(result.items.length)} 个可管理角色）`)
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'assign roles failed')
+      if (err instanceof ApiError && err.reason === 'USER_ROLE_SET_CHANGED') {
+        setError('角色集合已被他人修改，已重新加载，请确认后再次提交')
+        try {
+          await reloadCurrent()
+        } catch (reloadErr) {
+          setError(reloadErr instanceof Error ? reloadErr.message : 'reload user roles failed')
+        }
+        return
+      }
+      setError(err instanceof Error ? err.message : 'set user roles failed')
     } finally {
       setPending(false)
     }
   }
 
+  const unmanaged = current === null ? 0 : Number(current.unmanagedCount)
+
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent size="sm">
         <DialogHeader>
-          <DialogTitle>分配角色</DialogTitle>
-          <DialogDescription>为用户 {user.name} 分配角色 ID（逗号或空白分隔）；已拥有的角色自动跳过。</DialogDescription>
+          <DialogTitle>设置角色</DialogTitle>
+          <DialogDescription>
+            设置用户 {user.name} 的角色；只提交你可管理的角色，范围外角色保持不变。
+          </DialogDescription>
         </DialogHeader>
-        <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
-          <Field id="roles-input" label="角色 ID">
-            <Input id="roles-input" value={raw} onChange={(e) => setRaw(e.target.value)} placeholder="如：1, 3" autoComplete="off" />
-          </Field>
-          <FormError message={error} />
-          <DialogActions pending={pending} submitLabel="分配" />
-        </form>
+        {loading ? (
+          <div className="flex min-h-24 items-center justify-center" aria-label="角色加载中">
+            <Spinner aria-hidden className="size-6" />
+          </div>
+        ) : current === null ? (
+          <div className="grid gap-4">
+            <FormError message={error ?? 'load user roles failed'} />
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button type="button" variant="outline">
+                  关闭
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
+            {unmanaged > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                另有 {unmanaged} 个角色不在你的管理范围，本次保存不会改动
+              </p>
+            ) : null}
+            <Field id="user-roles-select" label="角色">
+              <OptionSelect
+                id="user-roles-select"
+                ariaLabel="角色"
+                mode="multi"
+                value={selected}
+                onChange={setSelected}
+                loadOptions={loadCandidates}
+                initialPage={initialPage}
+                selectedLabels={selectedLabels}
+                pinnedValues={current.items.map((item) => item.value)}
+                placeholder="选择角色"
+              />
+            </Field>
+            <FormError message={error} />
+            <DialogActions pending={pending} submitLabel="保存" />
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -386,6 +478,8 @@ function UserRolesDialog({ user, onClose }: { user: UserDTO; onClose: () => void
 
 // ---------- 转移归属 ----------
 
+// UserOwnerDialog 用三个单选选择器维护归属三元组：候选由对应 owner
+// options 端点按操作者可见范围返回；整组替换语义，清空即落 NULL。
 function UserOwnerDialog({
   user,
   onClose,
@@ -395,30 +489,24 @@ function UserOwnerDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [ownerUserId, setOwnerUserId] = useState(user.ownerUserId ?? '')
-  const [ownerDeptId, setOwnerDeptId] = useState(user.ownerDeptId ?? '')
-  const [ownerUserGroupId, setOwnerUserGroupId] = useState(user.ownerUserGroupId ?? '')
+  const [ownerUserId, setOwnerUserId] = useState<string[]>(
+    user.ownerUserId === undefined ? [] : [user.ownerUserId],
+  )
+  const [ownerDeptId, setOwnerDeptId] = useState<string[]>(
+    user.ownerDeptId === undefined ? [] : [user.ownerDeptId],
+  )
+  const [ownerUserGroupId, setOwnerUserGroupId] = useState<string[]>(
+    user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId],
+  )
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    // 三元组整组替换语义：留空字段即清掉该归属；填了就必须是正整数。
-    const fields: [string, string][] = [
-      ['owner user', ownerUserId],
-      ['owner dept', ownerDeptId],
-      ['owner user group', ownerUserGroupId],
-    ]
-    for (const [label, value] of fields) {
-      if (value.trim() !== '' && !/^[1-9]\d*$/.test(value.trim())) {
-        setError(`${label} must be a positive id`)
-        return
-      }
-    }
     const to: OwnerTripleInput = {
-      ownerUserId: ownerUserId.trim() === '' ? null : ownerUserId.trim(),
-      ownerDeptId: ownerDeptId.trim() === '' ? null : ownerDeptId.trim(),
-      ownerUserGroupId: ownerUserGroupId.trim() === '' ? null : ownerUserGroupId.trim(),
+      ownerUserId: ownerUserId[0] ?? null,
+      ownerDeptId: ownerDeptId[0] ?? null,
+      ownerUserGroupId: ownerUserGroupId[0] ?? null,
     }
     setPending(true)
     try {
@@ -439,18 +527,45 @@ function UserOwnerDialog({
         <DialogHeader>
           <DialogTitle>转移归属</DialogTitle>
           <DialogDescription>
-            修改用户 {user.name} 的归属三元组；留空即清掉该归属。新归属必须在你可见的范围内。
+            修改用户 {user.name} 的归属三元组；清除即落空。新归属必须在你可见的范围内。
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
-          <Field id="owner-user-id" label="归属用户 ID">
-            <Input id="owner-user-id" value={ownerUserId} onChange={(e) => setOwnerUserId(e.target.value)} autoComplete="off" />
+          <Field id="owner-user-id" label="归属用户">
+            <OptionSelect
+              id="owner-user-id"
+              ariaLabel="归属用户"
+              mode="single"
+              value={ownerUserId}
+              onChange={setOwnerUserId}
+              loadOptions={listOwnerUserOptions}
+              pinnedValues={user.ownerUserId === undefined ? [] : [user.ownerUserId]}
+              placeholder="不设归属用户"
+            />
           </Field>
-          <Field id="owner-dept-id" label="归属部门 ID">
-            <Input id="owner-dept-id" value={ownerDeptId} onChange={(e) => setOwnerDeptId(e.target.value)} autoComplete="off" />
+          <Field id="owner-dept-id" label="归属部门">
+            <OptionSelect
+              id="owner-dept-id"
+              ariaLabel="归属部门"
+              mode="single"
+              value={ownerDeptId}
+              onChange={setOwnerDeptId}
+              loadOptions={listOwnerDeptOptions}
+              pinnedValues={user.ownerDeptId === undefined ? [] : [user.ownerDeptId]}
+              placeholder="不设归属部门"
+            />
           </Field>
-          <Field id="owner-user-group-id" label="归属用户组 ID">
-            <Input id="owner-user-group-id" value={ownerUserGroupId} onChange={(e) => setOwnerUserGroupId(e.target.value)} autoComplete="off" />
+          <Field id="owner-user-group-id" label="归属用户组">
+            <OptionSelect
+              id="owner-user-group-id"
+              ariaLabel="归属用户组"
+              mode="single"
+              value={ownerUserGroupId}
+              onChange={setOwnerUserGroupId}
+              loadOptions={listOwnerGroupOptions}
+              pinnedValues={user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId]}
+              placeholder="不设归属用户组"
+            />
           </Field>
           <FormError message={error} />
           <DialogActions pending={pending} submitLabel="转移" />
@@ -522,7 +637,7 @@ function RowActions({ user, onOpen }: { user: UserDTO; onOpen: (state: UserDialo
       actions={[
         { label: '编辑', onSelect: () => onOpen({ kind: 'edit', user }) },
         { label: '修改密码', onSelect: () => onOpen({ kind: 'password', user }) },
-        { label: '分配角色', onSelect: () => onOpen({ kind: 'roles', user }) },
+        { label: '设置角色', onSelect: () => onOpen({ kind: 'roles', user }) },
         { label: '转移归属', onSelect: () => onOpen({ kind: 'owner', user }) },
         { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', user }) },
       ]}

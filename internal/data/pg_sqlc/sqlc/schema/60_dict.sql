@@ -24,7 +24,7 @@ COMMENT ON TABLE public.sys_dict_type IS '字典类型表 [@default_sort: update
 -- Column comments
 
 COMMENT ON COLUMN public.sys_dict_type.id IS '字典类型 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_dict_type.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_dict_type.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_type."name" IS '字典类型名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_type.code IS '字典类型编码 [@dynamic: exact, prefix @hideable]';
 COMMENT ON COLUMN public.sys_dict_type.remark IS '备注 [@dynamic: fuzzy @hideable @updatable: set]';
@@ -33,7 +33,7 @@ COMMENT ON COLUMN public.sys_dict_type.created_at IS '创建时间 [@dynamic: ex
 COMMENT ON COLUMN public.sys_dict_type.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_type.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_dict_type.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_dict_type.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dict_type.tenant_id IS '租户 ID [@internal]';
 
 
 -- public.sys_dict_data 定义
@@ -63,11 +63,11 @@ COMMENT ON TABLE public.sys_dict_data IS '字典数据表 [@default_sort: update
 -- Column comments
 
 COMMENT ON COLUMN public.sys_dict_data.id IS '字典数据 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_dict_data.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_dict_data.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.dict_type_id IS '字典类型 ID [@dynamic: exact, in @hideable]';
 COMMENT ON COLUMN public.sys_dict_data.label IS '字典标签 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.value IS '字典值 [@dynamic: exact, prefix @hideable]';
-COMMENT ON COLUMN public.sys_dict_data.value_type IS '值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理 [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dict_data.value_type IS '值类型：string/integer/boolean/float/json，系统获取值时根据此类型做预处理 [@label: 值类型 @options: string=字符串 integer=整数 boolean=布尔 float=浮点 json=JSON @desc: 系统获取值时根据此类型做预处理 @dynamic: exact @hideable]';
 COMMENT ON COLUMN public.sys_dict_data.sort_order IS '排序号 [@dynamic: exact, range @sortable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.remark IS '备注 [@dynamic: fuzzy @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.created_by IS '创建人 [@dynamic: exact, in]';
@@ -75,4 +75,4 @@ COMMENT ON COLUMN public.sys_dict_data.created_at IS '创建时间 [@dynamic: ex
 COMMENT ON COLUMN public.sys_dict_data.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_dict_data.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_dict_data.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dict_data.tenant_id IS '租户 ID [@internal]';

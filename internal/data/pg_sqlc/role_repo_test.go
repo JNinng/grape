@@ -18,16 +18,16 @@ import (
 // 边界（跨租户角色不可见、跨租户引用不可入配置）与既有分配判定
 //（fn_can_assign_role，经 queries/operate.sql 的 CanAssignRole 命名查询）
 // 的回归。复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见
-// sqlc/seed.sql：t-super-01 有角色 101-109、部门 1-8（1 总公司 → 2-6，
-// 2 技术部 → 7/8）、用户 1-10、菜单 201-245 及角色-菜单映射；t-demo-01
+// sqlc/test_seed.sql：t-test-01 有角色 102-110、部门 1-8（1 总公司 → 2-6，
+// 2 技术部 → 7/8）、用户 2-11、菜单 32xx 副本及角色-菜单映射；t-test-02
 // 仅角色 105、用户 5、菜单 1201-1237）。各用例经 setupTestDB 重建数据库
 // 实现隔离；新建角色用 newID() 发号，不与种子主键冲突。
 
 const (
 	// roleTenantSeeded 是种子角色所在的租户。
-	roleTenantSeeded = "t-super-01"
+	roleTenantSeeded = "t-test-01"
 	// roleTenantEmpty 是无角色种子的租户，供新建角色的用例使用。
-	roleTenantEmpty = "t-demo-01"
+	roleTenantEmpty = "t-test-02"
 )
 
 // roleAuth 返回指定租户的操作者身份；角色表无 @scope，操作者仅落入审计列。
@@ -189,7 +189,7 @@ func setMenuStatus(t *testing.T, d *Data, auth biz.Identity, id int64, status in
 }
 
 // softDeleteMenuRow 置位指定菜单的 deleted_at（构造软删事实的辅助）：
-// 经菜单域受控写函数 fn_menu_delete 软删（菜单 237 为叶子按钮，无子菜单）。
+// 经菜单域受控写函数 fn_menu_delete 软删（菜单 3237 为叶子按钮，无子菜单）。
 func softDeleteMenuRow(t *testing.T, d *Data, auth biz.Identity, id int64) {
 	t.Helper()
 	err := d.IdentityTx(context.Background(), pgAuth(auth), func(s *IdentityTx) error {
@@ -250,7 +250,7 @@ func TestRoleRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
 	d := setupTestDB(t)
 
 	// 仓储直建不经用例缺省，data_scope/role_type 显式携带合法值（列 CHECK 限定）。
-	_, err := NewRoleRepo(d).Create(context.Background(), roleAuth(roleTenantSeeded), &biz.Role{Name: "新角色", Code: "super_admin", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
+	_, err := NewRoleRepo(d).Create(context.Background(), roleAuth(roleTenantSeeded), &biz.Role{Name: "新角色", Code: "dept_admin", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
 	if !errors.Is(err, biz.ErrRoleAlreadyExists) {
 		t.Fatalf("err = %v, want ErrRoleAlreadyExists", err)
 	}
@@ -259,7 +259,7 @@ func TestRoleRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
 func TestRoleRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 	d := setupTestDB(t)
 
-	_, err := NewRoleRepo(d).Create(context.Background(), roleAuth(roleTenantSeeded), &biz.Role{Name: "超级管理员", Code: "brand_new", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
+	_, err := NewRoleRepo(d).Create(context.Background(), roleAuth(roleTenantSeeded), &biz.Role{Name: "部门管理员", Code: "brand_new", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
 	if !errors.Is(err, biz.ErrRoleAlreadyExists) {
 		t.Fatalf("err = %v, want ErrRoleAlreadyExists", err)
 	}
@@ -267,7 +267,8 @@ func TestRoleRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 
 func TestRoleRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 角色 101 属 t-super-01；t-demo-01 的身份经 RLS 不可见，等同不存在。
+	// 角色 101 属 t-super-01（seed.sql 生产默认）；t-test-02 的身份经
+	// RLS 不可见，等同不存在。
 	other := roleAuth(roleTenantEmpty)
 
 	_, err := NewRoleRepo(d).GetByID(context.Background(), other, 101)
@@ -302,7 +303,8 @@ func TestRoleRepo_list_filters_by_code_prefix_with_total(t *testing.T) {
 func TestRoleRepo_list_hides_cross_tenant_rows(t *testing.T) {
 	d := setupTestDB(t)
 
-	// t-demo-01 仅角色 105；t-super-01 的 101-109 经 RLS 不出现。
+	// t-test-02 仅角色 105；t-test-01 的 102-110 与 t-super-01 的 101
+	// 经 RLS 不出现。
 	list, err := NewRoleRepo(d).List(context.Background(), roleAuth(roleTenantEmpty), &dynq.Query{})
 	if err != nil {
 		t.Fatalf("list roles: %v", err)
@@ -384,10 +386,10 @@ func TestRoleRepo_delete_missing_maps_not_found(t *testing.T) {
 
 func TestRoleRepo_delete_preset_role_rejected_without_changes(t *testing.T) {
 	d := setupTestDB(t)
-	auth := roleAuth(roleTenantSeeded)
+	// 角色 101 为系统预置（role_type=1，seed.sql 生产默认数据）：删除被
+	// 拒绝且角色仍可见。
+	auth := roleAuth("t-super-01")
 	repo := NewRoleRepo(d)
-
-	// 角色 101 为系统预置（role_type=1）：删除被拒绝且角色仍可见。
 	err := repo.SoftDelete(context.Background(), auth, 101)
 	if !errors.Is(err, biz.ErrRolePresetUndeletable) {
 		t.Fatalf("err = %v, want ErrRolePresetUndeletable", err)
@@ -421,7 +423,7 @@ func TestRoleRepo_delete_soft_deleted_role_keeps_menu_residue_and_breaks_permiss
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
 
-	// 用户 2 持角色 103（映射菜单 201/202/203/236/237）：删角色前持有
+	// 用户 2 持角色 103（映射菜单 3201/3202/3203/3236/3237）：删角色前持有
 	// sys:user:query；删后映射行物理残留，但功能权限链断开。
 	if !userHasPermission(t, d, auth, 2, "sys:user:query") {
 		t.Fatal("user 2 must hold sys:user:query before role delete")
@@ -664,13 +666,14 @@ func TestRoleRepo_set_data_scope_cross_tenant_role_maps_not_found(t *testing.T) 
 func TestRoleRepo_list_menus_returns_seed_set_sorted(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 角色 103 种子授权 {201,202,203,236,237}。
+	// 角色 103 种子授权 {3201,3202,3203,3236,3237}（32xx 为 t-test-01 的
+	// 菜单副本）。
 	menus, err := NewRoleRepo(d).ListMenus(context.Background(), roleAuth(roleTenantSeeded), 103)
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if !slices.Equal(menus, []int64{201, 202, 203, 236, 237}) {
-		t.Fatalf("menus = %v, want [201 202 203 236 237]", menus)
+	if !slices.Equal(menus, []int64{3201, 3202, 3203, 3236, 3237}) {
+		t.Fatalf("menus = %v, want [3201 3202 3203 3236 3237]", menus)
 	}
 }
 
@@ -690,22 +693,23 @@ func TestRoleRepo_set_menus_replaces_grants_and_preserves_retained_creator(t *te
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
 
-	// 种子 {201,202,203,236,237} → 收缩为 {202,203}（201/236/237 物理移除）。
-	menus, err := repo.SetMenus(context.Background(), auth, 103, []int64{203, 202})
+	// 种子 {3201,3202,3203,3236,3237} → 收缩为 {3202,3203}（3201/3236/3237
+	// 物理移除）。
+	menus, err := repo.SetMenus(context.Background(), auth, 103, []int64{3203, 3202})
 	if err != nil {
 		t.Fatalf("set menus: %v", err)
 	}
-	if !slices.Equal(menus, []int64{202, 203}) {
-		t.Fatalf("menus after set = %v, want [202 203]", menus)
+	if !slices.Equal(menus, []int64{3202, 3203}) {
+		t.Fatalf("menus after set = %v, want [3202 3203]", menus)
 	}
-	// 再次设置并追加 204：既有授权保留原授权人（种子 created_by=1），
+	// 再次设置并追加 3204：既有授权保留原授权人（种子 created_by=1），
 	// 新增授权记当前操作者。
-	menus, err = repo.SetMenus(context.Background(), auth, 103, []int64{203, 202, 204})
+	menus, err = repo.SetMenus(context.Background(), auth, 103, []int64{3203, 3202, 3204})
 	if err != nil {
 		t.Fatalf("set menus again: %v", err)
 	}
-	if !slices.Equal(menus, []int64{202, 203, 204}) {
-		t.Fatalf("menus after second set = %v, want [202 203 204]", menus)
+	if !slices.Equal(menus, []int64{3202, 3203, 3204}) {
+		t.Fatalf("menus after second set = %v, want [3202 3203 3204]", menus)
 	}
 	rows := roleMenuRowsWithCreator(t, d, auth, 103)
 	if len(rows) != 3 {
@@ -725,11 +729,11 @@ func TestRoleRepo_set_menus_idempotent_same_set_changes_nothing(t *testing.T) {
 	repo := NewRoleRepo(d)
 
 	before := roleMenuRowsWithCreator(t, d, auth, 103)
-	menus, err := repo.SetMenus(context.Background(), auth, 103, []int64{236, 201, 202, 203, 237})
+	menus, err := repo.SetMenus(context.Background(), auth, 103, []int64{3236, 3201, 3202, 3203, 3237})
 	if err != nil {
 		t.Fatalf("set menus: %v", err)
 	}
-	if !slices.Equal(menus, []int64{201, 202, 203, 236, 237}) {
+	if !slices.Equal(menus, []int64{3201, 3202, 3203, 3236, 3237}) {
 		t.Fatalf("menus = %v, want seed set unchanged", menus)
 	}
 	after := roleMenuRowsWithCreator(t, d, auth, 103)
@@ -763,7 +767,7 @@ func TestRoleRepo_set_menus_unknown_menu_rejects_and_writes_nothing(t *testing.T
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	_, err := NewRoleRepo(d).SetMenus(context.Background(), auth, 103, []int64{201, 424242})
+	_, err := NewRoleRepo(d).SetMenus(context.Background(), auth, 103, []int64{3201, 424242})
 	if !errors.Is(err, biz.ErrRoleInvalidArgument) {
 		t.Fatalf("err = %v, want ErrRoleInvalidArgument", err)
 	}
@@ -771,7 +775,7 @@ func TestRoleRepo_set_menus_unknown_menu_rejects_and_writes_nothing(t *testing.T
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if !slices.Equal(menus, []int64{201, 202, 203, 236, 237}) {
+	if !slices.Equal(menus, []int64{3201, 3202, 3203, 3236, 3237}) {
 		t.Fatalf("menus after rejection = %v, want seed unchanged", menus)
 	}
 }
@@ -780,8 +784,8 @@ func TestRoleRepo_set_menus_cross_tenant_menu_rejects(t *testing.T) {
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	// 菜单 1201 属 t-demo-01：RLS 之外等同不存在，存在性判定整批拒绝。
-	_, err := NewRoleRepo(d).SetMenus(context.Background(), auth, 103, []int64{201, 1201})
+	// 菜单 1201 属 t-test-02：RLS 之外等同不存在，存在性判定整批拒绝。
+	_, err := NewRoleRepo(d).SetMenus(context.Background(), auth, 103, []int64{3201, 1201})
 	if !errors.Is(err, biz.ErrRoleInvalidArgument) {
 		t.Fatalf("err = %v, want ErrRoleInvalidArgument", err)
 	}
@@ -800,15 +804,15 @@ func TestRoleRepo_list_menus_hides_inactive_menu_grant(t *testing.T) {
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	// 角色 103 种子授权 {201,202,203,236,237}：菜单 237 停用后不出现在
+	// 角色 103 种子授权 {3201,3202,3203,3236,3237}：菜单 3237 停用后不出现在
 	// 回显集合（有效授权集口径），其余四项不受影响。
-	setMenuStatus(t, d, auth, 237, 0)
+	setMenuStatus(t, d, auth, 3237, 0)
 	menus, err := NewRoleRepo(d).ListMenus(context.Background(), auth, 103)
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if !slices.Equal(menus, []int64{201, 202, 203, 236}) {
-		t.Fatalf("menus = %v, want [201 202 203 236] (disabled grant hidden)", menus)
+	if !slices.Equal(menus, []int64{3201, 3202, 3203, 3236}) {
+		t.Fatalf("menus = %v, want [3201 3202 3203 3236] (disabled grant hidden)", menus)
 	}
 }
 
@@ -817,22 +821,22 @@ func TestRoleRepo_set_menus_roundtrips_active_echo_and_drops_inactive_grant(t *t
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
 
-	// 菜单 237 软删：回显集合排除其残留授权；把回显集合原样 Set 回去不被
+	// 菜单 3237 软删：回显集合排除其残留授权；把回显集合原样 Set 回去不被
 	// 存在性判定拒绝（读-改-写回路），且失活授权随差量物理清除。
-	softDeleteMenuRow(t, d, auth, 237)
+	softDeleteMenuRow(t, d, auth, 3237)
 	echo, err := repo.ListMenus(context.Background(), auth, 103)
 	if err != nil {
 		t.Fatalf("list menus: %v", err)
 	}
-	if !slices.Equal(echo, []int64{201, 202, 203, 236}) {
-		t.Fatalf("echo = %v, want [201 202 203 236]", echo)
+	if !slices.Equal(echo, []int64{3201, 3202, 3203, 3236}) {
+		t.Fatalf("echo = %v, want [3201 3202 3203 3236]", echo)
 	}
 	menus, err := repo.SetMenus(context.Background(), auth, 103, echo)
 	if err != nil {
 		t.Fatalf("set menus with active echo: %v", err)
 	}
-	if !slices.Equal(menus, []int64{201, 202, 203, 236}) {
-		t.Fatalf("menus after set = %v, want [201 202 203 236]", menus)
+	if !slices.Equal(menus, []int64{3201, 3202, 3203, 3236}) {
+		t.Fatalf("menus after set = %v, want [3201 3202 3203 3236]", menus)
 	}
 	if rows := roleMenuRowsWithCreator(t, d, auth, 103); len(rows) != 4 {
 		t.Fatalf("mapping rows = %d, want 4 (inactive grant physically dropped)", len(rows))
@@ -844,10 +848,10 @@ func TestRoleRepo_can_assign_role_tracks_role_lifecycle(t *testing.T) {
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
 
-	// 新建角色（无分发部门、无层级限定）：操作者 1（全租户）可分配给
-	// 种子租户内的用户 2。
+	// 新建角色（无分发部门、无层级限定）：操作者 11（testadmin，全租户）
+	// 可分配给种子租户内的用户 2。
 	created := mustCreateRole(t, d, auth, &biz.Role{Name: "cycle", Code: "cycle", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
-	if !mustCanAssignRole(t, d, auth, 1, created.ID, 2) {
+	if !mustCanAssignRole(t, d, auth, 11, created.ID, 2) {
 		t.Fatal("new role must be assignable by tenant-wide operator")
 	}
 	// 停用后判定为拒绝（判定函数过滤 status=1）。
@@ -855,7 +859,7 @@ func TestRoleRepo_can_assign_role_tracks_role_lifecycle(t *testing.T) {
 	if _, err := repo.Update(context.Background(), auth, created); err != nil {
 		t.Fatalf("disable role: %v", err)
 	}
-	if mustCanAssignRole(t, d, auth, 1, created.ID, 2) {
+	if mustCanAssignRole(t, d, auth, 11, created.ID, 2) {
 		t.Fatal("disabled role must not be assignable")
 	}
 	// 恢复启用后判定恢复。
@@ -863,14 +867,14 @@ func TestRoleRepo_can_assign_role_tracks_role_lifecycle(t *testing.T) {
 	if _, err := repo.Update(context.Background(), auth, created); err != nil {
 		t.Fatalf("enable role: %v", err)
 	}
-	if !mustCanAssignRole(t, d, auth, 1, created.ID, 2) {
+	if !mustCanAssignRole(t, d, auth, 11, created.ID, 2) {
 		t.Fatal("re-enabled role must be assignable again")
 	}
 	// 软删后判定为拒绝（判定函数过滤 deleted_at IS NULL）。
 	if err := repo.SoftDelete(context.Background(), auth, created.ID); err != nil {
 		t.Fatalf("delete role: %v", err)
 	}
-	if mustCanAssignRole(t, d, auth, 1, created.ID, 2) {
+	if mustCanAssignRole(t, d, auth, 11, created.ID, 2) {
 		t.Fatal("soft deleted role must not be assignable")
 	}
 }
@@ -893,8 +897,8 @@ func TestRoleRepo_can_assign_role_allowed_dept_mapping_changes_judgment(t *testi
 	if mustCanAssignRole(t, d, auth, 7, 102, 10) {
 		t.Fatal("operator outside mapping without visibility must be rejected")
 	}
-	// 全租户操作者 1 不受映射的操作者侧限制，仍可分配（目标部门仍须命中映射）。
-	if !mustCanAssignRole(t, d, auth, 1, 102, 10) {
+	// 全租户操作者 11 不受映射的操作者侧限制，仍可分配（目标部门仍须命中映射）。
+	if !mustCanAssignRole(t, d, auth, 11, 102, 10) {
 		t.Fatal("tenant-wide operator must stay allowed while target dept is in mapping")
 	}
 	// 恢复种子映射 {2,5}：判定恢复基线。
@@ -912,9 +916,9 @@ func TestRoleRepo_can_assign_role_scope_dept_subtree_changes_judgment(t *testing
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	// 新建角色未配层级限定：任何有效目标都可分配（操作者 1 全租户可见）。
+	// 新建角色未配层级限定：任何有效目标都可分配（操作者 11 全租户可见）。
 	created := mustCreateRole(t, d, auth, &biz.Role{Name: "subtree", Code: "subtree", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
-	if !mustCanAssignRole(t, d, auth, 1, created.ID, 3) {
+	if !mustCanAssignRole(t, d, auth, 11, created.ID, 3) {
 		t.Fatal("role without scope dept must be assignable to user 3")
 	}
 	// 配 scope_dept_id=2（技术部子树）：用户 3（产品部）落到子树外被判拒绝，
@@ -925,15 +929,15 @@ func TestRoleRepo_can_assign_role_scope_dept_subtree_changes_judgment(t *testing
 		DataScope:   biz.RoleDataScopeSelf,
 		ScopeDeptID: &scopeDept,
 	})
-	if mustCanAssignRole(t, d, auth, 1, created.ID, 3) {
+	if mustCanAssignRole(t, d, auth, 11, created.ID, 3) {
 		t.Fatal("target outside scope dept subtree must be rejected")
 	}
-	if !mustCanAssignRole(t, d, auth, 1, created.ID, 2) {
+	if !mustCanAssignRole(t, d, auth, 11, created.ID, 2) {
 		t.Fatal("target inside scope dept subtree must stay allowed")
 	}
 	// 清空层级限定（NULL=全租户可分配）：判定恢复。
 	mustSetDataScope(t, d, auth, &biz.RoleDataScope{RoleID: created.ID, DataScope: biz.RoleDataScopeSelf})
-	if !mustCanAssignRole(t, d, auth, 1, created.ID, 3) {
+	if !mustCanAssignRole(t, d, auth, 11, created.ID, 3) {
 		t.Fatal("cleared scope dept must restore assignability")
 	}
 }

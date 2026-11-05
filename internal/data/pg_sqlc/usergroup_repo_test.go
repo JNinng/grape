@@ -13,17 +13,17 @@ import (
 // 用户组仓储集成测试：以真实 PostgreSQL 验证 sys_user_group 固定 CRUD、
 // 动态查询协议、成员映射（sys_user_group_mapping）的增删语义与 RLS 租户
 // 边界（跨租户组不可见、跨租户用户不可入组）。复用根包套件的 setupTestDB
-//（deploy 全清单装载，种子数据见 sqlc/seed.sql：t-super-01 有用户组
+//（deploy 全清单装载，种子数据见 sqlc/test_seed.sql：t-test-01 有用户组
 // 1（core_dev，成员用户 2）与 2（product_design，成员用户 3/4），用户
-// 1-4、6-10 属 t-super-01；t-demo-01 无用户组、仅用户 5）。各用例经
+// 2-4、6-11 属 t-test-01；t-test-02 无用户组、仅用户 5）。各用例经
 // setupTestDB 重建数据库实现隔离；新建组用 newID() 发号，不与种子主键
 // 冲突。
 
 const (
 	// groupTenantSeeded 是种子用户组所在的租户。
-	groupTenantSeeded = "t-super-01"
+	groupTenantSeeded = "t-test-01"
 	// groupTenantEmpty 是无用户组种子的租户，供新建组的用例使用。
-	groupTenantEmpty = "t-demo-01"
+	groupTenantEmpty = "t-test-02"
 )
 
 // groupAuth 返回指定租户的操作者身份；用户组表无 @scope，操作者仅落入审计列。
@@ -138,7 +138,7 @@ func TestUserGroupRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 
 func TestUserGroupRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 组 1 属 t-super-01；t-demo-01 的身份经 RLS 不可见，等同不存在。
+	// 组 1 属 t-test-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	other := groupAuth(groupTenantEmpty)
 
 	_, err := NewUserGroupRepo(d).GetByID(context.Background(), other, 1)
@@ -338,7 +338,7 @@ func TestUserGroupRepo_add_members_unknown_user_rejects_and_writes_nothing(t *te
 
 func TestUserGroupRepo_add_members_cross_tenant_user_rejects(t *testing.T) {
 	d := setupTestDB(t)
-	// 用户 5 属 t-demo-01；t-super-01 身份经 RLS 不可见，等同不存在。
+	// 用户 5 属 t-test-02；t-test-01 身份经 RLS 不可见，等同不存在。
 	auth := groupAuth(groupTenantSeeded)
 
 	_, err := NewUserGroupRepo(d).AddMembers(context.Background(), auth, 1, []int64{5})

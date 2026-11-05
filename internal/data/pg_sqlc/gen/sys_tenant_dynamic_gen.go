@@ -7,7 +7,7 @@
 //	table sys_tenant: [@pk: id]
 //	table sys_tenant: [@filter: deleted_at is_null]
 //	column sys_tenant.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_tenant.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_tenant.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
 //	column sys_tenant.code: [@dynamic: eq, neq, prefix @hideable]
 //	column sys_tenant.name: [@dynamic: contains, prefix, suffix, eq, neq @sortable @hideable @updatable: set]
 //	column sys_tenant.parent_id: [@dynamic: eq, neq, in, not_in]
@@ -15,7 +15,7 @@
 //	column sys_tenant.contact_phone: [@dynamic: eq, neq, prefix @hideable @updatable: set]
 //	column sys_tenant.expired_at: [@dynamic: gt, gte, lt, lte, between, is_null, not_null @sortable @updatable: set]
 //	column sys_tenant.max_user_count: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @updatable: set]
-//	column sys_tenant.default_locale: [@dynamic: eq, neq @hideable @updatable: set]
+//	column sys_tenant.default_locale: [@dynamic: eq, neq @hideable @updatable: set @label: 默认语言 @desc: BCP-47，如 zh-CN、en-US]
 //	column sys_tenant.created_by: [@dynamic: eq, neq, in, not_in]
 //	column sys_tenant.created_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_tenant.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
@@ -56,13 +56,17 @@ var sys_tenantRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "code",
@@ -144,13 +148,14 @@ var sys_tenantRegistry = dynq.TableMeta{
 		{
 			Key:        "defaultLocale",
 			Column:     "default_locale",
-			Label:      "租户默认语言（BCP-47），如 zh-CN、en-US",
+			Label:      "默认语言",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "BCP-47，如 zh-CN、en-US",
 		},
 		{
 			Key:        "createdBy",
@@ -1677,7 +1682,7 @@ type SysTenantUpdateOption = dynq.UpdateOption[SysTenantTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用）列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysTenantTable) SetStatus(v int64) SysTenantUpdateOption {
 	return func(st *dynq.UpdateState[SysTenantTable]) error {
 		return st.Set("status", "status", "", v)
@@ -1719,7 +1724,7 @@ func (SysTenantTable) SetMaxUserCount(v *int64) SysTenantUpdateOption {
 	}
 }
 
-// SetDefaultLocale 设置 defaultLocale（租户默认语言（BCP-47），如 zh-CN、en-US）列值，无 nil。
+// SetDefaultLocale 设置 defaultLocale（默认语言）列值，无 nil。
 func (SysTenantTable) SetDefaultLocale(v string) SysTenantUpdateOption {
 	return func(st *dynq.UpdateState[SysTenantTable]) error {
 		return st.Set("defaultLocale", "default_locale", "", v)

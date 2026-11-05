@@ -253,21 +253,50 @@ describe('listDepts', () => {
 })
 
 describe('updateDept', () => {
-  it('puts_the_dept_message_with_required_status', async () => {
+  it('puts_the_full_mutable_set_with_required_status', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { id: '1', status: 0, name: 'eng' }))
 
-    const dept = await updateDept({ id: '1', status: 0, name: 'eng' })
+    const dept = await updateDept({
+      id: '1',
+      status: 0,
+      name: 'eng',
+      parentId: '2',
+      ownerUserId: '7',
+      ownerUserGroupId: '3',
+    })
 
     expect(requestInit(fetchMock.mock.calls[0]).method).toBe('PUT')
     expect(fetchMock.mock.calls[0][0]).toBe('/v1/depts/update')
-    expect(sentBody(fetchMock.mock.calls[0])).toEqual({ id: '1', status: 0, name: 'eng' })
+    expect(sentBody(fetchMock.mock.calls[0])).toEqual({
+      id: '1',
+      status: 0,
+      name: 'eng',
+      parentId: '2',
+      ownerUserId: '7',
+      ownerUserGroupId: '3',
+    })
     expect(dept.status).toBe(0)
+  })
+
+  it('omits_parent_and_group_to_move_to_root_and_clear_the_group', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: '1' }))
+
+    await updateDept({ id: '1', status: 1, name: 'eng', ownerUserId: '7' })
+
+    expect(sentBody(fetchMock.mock.calls[0])).toEqual({
+      id: '1',
+      status: 1,
+      name: 'eng',
+      ownerUserId: '7',
+    })
   })
 
   it('propagates_the_backend_error_on_invalid_argument', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { message: 'invalid dept argument' }))
 
-    await expect(updateDept({ id: '1', status: 0, name: '' })).rejects.toThrow('invalid dept argument')
+    await expect(
+      updateDept({ id: '1', status: 0, name: '', ownerUserId: '7' }),
+    ).rejects.toThrow('invalid dept argument')
   })
 })
 

@@ -1,8 +1,9 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchMyPermissions } from '@/api/permissions'
-import { SettingsLayout } from './SettingsLayout'
+import { SettingsIndexRedirect, SettingsLayout } from './SettingsLayout'
 
 vi.mock('@/api/permissions', () => ({
   fetchMyPermissions: vi.fn(),
@@ -103,6 +104,24 @@ describe('SettingsLayout navigation links', () => {
     expect(screen.getByRole('link', { name: '租户' })).toHaveAttribute('href', '/settings/tenants')
   })
 
+  it('links_back_to_the_workspace', async () => {
+    const user2 = userEvent.setup()
+    mockFetchMyPermissions.mockResolvedValue(['sys:user'])
+    render(
+      <MemoryRouter initialEntries={['/settings/users']}>
+        <Routes>
+          <Route path="/" element={<div>workspace-page</div>} />
+          <Route path="/settings/*" element={<SettingsLayout />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    const back = await screen.findByRole('link', { name: '返回工作台' })
+    expect(back).toHaveAttribute('href', '/')
+    await user2.click(back)
+    expect(await screen.findByText('workspace-page')).toBeInTheDocument()
+  })
+
   it('marks_the_active_module_entry_with_the_page_marker', async () => {
     renderLayout('/settings/users')
 
@@ -131,5 +150,72 @@ describe('SettingsLayout navigation links', () => {
     renderLayout('/settings/user-groups')
 
     expect(await screen.findByRole('link', { name: '用户组' })).toHaveAttribute('aria-current', 'page')
+  })
+})
+
+// renderIndex 挂载索引路由：只注册少量目标页，断言索引重定向落到哪一页。
+function renderIndex() {
+  return render(
+    <MemoryRouter initialEntries={['/settings']}>
+      <Routes>
+        <Route path="/settings" element={<SettingsLayout />}>
+          <Route index element={<SettingsIndexRedirect />} />
+          <Route path="users" element={<div>users-page</div>} />
+          <Route path="dicts" element={<div>dicts-page</div>} />
+          <Route path="audit-logs" element={<div>audit-page</div>} />
+          <Route path="roles" element={<div>roles-page</div>} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+describe('SettingsLayout index redirect', () => {
+  it('redirects_to_the_first_permitted_module_in_declaration_order', async () => {
+    // 字典声明序在审计日志之前：两者都有权限时跳到字典。
+    mockFetchMyPermissions.mockResolvedValue(['sys:dict', 'sys:audit'])
+    renderIndex()
+
+    expect(await screen.findByText('dicts-page')).toBeInTheDocument()
+    expect(screen.queryByText('audit-page')).not.toBeInTheDocument()
+  })
+
+  it('skips_modules_without_the_page_code', async () => {
+    mockFetchMyPermissions.mockResolvedValue(['sys:role', 'sys:audit'])
+    renderIndex()
+
+    expect(await screen.findByText('roles-page')).toBeInTheDocument()
+    expect(screen.queryByText('audit-page')).not.toBeInTheDocument()
+  })
+
+  it('falls_back_to_the_first_module_when_the_permissions_fetch_fails', async () => {
+    mockFetchMyPermissions.mockRejectedValue(new Error('permission denied'))
+    renderIndex()
+
+    expect(await screen.findByText('users-page')).toBeInTheDocument()
+  })
+
+  it('shows_an_empty_state_when_no_module_is_permitted', async () => {
+    mockFetchMyPermissions.mockResolvedValue([])
+    renderIndex()
+
+    expect(await screen.findByText('暂无可访问的管理模块')).toBeInTheDocument()
+    expect(screen.queryByText('users-page')).not.toBeInTheDocument()
+  })
+
+  it('waits_for_the_permissions_before_redirecting', async () => {
+    let resolveFetch: ((codes: string[]) => void) | undefined
+    mockFetchMyPermissions.mockReturnValue(
+      new Promise<string[]>((resolve) => {
+        resolveFetch = resolve
+      }),
+    )
+    renderIndex()
+
+    expect(screen.getByLabelText('管理模块加载中')).toBeInTheDocument()
+    expect(screen.queryByText('users-page')).not.toBeInTheDocument()
+
+    resolveFetch?.(['sys:role'])
+    expect(await screen.findByText('roles-page')).toBeInTheDocument()
   })
 })

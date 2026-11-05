@@ -7,7 +7,7 @@
 //	table sys_translation: [@pk: id]
 //	table sys_translation: [@filter: deleted_at is_null]
 //	column sys_translation.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
-//	column sys_translation.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set]
+//	column sys_translation.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @desc: 暂缺翻译时可禁用，消费方回退原始值 @options: 0=禁用 1=启用]
 //	column sys_translation.table_name: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_translation.row_id: [@dynamic: eq, neq, in, not_in @hideable]
 //	column sys_translation.column_name: [@dynamic: eq, neq, in, not_in @hideable]
@@ -19,7 +19,7 @@
 //	column sys_translation.updated_by: [@dynamic: eq, neq, in, not_in @updatable: set]
 //	column sys_translation.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between @sortable @hideable]
 //	column sys_translation.deleted_at: [@internal]
-//	column sys_translation.tenant_id: [@dynamic: eq, neq @hideable]
+//	column sys_translation.tenant_id: [@internal]
 //
 // 逻辑键(camelCase)是对外契约;snake_case 物理列名仅在本文件内部使用。
 package gen
@@ -54,13 +54,18 @@ var sys_translationRegistry = dynq.TableMeta{
 		{
 			Key:        "status",
 			Column:     "status",
-			Label:      "数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值）",
+			Label:      "状态",
 			DataType:   dynq.DataTypeInteger,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
 			Sortable:   true,
 			Selectable: true,
 			Hidden:     false,
+			Desc:       "暂缺翻译时可禁用，消费方回退原始值",
+			Options: []dynq.FieldOption{
+				{Value: int64(0), Label: "禁用"},
+				{Value: int64(1), Label: "启用"},
+			},
 		},
 		{
 			Key:        "tableName",
@@ -188,10 +193,9 @@ var sys_translationRegistry = dynq.TableMeta{
 			Label:      "租户 ID",
 			DataType:   dynq.DataTypeString,
 			Nullable:   false,
-			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
-			Selectable: true,
-			Hidden:     false,
+			Selectable: false,
+			Hidden:     true,
 		},
 	},
 	DefaultSort: []dynq.OrderBy{
@@ -235,7 +239,6 @@ var SysTranslationField = struct {
 	CreatedAt  dynq.FieldName
 	UpdatedBy  dynq.FieldName
 	UpdatedAt  dynq.FieldName
-	TenantID   dynq.FieldName
 }{
 	ID:         "id",
 	Status:     "status",
@@ -249,7 +252,6 @@ var SysTranslationField = struct {
 	CreatedAt:  "createdAt",
 	UpdatedBy:  "updatedBy",
 	UpdatedAt:  "updatedAt",
-	TenantID:   "tenantId",
 }
 
 // ListSysTranslationParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -315,8 +317,6 @@ type ListSysTranslationParams struct {
 	UpdatedAtGte    *time.Time
 	UpdatedAtLt     *time.Time
 	UpdatedAtLte    *time.Time
-	TenantID        *string
-	TenantIDNeq     *string
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -997,27 +997,6 @@ func ParseSysTranslationQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysT
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
-		case "tenantId":
-			switch op {
-			case dynq.OpEq:
-				if err := slots.Take("tenantId.eq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantID = &v
-			case dynq.OpNeq:
-				if err := slots.Take("tenantId.neq", i, "tenantId"); err != nil {
-					return out, err
-				}
-				v, cerr := dynq.AsString(c.Value)
-				if cerr != nil {
-					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "tenantId")
-				}
-				out.TenantIDNeq = &v
-			}
 		}
 	}
 
@@ -1098,9 +1077,6 @@ func validateSysTranslationParams(params ListSysTranslationParams, cfg *dynq.Que
 	}
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
-	}
-	if cfg.WhereDisabled("tenantId") && (params.TenantID != nil || params.TenantIDNeq != nil) {
-		return dynq.NewErr(dynq.KindWhere, "tenantId", "field disabled in this context", -1)
 	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, sys_translationRegistry)
 }
@@ -1283,12 +1259,6 @@ func buildSysTranslationWhere(params ListSysTranslationParams) []sq.Sqlizer {
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
 	}
-	if params.TenantID != nil {
-		conds = append(conds, sq.Eq{"tenant_id": *params.TenantID})
-	}
-	if params.TenantIDNeq != nil {
-		conds = append(conds, sq.NotEq{"tenant_id": *params.TenantIDNeq})
-	}
 	return conds
 }
 
@@ -1449,7 +1419,7 @@ type SysTranslationUpdateOption = dynq.UpdateOption[SysTranslationTable]
 
 // ---- SET 白名单(set-capable @updatable 列;未调用的列保持原值)----
 
-// SetStatus 设置 status（数据状态，0：禁用、1：启用（暂缺翻译时可禁用，消费方回退原始值））列值，无 nil。
+// SetStatus 设置 status（状态）列值，无 nil。
 func (SysTranslationTable) SetStatus(v int64) SysTranslationUpdateOption {
 	return func(st *dynq.UpdateState[SysTranslationTable]) error {
 		return st.Set("status", "status", "", v)

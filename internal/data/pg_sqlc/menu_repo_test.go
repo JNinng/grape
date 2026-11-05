@@ -3,7 +3,6 @@ package pg_sqlc
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
 
 	"grape/internal/biz"
@@ -16,18 +15,17 @@ import (
 // 全部写入经 98_menu_write.sql 的 SECURITY DEFINER 固定口径写函数
 //（fn_menu_create/update/move/delete：租户边界复位、父级校验、防环、软删
 // 口径收在函数内）。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/seed.sql 与 sqlc/99_perm_seed.sql：t-super-01 有菜单树
-// 201-265 + 257/266-273 共 73 行（246-249/254-256/258-265/257/266-273 由
-// 99_perm_seed.sql 预铺），
-// t-demo-01 有菜单树 1201-1237 共 9 行）。各用例经
-// setupTestDB 重建数据库实现隔离；新建菜单用 newID() 发号 + 独立权限码，
-// 不与种子冲突。
+// 种子数据见 sqlc/seed.sql、sqlc/test_seed.sql 与 sqlc/99_perm_seed.sql：
+// t-super-01 有菜单树 201-265 + 257/266-273 共 73 行（246-249/254-256/
+// 258-265/257/266-273 由 99_perm_seed.sql 预铺），t-test-02 有菜单树
+// 1201-1237 共 9 行）。各用例经 setupTestDB 重建数据库实现隔离；新建菜单
+// 用 newID() 发号 + 独立权限码，不与种子冲突。
 
 const (
 	// menuTenantSeeded 是种子菜单树 201-265 所在租户。
 	menuTenantSeeded = "t-super-01"
 	// menuTenantOther 是种子菜单树 1201-1237 所在租户，供新建子树的用例使用。
-	menuTenantOther = "t-demo-01"
+	menuTenantOther = "t-test-02"
 )
 
 // menuAuth 返回指定租户的操作者身份；菜单表无 @scope，操作者仅落入审计列。
@@ -109,7 +107,8 @@ func TestMenuRepo_direct_write_denied_for_runtime_role(t *testing.T) {
 	auth := menuAuth(menuTenantOther)
 
 	// role.sql 对 grape_u REVOKE sys_menu 写授权：直写被权限拒绝（42501），
-	// 受控写函数是唯一写路径。
+	// 受控写函数是唯一写路径。只判错误码不判文案（服务端文案随
+	// lc_messages 本地化）。
 	err := d.IdentityTx(context.Background(), pgAuth(auth), func(s *IdentityTx) error {
 		_, err := s.Tx().Exec(context.Background(),
 			`INSERT INTO public.sys_menu (id, status, "name", permission_code, menu_type, created_by, updated_by, tenant_id)
@@ -119,9 +118,6 @@ func TestMenuRepo_direct_write_denied_for_runtime_role(t *testing.T) {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) || pgErr.Code != "42501" {
 		t.Fatalf("direct insert err = %v, want permission denied (42501)", err)
-	}
-	if !strings.Contains(pgErr.Message, "permission denied") {
-		t.Fatalf("pg message = %q, want permission denied", pgErr.Message)
 	}
 }
 
@@ -143,7 +139,7 @@ func TestMenuRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing
 
 func TestMenuRepo_create_with_cross_tenant_parent_rejected(t *testing.T) {
 	d := setupTestDB(t)
-	// 菜单 201 属 t-super-01；t-demo-01 的写路径经受控函数只见本租户行，
+	// 菜单 201 属 t-super-01；t-test-02 的写路径经受控函数只见本租户行，
 	// 跨租户父级等同不存在。
 	auth := menuAuth(menuTenantOther)
 	seededParent := int64(201)
@@ -178,10 +174,10 @@ func TestMenuRepo_list_all_scopes_to_current_tenant(t *testing.T) {
 
 	other, err := repo.ListAll(context.Background(), menuAuth(menuTenantOther))
 	if err != nil {
-		t.Fatalf("list menus in t-demo-01: %v", err)
+		t.Fatalf("list menus in t-test-02: %v", err)
 	}
 	if len(other) != 9 {
-		t.Fatalf("t-demo-01 rows = %d, want 9 (seed menus 1201-1237)", len(other))
+		t.Fatalf("t-test-02 rows = %d, want 9 (seed menus 1201-1237)", len(other))
 	}
 	if other[0].ID != 1201 {
 		t.Fatalf("first row id = %d, want 1201 (sort_order ASC, id ASC)", other[0].ID)
@@ -225,7 +221,7 @@ func TestMenuRepo_list_all_orders_children_after_parents_by_sort_order(t *testin
 
 func TestMenuRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 菜单 201 属 t-super-01；t-demo-01 的身份经 RLS 不可见，等同不存在。
+	// 菜单 201 属 t-super-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	if _, err := NewMenuRepo(d).GetByID(context.Background(), menuAuth(menuTenantOther), 201); !errors.Is(err, biz.ErrMenuNotFound) {
 		t.Fatalf("cross-tenant get = %v, want ErrMenuNotFound", err)
 	}

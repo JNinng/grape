@@ -15,7 +15,7 @@ import (
 // PostgreSQL 实现）。本仓储是该配置表的首个 Go 消费方：租户级默认嵌入
 // 空间落 sys_tenant_config（键 vector.embedder，值是 conf.vector.embedders
 // 已声明的空间键），读取经身份事务门面 IdentityTx（每事务 set_config），
-// 租户边界由 RLS 与查询参数双重声明（与检索留痕读侧同口径）。解析顺序
+// 租户边界由 RLS 承担（查询不再显式带租户谓词）。解析顺序
 // 「请求显式 > 租户配置 > 全局 conf 兜底」中，本仓储承担后两级——显式
 // 指定在调用方（检索工具/摄取管线的入参面）。
 //
@@ -68,12 +68,10 @@ func (r *embedderResolver) ResolveDefaultEmbedder(ctx context.Context) (string, 
 		return "", 0, err
 	}
 	configKey := embedderConfigKey
-	tenantID := auth.TenantID
 	status := tenantConfigEnabledStatus
 	var chosen string
 	err := r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
 		res, err := gen.ListSysTenantConfig(ctx, s.Tx(), gen.ListSysTenantConfigParams{
-			TenantID:  &tenantID,
 			ConfigKey: &configKey,
 			Status:    &status,
 			Limit:     1,

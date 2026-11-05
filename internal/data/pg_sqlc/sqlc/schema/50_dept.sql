@@ -26,7 +26,7 @@ COMMENT ON TABLE public.sys_dept IS '部门表 [@default_sort: updated_at DESC @
 -- Column comments
 
 COMMENT ON COLUMN public.sys_dept.id IS '部门 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_dept.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, in @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_dept.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dept."name" IS '部门名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
 COMMENT ON COLUMN public.sys_dept.parent_id IS '父级部门 ID [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_dept.created_by IS '创建人 [@dynamic: exact, in]';
@@ -34,7 +34,7 @@ COMMENT ON COLUMN public.sys_dept.created_at IS '创建时间 [@dynamic: exact, 
 COMMENT ON COLUMN public.sys_dept.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
 COMMENT ON COLUMN public.sys_dept.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
 COMMENT ON COLUMN public.sys_dept.deleted_at IS '删除时间 [@internal]';
-COMMENT ON COLUMN public.sys_dept.tenant_id IS '租户 ID [@dynamic: exact @hideable]';
+COMMENT ON COLUMN public.sys_dept.tenant_id IS '租户 ID [@internal]';
 COMMENT ON COLUMN public.sys_dept.owner_user_id IS '部门管理员用户 [@dynamic: exact, in]';
 COMMENT ON COLUMN public.sys_dept.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';
 

@@ -249,7 +249,7 @@ func TestTenantUsecaseCreateRejectsInvalidInput(t *testing.T) {
 func TestTenantUsecaseCreateRejectsForeignParent(t *testing.T) {
 	// 结构父级必须等于调用方租户：指向其它可见租户（或任何非调用方值）
 	// 一律 INVALID_ARGUMENT，不触达仓储、不写入。
-	for _, parent := range []string{"t-demo-01", "t-tree-outside"} {
+	for _, parent := range []string{"t-test-02", "t-tree-outside"} {
 		t.Run(parent, func(t *testing.T) {
 			repo := &mockTenantRepo{}
 			_, err := NewTenantUsecase(repo).CreateTenantSuper(context.Background(), tenantAuth(), &Tenant{
@@ -304,7 +304,7 @@ func TestTenantUsecaseGetRejectsBlankID(t *testing.T) {
 
 func TestTenantUsecaseGetPropagatesNotFound(t *testing.T) {
 	repo := &mockTenantRepo{getErr: ErrTenantNotFound}
-	_, err := NewTenantUsecase(repo).GetTenantSuper(context.Background(), tenantAuth(), "t-demo-01")
+	_, err := NewTenantUsecase(repo).GetTenantSuper(context.Background(), tenantAuth(), "t-test-02")
 	if !errors.Is(err, ErrTenantNotFound) {
 		t.Fatalf("err = %v, want ErrTenantNotFound", err)
 	}
@@ -323,15 +323,15 @@ func TestTenantUsecaseUpdateRejectsMissingIDStatus(t *testing.T) {
 	}{
 		{"nil", nil},
 		{"blank id", &Tenant{ID: "  ", Status: one, Code: "demo", Name: "租户"}},
-		{"missing status", &Tenant{ID: "t-demo-01", Status: TenantStatusUnspecified, Code: "demo", Name: "租户"}},
-		{"invalid status", &Tenant{ID: "t-demo-01", Status: 2, Code: "demo", Name: "租户"}},
-		{"name over width", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: tooLongName}},
-		{"contact over width", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", ContactName: &tooLongContact}},
-		{"phone over width", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", ContactPhone: &tooLongPhone}},
-		{"max users zero", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", MaxUserCount: &zero}},
-		{"max users negative", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", MaxUserCount: &negative}},
-		{"locale over width", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", DefaultLocale: "zh-abcdefg1"}},
-		{"locale malformed", &Tenant{ID: "t-demo-01", Status: one, Code: "demo", Name: "租户", DefaultLocale: "zh_CN"}},
+		{"missing status", &Tenant{ID: "t-test-02", Status: TenantStatusUnspecified, Code: "demo", Name: "租户"}},
+		{"invalid status", &Tenant{ID: "t-test-02", Status: 2, Code: "demo", Name: "租户"}},
+		{"name over width", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: tooLongName}},
+		{"contact over width", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", ContactName: &tooLongContact}},
+		{"phone over width", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", ContactPhone: &tooLongPhone}},
+		{"max users zero", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", MaxUserCount: &zero}},
+		{"max users negative", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", MaxUserCount: &negative}},
+		{"locale over width", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", DefaultLocale: "zh-abcdefg1"}},
+		{"locale malformed", &Tenant{ID: "t-test-02", Status: one, Code: "demo", Name: "租户", DefaultLocale: "zh_CN"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -358,7 +358,7 @@ func TestTenantUsecaseUpdateAcceptsColumnWidthBoundaries(t *testing.T) {
 	contactPhone := strings.Repeat("1", 32)
 
 	if _, err := uc.UpdateTenantSuper(context.Background(), tenantAuth(), &Tenant{
-		ID:            "t-demo-01",
+		ID:            "t-test-02",
 		Status:        one,
 		Name:          strings.Repeat("n", 256),
 		ContactName:   &contactName,
@@ -385,7 +385,7 @@ func TestTenantUsecaseUpdateIgnoresInputCode(t *testing.T) {
 	repo := &mockTenantRepo{}
 	one := int32(1)
 	if _, err := NewTenantUsecase(repo).UpdateTenantSuper(context.Background(), tenantAuth(), &Tenant{
-		ID: "t-demo-01", Status: one, Code: "hijacked", Name: "租户",
+		ID: "t-test-02", Status: one, Code: "hijacked", Name: "租户",
 	}); err != nil {
 		t.Fatalf("update tenant: %v", err)
 	}
@@ -436,7 +436,7 @@ func TestTenantUsecaseUpdateSelfStatusGuard(t *testing.T) {
 	t.Run("other tenant status unaffected", func(t *testing.T) {
 		repo := &mockTenantRepo{}
 		if _, err := NewTenantUsecase(repo).UpdateTenantSuper(context.Background(), auth, &Tenant{
-			ID: "t-demo-01", Status: zero, Code: "demo", Name: "演示租户",
+			ID: "t-test-02", Status: zero, Code: "demo", Name: "演示租户",
 		}); err != nil {
 			t.Fatalf("update other tenant status: %v", err)
 		}
@@ -454,7 +454,7 @@ func TestTenantUsecaseUpdateIgnoresParentAndTenantID(t *testing.T) {
 	forgedTenant := "t-forged-tenant"
 
 	_, err := uc.UpdateTenantSuper(context.Background(), tenantAuth(), &Tenant{
-		ID:            "t-demo-01",
+		ID:            "t-test-02",
 		Status:        one,
 		Code:          "  demo  ",
 		Name:          "  演示租户  ",
@@ -488,7 +488,7 @@ func TestTenantUsecaseUpdatePropagatesNotFoundAndConflict(t *testing.T) {
 	for _, repoErr := range []error{ErrTenantNotFound, ErrTenantAlreadyExists} {
 		repo := &mockTenantRepo{updateErr: repoErr}
 		_, err := NewTenantUsecase(repo).UpdateTenantSuper(context.Background(), tenantAuth(), &Tenant{
-			ID: "t-demo-01", Status: one, Code: "demo", Name: "租户",
+			ID: "t-test-02", Status: one, Code: "demo", Name: "租户",
 		})
 		if !errors.Is(err, repoErr) {
 			t.Fatalf("err = %v, want %v", err, repoErr)
@@ -545,31 +545,31 @@ func TestTenantUsecaseDeleteDisableRestoreForwardTarget(t *testing.T) {
 	uc := NewTenantUsecase(repo)
 	auth := tenantAuth()
 
-	if err := uc.DeleteTenantSuper(context.Background(), auth, "t-demo-01"); err != nil {
+	if err := uc.DeleteTenantSuper(context.Background(), auth, "t-test-02"); err != nil {
 		t.Fatalf("delete tenant: %v", err)
 	}
-	disabled, err := uc.DisableTenantSuper(context.Background(), auth, "t-demo-01")
+	disabled, err := uc.DisableTenantSuper(context.Background(), auth, "t-test-02")
 	if err != nil {
 		t.Fatalf("disable tenant: %v", err)
 	}
 	if disabled.Status != TenantStatusDisabled {
 		t.Fatalf("disabled status = %d, want 0", disabled.Status)
 	}
-	restored, err := uc.RestoreTenantSuper(context.Background(), auth, "t-demo-01")
+	restored, err := uc.RestoreTenantSuper(context.Background(), auth, "t-test-02")
 	if err != nil {
 		t.Fatalf("restore tenant: %v", err)
 	}
 	if restored.Status != TenantStatusEnabled {
 		t.Fatalf("restored status = %d, want 1", restored.Status)
 	}
-	if len(repo.deleted) != 1 || repo.deleted[0] != "t-demo-01" {
-		t.Fatalf("deleted = %v, want [t-demo-01]", repo.deleted)
+	if len(repo.deleted) != 1 || repo.deleted[0] != "t-test-02" {
+		t.Fatalf("deleted = %v, want [t-test-02]", repo.deleted)
 	}
-	if len(repo.disabled) != 1 || repo.disabled[0] != "t-demo-01" {
-		t.Fatalf("disabled = %v, want [t-demo-01]", repo.disabled)
+	if len(repo.disabled) != 1 || repo.disabled[0] != "t-test-02" {
+		t.Fatalf("disabled = %v, want [t-test-02]", repo.disabled)
 	}
-	if len(repo.restored) != 1 || repo.restored[0] != "t-demo-01" {
-		t.Fatalf("restored = %v, want [t-demo-01]", repo.restored)
+	if len(repo.restored) != 1 || repo.restored[0] != "t-test-02" {
+		t.Fatalf("restored = %v, want [t-test-02]", repo.restored)
 	}
 }
 
@@ -577,19 +577,19 @@ func TestTenantUsecaseDeleteDisableRestorePropagateErrors(t *testing.T) {
 	auth := tenantAuth()
 	t.Run("delete has children", func(t *testing.T) {
 		repo := &mockTenantRepo{deleteErr: ErrTenantHasChildren}
-		if err := NewTenantUsecase(repo).DeleteTenantSuper(context.Background(), auth, "t-demo-01"); !errors.Is(err, ErrTenantHasChildren) {
+		if err := NewTenantUsecase(repo).DeleteTenantSuper(context.Background(), auth, "t-test-02"); !errors.Is(err, ErrTenantHasChildren) {
 			t.Fatalf("err = %v, want ErrTenantHasChildren", err)
 		}
 	})
 	t.Run("disable not found", func(t *testing.T) {
 		repo := &mockTenantRepo{statusErr: ErrTenantNotFound}
-		if _, err := NewTenantUsecase(repo).DisableTenantSuper(context.Background(), auth, "t-demo-01"); !errors.Is(err, ErrTenantNotFound) {
+		if _, err := NewTenantUsecase(repo).DisableTenantSuper(context.Background(), auth, "t-test-02"); !errors.Is(err, ErrTenantNotFound) {
 			t.Fatalf("err = %v, want ErrTenantNotFound", err)
 		}
 	})
 	t.Run("restore not found", func(t *testing.T) {
 		repo := &mockTenantRepo{statusErr: ErrTenantNotFound}
-		if _, err := NewTenantUsecase(repo).RestoreTenantSuper(context.Background(), auth, "t-demo-01"); !errors.Is(err, ErrTenantNotFound) {
+		if _, err := NewTenantUsecase(repo).RestoreTenantSuper(context.Background(), auth, "t-test-02"); !errors.Is(err, ErrTenantNotFound) {
 			t.Fatalf("err = %v, want ErrTenantNotFound", err)
 		}
 	})
