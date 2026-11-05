@@ -169,7 +169,7 @@ func countBasicInIdentityTx(ctx context.Context, t *testing.T, d *Data, auth biz
 func TestSessionDiscipline(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
-	super := biz.Identity{TenantID: "t-super-01", UserID: 1}
+	seeded := biz.Identity{TenantID: "t-test-01", UserID: 1}
 
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	// 这是连接纪律的数据库层兜底，门面只是让它不可能被绕过。
@@ -184,7 +184,7 @@ func TestSessionDiscipline(t *testing.T) {
 	})
 
 	t.Run("session sees tenant data", func(t *testing.T) {
-		err := d.IdentityTx(ctx, Identity{TenantID: super.TenantID, UserID: super.UserID}, func(s *IdentityTx) error {
+		err := d.IdentityTx(ctx, Identity{TenantID: seeded.TenantID, UserID: seeded.UserID}, func(s *IdentityTx) error {
 			var n int
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
@@ -217,8 +217,8 @@ func TestSessionDiscipline(t *testing.T) {
 
 	// 种子事实（test_seed.sql）：t-test-01 内 basic 共 10 行；用户 11
 	// （testadmin）持全租户角色 110（data_scope=7），用户 3 持仅本人角色
-	// 103（data_scope=1）。t-test-01 内字典为空（字典属生产默认租户），
-	// 租户可见性用 t-super-01 验证。
+	// 103（data_scope=1）。t-test-01 内含字典演示数据（类型 1-3、数据
+	// 1-14），租户可见性用它验证；t-super-01 已不播种字典。
 	testAdmin := biz.Identity{TenantID: "t-test-01", UserID: 11}
 
 	t.Run("scope 7 sees all basic rows of tenant", func(t *testing.T) {

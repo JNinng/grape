@@ -1,6 +1,6 @@
 -- ======================================================================
 -- test_seed.sql — 集成测试专用种子数据
--- 依赖：seed.sql 之后执行（依赖其树根租户 t-super-01 与字典存在）；
+-- 依赖：seed.sql 之后执行（依赖其树根租户 t-super-01 存在）；
 -- 仅由测试部署清单（deploy.TestDeployFiles）装载，生产 dbdeploy 不执行。
 -- 以超级用户/表 owner 连接执行（RLS 已启用，超级用户绕过 RLS）。
 --
@@ -19,7 +19,10 @@
 --      12xx 副本——RLS 下跨租户 JOIN 不可见，租户角色只能授予本租户
 --      菜单副本）；
 --   8. 登录/操作日志示例（t-test-01 为主，t-test-02 一条对照）；
---   9. t-test-02 的租户配置与功能开关。
+--   9. t-test-02 的租户配置与功能开关；
+--  10. 字典演示数据（t-test-01：证件类型/客户来源/行业分类等租户运营型
+--      分类；t-test-02 无字典作跨租户对照；系统级枚举不进字典，由列
+--      注释 @options 声明）。
 --
 -- 密码统一为 "123456"（scrypt 加密）；登录校验通过后由应用透明重哈希为 argon2id。
 -- ======================================================================
@@ -709,3 +712,48 @@ INSERT INTO public.sys_feature_flag (id, status, "name", flag_key, description, 
                                      created_at, updated_by, updated_at, deleted_at, tenant_id)
 VALUES (8, 1, '审计日志', 'audit_log', '是否启用操作日志记录', true, '测试租户 2 开启审计日志', 1,
         '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-02') ON CONFLICT DO NOTHING;
+
+-- ===========================
+-- 15. 字典演示数据 (sys_dict_type / sys_dict_data)
+--     t-test-01：租户运营型分类（证件类型/客户来源/行业分类）；t-test-02
+--     无字典，供跨租户断言。数据状态/数据范围/角色类型等系统级枚举不进
+--     字典（由列注释 @options 声明），故演示类型取真实业务分类。
+-- ===========================
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01',
+        '证件类型', 'cert_type', '人员/客户证件类型归类') ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-test-01',
+        '客户来源', 'customer_source', '客户获客渠道归类') ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
+VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-test-01',
+        '行业分类', 'industry', '客户所属行业归类') ON CONFLICT DO NOTHING;
+
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '身份证', 'id-card', 'string', 1, '居民身份证') ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (2, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '护照', 'passport', 'string', 2, '中华人民共和国护照') ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (3, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '港澳居民来往内地通行证', 'hk-permit', 'string', 3, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (4, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '台湾居民来往大陆通行证', 'tw-permit', 'string', 4, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (5, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '外国人永久居留身份证', 'foreign-resident-id', 'string', 5, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (6, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-test-01', 1, '其他证件', 'other', 'string', 6, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (7, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-test-01', 2, '广告投放', 'ad', 'string', 1, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (8, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-test-01', 2, '搜索引擎', 'search-engine', 'string', 2, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (9, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-test-01', 2, '朋友推荐', 'referral', 'string', 3, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (10, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-test-01', 2, '线下活动', 'offline-event', 'string', 4, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (11, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-test-01', 3, '互联网', 'internet', 'string', 1, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (12, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-test-01', 3, '金融', 'finance', 'string', 2, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (13, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-test-01', 3, '教育培训', 'education', 'string', 3, NULL) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
+VALUES (14, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-test-01', 3, '其他行业', 'other', 'string', 4, NULL) ON CONFLICT DO NOTHING;

@@ -5,10 +5,13 @@
 -- expose.sql 必须先于本文件，角色映射写入要触发范围版本 bump）。
 --
 -- 本文件只含生产默认数据（平台树根租户 t-super-01 的自举数据）：
--- 树根租户、admin 账号、超级管理员角色与菜单授权、字典、全局/租户配置、
--- 特性开关与翻译。集成测试用的演示数据（t-test-* 租户、部门树、演示
--- 用户、数据范围矩阵、示例日志等）在 test_seed.sql，仅测试部署装载，
--- 生产部署（dbdeploy）不执行。
+-- 树根租户、admin 账号、超级管理员角色与菜单授权、全局/租户配置、
+-- 特性开关与翻译。字典不播种——数据状态/数据范围/角色类型等系统级
+-- 枚举由列注释 @options 声明，字典表仅承载租户运营的分类数据，生产由
+-- 租户经字典管理界面维护；测试用演示字典在 test_seed.sql。集成测试
+-- 用的演示数据（t-test-* 租户、部门树、演示用户、数据范围矩阵、示例
+-- 日志等）也在 test_seed.sql，仅测试部署装载，生产部署（dbdeploy）
+-- 不执行。
 --
 -- 密码统一为 "123456"（scrypt 加密）；登录校验通过后由应用透明重哈希为 argon2id。
 -- ======================================================================
@@ -51,46 +54,7 @@ INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_b
 VALUES (1, 101, 't-super-01', 1) ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 4. 字典类型表 (sys_dict_type)
--- ===========================
-INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
-VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01',
-        '数据范围', 'sys_data_scope', '角色数据范围规则，对应 sys_role.data_scope 的取值') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
-VALUES (2, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01',
-        '角色类型', 'sys_role_type', '角色类型：系统预置 / 租户自定义') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_type (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, "name", code, remark)
-VALUES (3, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01',
-        '数据状态', 'sys_data_status', '通用启用/禁用状态') ON CONFLICT DO NOTHING;
-
--- ===========================
--- 5. 字典数据表 (sys_dict_data)
--- ===========================
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '仅本人', '1', 'integer', 1, '仅可查看和操作本人数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (2, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '本部门', '2', 'integer', 2, '可查看和操作本部门数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (3, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '本部门及子部门', '3', 'integer', 3, '可查看和操作本部门及所有子部门数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (4, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '指定人', '4', 'integer', 4, '仅可查看指定用户的数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (5, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '指定部门', '5', 'integer', 5, '仅可查看指定部门的数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (6, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '用户组', '6', 'integer', 6, '仅可查看所属用户组的数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (7, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01', 1, '全租户', '7', 'integer', 7, '可查看租户下全部数据') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (8, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01', 2, '系统预置', '1', 'integer', 1, '系统内置角色，不可删除，核心权限不可剥离') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (9, 1, 1, '2026-06-01 10:05:00.000', 1, '2026-06-01 10:05:00.000', NULL, 't-super-01', 2, '租户自定义', '2', 'integer', 2, '租户自行创建的角色，可删除') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (10, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01', 3, '启用', '1', 'integer', 1, '数据正常可用') ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_dict_data (id, status, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, dict_type_id, label, value, value_type, sort_order, remark)
-VALUES (11, 1, 1, '2026-06-01 10:10:00.000', 1, '2026-06-01 10:10:00.000', NULL, 't-super-01', 3, '禁用', '0', 'integer', 2, '数据被禁用') ON CONFLICT DO NOTHING;
-
--- ===========================
--- 6. 菜单/权限表 (sys_menu)
+-- 4. 菜单/权限表 (sys_menu)
 --    为平台树根租户 t-super-01 构建标准的后台管理菜单树
 --    菜单结构：系统管理 → 用户管理/角色管理/菜单管理/租户管理/字典管理
 --                      审计管理 → 操作日志/登录日志
@@ -393,7 +357,7 @@ VALUES (253, 1, '工具授权吊销', 'agent:grant:revoke', 251, 3, 2, 1, '2026-
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 7. 角色-菜单映射表 (sys_role_menu)
+-- 5. 角色-菜单映射表 (sys_role_menu)
 --    超级管理员 (101) → 全部菜单（2xx 树 + 智能助手 25x；其余权限码
 --    种子由 99_perm_seed.sql 追加）
 -- ===========================
@@ -497,7 +461,7 @@ INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (101, 253, 't-super-01', 1) ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 8. 系统全局配置 (sys_config)
+-- 6. 系统全局配置 (sys_config)
 -- ===========================
 INSERT INTO public.sys_config (id, status, "name", config_key, value, value_type, remark, created_by, created_at,
                                updated_by, updated_at, deleted_at)
@@ -536,7 +500,7 @@ VALUES (7, 1, '系统名称', 'system.name', '基础多租户管理系统', 'str
         1, '2026-06-01 10:00:00.000', NULL) ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 9. 租户配置 (sys_tenant_config)
+-- 7. 租户配置 (sys_tenant_config)
 --    为平台树根租户设置部分个性化配置
 -- ===========================
 INSERT INTO public.sys_tenant_config (id, status, "name", config_key, value, value_type, remark, created_by, created_at,
@@ -550,7 +514,7 @@ VALUES (2, 1, '租户显示名称', 'tenant.display-name', '默认租户', 'stri
         '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 10. 功能特性 (sys_feature_flag)
+-- 8. 功能特性 (sys_feature_flag)
 --     控制各租户的功能开关
 -- ===========================
 INSERT INTO public.sys_feature_flag (id, status, "name", flag_key, description, is_enabled, remark, created_by,
@@ -574,13 +538,13 @@ VALUES (4, 1, '审计日志', 'audit_log', '是否启用操作日志记录', tru
         '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 -- ===========================
--- 11. 通用翻译 (sys_translation)
+-- 9. 通用翻译 (sys_translation)
 --     为平台树根租户 t-super-01 提供 en-US（英文）翻译种子数据。
 --     应用层查询时先按用户语言偏好匹配，未命中则回退原始值（中文）。
 -- ===========================
 
 -- ---------------------------
--- 11a. 菜单名称翻译 (sys_menu.name → en-US)
+-- 9a. 菜单名称翻译 (sys_menu.name → en-US)
 -- ---------------------------
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
@@ -808,99 +772,40 @@ VALUES (45, 1, 'sys_menu', 245, 'name', 'en-US', 'User Group Delete', NULL, 1, '
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 -- ---------------------------
--- 11b. 字典标签翻译 (sys_dict_data.label → en-US)
---      覆盖 sys_data_scope、sys_role_type、sys_data_status 三种字典类型
--- ---------------------------
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (46, 1, 'sys_dict_data', 1, 'label', 'en-US', 'Only Self', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (47, 1, 'sys_dict_data', 2, 'label', 'en-US', 'Current Dept', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (48, 1, 'sys_dict_data', 3, 'label', 'en-US', 'Dept & Sub-depts', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (49, 1, 'sys_dict_data', 4, 'label', 'en-US', 'Specified Users', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (50, 1, 'sys_dict_data', 5, 'label', 'en-US', 'Specified Depts', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (51, 1, 'sys_dict_data', 6, 'label', 'en-US', 'User Group', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (52, 1, 'sys_dict_data', 7, 'label', 'en-US', 'All Tenant', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (53, 1, 'sys_dict_data', 8, 'label', 'en-US', 'System Preset', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (54, 1, 'sys_dict_data', 9, 'label', 'en-US', 'Tenant Custom', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (55, 1, 'sys_dict_data', 10, 'label', 'en-US', 'Enabled', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
-INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
-                                    created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (56, 1, 'sys_dict_data', 11, 'label', 'en-US', 'Disabled', NULL, 1, '2026-06-01 10:00:00.000', 1,
-        '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
-
--- ---------------------------
--- 11c. 系统配置名称翻译 (sys_config.name → en-US)
+-- 9b. 系统配置名称翻译 (sys_config.name → en-US)
 --      配置名称仅管理界面可见，也提供翻译以保持国际化一致性
 -- ---------------------------
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (57, 1, 'sys_config', 1, 'name', 'en-US', 'Session Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (46, 1, 'sys_config', 1, 'name', 'en-US', 'Session Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (58, 1, 'sys_config', 2, 'name', 'en-US', 'Refresh Token Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (47, 1, 'sys_config', 2, 'name', 'en-US', 'Refresh Token Timeout', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (59, 1, 'sys_config', 3, 'name', 'en-US', 'Password Lockout Threshold', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (48, 1, 'sys_config', 3, 'name', 'en-US', 'Password Lockout Threshold', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (60, 1, 'sys_config', 4, 'name', 'en-US', 'Password Lockout Duration', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (49, 1, 'sys_config', 4, 'name', 'en-US', 'Password Lockout Duration', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (61, 1, 'sys_config', 5, 'name', 'en-US', 'Password Min Length', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (50, 1, 'sys_config', 5, 'name', 'en-US', 'Password Min Length', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (62, 1, 'sys_config', 6, 'name', 'en-US', 'SMTP Host', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (51, 1, 'sys_config', 6, 'name', 'en-US', 'SMTP Host', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_translation (id, status, table_name, row_id, column_name, locale, value, remark, created_by,
                                     created_at, updated_by, updated_at, deleted_at, tenant_id)
-VALUES (63, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-06-01 10:00:00.000', 1,
+VALUES (52, 1, 'sys_config', 7, 'name', 'en-US', 'System Name', NULL, 1, '2026-06-01 10:00:00.000', 1,
         '2026-06-01 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;

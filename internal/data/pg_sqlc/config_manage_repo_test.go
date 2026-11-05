@@ -1763,7 +1763,7 @@ func TestTranslationRepo_delete_missing_row_returns_not_found(t *testing.T) {
 func TestTranslationRepo_list_filters_and_counts_total(t *testing.T) {
 	d := setupTestDB(t)
 
-	// 种子翻译中来源表为 sys_config 的共 7 条（id 57-63）。
+	// 种子翻译中来源表为 sys_config 的共 7 条（id 46-52）。
 	out, err := NewTranslationRepo(d).List(context.Background(), configAuth(configTenantSeeded), translationTableQuery("sys_config"))
 	if err != nil {
 		t.Fatalf("list translations: %v", err)
@@ -1814,7 +1814,7 @@ func TestTranslationRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
-	// 种子翻译 63 条：按 id 降序第 2 页（页大小 2）为 61/60，total 63。
+	// 种子翻译 52 条：按 id 降序第 2 页（页大小 2）为 50/49，total 52。
 	d := setupTestDB(t)
 	pageSize := 2
 	page := 2
@@ -1827,17 +1827,17 @@ func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list translations page 2: %v", err)
 	}
-	if len(out.Items) != 2 || out.Items[0].ID != 61 || out.Items[1].ID != 60 {
-		t.Fatalf("page 2 items = %+v, want ids 61/60", out.Items)
+	if len(out.Items) != 2 || out.Items[0].ID != 50 || out.Items[1].ID != 49 {
+		t.Fatalf("page 2 items = %+v, want ids 50/49", out.Items)
 	}
-	if out.Total == nil || *out.Total != 63 {
-		t.Fatalf("total = %+v, want 63", out.Total)
+	if out.Total == nil || *out.Total != 52 {
+		t.Fatalf("total = %+v, want 52", out.Total)
 	}
 }
 
 func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
-	// 游标模式：种子翻译 63 条，首屏（页大小 2，id 降序）为 63/62 并给出
-	// NextCursor；次屏为 61/60。两屏 total 均为全集 63，不随游标收窄。
+	// 游标模式：种子翻译 52 条，首屏（页大小 2，id 降序）为 52/51 并给出
+	// NextCursor；次屏为 50/49。两屏 total 均为全集 52，不随游标收窄。
 	d := setupTestDB(t)
 	repo := NewTranslationRepo(d)
 	pageSize := 2
@@ -1851,14 +1851,14 @@ func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list first cursor page: %v", err)
 	}
-	if len(out.Items) != 2 || out.Items[0].ID != 63 || out.Items[1].ID != 62 {
-		t.Fatalf("first page items = %+v, want ids 63/62", out.Items)
+	if len(out.Items) != 2 || out.Items[0].ID != 52 || out.Items[1].ID != 51 {
+		t.Fatalf("first page items = %+v, want ids 52/51", out.Items)
 	}
 	if out.NextCursor == "" {
 		t.Fatal("first page next cursor is empty, want a cursor")
 	}
-	if out.Total == nil || *out.Total != 63 {
-		t.Fatalf("first page total = %+v, want 63", out.Total)
+	if out.Total == nil || *out.Total != 52 {
+		t.Fatalf("first page total = %+v, want 52", out.Total)
 	}
 
 	after := out.NextCursor
@@ -1870,11 +1870,11 @@ func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list second cursor page: %v", err)
 	}
-	if len(secondOut.Items) != 2 || secondOut.Items[0].ID != 61 || secondOut.Items[1].ID != 60 {
-		t.Fatalf("second page items = %+v, want ids 61/60", secondOut.Items)
+	if len(secondOut.Items) != 2 || secondOut.Items[0].ID != 50 || secondOut.Items[1].ID != 49 {
+		t.Fatalf("second page items = %+v, want ids 50/49", secondOut.Items)
 	}
-	if secondOut.Total == nil || *secondOut.Total != 63 {
-		t.Fatalf("second page total = %+v, want 63 (not narrowed by cursor)", secondOut.Total)
+	if secondOut.Total == nil || *secondOut.Total != 52 {
+		t.Fatalf("second page total = %+v, want 52 (not narrowed by cursor)", secondOut.Total)
 	}
 }
 
