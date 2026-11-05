@@ -11,10 +11,6 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 ## 文件总览
 
 | # | 文件 | 作用描述 | sqlc 输入 | 内容 |
-
-> 表内 # 为 sqlc.yaml 装载序（「—」为不入 catalog 的文件），不是部署执行序：部署顺序以
-> `internal/data/pg_sqlc/deploy/deploy.go` 的 DeployFiles 清单与仓库根
-> deploy_db.md 为准。
 |---|---|---|---|---|
 | 1 | schema/10_basic.sql | 定义 basic 业务表：租户列、审计列、归属三元组与 @scope 列注释 | 是 | 1 张表 |
 | 2 | schema/20_tenant.sql | 定义 sys_tenant 租户表 | 是 | 1 张表 |
@@ -42,6 +38,9 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
 
+> 表内 # 为 sqlc.yaml 装载序（「—」为不入 catalog 的文件），不是部署执行序：部署顺序以
+> `internal/data/pg_sqlc/deploy/deploy.go` 的 DeployFiles 清单与仓库根
+> deploy_db.md 为准。
 
 - schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
@@ -249,8 +248,8 @@ sys_tenant 的租户树策略只放行 `tenant_id = app.tenant_id` 或
 纪律（未设置/空串即拒绝，fail-closed），并校验目标对调用方可见（`id`
 或 `tenant_id` 命中调用方租户，否则拒绝）——防止把计数差异用作跨租户
 结构侧信道。EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（无显式 GRANT，
-fn_menu_* 同款）。当前 schema 未设 sys_tenant.parent_id 索引，计数为
-全表扫描；后续迁移补 parent_id 部分索引优化（见文件头注释）。
+fn_menu_* 同款）。sys_tenant.parent_id 未设索引，计数按全表扫描
+（见 98_tenant_guard.sql 文件头注释）。
 
 | 函数 | 签名 | 属性 | 作用描述 |
 |---|---|---|---|
