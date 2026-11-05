@@ -7,7 +7,9 @@ import { toApiError } from './toApiError'
 
 // ListSchemaFieldDTO 对齐 query.v1.ListSchemaField：ops 为该字段可用的
 // 过滤操作符全集（服务端按列校验）；enum 的 json_name 即 "enum"，
-// 是枚举字段的合法线上枚举名。
+// 是枚举字段的合法线上枚举名；options 是静态字典选项（@options 注解），
+// value 按字段 dataType 定型为 number 或 string，渲染下拉/多选值控件，
+// 与 api（远程选项源）互斥。
 export interface ListSchemaFieldDTO {
   field: string
   label: string
@@ -18,6 +20,8 @@ export interface ListSchemaFieldDTO {
   selectable?: boolean
   ops: string[]
   enum?: string[]
+  desc?: string
+  options?: { value: number | string; label: string }[]
   api?: {
     endpoint: string
     valueKey: string

@@ -111,17 +111,22 @@ const SCHEMA_VALUE_TYPES: Record<string, FilterValueType> = {
 
 // filterFieldsFromSchema 把 ListSchema 响应映射为筛选字段配置：内容以
 // 响应为主——凡声明了 ops 的字段皆可筛（label/ops 直取响应），值编辑器
-// 类型由 dataType 推导，enum 的合法枚举名即选项；未知操作符剔除后无
-// 可用 op 的字段一并丢弃。
+// 类型由 dataType 推导；带静态字典 options 的字段出下拉（单值 op 单选、
+// in/not_in 多选勾选，形态由 op 驱动），enum 的合法枚举名即选项；未知
+// 操作符剔除后无可用 op 的字段一并丢弃。
 export function filterFieldsFromSchema(schema: ListSchemaDTO): FilterField[] {
   return schema.fields
     .filter((field) => field.ops.length > 0)
     .map((field) => {
+      const ops = field.ops.filter((op): op is QueryOp => OP_LABELS[op as QueryOp] !== undefined)
+      if (field.options !== undefined && field.options.length > 0) {
+        return { field: field.field, label: field.label, ops, valueType: 'select' as const, options: field.options }
+      }
       const valueType = SCHEMA_VALUE_TYPES[field.dataType] ?? 'text'
       return {
         field: field.field,
         label: field.label,
-        ops: field.ops.filter((op): op is QueryOp => OP_LABELS[op as QueryOp] !== undefined),
+        ops,
         valueType,
         ...(valueType === 'select'
           ? { options: (field.enum ?? []).map((name) => ({ label: name, value: name })) }
@@ -266,9 +271,11 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
   const [lowerText, setLowerText] = useState('')
   const [upperText, setUpperText] = useState('')
   // multiText 是 in/not_in 的多值输入（逗号/空白分隔）；selectedEnum 是
-  // 枚举多选的勾选集（select 型多值操作符的取值）。
+  // 枚举多选的勾选集、selectedSingle 是枚举单选的当前值（二者供编辑态
+  // 回填，编辑器打开即回显原条件值）。
   const [multiText, setMultiText] = useState('')
   const [selectedEnum, setSelectedEnum] = useState<string[]>([])
+  const [selectedSingle, setSelectedSingle] = useState<string>()
   const [dateSingle, setDateSingle] = useState<Date | undefined>(undefined)
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined)
 
@@ -278,6 +285,7 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
     setUpperText('')
     setMultiText('')
     setSelectedEnum([])
+    setSelectedSingle(undefined)
     setDateSingle(undefined)
     setDateRange(undefined)
   }
@@ -307,9 +315,13 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
     setDraft({ field, op: cond.op })
     if (opNeedsValue(cond.op)) {
       if (field.valueType === 'select') {
-        // 枚举多选回填勾选集；单选由用户重选（点选即落）。
-        if (isMultiValueOp(cond.op) && Array.isArray(cond.value)) {
-          setSelectedEnum(cond.value.map((item) => String(item)))
+        // 多选回填勾选集；单选回填当前值（点选新值即替换落条）。
+        if (isMultiValueOp(cond.op)) {
+          if (Array.isArray(cond.value)) {
+            setSelectedEnum(cond.value.map((item) => String(item)))
+          }
+        } else if (cond.value !== undefined) {
+          setSelectedSingle(String(cond.value))
         }
       } else if (isMultiValueOp(cond.op)) {
         // 多值输入回填原数组（日期截到 YYYY-MM-DD 便于重编辑；展示用逗号
@@ -685,18 +697,29 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
                   })}
                 </div>
               ) : (
-                <Select onValueChange={commitSelectValue}>
-                  <SelectTrigger aria-label="筛选值" size="sm" className="w-full">
-                    <SelectValue placeholder={`选择${draft.field.label}…`} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(draft.field.options ?? []).map((option) => (
-                      <SelectItem key={String(option.value)} value={String(option.value)}>
+                // 单选与多选同形态（内联滚动列表）：进入值步选项直接可见，
+                // 点选即落条，无需再展开下拉；编辑态以 aria-selected 回显
+                // 当前值。
+                <div aria-label="筛选值" className="grid max-h-48 gap-1 overflow-auto" role="listbox">
+                  {(draft.field.options ?? []).map((option) => {
+                    const optionKey = String(option.value)
+                    return (
+                      <button
+                        key={optionKey}
+                        type="button"
+                        role="option"
+                        aria-selected={selectedSingle === optionKey}
+                        className={cn(
+                          'cursor-pointer rounded-sm px-1 py-0.5 text-left text-sm hover:bg-accent',
+                          selectedSingle === optionKey && 'bg-accent font-medium',
+                        )}
+                        onClick={() => commitSelectValue(optionKey)}
+                      >
                         {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                      </button>
+                    )
+                  })}
+                </div>
               )
             ) : isMultiValueOp(draft.op) ? (
               <Input
