@@ -1,0 +1,220 @@
+syntax = "proto3";
+
+package tenant.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/tenant/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.tenant.v1";
+option java_outer_classname = "TenantProto";
+
+// TenantService 提供平台级租户实体（sys_tenant）的管理。
+//
+// 租户树模型（schema/20_tenant.sql 的设计口径）：sys_tenant 的每一行
+// 归属其父租户（tenant_id 列），RLS 策略 sys_tenant_tenant_isolation
+// 允许命中 tenant_id = app.tenant_id 或 id = app.tenant_id 的行。每个
+// 租户可见并管理自己名下的直接子租户与自身；树外租户行由 RLS 天然
+// 不可见，等同不存在（NOT_FOUND）。租户树由各租户创建自己的直接子租户
+// 构成：结构父级（parent_id）与行归属（tenant_id）必须一致，创建时
+// parent_id 只允许省略（缺省 = 调用方租户）或等于调用方租户。
+//
+// 默认种子口径：种子只向平台根租户（t-super-01 的超级管理员角色 101）
+// 授予 sys:tenant:* 菜单/权限点；子租户如需自助管理其直接子租户，需
+// 另行在其租户内铺设菜单/角色（种子不铺）。
+//
+// super 命名口径：本服务 API 方法名统一带 Super，表达的是「平台级租户
+// 实体管理」——被管理的是一整个租户实体（而非调用方自己租户内的业务
+// 数据），与 permission.md 中「绕过租户/数据范围约束」的 super 语义不同。
+// 内部仓储的读方法（List/Get）不带 Super，写/状态方法带。租户边界仍由
+// RLS 承担：除删除前置的受控只读计数函数（只返回计数，不返回行数据）外，
+// 本服务不新增 RLS 绕过机制、不新增 SECURITY DEFINER 写函数，写路径是
+// 普通 DML（role.sql 未对 sys_tenant REVOKE 直写授权）。
+//
+// 身份/结构列纪律：id 由服务端生成（字符串），创建请求中的 id、
+// tenant_id、审计列与时间戳被忽略；tenant_id 落值为会话
+// app.tenant_id（行归属父租户，RLS WITH CHECK 兜底）。parent_id 创建时
+// 可省略（缺省 = 调用方租户）或显式等于调用方租户，创建后不可变，
+// 更新输入中被忽略。code 是身份列、name 是名称列：两者在未删除行间唯一
+//（部分唯一索引，软删后可复用），code 创建后不可变（更新输入忽略），
+// name 更新可改（冲突返回 ALREADY_EXISTS）。
+service TenantService {
+  // CreateTenantSuper 创建一个租户实体。id 由服务端生成；parent_id
+  // 省略或等于调用方租户（其它值返回 INVALID_ARGUMENT——结构父级与
+  // 行归属必须一致，每个租户只能创建自己的直接子租户）。code/name
+  // 必填（TrimSpace 后落库，长度分别 ≤32/≤256），未删除行间冲突返回
+  // ALREADY_EXISTS。contact_name/contact_phone/default_locale 各不超过
+  // 64/32/10，default_locale 须为 BCP-47 基本形态（空则缺省 zh-CN）；
+  // max_user_count 提供时必须 >0。status 只允许 0/1，创建缺省启用
+  //（optional 缺失才缺省，显式非 0/1 值返回 INVALID_ARGUMENT）。
+  rpc CreateTenantSuper (CreateTenantSuperRequest) returns (Tenant) {
+    option (google.api.http) = {
+      post: "/v1/tenants/create"
+      body: "*"
+    };
+  }
+
+  // GetTenantSuper 按 id 查询单个租户。目标不存在、已软删或不在调用方
+  // 租户树内（RLS 不可见）均返回 NOT_FOUND。
+  rpc GetTenantSuper (GetTenantSuperRequest) returns (Tenant) {
+    option (google.api.http) = {
+      get: "/v1/tenants/{id}"
+    };
+  }
+
+  // ListTenantsSuper 按动态查询协议返回一页租户（调用方租户树可见
+  // 部分）。过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表
+  // 游标均返回 INVALID_ARGUMENT。
+  rpc ListTenantsSuper (ListTenantsSuperRequest) returns (TenantSet) {
+    option (google.api.http) = {
+      post: "/v1/tenants/list"
+      body: "query"
+    };
+  }
+
+  // UpdateTenantSuper 覆盖可变字段（status、name、contact_name、
+  // contact_phone、expired_at、max_user_count、default_locale）。id 与
+  // tenant_id 只读；code 是身份列（创建后不可变），parent_id 是结构列
+  // （创建后不可变），两者在更新输入中被忽略。name 冲突返回
+  // ALREADY_EXISTS；目标不存在、已软删或树外不可见返回 NOT_FOUND。
+  // 调用方自身租户的 status 变更（与当前值不同）返回 INVALID_ARGUMENT
+  // ——自身停用/恢复须走 Disable/Restore；同值更新（如只改 name）放行。
+  rpc UpdateTenantSuper (UpdateTenantSuperRequest) returns (Tenant) {
+    option (google.api.http) = {
+      put: "/v1/tenants/update"
+      body: "tenant"
+    };
+  }
+
+  // DeleteTenantSuper 软删除租户（deleted_at 置位）。存在未删除的直接
+  // 子租户时拒绝（TENANT_HAS_CHILDREN，需自叶向根逐层删）；禁止删除
+  // 调用方自身租户（INVALID_ARGUMENT）。目标不存在、已软删或树外
+  // 不可见返回 NOT_FOUND。
+  rpc DeleteTenantSuper (DeleteTenantSuperRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/tenants/{id}"
+    };
+  }
+
+  // DisableTenantSuper 停用租户（status 置 0，幂等目标状态写：已停用
+  // 再停用不出错）。禁止停用调用方自身租户（INVALID_ARGUMENT）。
+  // 目标不存在、已软删或树外不可见返回 NOT_FOUND。
+  rpc DisableTenantSuper (DisableTenantSuperRequest) returns (Tenant) {
+    option (google.api.http) = {
+      post: "/v1/tenants/{id}/disable"
+    };
+  }
+
+  // RestoreTenantSuper 恢复租户（status 置 1，幂等目标状态写）。禁止
+  // 恢复调用方自身租户（INVALID_ARGUMENT）。目标不存在、已软删或树外
+  // 不可见返回 NOT_FOUND。
+  rpc RestoreTenantSuper (RestoreTenantSuperRequest) returns (Tenant) {
+    option (google.api.http) = {
+      post: "/v1/tenants/{id}/restore"
+    };
+  }
+}
+
+// Tenant 是租户实体的规范表示。审计列与时间戳只读。
+message Tenant {
+  // 服务端生成的租户标识（字符串，`t-` + 14 位小写十六进制，共 16
+  // 字符）。只读。
+  string id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 租户编码（未删除行间唯一），如 default、demo；身份列，创建后
+  // 不可变（更新输入中被忽略）。
+  string code = 3;
+  // 租户名（未删除行间唯一）；更新可改。
+  string name = 4;
+  // 父级租户 ID。创建时可省略（缺省 = 调用方租户）或显式等于调用方
+  // 租户；其它值返回 INVALID_ARGUMENT（结构父级与行归属必须一致）。
+  // 创建后不可变，更新输入中被忽略。
+  optional string parent_id = 5;
+  // 联系人，可空。
+  optional string contact_name = 6;
+  // 联系电话，可空。
+  optional string contact_phone = 7;
+  // 到期时间，可空（未设置表示不过期）。
+  google.protobuf.Timestamp expired_at = 8;
+  // 最大用户数，可空（未设置表示不限制）；提供时必须 >0。
+  optional int32 max_user_count = 9;
+  // 租户默认语言（BCP-47 基本形态，如 zh-CN、en-US）；空则缺省 zh-CN。
+  string default_locale = 10;
+  // 创建人。只读。
+  int64 created_by = 11;
+  // 更新人。只读。
+  int64 updated_by = 12;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 13;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 14;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 15;
+  // 行的归属父租户。只读：由服务端按认证身份的租户落值，请求中的值被
+  // 忽略；创建时与 parent_id 一致（恒等于调用方租户）。租户树根行
+  //（id = tenant_id）的该列等于自身 id。
+  string tenant_id = 16;
+}
+
+// TenantSet 是 ListTenantsSuper 返回的分页集合。
+message TenantSet {
+  // 本页租户，顺序遵循查询中的 sort。
+  repeated Tenant items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateTenantSuperRequest 是 TenantService.CreateTenantSuper 的输入。
+message CreateTenantSuperRequest {
+  // 要创建的租户。id、tenant_id、parent_id 的缺省展开（parent 省略时
+  // 取调用方租户）、created_by/updated_by 与时间戳由服务端落值。
+  Tenant tenant = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetTenantSuperRequest 是 TenantService.GetTenantSuper 的输入。
+message GetTenantSuperRequest {
+  // 目标租户的服务端标识。
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListTenantsSuperRequest 是 TenantService.ListTenantsSuper 的输入。
+message ListTenantsSuperRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateTenantSuperRequest 是 TenantService.UpdateTenantSuper 的输入。
+message UpdateTenantSuperRequest {
+  // 携带新字段值的租户。id 标识目标记录，必须设置；code（身份列）、
+  // parent_id（结构列）与 tenant_id（归属列）在输入中被忽略。
+  Tenant tenant = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteTenantSuperRequest 是 TenantService.DeleteTenantSuper 的输入。
+message DeleteTenantSuperRequest {
+  // 目标租户的服务端标识。
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DisableTenantSuperRequest 是 TenantService.DisableTenantSuper 的输入。
+message DisableTenantSuperRequest {
+  // 目标租户的服务端标识。
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// RestoreTenantSuperRequest 是 TenantService.RestoreTenantSuper 的输入。
+message RestoreTenantSuperRequest {
+  // 目标租户的服务端标识。
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}

@@ -37,7 +37,8 @@ func newWebTestServer(t *testing.T, dist fs.FS, reserved []string) *kratoshttp.S
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	noop := func(h middleware.Handler) middleware.Handler { return h }
-	srv, err := NewHTTPServer(&conf.Server{Http: &conf.Server_HTTP{}},
+	srv, err := NewHTTPServer(
+		&conf.Server{Http: &conf.Server_HTTP{}},
 		nil,
 		traceMiddleware,
 		noop,
@@ -60,7 +61,14 @@ func newWebTestServer(t *testing.T, dist fs.FS, reserved []string) *kratoshttp.S
 		nil,
 		nil,
 		nil,
-		WebHandler(newWebFileHandler(dist, reserved)))
+		nil,
+		nil,
+		nil,
+		nil,
+		// 租户管理服务本文件用例不触达，传 nil。
+		nil,
+		WebHandler(newWebFileHandler(dist, reserved)),
+	)
 	if err != nil {
 		panic("build http server: " + err.Error())
 	}
@@ -102,6 +110,43 @@ func TestWebSPARouteRefreshServesIndex(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "spa-index") {
 		t.Fatalf("spa route body missing index content:\n%s", rec.Body.String())
+	}
+}
+
+// TestWebSPARouteSettingsRefreshServesIndex 验证设置管理页刷新不 404：
+// /settings 走 SPA 回退出页面壳。
+func TestWebSPARouteSettingsRefreshServesIndex(t *testing.T) {
+	srv := newWebTestServer(t, webTestFS(), ReservedAPIPrefixes(nil))
+	rec := webDo(t, srv, http.MethodGet, "/settings", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings route status = %d, want 200\n%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "spa-index") {
+		t.Fatalf("settings route body missing index content:\n%s", rec.Body.String())
+	}
+}
+
+// TestWebSPARouteSettingsSubRouteRefreshServesIndex 验证设置子页刷新同样
+// 回退页面壳：配置页与租户页均返回入口页而非 404。
+func TestWebSPARouteSettingsSubRouteRefreshServesIndex(t *testing.T) {
+	srv := newWebTestServer(t, webTestFS(), ReservedAPIPrefixes(nil))
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{name: "configs", target: "/settings/configs"},
+		{name: "tenants", target: "/settings/tenants"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := webDo(t, srv, http.MethodGet, tc.target, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("settings sub route %s status = %d, want 200\n%s", tc.target, rec.Code, rec.Body.String())
+			}
+			if !strings.Contains(rec.Body.String(), "spa-index") {
+				t.Fatalf("settings sub route %s body missing index content:\n%s", tc.target, rec.Body.String())
+			}
+		})
 	}
 }
 

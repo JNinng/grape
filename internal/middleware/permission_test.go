@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	auditv1 "grape/api/audit/v1"
+	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
+	tenantv1 "grape/api/tenant/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/biz"
 
@@ -162,9 +164,84 @@ func TestPermissionMiddleware_propagates_lookup_error(t *testing.T) {
 	}
 }
 
-// TestOperationPermissionCodes_cover_gated_endpoints 验证码表完整性：
-// 六个管理服务与审计/会话治理面的全部 RPC 都在码表内（管理面无未声明
-// 端点），且码值与种子权限点形态一致（<资源>:<操作>）。
+// TestOperationPermissionCodes_match_config_family_codes 验证功能开关与
+// 通用翻译的 10 个端点逐一映射到预期的权限码常量（精确相等，不只校验
+// 码形态）：读并入 :query，写各对应 create/update/delete。
+func TestOperationPermissionCodes_match_config_family_codes(t *testing.T) {
+	want := map[string]string{
+		configv1.OperationFeatureFlagServiceGetFeatureFlag:    biz.PermConfigFeatureFlagQuery,
+		configv1.OperationFeatureFlagServiceListFeatureFlags:  biz.PermConfigFeatureFlagQuery,
+		configv1.OperationFeatureFlagServiceCreateFeatureFlag: biz.PermConfigFeatureFlagCreate,
+		configv1.OperationFeatureFlagServiceUpdateFeatureFlag: biz.PermConfigFeatureFlagUpdate,
+		configv1.OperationFeatureFlagServiceDeleteFeatureFlag: biz.PermConfigFeatureFlagDelete,
+		configv1.OperationTranslationServiceGetTranslation:    biz.PermConfigTranslationQuery,
+		configv1.OperationTranslationServiceListTranslations:  biz.PermConfigTranslationQuery,
+		configv1.OperationTranslationServiceCreateTranslation: biz.PermConfigTranslationCreate,
+		configv1.OperationTranslationServiceUpdateTranslation: biz.PermConfigTranslationUpdate,
+		configv1.OperationTranslationServiceDeleteTranslation: biz.PermConfigTranslationDelete,
+	}
+	for operation, code := range want {
+		got, ok := operationPermissionCodes[operation]
+		if !ok {
+			t.Fatalf("operation %s not covered", operation)
+		}
+		if got != code {
+			t.Fatalf("operation %s maps to %q, want %q", operation, got, code)
+		}
+	}
+}
+
+// TestOperationPermissionCodes_match_config_global_and_tenant_codes 验证
+// 全局配置与租户配置共 10 个端点逐一映射到预期的权限码常量（精确相等）：
+// 读并入 :query，写各对应 create/update/delete。
+func TestOperationPermissionCodes_match_config_global_and_tenant_codes(t *testing.T) {
+	want := map[string]string{
+		configv1.OperationConfigServiceGetConfig:                biz.PermConfigGlobalQuery,
+		configv1.OperationConfigServiceListConfigs:              biz.PermConfigGlobalQuery,
+		configv1.OperationConfigServiceCreateConfigSuper:        biz.PermConfigGlobalCreate,
+		configv1.OperationConfigServiceUpdateConfigSuper:        biz.PermConfigGlobalUpdate,
+		configv1.OperationConfigServiceDeleteConfigSuper:        biz.PermConfigGlobalDelete,
+		configv1.OperationTenantConfigServiceGetTenantConfig:    biz.PermConfigTenantQuery,
+		configv1.OperationTenantConfigServiceListTenantConfigs:  biz.PermConfigTenantQuery,
+		configv1.OperationTenantConfigServiceCreateTenantConfig: biz.PermConfigTenantCreate,
+		configv1.OperationTenantConfigServiceUpdateTenantConfig: biz.PermConfigTenantUpdate,
+		configv1.OperationTenantConfigServiceDeleteTenantConfig: biz.PermConfigTenantDelete,
+	}
+	for operation, code := range want {
+		got, ok := operationPermissionCodes[operation]
+		if !ok {
+			t.Fatalf("operation %s not covered", operation)
+		}
+		if got != code {
+			t.Fatalf("operation %s maps to %q, want %q", operation, got, code)
+		}
+	}
+}
+
+// TestOperationPermissionCodes_match_tenant_codes 验证租户管理 7 个端点
+// 逐一映射到预期的权限码常量（精确相等）：读并入 :query，创建/更新/删除
+// 各对应操作码，停用/恢复并入 :update（状态变更属编辑形态）。
+func TestOperationPermissionCodes_match_tenant_codes(t *testing.T) {
+	want := map[string]string{
+		tenantv1.OperationTenantServiceGetTenantSuper:     biz.PermTenantQuery,
+		tenantv1.OperationTenantServiceListTenantsSuper:   biz.PermTenantQuery,
+		tenantv1.OperationTenantServiceCreateTenantSuper:  biz.PermTenantCreate,
+		tenantv1.OperationTenantServiceUpdateTenantSuper:  biz.PermTenantUpdate,
+		tenantv1.OperationTenantServiceDisableTenantSuper: biz.PermTenantUpdate,
+		tenantv1.OperationTenantServiceRestoreTenantSuper: biz.PermTenantUpdate,
+		tenantv1.OperationTenantServiceDeleteTenantSuper:  biz.PermTenantDelete,
+	}
+	for operation, code := range want {
+		got, ok := operationPermissionCodes[operation]
+		if !ok {
+			t.Fatalf("operation %s not covered", operation)
+		}
+		if got != code {
+			t.Fatalf("operation %s maps to %q, want %q", operation, got, code)
+		}
+	}
+}
+
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 	covered := map[string]struct{}{
 		// 用户管理
@@ -221,6 +298,36 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		dictv1.OperationDictServiceUpdateDictData: {},
 		dictv1.OperationDictServiceDeleteDictType: {},
 		dictv1.OperationDictServiceDeleteDictData: {},
+		// 配置管理（全局配置 + 租户配置）
+		configv1.OperationConfigServiceGetConfig:                {},
+		configv1.OperationConfigServiceListConfigs:              {},
+		configv1.OperationConfigServiceCreateConfigSuper:        {},
+		configv1.OperationConfigServiceUpdateConfigSuper:        {},
+		configv1.OperationConfigServiceDeleteConfigSuper:        {},
+		configv1.OperationTenantConfigServiceGetTenantConfig:    {},
+		configv1.OperationTenantConfigServiceListTenantConfigs:  {},
+		configv1.OperationTenantConfigServiceCreateTenantConfig: {},
+		configv1.OperationTenantConfigServiceUpdateTenantConfig: {},
+		configv1.OperationTenantConfigServiceDeleteTenantConfig: {},
+		// 功能开关与通用翻译
+		configv1.OperationFeatureFlagServiceGetFeatureFlag:    {},
+		configv1.OperationFeatureFlagServiceListFeatureFlags:  {},
+		configv1.OperationFeatureFlagServiceCreateFeatureFlag: {},
+		configv1.OperationFeatureFlagServiceUpdateFeatureFlag: {},
+		configv1.OperationFeatureFlagServiceDeleteFeatureFlag: {},
+		configv1.OperationTranslationServiceGetTranslation:    {},
+		configv1.OperationTranslationServiceListTranslations:  {},
+		configv1.OperationTranslationServiceCreateTranslation: {},
+		configv1.OperationTranslationServiceUpdateTranslation: {},
+		configv1.OperationTranslationServiceDeleteTranslation: {},
+		// 租户管理
+		tenantv1.OperationTenantServiceGetTenantSuper:     {},
+		tenantv1.OperationTenantServiceListTenantsSuper:   {},
+		tenantv1.OperationTenantServiceCreateTenantSuper:  {},
+		tenantv1.OperationTenantServiceUpdateTenantSuper:  {},
+		tenantv1.OperationTenantServiceDisableTenantSuper: {},
+		tenantv1.OperationTenantServiceRestoreTenantSuper: {},
+		tenantv1.OperationTenantServiceDeleteTenantSuper:  {},
 		// 审计日志与会话治理
 		auditv1.OperationAuditServiceListLoginLogs:        {},
 		auditv1.OperationAuditServiceGetLoginLog:          {},

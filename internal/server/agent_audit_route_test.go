@@ -57,7 +57,8 @@ func newAgentAuditTestServer(t *testing.T) *kratoshttp.Server {
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	auditService := service.NewAgentAuditService(biz.NewAuditUsecase(&auditFakeRepo{}, nil))
-	srv, err := NewHTTPServer(confServer,
+	srv, err := NewHTTPServer(
+		confServer,
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
@@ -78,10 +79,17 @@ func newAgentAuditTestServer(t *testing.T) *kratoshttp.Server {
 		nil,
 		nil,
 		nil,
-		auditService,
 		nil,
-		// 检索留痕查询端点本文件用例不触达，传 nil。
-		nil)
+		nil,
+		nil,
+		nil,
+		// 租户管理服务本文件用例不触达，传 nil。
+		nil,
+		auditService,
+		// 检索留痕查询端点与静态托管本文件用例不触达，传 nil。
+		nil,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

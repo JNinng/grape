@@ -36,6 +36,8 @@ sql:
       - "96_agent_grant.sql"
       - "schema/97_agent_retrieval_log.sql"
       - "98_menu_write.sql"
+      - "98_config_write.sql"
+      - "98_tenant_guard.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -51,6 +53,8 @@ sql:
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
       - "queries/agent_retrieval_log.sql"
+      - "queries/sys_config.sql"
+      - "queries/sys_tenant.sql"
     gen:
       go:
         package: "gen"
@@ -79,6 +83,8 @@ sql:
       - "96_agent_grant.sql"
       - "schema/97_agent_retrieval_log.sql"
       - "98_menu_write.sql"
+      - "98_config_write.sql"
+      - "98_tenant_guard.sql"
     queries:
       - "queries/operate.sql"
       - "queries/basic.sql"
@@ -94,6 +100,8 @@ sql:
       - "queries/agent_audit.sql"
       - "queries/agent_grant.sql"
       - "queries/agent_retrieval_log.sql"
+      - "queries/sys_config.sql"
+      - "queries/sys_tenant.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"

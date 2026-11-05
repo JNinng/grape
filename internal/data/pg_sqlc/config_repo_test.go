@@ -191,3 +191,42 @@ func TestNewEmbedderResolver_invalid_spaces_fails(t *testing.T) {
 		t.Fatal("NewEmbedderResolver(undeclared default) = nil error, want rejection")
 	}
 }
+
+func TestEmbedderResolver_tenant_config_update_via_repo_takes_effect(t *testing.T) {
+	// 管理写路径（TenantConfigRepo.Create/Update）与既有消费路径
+	//（NewEmbedderResolver）兼容：配置经仓储写入后，解析器立即读到新值
+	//（无缓存，唯一索引点读）。
+	d := setupTestDB(t)
+	resolver, cleanup, err := NewEmbedderResolver(resolverTestConf(), d)
+	if err != nil {
+		t.Fatalf("NewEmbedderResolver: %v", err)
+	}
+	defer cleanup()
+	auth := biz.Identity{TenantID: "t-reslv-e", UserID: 5}
+	ctx := biz.WithIdentity(context.Background(), auth)
+	repo := NewTenantConfigRepo(d)
+
+	v2 := "bge-m3@v2"
+	created, err := repo.Create(context.Background(), auth, &biz.TenantConfig{
+		Status: biz.ConfigStatusEnabled, Name: "default embedder",
+		ConfigKey: embedderConfigKey, Value: &v2, ValueType: "string",
+	})
+	if err != nil {
+		t.Fatalf("create embedder tenant config via repo: %v", err)
+	}
+	space, dim, err := resolver.ResolveDefaultEmbedder(ctx)
+	if err != nil || space != "bge-m3@v2" || dim != 1024 {
+		t.Fatalf("resolve after repo create = (%s, %d, %v), want (bge-m3@v2, 1024, nil)", space, dim, err)
+	}
+
+	v1 := "bge-m3@v1"
+	if _, err := repo.Update(context.Background(), auth, &biz.TenantConfig{
+		ID: created.ID, Status: biz.ConfigStatusEnabled, Name: "default embedder", Value: &v1,
+	}); err != nil {
+		t.Fatalf("update embedder tenant config via repo: %v", err)
+	}
+	space, dim, err = resolver.ResolveDefaultEmbedder(ctx)
+	if err != nil || space != "bge-m3@v1" || dim != 1024 {
+		t.Fatalf("resolve after repo update = (%s, %d, %v), want (bge-m3@v1, 1024, nil)", space, dim, err)
+	}
+}

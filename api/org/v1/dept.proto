@@ -57,7 +57,7 @@ service DeptService {
 
   // UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
   // 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-  // 专项口径（本批不提供）。
+  // 专项口径（管理 API 不提供，由部署面维护）。
   rpc UpdateDept (UpdateDeptRequest) returns (Dept) {
     option (google.api.http) = {
       put: "/v1/depts/update"

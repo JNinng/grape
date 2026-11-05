@@ -8,6 +8,7 @@ import {
   setSession,
 } from '../auth/store'
 import { authFetch } from './http'
+import { ApiError, toApiError } from './toApiError'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -146,5 +147,30 @@ describe('authFetch 401 state machine', () => {
 
     expect(res.status).toBe(500)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('toApiError', () => {
+  it('prefers_the_message_and_keeps_the_reason_code', async () => {
+    const err = await toApiError(jsonResponse(409, { reason: 'CONFIG_ALREADY_EXISTS', message: 'config already exists' }))
+
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.message).toBe('config already exists')
+    expect(err.reason).toBe('CONFIG_ALREADY_EXISTS')
+  })
+
+  it('falls_back_to_the_reason_code_when_the_body_has_no_message', async () => {
+    const err = await toApiError(jsonResponse(409, { reason: 'CONFIG_ALREADY_EXISTS' }))
+
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err.message).toBe('CONFIG_ALREADY_EXISTS')
+    expect(err.reason).toBe('CONFIG_ALREADY_EXISTS')
+  })
+
+  it('keeps_the_status_text_and_leaves_the_reason_unset_for_non_json_bodies', async () => {
+    const err = await toApiError(new Response('oops', { status: 502 }))
+
+    expect(err.message).toBe('HTTP 502')
+    expect(err.reason).toBeUndefined()
   })
 })

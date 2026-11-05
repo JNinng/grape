@@ -68,6 +68,35 @@ const (
 	PermDictUpdate = "sys:dict:update"
 	PermDictDelete = "sys:dict:delete"
 
+	// 配置管理（sys_config / sys_tenant_config，种子菜单 233/234 子树：
+	// 操作级权限点 258-265 由 99_perm_seed.sql 预铺）。全局配置读取本身
+	// 即全局口径（sys_config 无 tenant_id、无 RLS，读取不设 super），
+	// 写端点经受控写函数（Create/Update/DeleteSuper）；写码只应由平台
+	// 根租户持有，且 ConfigUsecase 的写路径另强制根租户校验（子租户即使
+	// 持有写码也拒绝）。租户配置读写均走 RLS 与普通 DML，无 super。
+	// 两组操作码按表分设（全局/租户）。
+	PermConfigGlobalQuery  = "sys:config:global:query"
+	PermConfigGlobalCreate = "sys:config:global:create"
+	PermConfigGlobalUpdate = "sys:config:global:update"
+	PermConfigGlobalDelete = "sys:config:global:delete"
+	PermConfigTenantQuery  = "sys:config:tenant:query"
+	PermConfigTenantCreate = "sys:config:tenant:create"
+	PermConfigTenantUpdate = "sys:config:tenant:update"
+	PermConfigTenantDelete = "sys:config:tenant:delete"
+
+	// 功能开关（sys_feature_flag，种子菜单 235 子树：操作级权限点
+	// 266-269 由 99_perm_seed.sql 预铺）与通用翻译（sys_translation，
+	// 种子菜单 257 子树：操作级权限点 270-273 同批预铺）。两表均为租户
+	// 表，读写走 RLS 与普通 DML，无 super；操作码按表分设。
+	PermConfigFeatureFlagQuery  = "sys:config:feature-flag:query"
+	PermConfigFeatureFlagCreate = "sys:config:feature-flag:create"
+	PermConfigFeatureFlagUpdate = "sys:config:feature-flag:update"
+	PermConfigFeatureFlagDelete = "sys:config:feature-flag:delete"
+	PermConfigTranslationQuery  = "sys:config:translation:query"
+	PermConfigTranslationCreate = "sys:config:translation:create"
+	PermConfigTranslationUpdate = "sys:config:translation:update"
+	PermConfigTranslationDelete = "sys:config:translation:delete"
+
 	// 审计日志（sys_login_log / sys_operation_log，种子菜单 230/231）：两表
 	// append-only 只读面，沿用 seed.sql 预铺的页面级权限点，List 与点查
 	// 同码。
@@ -78,6 +107,16 @@ const (
 	// 255/256 由 99_perm_seed.sql 预铺）。
 	PermSessionQuery  = "sys:session:query"
 	PermSessionRevoke = "sys:session:revoke"
+
+	// 租户管理（sys_tenant，种子菜单 219 子树：操作级权限点 220-223 由
+	// seed.sql 预铺）。平台级租户实体管理面：方法名带 super 表达「管理
+	// 一整个租户实体」而非「绕过 RLS」（租户树边界仍由 RLS 承担，见
+	// permission.md 的 super 口径条目）。停用/恢复并入 sys:tenant:update
+	//（状态变更属编辑形态，种子权限点不设独立码）。
+	PermTenantQuery  = "sys:tenant:query"
+	PermTenantCreate = "sys:tenant:create"
+	PermTenantUpdate = "sys:tenant:update"
+	PermTenantDelete = "sys:tenant:delete"
 )
 
 // PermissionRepo 是功能权限码仓储接口：fn_has_permission / GetPermissionCodes

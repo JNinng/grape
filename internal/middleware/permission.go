@@ -4,9 +4,11 @@ import (
 	"context"
 
 	auditv1 "grape/api/audit/v1"
+	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
+	tenantv1 "grape/api/tenant/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/biz"
 
@@ -21,10 +23,11 @@ import (
 // 不设码，口径见 permission.md）。判定由库内 fn_has_permission 推导，
 // 与前端导航过滤共用同一权限码集合。
 //
-// 覆盖面（D4/D5 结论：入口层按操作声明权限码）：用户/部门/用户组/角色/
-// 菜单/字典六个管理服务与审计日志/会话治理面的全部写端点与管理读端点；
-// super 写端点（受控写面）同样在列。一个码可覆盖多个操作（读类并入 :query、结构移动并入
-// :update）——码的粒度对齐种子权限点，不为每个 RPC 各造一码。
+// 覆盖面（入口层按操作声明权限码）：用户/部门/用户组/角色/
+// 菜单/字典/配置（全局 + 租户）管理面与审计日志/会话治理面的全部写端点
+// 与管理读端点；super 写端点（受控写面）同样在列。一个码可覆盖多个操作
+// （读类并入 :query、结构移动并入 :update）——码的粒度对齐种子权限点，
+// 不为每个 RPC 各造一码。
 var operationPermissionCodes = map[string]string{
 	// 用户管理
 	userv1.OperationUserServiceGetUser:           biz.PermUserQuery,
@@ -80,6 +83,37 @@ var operationPermissionCodes = map[string]string{
 	dictv1.OperationDictServiceUpdateDictData: biz.PermDictUpdate,
 	dictv1.OperationDictServiceDeleteDictType: biz.PermDictDelete,
 	dictv1.OperationDictServiceDeleteDictData: biz.PermDictDelete,
+	// 配置管理（全局配置 + 租户配置）
+	configv1.OperationConfigServiceGetConfig:                biz.PermConfigGlobalQuery,
+	configv1.OperationConfigServiceListConfigs:              biz.PermConfigGlobalQuery,
+	configv1.OperationConfigServiceCreateConfigSuper:        biz.PermConfigGlobalCreate,
+	configv1.OperationConfigServiceUpdateConfigSuper:        biz.PermConfigGlobalUpdate,
+	configv1.OperationConfigServiceDeleteConfigSuper:        biz.PermConfigGlobalDelete,
+	configv1.OperationTenantConfigServiceGetTenantConfig:    biz.PermConfigTenantQuery,
+	configv1.OperationTenantConfigServiceListTenantConfigs:  biz.PermConfigTenantQuery,
+	configv1.OperationTenantConfigServiceCreateTenantConfig: biz.PermConfigTenantCreate,
+	configv1.OperationTenantConfigServiceUpdateTenantConfig: biz.PermConfigTenantUpdate,
+	configv1.OperationTenantConfigServiceDeleteTenantConfig: biz.PermConfigTenantDelete,
+	// 功能开关与通用翻译（租户级配置族，读写均走 RLS 与普通 DML）
+	configv1.OperationFeatureFlagServiceGetFeatureFlag:    biz.PermConfigFeatureFlagQuery,
+	configv1.OperationFeatureFlagServiceListFeatureFlags:  biz.PermConfigFeatureFlagQuery,
+	configv1.OperationFeatureFlagServiceCreateFeatureFlag: biz.PermConfigFeatureFlagCreate,
+	configv1.OperationFeatureFlagServiceUpdateFeatureFlag: biz.PermConfigFeatureFlagUpdate,
+	configv1.OperationFeatureFlagServiceDeleteFeatureFlag: biz.PermConfigFeatureFlagDelete,
+	configv1.OperationTranslationServiceGetTranslation:    biz.PermConfigTranslationQuery,
+	configv1.OperationTranslationServiceListTranslations:  biz.PermConfigTranslationQuery,
+	configv1.OperationTranslationServiceCreateTranslation: biz.PermConfigTranslationCreate,
+	configv1.OperationTranslationServiceUpdateTranslation: biz.PermConfigTranslationUpdate,
+	configv1.OperationTranslationServiceDeleteTranslation: biz.PermConfigTranslationDelete,
+	// 租户管理（平台级租户实体管理；super 命名不表示绕过 RLS）。
+	// 停用/恢复并入 :update（状态变更属编辑形态）。
+	tenantv1.OperationTenantServiceGetTenantSuper:     biz.PermTenantQuery,
+	tenantv1.OperationTenantServiceListTenantsSuper:   biz.PermTenantQuery,
+	tenantv1.OperationTenantServiceCreateTenantSuper:  biz.PermTenantCreate,
+	tenantv1.OperationTenantServiceUpdateTenantSuper:  biz.PermTenantUpdate,
+	tenantv1.OperationTenantServiceDisableTenantSuper: biz.PermTenantUpdate,
+	tenantv1.OperationTenantServiceRestoreTenantSuper: biz.PermTenantUpdate,
+	tenantv1.OperationTenantServiceDeleteTenantSuper:  biz.PermTenantDelete,
 	// 审计日志与会话治理
 	auditv1.OperationAuditServiceListLoginLogs:        biz.PermAuditLoginLog,
 	auditv1.OperationAuditServiceGetLoginLog:          biz.PermAuditLoginLog,

@@ -56,7 +56,7 @@ type UserGroupServiceHTTPServer interface {
 	RemoveUserGroupMembers(context.Context, *RemoveUserGroupMembersRequest) (*RemoveUserGroupMembersReply, error)
 	// UpdateUserGroup UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
 	// owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-	// 组长变更走部署面专项口径（本批不提供）。
+	// 组长变更走部署面专项口径（管理 API 不提供）。
 	UpdateUserGroup(context.Context, *UpdateUserGroupRequest) (*UserGroup, error)
 }
 
@@ -268,7 +268,7 @@ type UserGroupServiceHTTPClient interface {
 	RemoveUserGroupMembers(ctx context.Context, req *RemoveUserGroupMembersRequest, opts ...http.CallOption) (rsp *RemoveUserGroupMembersReply, err error)
 	// UpdateUserGroup UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
 	// owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-	// 组长变更走部署面专项口径（本批不提供）。
+	// 组长变更走部署面专项口径（管理 API 不提供）。
 	UpdateUserGroup(ctx context.Context, req *UpdateUserGroupRequest, opts ...http.CallOption) (rsp *UserGroup, err error)
 }
 
@@ -417,7 +417,7 @@ func (c *UserGroupServiceHTTPClientImpl) RemoveUserGroupMembers(ctx context.Cont
 
 // UpdateUserGroup UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
 // owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-// 组长变更走部署面专项口径（本批不提供）。
+// 组长变更走部署面专项口径（管理 API 不提供）。
 func (c *UserGroupServiceHTTPClientImpl) UpdateUserGroup(ctx context.Context, in *UpdateUserGroupRequest, opts ...http.CallOption) (*UserGroup, error) {
 	var out UserGroup
 	pattern := "/v1/user-groups/update"

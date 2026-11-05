@@ -2,11 +2,13 @@ package server
 
 import (
 	auditv1 "grape/api/audit/v1"
+	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	queryv1 "grape/api/query/v1"
 	sessionv1 "grape/api/session/v1"
+	tenantv1 "grape/api/tenant/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
 	entrymw "grape/internal/middleware"
@@ -22,7 +24,7 @@ import (
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
 // 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
 // server span。
-func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),
 		middleware.Middleware(traceMiddleware),
@@ -50,6 +52,11 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	permv1.RegisterRoleServiceServer(srv, role)
 	permv1.RegisterMenuServiceServer(srv, menu)
 	dictv1.RegisterDictServiceServer(srv, dict)
+	configv1.RegisterConfigServiceServer(srv, config)
+	configv1.RegisterTenantConfigServiceServer(srv, tenantConfig)
+	configv1.RegisterFeatureFlagServiceServer(srv, featureFlag)
+	configv1.RegisterTranslationServiceServer(srv, translation)
+	tenantv1.RegisterTenantServiceServer(srv, tenant)
 	auditv1.RegisterSessionAdminServiceServer(srv, sessionAdmin)
 	auditv1.RegisterAuditServiceServer(srv, auditLog)
 	permv1.RegisterPermissionServiceServer(srv, perm)

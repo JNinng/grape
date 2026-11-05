@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package config.v1;
+
+option go_package = "grape/api/config/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.config.v1";
+option objc_class_prefix = "APIConfigV1";
+
+// ErrorReason 是配置域资源（全局配置、租户配置、功能开关、通用翻译）的
+// 错误原因枚举，用于 Kratos 错误的 reason 字段。
+enum ErrorReason {
+  // 缺省值，不使用。
+  CONFIG_UNSPECIFIED = 0;
+  // 目标全局配置不存在（含已软删）。
+  CONFIG_NOT_FOUND = 1;
+  // 全局配置请求参数非法（必填缺失、列宽超限、值类型不在白名单等）。
+  CONFIG_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（未删除全局配置间 config_key 已被占用）。
+  CONFIG_ALREADY_EXISTS = 3;
+  // 目标租户配置不存在（含跨租户不可见与已软删）。
+  TENANT_CONFIG_NOT_FOUND = 4;
+  // 租户配置请求参数非法（必填缺失、列宽超限、值类型不在白名单等）。
+  TENANT_CONFIG_INVALID_ARGUMENT = 5;
+  // 唯一约束冲突（租户内未删除配置间 config_key 已被占用）。
+  TENANT_CONFIG_ALREADY_EXISTS = 6;
+  // 目标功能开关不存在（含跨租户不可见与已软删）。
+  FEATURE_FLAG_NOT_FOUND = 7;
+  // 功能开关请求参数非法（必填缺失、列宽超限、status 取值等）。
+  FEATURE_FLAG_INVALID_ARGUMENT = 8;
+  // 唯一约束冲突（租户内未删除开关间 flag_key 已被占用）。
+  FEATURE_FLAG_ALREADY_EXISTS = 9;
+  // 目标翻译不存在（含跨租户不可见与已软删）。
+  TRANSLATION_NOT_FOUND = 10;
+  // 翻译请求参数非法（必填缺失、列宽超限、locale 形态、row_id 取值等）。
+  TRANSLATION_INVALID_ARGUMENT = 11;
+  // 唯一约束冲突（租户内未删除翻译间身份四元组已被占用）。
+  TRANSLATION_ALREADY_EXISTS = 12;
+  // 全局配置写路径的调用方不是平台（根）租户：sys_config 是跨租户全局
+  // 表，写权限不能只依赖调用者租户内的角色 → 菜单 → 权限码链（子租户
+  // 可自造写码），仅平台根租户可写（403）。
+  CONFIG_PLATFORM_REQUIRED = 13;
+}

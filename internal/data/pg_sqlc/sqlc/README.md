@@ -31,11 +31,13 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、字典两级、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 14 个文件、107 条命名查询 |
-| 17 | 98_menu_write.sql | 定义 sys_menu 受控写面（D2 结论）：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 16 个文件、130 条命名查询 |
+| 17 | 98_menu_write.sql | 定义 sys_menu 受控写面：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
+| 18 | 98_config_write.sql | 定义 sys_config 受控写面：fn_config_create/update/delete 三个 SECURITY DEFINER 固定口径写函数（建/改/软删），认证事务纪律校验（app.tenant_id 未设置即拒绝）与软删口径收在函数内；config_key/value_type 身份/值语义列不经更新路径；role.sql 对 sys_config 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款） | 是（只读函数签名） | 3 个受控写函数 |
+| 19 | 98_tenant_guard.sql | 定义 sys_tenant 删除前置完整性判定（受控读取面）：fn_tenant_active_child_count 一个 SECURITY DEFINER 计数函数——租户树 RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、不返回行数据，不构成跨租户数据读面，函数内校验 app.tenant_id 已设置（空串/未设置即拒绝，fail-closed）且目标对调用方可见（消除结构侧信道）；EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC | 是（只读函数签名） | 1 个受控判定函数 |
 | — | role.sql | 定义 grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权、全表/全序列 DML 授权、默认权限与 RLS 会话变量写入权 | 否 | 2 个角色、8 条授权/默认权限 |
 | — | seed.sql | 填充种子数据（含多租户权限样例与授权管理权限码菜单） | 否 | 租户/部门/角色/用户/用户组/字典/菜单/配置/开关/翻译/日志 + basic 归属矩阵 |
-| — | 99_perm_seed.sql | 管理面功能权限码种子（M3-6）：sys_menu 操作权限点（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点）与超级管理员（101）的角色-菜单映射 | 否 | 7 条菜单、7 条角色-菜单映射 |
+| — | 99_perm_seed.sql | 管理面功能权限码种子：sys_menu 操作权限点（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点、257 通用翻译页面、258-265 配置族全局/租户操作码、266-269 功能开关操作码、270-273 翻译操作码）与超级管理员（101）的角色-菜单映射 | 否 | 24 条菜单、24 条角色-菜单映射 |
 | — | agent_session.sql | 定义 Agent 会话存储：schema agent 与 trpc-agent-go 框架 session/postgres 的六张 `agent_*` 表、索引及 grape_u 授权 | 否 | 1 个 schema、6 张表、12 个索引、3 条授权 |
 | — | agent_vector.sql | 定义向量检索设施：pgvector 扩展、agent schema、agent_document 向量表（多嵌入空间：裸 vector 列 + embedder/embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定）、每维度表达式部分 HNSW 索引与运行角色授权（超级用户面；租户隔离由应用层适配器强制，RLS 仅作可选加强；授权收窄到 agent_document） | 否 | 1 个扩展、1 个 schema、1 张表、1 个 CHECK、2 个索引、2 条授权 |
 
@@ -45,19 +47,23 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   [dsl.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/dsl.md)（指令总表）、
   [scope.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/scope.md)（行级数据权限）、
   [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/schema.md)（前端 Schema 契约）。
-  `sqlc.yaml` 的 schema 列表 = schema/ 十个域文件（10–90 九个域 +
-  95_agent_audit）+ rls/operate/expose + 96_agent_grant.sql +
-  schema/97_agent_retrieval_log.sql + 98_menu_write.sql（收尾），queries 列表 =
-  queries/ 十四个文件（operate/basic/perm、业务表固定 CRUD
-  sys_user/sys_dept/sys_user_group/sys_dict/sys_audit_log/sys_role/sys_menu/
-  sys_session 与 Agent 审计 agent_audit、工具授权 agent_grant、检索留痕
-  agent_retrieval_log）。加
-  98_menu_write.sql 是为了让 queries/menu.sql 的写调用能解析受控写函数的
-  签名（sqlc 只看签名，函数体是否存在于库里由执行顺序保证）。加 rls/operate/expose 是为了让 queries 里的查
-  询能调用这些文件里的函数（GetScope 调三件套、判断类调 fn_can_* /
-  fn_check_visible）；sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
-  业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），随纵切补入清单。
-- 数据库部署按固定顺序执行 21 个文件：`schema/10_basic.sql` →
+  `sqlc.yaml` 的 schema 列表 = schema/ 十一个域文件（10–90 九个域 +
+  95_agent_audit + 97_agent_retrieval_log）+ rls/operate/expose +
+  96_agent_grant.sql + 98_menu_write.sql + 98_config_write.sql +
+  98_tenant_guard.sql，queries 列表 = queries/ 十六个文件
+  （operate/basic/perm、业务表固定 CRUD sys_user/sys_dept/sys_user_group/
+  sys_dict/sys_audit_log/sys_role/sys_menu/sys_config/sys_tenant/sys_session 与 Agent
+  审计 agent_audit、工具授权 agent_grant、检索留痕 agent_retrieval_log）。
+  schema 列表里的函数声明文件提供 queries 调用所需的签名：
+  98_menu_write.sql / 98_config_write.sql 对应 queries/menu.sql、
+  queries/sys_config.sql 的受控写调用；98_tenant_guard.sql 对应
+  queries/sys_tenant.sql 的删除前置计数；rls/operate/expose 对应
+  queries 里的权限查询与判定调用（GetScope 调三件套、判断类调 fn_can_* /
+  fn_check_visible）。sqlc 只看签名，函数体是否存在于库里由执行顺序保证。
+  业务表的固定 CRUD 一资源一文件（queries/<资源>.sql），
+  随纵切补入清单；例外是配置族四资源（sys_config / sys_tenant_config /
+  sys_feature_flag / sys_translation）共用 queries/sys_config.sql。
+- 数据库部署按固定顺序执行 23 个文件：`schema/10_basic.sql` →
   `schema/20_tenant.sql` → `schema/30_user.sql` → `schema/40_rbac.sql` →
   `schema/50_dept.sql` → `schema/60_dict.sql` → `schema/70_audit.sql` →
   `schema/80_session.sql` → `schema/90_config.sql` → `role.sql` →
@@ -65,14 +71,17 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
   `agent_session.sql` 与 `agent_vector.sql` → `schema/95_agent_audit.sql`
   → `96_agent_grant.sql` → `schema/97_agent_retrieval_log.sql` →
   `98_menu_write.sql`（只依赖 40_rbac 的 sys_menu 存在，尾部独立追加）→
-  `99_perm_seed.sql`（管理面功能权限码种子，只依赖 seed.sql 的租户/角色/
-  既有菜单树存在，尾部独立追加）。单一事实源是
-  `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单（dbdeploy 命令
-  与集成测试共用）；`role.sql` 必须先于 `rls.sql`（operate/expose 的函数
-  授权依赖角色存在），`seed.sql` 必须在 RLS 启用后执行，且以超级用户/
-  表 owner 连接（超级用户绕过 RLS），agent 域两文件只依赖 `role.sql` 的
-  角色存在（授权对象），与 public 业务域零耦合，schema 幂等建立、
-  相互无顺序约束。`agent_session.sql` 不入 sqlc catalog：trpc-agent-go
+  `98_config_write.sql`（只依赖 90_config 的 sys_config 存在，尾部位
+  于 98_menu_write 之后）→ `98_tenant_guard.sql`（租户删除前置计数函数，
+  只依赖 20_tenant 的 sys_tenant 存在，位于 98_config_write 之后）→
+  `99_perm_seed.sql`（管理面功能权限码种子，
+  只依赖 seed.sql 的租户/角色/既有菜单树存在，尾部独立追加）。单一事实
+  源是 `internal/data/pg_sqlc/deploy/deploy.go` 的 `DeployFiles` 清单
+  （dbdeploy 命令与集成测试共用）；`role.sql` 必须先于 `rls.sql`
+  （operate/expose 的函数授权依赖角色存在），`seed.sql` 必须在 RLS
+  启用后执行，且以超级用户/表 owner 连接（超级用户绕过 RLS），agent
+  域两文件只依赖 `role.sql` 的角色存在（授权对象），与 public 业务域
+  零耦合，schema 幂等建立、相互无顺序约束。`agent_session.sql` 不入 sqlc catalog：trpc-agent-go
   框架自管表（应用经 session.Service 接口读写，grape 侧无仓储/命名
   查询），结构须与框架建表模板逐列一致，框架升级时以新模板 diff 该文件。
   `schema/95_agent_audit.sql` 是 sqlc catalog 输入（命名查询见
@@ -175,9 +184,10 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与�
 ### 查询判断函数（expose.sql，只读判定）
 
 只读判定，不写库，可与写事务共用同一事务与快照；与上面两个家族共用同一套
-data_scope 推导（内外同源）。预留给权限查询服务层（宿主侧，未建）调用，HTTP/gRPC
-由宿主自包；`fn_has_permission` 同时被取行查询用于可空权限码校验。
-拒绝返回 false/空集，不是错误。
+data_scope 推导（内外同源）。`fn_check_visible` 与 `fn_has_permission` 经命名查询
+被取行判定与功能权限码判定消费（queries/sys_user.sql、queries/perm.sql）；
+`fn_filter_visible_rows` 暂无命名查询消费方（sqlc 解析不了表函数返回列，按需以
+参数化 SQL 调用）。拒绝返回 false/空集，不是错误。
 
 | 函数 | 签名 | 属性 | 判断什么 |
 |---|---|---|---|
@@ -188,7 +198,7 @@ data_scope 推导（内外同源）。预留给权限查询服务层（宿主侧
 ### 受控写函数（98_menu_write.sql，sys_menu 管理端）
 
 sys_menu 是功能入口表：role.sql 对运行角色 REVOKE 直写授权，全部写入经
-本组 SECURITY DEFINER 固定口径写函数（D2 结论，API super 方法调用）。
+本组 SECURITY DEFINER 固定口径写函数（API super 方法调用）。
 DEFINER 以属主（部署超级用户）执行绕过 sys_menu 的 ENABLE+FORCE 租户
 RLS 与直写禁令，函数内一律以 `current_setting('app.tenant_id')` 复位
 租户边界（未设置即拒绝，fail-closed）——调用方事务纪律不变（每事务仍
@@ -203,6 +213,45 @@ trg_bump_perm_version_tenant 自动 bump 租户级权限版本。
 | fn_menu_update | (id, status, name, icon, route_path, component, permission_expr, sort_order, remark, 操作者) → sys_menu | 同上 | 覆盖可变字段；permission_code/menu_type/parent_id 身份/类型/结构列不经本路径变更；目标未命中返回 NULL（命名查询以 id IS NOT NULL 过滤成空集，映射 NotFound） |
 | fn_menu_move | (id, parent_id, 操作者) → sys_menu | 同上 | 移动菜单（parent_id 为 NULL 表示移为根）；新父级须同租户存在且未删除，沿 parent_id 祖先链上溯命中被移动菜单即拒绝（防环，迭代上限防数据损坏死循环）；目标未命中返回 NULL |
 | fn_menu_delete | (id, 操作者) → bigint | 同上 | 软删除菜单（deleted_at 置位）；存在未删除直接子菜单时拒绝（自叶向根逐层删）；角色-菜单映射行物理残留，fn_has_permission 活跃联结使其不再产生功能权限；返回删除行数（0=目标未命中） |
+
+### 受控写函数（98_config_write.sql，sys_config 管理端）
+
+sys_config 是平台级全局配置表（无 tenant_id、无 RLS）：role.sql 对运行
+角色 REVOKE 直写授权，全部写入经本组 SECURITY DEFINER 固定口径写函数
+（API super 方法调用）。DEFINER 以属主（部署超级用户）执行绕过
+直写禁令；sys_config 本身无租户列，函数内仍以
+`current_setting('app.tenant_id', true)` 校验认证事务纪律（未设置即拒绝，
+fail-closed）——调用方事务纪律不变（每事务仍设 app.tenant_id）。EXECUTE
+沿用 PostgreSQL 默认授权 PUBLIC（无显式 GRANT，fn_menu_* 同款）：任何
+角色都能调用，但只能以函数内固定口径写入，不构成扩权面。
+config_key（未删除行间唯一）与 value_type（消费方取值预处理声明）是
+身份/值语义列，创建后不变；更新函数只覆盖 name/status/value/remark。
+
+| 函数 | 签名 | 属性 | 作用描述 |
+|---|---|---|---|
+| fn_config_create | (id, status, name, config_key, value, value_type, remark, 操作者) → sys_config | SECURITY DEFINER，`SET search_path = public` | 新建全局配置；认证事务纪律未设置 app.tenant_id 即拒绝；config_key 未删除行间唯一由部分唯一索引兜底；created_by/updated_by 记操作者 |
+| fn_config_update | (id, status, name, value, remark, 操作者) → sys_config | 同上 | 覆盖可变字段（name/status/value/remark）；config_key/value_type 身份/值语义列不经本路径变更；目标未命中返回 NULL（命名查询以 id IS NOT NULL 过滤成空集，映射 NotFound） |
+| fn_config_delete | (id, 操作者) → bigint | 同上 | 软删除全局配置（deleted_at 置位）；返回删除行数（0=目标未命中，映射 NotFound） |
+
+### 受控判定函数（98_tenant_guard.sql，sys_tenant 删除前置）
+
+sys_tenant 的租户树策略只放行 `tenant_id = app.tenant_id` 或
+`id = app.tenant_id` 的行：平台租户能看到挂在自身名下的直接子租户与
+自身，但看不到子租户自己创建的孙租户（孙行 tenant_id = 子租户）。删除
+租户要求「无未删除直接子租户」才能软删（自叶向根逐层删），只用 RLS
+可见行做 count 会漏掉孙租户、产生孤儿行——该完整性判定需要全局事实。
+本组 SECURITY DEFINER 函数以属主（部署超级用户）执行绕过租户 RLS，
+只返回计数、不返回行数据，不构成跨租户数据读面，也不提供跨租户写
+路径；函数内仍以 `current_setting('app.tenant_id', true)` 校验认证事务
+纪律（未设置/空串即拒绝，fail-closed），并校验目标对调用方可见（`id`
+或 `tenant_id` 命中调用方租户，否则拒绝）——防止把计数差异用作跨租户
+结构侧信道。EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（无显式 GRANT，
+fn_menu_* 同款）。当前 schema 未设 sys_tenant.parent_id 索引，计数为
+全表扫描；后续迁移补 parent_id 部分索引优化（见文件头注释）。
+
+| 函数 | 签名 | 属性 | 作用描述 |
+|---|---|---|---|
+| fn_tenant_active_child_count | (p_id varchar) → bigint | SECURITY DEFINER，`SET search_path = public` | 返回指定租户名下未删除直接子租户数（DEFINER 读全局事实，仅暴露计数）；app.tenant_id 未设置/空串即拒绝；目标须对调用方可见（id 或 tenant_id 命中），否则拒绝；供删除前置校验（计数大于 0 拒绝软删） |
 
 ### 触发器函数
 
@@ -408,6 +457,67 @@ sys_menu REVOKE 写授权），四个写查询即调用 98_menu_write.sql 受控
 | MoveSysMenu | :one | 新父级（可空）+ 操作者 + id → SysMenu | 移动菜单：调用 fn_menu_move（父级/防环校验兜底，调用方已在用例层预检）；NULL 表示移为根；未命中同上过滤成空集 |
 | SoftDeleteSysMenu | :one | 操作者 + id → 删除行数 | 软删除菜单：调用 fn_menu_delete（存在未软删直接子菜单时函数内拒绝）；返回行数 0 即目标未命中（映射 NotFound） |
 
+### sys_config.sql（配置族固定 CRUD）
+
+配置族是「全局默认 + 租户覆盖」两级：sys_config 是平台级全局表（无
+tenant_id、无 RLS），读面为普通读、写面经 98_config_write.sql 的受控写
+函数（运行角色无直写权限，本文件只写函数的 SELECT 调用）；
+sys_tenant_config、sys_feature_flag、sys_translation 是租户表（RLS 承担
+租户边界），读走固定点查、写为普通 DML（tenant_id 取
+会话 app.tenant_id）。动态查询能力由 schema/90_config.sql 的列注释 DSL
+声明（ParseSysConfigQuery / ParseSysTenantConfigQuery /
+ParseSysFeatureFlagQuery / ParseSysTranslationQuery 等顶层函数为生成
+物），本文件只写固定命名查询。配置/功能开关的 config_key/flag_key 与翻译
+的身份四元组唯一约束限定未删除行间（部分唯一索引），软删后可复用；
+value_type 白名单与 status 取值校验收在 biz 用例。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysConfigByID | :one | id → SysConfig | 按 id 读取未软删的全局配置（sys_config 不设 RLS：全局表，读取本身即全局口径） |
+| InsertSysConfig | :one | 配置字段 + 操作者 → SysConfig | 新建全局配置：调用 fn_config_create（SECURITY DEFINER 固定口径）；未删除行间 config_key 唯一冲突映射 AlreadyExists |
+| UpdateSysConfig | :one | 可变字段 + 操作者 + id → SysConfig | 覆盖可变字段（name/status/value/remark）：调用 fn_config_update；目标未命中函数返回 NULL 复合行，查询以 id IS NOT NULL 过滤成空集（映射 NotFound） |
+| SoftDeleteSysConfig | :one | 操作者 + id → 删除行数 | 软删除全局配置：调用 fn_config_delete；返回行数 0 即目标未命中（映射 NotFound） |
+| GetSysTenantConfigByID | :one | id → SysTenantConfig | 按 id 读取未软删的租户配置（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| InsertSysTenantConfig | :one | 租户配置字段 + 操作者 → SysTenantConfig | 插入租户配置；租户取会话 app.tenant_id（不取请求值），租户内未删除配置间 config_key 唯一冲突映射 AlreadyExists |
+| UpdateSysTenantConfig | :one | name/status/value/remark + 操作者 + id → SysTenantConfig | 更新可变字段（不含 config_key/value_type/tenant_id 身份/值语义/归属列）；updated_at 由触发器刷新 |
+| SoftDeleteSysTenantConfig | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除租户配置 |
+| GetSysFeatureFlagByID | :one | id → SysFeatureFlag | 按 id 读取未软删的功能开关（租户边界由 RLS 承担） |
+| InsertSysFeatureFlag | :one | 开关字段 + 操作者 → SysFeatureFlag | 插入功能开关；租户取会话 app.tenant_id，租户内未删除开关间 flag_key 唯一冲突映射 AlreadyExists |
+| UpdateSysFeatureFlag | :one | name/status/description/is_enabled/remark + 操作者 + id → SysFeatureFlag | 更新可变字段（不含 flag_key/tenant_id 身份/归属列）；updated_at 由触发器刷新 |
+| SoftDeleteSysFeatureFlag | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除功能开关 |
+| GetSysTranslationByID | :one | id → SysTranslation | 按 id 读取未软删的翻译（租户边界由 RLS 承担） |
+| InsertSysTranslation | :one | 翻译字段 + 操作者 → SysTranslation | 插入翻译；租户取会话 app.tenant_id，身份四元组唯一冲突映射 AlreadyExists |
+| UpdateSysTranslation | :one | status/value/remark + 操作者 + id → SysTranslation | 更新可变字段（不含身份四元组与 tenant_id）；updated_at 由触发器刷新 |
+| SoftDeleteSysTranslation | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除翻译 |
+
+### sys_tenant.sql（租户固定 CRUD）
+
+租户树模型：sys_tenant 的每一行归属其父租户（tenant_id 列），RLS 策略
+`sys_tenant_tenant_isolation` 允许命中 `tenant_id = app.tenant_id` 或
+`id = app.tenant_id` 的行——每个租户可读写自己名下的直接子租户与自身，
+树外行天然不可见（上层统一 NotFound）。结构父级与行归属必须一致：创建
+时 parent_id 只允许省略（缺省 = 调用方租户）或等于调用方租户。表无
+@scope，行级无范围；动态查询能力由 schema/20_tenant.sql 的列注释 DSL
+声明（ParseSysTenantQuery 等顶层函数为生成物），本文件只写固定命名查询。
+code（身份列，同 dict code / feature flag_key 口径，创建后不可变）与 name
+的唯一约束限定未删除行间（部分唯一索引），软删后可复用；更新路径只覆盖
+name 等可变列，输入 code 被忽略。
+本表是租户树实体面而非受控写面：role.sql 未对其 REVOKE 直写授权，写路径
+为普通 DML；API 方法名带 super 表达平台级租户实体管理，不表示绕过 RLS。
+删除前置的子租户计数经 98_tenant_guard.sql 的受控判定函数
+（fn_tenant_active_child_count，SECURITY DEFINER，只返回计数）：祖父看不到
+子租户自己创建的孙行，直接 count 会漏掉它们并产生孤儿。
+
+| 查询 | 类型 | 参数 → 返回 | 作用描述 |
+|---|---|---|---|
+| GetSysTenantByID | :one | id → SysTenant | 按 id 读取未软删的租户（租户树边界由 RLS 承担；树外行等同不存在） |
+| LockSysTenantByID | :one | id → SysTenant | 按 id 锁定未软删的租户（FOR UPDATE，更新/停用/恢复/删除路径先锁后写） |
+| CountSysTenantActiveChildren | :one | id → 行数 | 经 fn_tenant_active_child_count（SECURITY DEFINER，只返回计数）统计未删除的直接子租户数——租户树 RLS 下祖父看不到孙行，直接 count 会漏掉它们；删除前置校验大于 0 拒绝软删 |
+| InsertSysTenant | :one | 租户字段 + 操作者 → SysTenant | 插入租户记录；tenant_id 取会话 app.tenant_id（行归属父租户，RLS WITH CHECK 兜底），未删除行间 code/name 唯一冲突映射 AlreadyExists |
+| UpdateSysTenant | :one | status/name/contact_*/expired_at/max_user_count/default_locale + 操作者 + id → SysTenant | 覆盖可变字段（不含 code——身份列；也不含 id/parent_id/tenant_id——身份/结构与归属列）；updated_at 由触发器刷新 |
+| SetSysTenantStatus | :one | status/操作者 + id → SysTenant | 置位目标状态（停用 0 / 恢复 1，幂等目标状态写）；updated_at 由触发器刷新 |
+| SoftDeleteSysTenant | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除租户；活跃子租户校验由调用方在同一事务内先行完成 |
+
 ### sys_audit_log.sql（审计日志固定点查）
 
 登录日志 sys_login_log 与操作日志 sys_operation_log 均 append-only 只读：
@@ -485,7 +595,7 @@ Resolve）编排。tenant_id 在全部查询里显式过滤——RLS 之外的�
 
 
 批量过滤 fn_filter_visible_rows 没有对应命名查询：sqlc 解析不了
-表函数的返回列，该函数预留给权限查询服务层（未建）以参数化 SQL 调用。
+表函数的返回列，该函数暂无消费方（按需以参数化 SQL 调用）。
 
 注意：命名查询生成的是 `*Queries` 上的**方法**（`gen.New(db)` 实例化后
 调用）；动态查询生成的是顶层函数（ParseXxx/ListXxx/UpdateXxx，db 作参数显式传）。

@@ -147,7 +147,8 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	authMiddleware := entrymw.NewAuthMiddleware(biz.NewSessionUsecase(&agentFakeSessionRepo{}))
 	// telemetry 位传 nil：路由挂载测试不涉 OTel（nil 接收者按未启用处理）。
-	srv, err := NewHTTPServer(confServer,
+	srv, err := NewHTTPServer(
+		confServer,
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
@@ -165,6 +166,12 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		nil,
 		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		// 租户管理服务本文件用例不触达，传 nil。
+		nil,
 		agentService,
 		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
 		// 不触达该路由；挂载顺序守卫分属两处——sessions 先于 agent 前缀
@@ -175,7 +182,8 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		nil,
 		nil,
-		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
+		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))),
+	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

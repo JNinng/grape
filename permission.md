@@ -153,11 +153,12 @@ WHERE id = sqlc.arg('id')
 
 功能权限码与数据范围正交：只看角色 → 菜单 → 权限码这条链，不管能看见哪些行。
 
-落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单/字典六个管理服务与审计日志/会话治理面的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
+落点：入口层判定中间件（[middleware/permission.go](internal/middleware/permission.go)，`PermissionMiddleware`）按 `tr.Operation()` 查操作码表（用户/部门/用户组/角色/菜单/字典/配置族（全局/租户/功能开关/翻译）/租户管理面与审计日志/会话治理面的全部端点），命中的端点在 handler 之前单独判 `fn_has_permission`，不通过返回 `ErrPermissionDenied`（403）；`GetXxxPermitted` / `LockXxxPermitted` 的可空权限码透传形态保留（随行判定拒绝表现为 NotFound），仓储缺省传 NULL，需要「行级与功能权限一并校验」的入口再把码透传到仓储参数。
 
-已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单/字典六个管理服务与审计日志/会话治理面（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码；字典两级共用一组操作码、审计日志 List/点查并入各自页面码、会话治理查询/撤销单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
+已落地的入口：判定中间件管理的面——用户/部门/用户组/角色/菜单/字典/配置族（全局/租户/功能开关/翻译）/租户管理面与审计日志/会话治理面（`operationPermissionCodes` 码表，码值即 `biz` 权限码常量，与部署面种子权限点一一对应；管理读端点并入 `:query` 码、结构移动并入 `:update` 码、授权类写动作单设码；字典两级共用一组操作码、配置族按全局/租户/功能开关/翻译分设操作码、租户管理按 `sys:tenant:query|create|update|delete` 分设（停用/恢复并入 `:update`）、审计日志 List/点查并入各自页面码、会话治理查询/撤销单设码）；权限码查询端点 `GetMyPermissions`（`/v1/permissions/mine`，返回当前用户全部权限码供前端导航过滤）不设码。全局配置读取本身即全局口径（sys_config 无 tenant_id、无 RLS），读端点不设 super 例外；功能开关与翻译是租户表（RLS + 普通 DML），读写端点均不设 super。租户管理面（sys_tenant）方法名带 `super` 表达平台级租户实体管理（管理对象是一整个租户实体，见第 10 条），租户树边界仍由 RLS 承担，不设绕过例外。Agent 工具授权管理（手写端点，无 proto 操作名）——`agent:grant:query`（全租户授权列表）、`agent:grant:revoke`（吊销他人授权），种子菜单 252/253；本人授权列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`（入口的直接受托方），仓储方法不携带权限参数。
 
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
+- 平台信任边界：`sys:config:global:*` 写码只应由平台根租户持有，且代码在全局配置用例的写路径强制校验调用方租户为根租户（`parent_id IS NULL`）——子租户即使自造或持有写码也返回 403（`ErrConfigPlatformRequired` / `CONFIG_PLATFORM_REQUIRED`）。读端点不设此守卫。
 - 权限码可空：传值则在取行时一并校验，NULL 只校验数据范围；空串按无此权限处理。
 - 仓储缺省传 NULL；入口层强制功能权限时把权限码透传到仓储参数。
 - 取行查询内的权限码拒绝表现为 NotFound。
@@ -173,11 +174,12 @@ WHERE id = sqlc.arg('id')
 4. **修改 / 删除 / 改密**：`LockXxxPermitted`（`fn_can_operate_row` + `FOR UPDATE`，权限码可空）→ 写入；业务授权另判。
 5. **修改归属**：`LockXxxPermitted`（旧归属可操作）+ `fn_can_transfer_owner`（新归属可达）→ 写入。
 6. **批量写**：单事务内逐行锁 + 判，或新增批量判定函数；外部批量读过滤用 `fn_filter_visible_rows`。
-7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。`sys_menu` 的管理端写入经部署面 SECURITY DEFINER 固定口径写函数（`fn_menu_create/update/move/delete`，见 [98_menu_write.sql](internal/data/pg_sqlc/sqlc/98_menu_write.sql)）：DEFINER 机械绕过该表 RLS 与直写禁令，函数内以 `app.tenant_id` 复位租户边界（未设置即拒绝），调用方事务纪律不变——API 写方法名按 `super` 约定命名（`CreateMenuSuper` 等），读方法（树查询/点查）不带。
-8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）与菜单受控写面（`fn_menu_*`，绕过 sys_menu 的 RLS 与直写禁令、租户边界在函数内复位）是仅有的绕过路径，不得扩展到其他读写。
+7. **无归属三元组的表**：不声明 `@scope`，行级无范围；写侧靠功能权限码或数据库授权（`sys_menu` / `sys_config` 已对运行角色 REVOKE 写权限，由管理端写入）。`sys_menu` 的管理端写入经部署面 SECURITY DEFINER 固定口径写函数（`fn_menu_create/update/move/delete`，见 [98_menu_write.sql](internal/data/pg_sqlc/sqlc/98_menu_write.sql)）：DEFINER 机械绕过该表 RLS 与直写禁令，函数内以 `app.tenant_id` 复位租户边界（未设置即拒绝），调用方事务纪律不变——API 写方法名按 `super` 约定命名（`CreateMenuSuper` 等），读方法（树查询/点查）不带。`sys_config` 同属受控写面（`fn_config_create/update/delete`，见 [98_config_write.sql](internal/data/pg_sqlc/sqlc/98_config_write.sql)）：表本身无 tenant_id 与 RLS，函数内仍校验认证事务纪律（`app.tenant_id` 未设置即拒绝）；API 写方法名带 `super`（`CreateConfigSuper` 等），读方法（全局配置读取本身即全局口径）不带。
+8. **文档化例外**：登录点查（`TenantTx`）、令牌校验/登出/刷新（`TokenTx`）、介质维护（`SECURITY DEFINER` 清理）、受控写面（`fn_menu_*` 在函数内复位租户边界；`fn_config_*` 校验认证事务纪律——`app.tenant_id` 必须已设置，sys_config 无租户列，不做租户复位）与租户删除前置的受控计数面（`fn_tenant_active_child_count`，见 [98_tenant_guard.sql](internal/data/pg_sqlc/sqlc/98_tenant_guard.sql)）是仅有的绕过路径，不得扩展到其他读写。受控计数面的口径：租户树 RLS 下祖父看不到孙行（孙行 tenant_id = 子租户），删除前置的「无未删除直接子租户」完整性判定需要全局事实；函数以 DEFINER 执行绕过 sys_tenant 租户 RLS，但只返回计数、不返回任何行数据，不构成跨租户数据读面，也不提供跨租户写路径；函数内校验 `app.tenant_id` 已设置（fail-closed）且目标对调用方可见（`id` 或 `tenant_id` 命中调用方租户，否则拒绝），消除跨租户结构侧信道。
 9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设 `app.tenant_id` 全拒。
-10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询），并配审计日志、受限端点与跨范围测试。
+10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），无需额外标注。只有“身份已成立、接口有意绕过其租户/数据范围约束”的方法才在名称带 `super`（如管理端跨租户查询），并配受限端点与跨范围测试。操作审计写入面尚未落地（`sys_operation_log` 当前无写入方），super 管理写当前以 `updated_by` 等操作者列留痕；操作审计写入列为已知缺口，不因 super 命名放宽。
     - 显式例外，不使用 `super`：身份成立前的凭据/令牌查询与令牌维度撤销（`GetCredentialForLogin`、`SessionRepo.Validate` / `RevokeByAccessTokenHash`（登出）/ `Refresh`）、设施维护面（`FacilityMaintenance.Maintain`）、已授权事务内的 data 层内部回读（`GetSysUserByID`）。
+    - `super` 的第二种用法（平台级实体管理，不是绕过例外）：`sys_tenant` 管理面方法名带 `super`（`CreateTenantSuper` / `GetTenantSuper` / `ListTenantsSuper` / `UpdateTenantSuper` / `DeleteTenantSuper` / `DisableTenantSuper` / `RestoreTenantSuper`）表达「被管理的是一整个租户实体」，而非调用方自己租户内的业务数据。租户树边界仍由 RLS 承担（`sys_tenant_tenant_isolation` 允许命中 `tenant_id = app.tenant_id` 或 `id = app.tenant_id`，树外租户行等同不存在）：租户树由各租户创建自己的直接子租户构成，创建时 `parent_id` 只允许省略或等于调用方租户（结构父级与行归属一致），每个租户只能把自己的直接子租户挂在自身下。默认种子只向平台根租户（`t-super-01` 的超级管理员角色 101）授予 `sys:tenant:*`；子租户如需自助管理其直接子租户，需另行在其租户内铺设菜单/角色（种子不铺）。本面没有新增 RLS 绕过机制或 SECURITY DEFINER 写函数（删除前置的只读计数例外见第 8 条）、写路径是普通 DML；因此不属「绕过约束」的 super 例外，也不因命名放宽审计与测试口径。区分要点：绕过类 super 的方法在实现上刻意不经过租户/范围约束，本类 super 的方法只是对象粒度是租户实体、约束照常生效。
     - SQL 命名查询不参与该约定；内部回读靠使用边界注释约束，不在 biz 接口上暴露。
 
 ## 索引

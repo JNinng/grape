@@ -1,0 +1,584 @@
+syntax = "proto3";
+
+package config.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/config/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.config.v1";
+option java_outer_classname = "ConfigProto";
+
+// ConfigService 提供系统全局配置（sys_config）的管理。sys_config 是
+// 平台级全局表：不绑定租户、无 tenant_id、不设 RLS，所有租户共享同一
+// 份配置。
+//
+// 读写形态：读端点（GetConfig / ListConfigs）不设 super——表无行级范围，
+// 读取本身就是全局口径，租户边界不适用；写端点经部署面 SECURITY
+// DEFINER 固定口径写函数（role.sql 已对 sys_config REVOKE 运行角色直写，
+// 函数内校验认证事务纪律），方法名按 permission.md 口径带 Super。
+//
+// 平台信任边界：写权限不能只依赖调用者租户内的角色 → 菜单 → 权限码链
+//（子租户被授予菜单/角色管理后可自造 sys:config:global:* 写码）；仅
+// 平台（根）租户可写，子租户即使持有权限码也拒绝（CONFIG_PLATFORM_REQUIRED，
+// 403）。读端点不受此限。
+//
+// 身份/值语义列纪律：config_key 参与唯一约束（未删除行间唯一），
+// value_type 是消费方的取值预处理声明（string/integer/boolean/float/
+// json，库层无 CHECK，白名单收在用例入参校验）——两者创建后不可变，
+// 更新输入中被忽略。status 只允许 0（禁用）/1（启用），创建时缺省
+// 启用。删除为软删除，唯一约束限定未删除行间，软删后 config_key 可
+// 复用。
+service ConfigService {
+  // CreateConfigSuper 创建全局配置（super 面：经部署面受控写函数写入）。
+  // 仅平台（根）租户可写：子租户即使持有权限码也返回
+  // CONFIG_PLATFORM_REQUIRED（403）。
+  // config_key 未删除行间唯一，冲突返回 ALREADY_EXISTS；value_type 必须
+  // 在 string/integer/boolean/float/json 白名单内，否则返回
+  // INVALID_ARGUMENT 且不写入。id、created_by/updated_by 与时间戳在
+  // 输入中被忽略。
+  rpc CreateConfigSuper (CreateConfigSuperRequest) returns (Config) {
+    option (google.api.http) = {
+      post: "/v1/configs/create"
+      body: "*"
+    };
+  }
+
+  // GetConfig 按 id 查询单个全局配置。目标不存在或已软删返回 NOT_FOUND。
+  rpc GetConfig (GetConfigRequest) returns (Config) {
+    option (google.api.http) = {
+      get: "/v1/configs/{id}"
+    };
+  }
+
+  // ListConfigs 按动态查询协议返回一页全局配置（供检索与分页表格）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListConfigs (ListConfigsRequest) returns (ConfigSet) {
+    option (google.api.http) = {
+      post: "/v1/configs/list"
+      body: "query"
+    };
+  }
+
+  // UpdateConfigSuper 覆盖可变字段（name、status、value、remark）。
+  // 仅平台（根）租户可写：子租户即使持有权限码也返回
+  // CONFIG_PLATFORM_REQUIRED（403）。
+  // config_key 与 value_type 是身份/值语义列，在输入中被忽略。目标
+  // 不存在或已软删返回 NOT_FOUND。
+  rpc UpdateConfigSuper (UpdateConfigSuperRequest) returns (Config) {
+    option (google.api.http) = {
+      put: "/v1/configs/update"
+      body: "config"
+    };
+  }
+
+  // DeleteConfigSuper 软删除全局配置（deleted_at 置位）。
+  // 仅平台（根）租户可写：子租户即使持有权限码也返回
+  // CONFIG_PLATFORM_REQUIRED（403）。
+  // 目标不存在或已软删返回 NOT_FOUND。唯一约束限定未删除行间，软删后
+  // config_key 可复用。
+  rpc DeleteConfigSuper (DeleteConfigSuperRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/configs/{id}"
+    };
+  }
+}
+
+// TenantConfigService 提供租户配置（sys_tenant_config）的管理。租户
+// 配置是租户级覆盖：租户边界由数据库 RLS 强制，租户内全部配置对持有
+// 令牌的成员可见（表无 @scope，行级无范围）。
+//
+// 读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+//（tenant_id 取会话 app.tenant_id，不取请求值）。
+//
+// 身份/值语义列纪律：config_key 在租户内未删除行间唯一（配合 tenant_id
+// 形成组合唯一），value_type 同全局配置口径；两者创建后不可变，更新
+// 输入中被忽略。tenant_id 只读，由服务端落值（请求中的值一律忽略）。
+// status 只允许 0/1，创建时缺省启用。删除为软删除，软删后 config_key
+// 可复用；跨租户目标由 RLS 天然不可见，等同不存在（NOT_FOUND）。
+service TenantConfigService {
+  // CreateTenantConfig 创建租户配置。config_key 在租户内未删除行间
+  // 唯一，冲突返回 ALREADY_EXISTS；value_type 白名单口径同全局配置。
+  // tenant_id 不取请求值，由 RLS 会话变量落值；id、created_by/
+  // updated_by 与时间戳在输入中被忽略。
+  rpc CreateTenantConfig (CreateTenantConfigRequest) returns (TenantConfig) {
+    option (google.api.http) = {
+      post: "/v1/tenant-configs/create"
+      body: "*"
+    };
+  }
+
+  // GetTenantConfig 按 id 查询单个租户配置。跨租户不可见等同不存在
+  //（NOT_FOUND）；已软删同样返回 NOT_FOUND。
+  rpc GetTenantConfig (GetTenantConfigRequest) returns (TenantConfig) {
+    option (google.api.http) = {
+      get: "/v1/tenant-configs/{id}"
+    };
+  }
+
+  // ListTenantConfigs 按动态查询协议返回一页租户配置（仅本租户可见）。
+  // 协议错误返回 INVALID_ARGUMENT。
+  rpc ListTenantConfigs (ListTenantConfigsRequest) returns (TenantConfigSet) {
+    option (google.api.http) = {
+      post: "/v1/tenant-configs/list"
+      body: "query"
+    };
+  }
+
+  // UpdateTenantConfig 覆盖可变字段（name、status、value、remark）。
+  // config_key、value_type 与 tenant_id 创建后不可变，在输入中被忽略。
+  // 跨租户或已软删目标返回 NOT_FOUND。
+  rpc UpdateTenantConfig (UpdateTenantConfigRequest) returns (TenantConfig) {
+    option (google.api.http) = {
+      put: "/v1/tenant-configs/update"
+      body: "tenant_config"
+    };
+  }
+
+  // DeleteTenantConfig 软删除租户配置（deleted_at 置位）。跨租户或已
+  // 软删目标返回 NOT_FOUND（RLS 天然不可见）。软删后租户内 config_key
+  // 可复用。
+  rpc DeleteTenantConfig (DeleteTenantConfigRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/tenant-configs/{id}"
+    };
+  }
+}
+
+// FeatureFlagService 提供功能开关（sys_feature_flag）的管理。功能开关是
+// 租户级资源：租户边界由数据库 RLS 强制，租户内全部开关对持有令牌的成员
+// 可见（表无 @scope，行级无范围）。
+//
+// 读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+//（tenant_id 取会话 app.tenant_id，不取请求值）。
+//
+// 身份语义列纪律：flag_key 在租户内未删除行间唯一（配合 tenant_id 形成
+// 组合唯一），创建后不可变，更新输入中被忽略。tenant_id 只读，由服务端
+// 落值。status 只允许 0/1，创建缺省启用；is_enabled 是功能开关的业务
+// 取值，创建时 optional 未设置即 false，显式设置按值落库。软删除后
+// flag_key 可复用；跨租户目标由 RLS 天然不可见，等同不存在（NOT_FOUND）。
+service FeatureFlagService {
+  // CreateFeatureFlag 创建功能开关。flag_key 在租户内未删除行间唯一，
+  // 冲突返回 ALREADY_EXISTS；name/flag_key 必填（TrimSpace 后落库，长度
+  // 按 trim 后计），description/remark 各不超过 512。tenant_id 不取请求
+  // 值；id、created_by/updated_by 与时间戳在输入中被忽略。
+  rpc CreateFeatureFlag (CreateFeatureFlagRequest) returns (FeatureFlag) {
+    option (google.api.http) = {
+      post: "/v1/feature-flags/create"
+      body: "*"
+    };
+  }
+
+  // GetFeatureFlag 按 id 查询单个功能开关。跨租户不可见等同不存在
+  //（NOT_FOUND）；已软删同样返回 NOT_FOUND。
+  rpc GetFeatureFlag (GetFeatureFlagRequest) returns (FeatureFlag) {
+    option (google.api.http) = {
+      get: "/v1/feature-flags/{id}"
+    };
+  }
+
+  // ListFeatureFlags 按动态查询协议返回一页功能开关（仅本租户可见）。
+  // 协议错误返回 INVALID_ARGUMENT。
+  rpc ListFeatureFlags (ListFeatureFlagsRequest) returns (FeatureFlagSet) {
+    option (google.api.http) = {
+      post: "/v1/feature-flags/list"
+      body: "query"
+    };
+  }
+
+  // UpdateFeatureFlag 覆盖可变字段（name、description、is_enabled、
+  // remark、status）。flag_key 与 tenant_id 创建后不可变，在输入中被
+  // 忽略。跨租户或已软删目标返回 NOT_FOUND。
+  rpc UpdateFeatureFlag (UpdateFeatureFlagRequest) returns (FeatureFlag) {
+    option (google.api.http) = {
+      put: "/v1/feature-flags/update"
+      body: "feature_flag"
+    };
+  }
+
+  // DeleteFeatureFlag 软删除功能开关（deleted_at 置位）。跨租户或已软删
+  // 目标返回 NOT_FOUND（RLS 天然不可见）。软删后租户内 flag_key 可复用。
+  rpc DeleteFeatureFlag (DeleteFeatureFlagRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/feature-flags/{id}"
+    };
+  }
+}
+
+// TranslationService 提供通用翻译（sys_translation）的管理。翻译是租户级
+// 资源：租户边界由数据库 RLS 强制，租户内全部翻译对持有令牌的成员可见
+//（表无 @scope，行级无范围）。
+//
+// 读写形态：全部端点不设 super——写路径走普通 DML，RLS 承担租户边界
+//（tenant_id 取会话 app.tenant_id，不取请求值）。
+//
+// 身份语义列纪律：table_name、row_id、column_name、locale 四列共同确定
+// 一条翻译（配合 tenant_id 形成组合唯一），均创建后不可变，更新输入中被
+// 忽略。value 是翻译文本本身：传输层原样透传；用例层落库前去除首尾空白
+//（内部空白保留）并要求非空。locale 按 BCP-47 基本形态校验（如 zh-CN、
+// en-US、ja-JP）。status 只允许 0/1，创建缺省启用。软删除后同一
+//（table_name,row_id,column_name,locale）可复用；跨租户目标由 RLS 天然
+// 不可见，等同不存在（NOT_FOUND）。
+service TranslationService {
+  // CreateTranslation 创建翻译。身份四元组在租户内未删除行间唯一，冲突
+  // 返回 ALREADY_EXISTS；table_name/column_name 必填（TrimSpace 后非空，
+  // 长度 ≤64），row_id 必须为正，locale 必须匹配 BCP-47 基本形态且总长
+  // ≤10，value 必填（TrimSpace 后非空，落库 trim 后的值），remark ≤512。
+  // tenant_id 不取请求值；id、created_by/updated_by 与时间戳在输入中被
+  // 忽略。
+  rpc CreateTranslation (CreateTranslationRequest) returns (Translation) {
+    option (google.api.http) = {
+      post: "/v1/translations/create"
+      body: "*"
+    };
+  }
+
+  // GetTranslation 按 id 查询单个翻译。跨租户不可见等同不存在
+  //（NOT_FOUND）；已软删同样返回 NOT_FOUND。
+  rpc GetTranslation (GetTranslationRequest) returns (Translation) {
+    option (google.api.http) = {
+      get: "/v1/translations/{id}"
+    };
+  }
+
+  // ListTranslations 按动态查询协议返回一页翻译（仅本租户可见）。
+  // 协议错误返回 INVALID_ARGUMENT。
+  rpc ListTranslations (ListTranslationsRequest) returns (TranslationSet) {
+    option (google.api.http) = {
+      post: "/v1/translations/list"
+      body: "query"
+    };
+  }
+
+  // UpdateTranslation 覆盖可变字段（status、value、remark）。table_name、
+  // row_id、column_name、locale 与 tenant_id 创建后不可变，在输入中被
+  // 忽略。跨租户或已软删目标返回 NOT_FOUND。
+  rpc UpdateTranslation (UpdateTranslationRequest) returns (Translation) {
+    option (google.api.http) = {
+      put: "/v1/translations/update"
+      body: "translation"
+    };
+  }
+
+  // DeleteTranslation 软删除翻译（deleted_at 置位）。跨租户或已软删目标
+  // 返回 NOT_FOUND（RLS 天然不可见）。软删后同一身份四元组可复用。
+  rpc DeleteTranslation (DeleteTranslationRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/translations/{id}"
+    };
+  }
+}
+
+// Config 是系统全局配置的规范表示。审计列与时间戳只读。
+message Config {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 配置名称。
+  string name = 3;
+  // 配置键（未删除行间唯一），如 smtp.host、session.timeout；创建后不可变。
+  string config_key = 4;
+  // 配置值，可空（空值表示未设置，与空串语义由消费方约定）。原样透传：
+  // 不做 trim 与空白折叠。
+  optional string value = 5;
+  // 值类型：string/integer/boolean/float/json，消费方取值时按此预处理；
+  // 创建后不可变。
+  string value_type = 6;
+  // 备注，可空。
+  optional string remark = 7;
+  // 创建人。只读。
+  int64 created_by = 8;
+  // 更新人。只读。
+  int64 updated_by = 9;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 10;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 11;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 12;
+}
+
+// ConfigSet 是 ListConfigs 返回的分页集合。
+message ConfigSet {
+  // 本页配置，顺序遵循查询中的 sort。
+  repeated Config items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// TenantConfig 是租户配置的规范表示。审计列与时间戳只读。
+message TenantConfig {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 配置名称。
+  string name = 3;
+  // 配置键（租户内未删除行间唯一）；创建后不可变。
+  string config_key = 4;
+  // 配置值，可空。原样透传：不做 trim 与空白折叠。
+  optional string value = 5;
+  // 值类型：string/integer/boolean/float/json；创建后不可变。
+  string value_type = 6;
+  // 备注，可空。
+  optional string remark = 7;
+  // 创建人。只读。
+  int64 created_by = 8;
+  // 更新人。只读。
+  int64 updated_by = 9;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 10;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 11;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 12;
+  // 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+  string tenant_id = 13;
+}
+
+// TenantConfigSet 是 ListTenantConfigs 返回的分页集合。
+message TenantConfigSet {
+  // 本页配置，顺序遵循查询中的 sort。
+  repeated TenantConfig items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateConfigSuperRequest 是 ConfigService.CreateConfigSuper 的输入。
+message CreateConfigSuperRequest {
+  // 要创建的全局配置。id、created_by/updated_by 与时间戳在输入中被忽略。
+  Config config = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetConfigRequest 是 ConfigService.GetConfig 的输入。
+message GetConfigRequest {
+  // 目标全局配置的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListConfigsRequest 是 ConfigService.ListConfigs 的输入。
+message ListConfigsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateConfigSuperRequest 是 ConfigService.UpdateConfigSuper 的输入。
+message UpdateConfigSuperRequest {
+  // 携带新字段值的全局配置。id 标识目标记录，必须设置；config_key 与
+  // value_type 在输入中被忽略。
+  Config config = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteConfigSuperRequest 是 ConfigService.DeleteConfigSuper 的输入。
+message DeleteConfigSuperRequest {
+  // 目标全局配置的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateTenantConfigRequest 是 TenantConfigService.CreateTenantConfig 的输入。
+message CreateTenantConfigRequest {
+  // 要创建的租户配置。id、created_by/updated_by、tenant_id 与时间戳在
+  // 输入中被忽略（tenant_id 由服务端按认证身份落值）。
+  TenantConfig tenant_config = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetTenantConfigRequest 是 TenantConfigService.GetTenantConfig 的输入。
+message GetTenantConfigRequest {
+  // 目标租户配置的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListTenantConfigsRequest 是 TenantConfigService.ListTenantConfigs 的输入。
+message ListTenantConfigsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateTenantConfigRequest 是 TenantConfigService.UpdateTenantConfig 的输入。
+message UpdateTenantConfigRequest {
+  // 携带新字段值的租户配置。id 标识目标记录，必须设置；config_key、
+  // value_type 与 tenant_id 在输入中被忽略。
+  TenantConfig tenant_config = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteTenantConfigRequest 是 TenantConfigService.DeleteTenantConfig 的输入。
+message DeleteTenantConfigRequest {
+  // 目标租户配置的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// FeatureFlag 是功能开关的规范表示。审计列与时间戳只读。
+message FeatureFlag {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 功能名称。
+  string name = 3;
+  // 功能键（租户内未删除行间唯一），如 export_enabled、sso_enabled；
+  // 创建后不可变。
+  string flag_key = 4;
+  // 功能描述，可空。
+  optional string description = 5;
+  // 功能是否开启。optional 未设置即 false（创建缺省 false）；更新为覆盖
+  // 语义，未设置同样落 false，显式设置按值落库。
+  optional bool is_enabled = 6;
+  // 备注，可空。
+  optional string remark = 7;
+  // 创建人。只读。
+  int64 created_by = 8;
+  // 更新人。只读。
+  int64 updated_by = 9;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 10;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 11;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 12;
+  // 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+  string tenant_id = 13;
+}
+
+// FeatureFlagSet 是 ListFeatureFlags 返回的分页集合。
+message FeatureFlagSet {
+  // 本页功能开关，顺序遵循查询中的 sort。
+  repeated FeatureFlag items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// Translation 是通用翻译的规范表示。审计列与时间戳只读。
+message Translation {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 2;
+  // 来源表名，如 sys_menu、sys_dict_data；创建后不可变。
+  string table_name = 3;
+  // 来源行主键 ID；创建后不可变。
+  int64 row_id = 4;
+  // 来源列名，如 name、label；创建后不可变。
+  string column_name = 5;
+  // 语言代码（BCP-47 基本形态，如 zh-CN、en-US、ja-JP、ko-KR），总长
+  // ≤10；创建后不可变。
+  string locale = 6;
+  // 翻译文本（必填）。落库前去除首尾空白（内部空白原样保留，不做空白
+  // 折叠）。
+  string value = 7;
+  // 备注，可空。
+  optional string remark = 8;
+  // 创建人。只读。
+  int64 created_by = 9;
+  // 更新人。只读。
+  int64 updated_by = 10;
+  // 创建时间。服务端生成，只读。
+  google.protobuf.Timestamp created_at = 11;
+  // 最近修改时间。服务端生成，只读。
+  google.protobuf.Timestamp updated_at = 12;
+  // 软删除标记时间，通常为空。只读。
+  google.protobuf.Timestamp deleted_at = 13;
+  // 所属租户。只读：由服务端按认证身份的租户落值，请求中的值被忽略。
+  string tenant_id = 14;
+}
+
+// TranslationSet 是 ListTranslations 返回的分页集合。
+message TranslationSet {
+  // 本页翻译，顺序遵循查询中的 sort。
+  repeated Translation items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现。
+  optional int64 total = 2;
+  // 是否还有后续页。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0。
+  int32 page = 5;
+}
+
+// CreateFeatureFlagRequest 是 FeatureFlagService.CreateFeatureFlag 的输入。
+message CreateFeatureFlagRequest {
+  // 要创建的功能开关。id、created_by/updated_by、tenant_id 与时间戳在
+  // 输入中被忽略（tenant_id 由服务端按认证身份落值）。
+  FeatureFlag feature_flag = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetFeatureFlagRequest 是 FeatureFlagService.GetFeatureFlag 的输入。
+message GetFeatureFlagRequest {
+  // 目标功能开关的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListFeatureFlagsRequest 是 FeatureFlagService.ListFeatureFlags 的输入。
+message ListFeatureFlagsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateFeatureFlagRequest 是 FeatureFlagService.UpdateFeatureFlag 的输入。
+message UpdateFeatureFlagRequest {
+  // 携带新字段值的功能开关。id 标识目标记录，必须设置；flag_key 与
+  // tenant_id 在输入中被忽略。
+  FeatureFlag feature_flag = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteFeatureFlagRequest 是 FeatureFlagService.DeleteFeatureFlag 的输入。
+message DeleteFeatureFlagRequest {
+  // 目标功能开关的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateTranslationRequest 是 TranslationService.CreateTranslation 的输入。
+message CreateTranslationRequest {
+  // 要创建的翻译。id、created_by/updated_by、tenant_id 与时间戳在输入中
+  // 被忽略（tenant_id 由服务端按认证身份落值）。
+  Translation translation = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetTranslationRequest 是 TranslationService.GetTranslation 的输入。
+message GetTranslationRequest {
+  // 目标翻译的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListTranslationsRequest 是 TranslationService.ListTranslations 的输入。
+message ListTranslationsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}
+
+// UpdateTranslationRequest 是 TranslationService.UpdateTranslation 的输入。
+message UpdateTranslationRequest {
+  // 携带新字段值的翻译。id 标识目标记录，必须设置；table_name、row_id、
+  // column_name、locale 与 tenant_id 在输入中被忽略。
+  Translation translation = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteTranslationRequest 是 TranslationService.DeleteTranslation 的输入。
+message DeleteTranslationRequest {
+  // 目标翻译的服务端标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

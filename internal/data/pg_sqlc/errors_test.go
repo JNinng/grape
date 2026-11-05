@@ -30,6 +30,24 @@ func TestMapStorageErrorClassifiesDriverErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid data sqlstates", func(t *testing.T) {
+		cases := []struct {
+			name string
+			code string
+		}{
+			{name: "check violation", code: pgerrcodeCheckViolation},
+			{name: "string data right truncation", code: pgerrcodeStringDataRightTruncation},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				err := &pgconn.PgError{Code: tc.code}
+				if got := mapStorageError(err, notFound, invalidArg, alreadyExists); got != invalidArg {
+					t.Fatalf("want invalidArg, got %v", got)
+				}
+			})
+		}
+	})
+
 	t.Run("dynq error keeps reason", func(t *testing.T) {
 		err := dynq.NewErr(dynq.KindWhere, "age", "op not allowed", 0)
 		got := mapStorageError(err, notFound, invalidArg, alreadyExists)

@@ -16,11 +16,14 @@ export interface RowActionInfo {
   value: string
 }
 
-// RowActionItem 是菜单动作项：destructive 渲染红色（删除类动作）。
+// RowActionItem 是菜单动作项：destructive 渲染红色（删除类动作）；
+// disabled 禁用该项（如对自身租户的停用/恢复/删除），title 说明禁用原因。
 export interface RowActionItem {
   label: string
   onSelect: () => void
   destructive?: boolean
+  disabled?: boolean
+  title?: string
 }
 
 // RowActionsMenu 是行内操作按钮：悬停即弹出、移出按钮与弹框片刻后收起
@@ -87,7 +90,13 @@ export function RowActionsMenu({ rowLabel, info, actions }: {
           <DropdownMenuItem
             key={action.label}
             variant={action.destructive === true ? 'destructive' : undefined}
+            disabled={action.disabled === true}
+            title={action.title}
             onClick={() => {
+              // 防御程序化点击：禁用项不执行动作也不收起菜单。
+              if (action.disabled === true) {
+                return
+              }
               setOpen(false)
               action.onSelect()
             }}

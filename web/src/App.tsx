@@ -8,12 +8,14 @@ import { ChatPage } from './pages/ChatPage'
 import { LoginPage } from './pages/LoginPage'
 import { ReplayPage } from './pages/replay/ReplayPage'
 import { AuditLogManagePage } from './pages/settings/AuditLogManagePage'
+import { ConfigManagePage } from './pages/settings/ConfigManagePage'
 import { DeptManagePage } from './pages/settings/DeptManagePage'
 import { DictManagePage } from './pages/settings/DictManagePage'
 import { MenuManagePage } from './pages/settings/MenuManagePage'
 import { RoleManagePage } from './pages/settings/RoleManagePage'
 import { SessionManagePage } from './pages/settings/SessionManagePage'
 import { SettingsLayout } from './pages/settings/SettingsLayout'
+import { TenantManagePage } from './pages/settings/TenantManagePage'
 import { UserGroupManagePage } from './pages/settings/UserGroupManagePage'
 import { UserManagePage } from './pages/settings/UserManagePage'
 
@@ -68,7 +70,7 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* 管理页子路由：未实现模块不注册，路由表保持与已交付页面一致。 */}
+          {/* 管理页子路由：按已交付页面注册。 */}
           <Route index element={<Navigate to="/settings/users" replace />} />
           <Route path="users" element={<UserManagePage />} />
           <Route path="depts" element={<DeptManagePage />} />
@@ -78,6 +80,8 @@ export default function App() {
           <Route path="dicts" element={<DictManagePage />} />
           <Route path="audit-logs" element={<AuditLogManagePage />} />
           <Route path="sessions" element={<SessionManagePage />} />
+          <Route path="configs" element={<ConfigManagePage />} />
+          <Route path="tenants" element={<TenantManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

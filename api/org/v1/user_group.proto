@@ -49,7 +49,7 @@ service UserGroupService {
 
   // UpdateUserGroup 覆盖可变字段（name、status、remark）。code 与
   // owner_user_id 是身份/归属列，在输入中被忽略：组编码创建后不变，
-  // 组长变更走部署面专项口径（本批不提供）。
+  // 组长变更走部署面专项口径（管理 API 不提供）。
   rpc UpdateUserGroup (UpdateUserGroupRequest) returns (UserGroup) {
     option (google.api.http) = {
       put: "/v1/user-groups/update"

@@ -51,7 +51,7 @@ type DeptServiceHTTPServer interface {
 	MoveDept(context.Context, *MoveDeptRequest) (*Dept, error)
 	// UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
 	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（本批不提供）。
+	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(context.Context, *UpdateDeptRequest) (*Dept, error)
 }
 
@@ -236,7 +236,7 @@ type DeptServiceHTTPClient interface {
 	MoveDept(ctx context.Context, req *MoveDeptRequest, opts ...http.CallOption) (rsp *Dept, err error)
 	// UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
 	// 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-	// 专项口径（本批不提供）。
+	// 专项口径（管理 API 不提供，由部署面维护）。
 	UpdateDept(ctx context.Context, req *UpdateDeptRequest, opts ...http.CallOption) (rsp *Dept, err error)
 }
 
@@ -365,7 +365,7 @@ func (c *DeptServiceHTTPClientImpl) MoveDept(ctx context.Context, in *MoveDeptRe
 
 // UpdateDept UpdateDept 覆盖可变字段（name、status）。parent_id 与 owner_* 在
 // 输入中被忽略：移动走 MoveDept，部门管理员与归属组的变更走部署面
-// 专项口径（本批不提供）。
+// 专项口径（管理 API 不提供，由部署面维护）。
 func (c *DeptServiceHTTPClientImpl) UpdateDept(ctx context.Context, in *UpdateDeptRequest, opts ...http.CallOption) (*Dept, error) {
 	var out Dept
 	pattern := "/v1/depts/update"
