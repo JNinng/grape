@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Event, Message } from '@ag-ui/client'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import {
   CircleAlertIcon,
   FlaskConicalIcon,
   LogOutIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   SendIcon,
   SettingsIcon,
@@ -32,20 +33,20 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { AccentPicker } from '@/components/accent-picker'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { ModeToggle } from '@/components/mode-toggle'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 // 待确认列表的低频兜底轮询周期：覆盖页面加载与运行间隙之外的漂移
 // （如另一端决定、恢复路径孤儿确认）。运行结束与切换会话会立即查询，
@@ -80,6 +81,7 @@ export function ChatPage() {
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [sessions, setSessions] = useState<AgentSessionMeta[]>([])
   const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [logoutOpen, setLogoutOpen] = useState(false)
 
   // agentRef/runIdRef 持有进行中的运行；threadIdRef 供异步回调判定
   // 是否已切走会话（陈旧运行的回包不得写入新会话的状态）。
@@ -320,58 +322,6 @@ export function ChatPage() {
             <h2 className="text-sm font-semibold text-foreground">Grape</h2>
             <p className="truncate text-xs text-muted-foreground">AI 对话工作台</p>
           </div>
-          {/* 运维复现 / 登出收纳为侧栏头部的图标按钮，悬停出提示；主头部
-              只留身份与主题切换，视觉更轻。 */}
-          <TooltipProvider>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="运维复现"
-                    onClick={() => navigate('/replay')}
-                  >
-                    <FlaskConicalIcon aria-hidden className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">运维复现</TooltipContent>
-              </Tooltip>
-              <AlertDialog>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="登出"
-                      >
-                        <LogOutIcon aria-hidden className="size-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">登出</TooltipContent>
-                </Tooltip>
-                {/* 登出二次确认：撤销会话不可撤回，误触图标按钮的代价高。 */}
-                <AlertDialogContent size="sm">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>确认登出？</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      登出将撤销当前会话并返回登录页，未发送的输入将丢失。
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleLogout}>
-                      登出
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </div>
-          </TooltipProvider>
         </div>
         <div className="px-4 pb-3">
           <Button type="button" onClick={handleNewThread} className="w-full">
@@ -420,6 +370,52 @@ export function ChatPage() {
             })}
           </ul>
         </nav>
+        {/* 系统设置固定侧栏底部，与设置页「返回工作台」同位置同款式；
+            运维复现/登出收进同行的更多菜单，系统设置链接本身仍直达设置页。 */}
+        <div className="shrink-0 border-t border-sidebar-border p-3">
+          <div className="flex items-center gap-1">
+            <Link
+              to="/settings"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-foreground transition-colors select-none hover:bg-sidebar-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sidebar-ring"
+            >
+              <SettingsIcon aria-hidden className="size-4 shrink-0" />
+              系统设置
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="更多操作">
+                  <MoreHorizontalIcon aria-hidden className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="end" className="w-40">
+                <DropdownMenuItem onSelect={() => navigate('/replay')}>
+                  <FlaskConicalIcon aria-hidden className="size-4" />
+                  运维复现
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={() => setLogoutOpen(true)}>
+                  <LogOutIcon aria-hidden className="size-4" />
+                  登出
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          {/* 登出二次确认：撤销会话不可撤回，误触菜单项的代价高。 */}
+          <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+            <AlertDialogContent size="sm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>确认登出？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  登出将撤销当前会话并返回登录页，未发送的输入将丢失。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={handleLogout}>登出</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </aside>
 
       <section aria-label="对话区" className="flex min-w-0 flex-1 flex-col">
@@ -432,24 +428,6 @@ export function ChatPage() {
             <Separator orientation="vertical" className="hidden h-4 lg:block" />
             <AccentPicker />
             <ModeToggle />
-            <Separator orientation="vertical" className="hidden h-4 sm:block" />
-            {/* 管理页入口：与主题切换并排收纳在头部右侧，图标语义见提示。 */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="系统设置"
-                    onClick={() => navigate('/settings')}
-                  >
-                    <SettingsIcon aria-hidden className="size-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">系统设置</TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
           </div>
         </header>
 

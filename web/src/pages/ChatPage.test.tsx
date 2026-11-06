@@ -222,7 +222,7 @@ describe('ChatPage streaming run', () => {
 })
 
 describe('ChatPage settings entry', () => {
-  it('navigates_to_the_settings_page_from_the_header_icon', async () => {
+  it('navigates_to_the_settings_page_from_the_sidebar_footer', async () => {
     const user = userEvent.setup()
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -236,7 +236,7 @@ describe('ChatPage settings entry', () => {
     )
     await screen.findByLabelText('会话列表')
 
-    await user.click(screen.getByRole('button', { name: '系统设置' }))
+    await user.click(screen.getByRole('link', { name: '系统设置' }))
 
     expect(await screen.findByText('settings-target')).toBeInTheDocument()
   })
@@ -248,8 +248,9 @@ describe('ChatPage logout confirmation', () => {
     renderChat()
     await screen.findByLabelText('会话列表')
 
-    // 点击登出图标：只弹确认框，不触发登出。
-    await user.click(screen.getByRole('button', { name: '登出' }))
+    // 打开更多菜单后点登出：只弹确认框，不触发登出。
+    await user.click(screen.getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '登出' }))
     const dialog = screen.getByRole('alertdialog')
     expect(dialog).toHaveTextContent('确认登出？')
     expect(mockLogout).not.toHaveBeenCalled()
@@ -260,7 +261,8 @@ describe('ChatPage logout confirmation', () => {
     expect(mockLogout).not.toHaveBeenCalled()
 
     // 再次打开并确认：此时才登出。
-    await user.click(screen.getByRole('button', { name: '登出' }))
+    await user.click(screen.getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '登出' }))
     await user.click(
       within(screen.getByRole('alertdialog')).getByRole('button', { name: '登出' }),
     )
