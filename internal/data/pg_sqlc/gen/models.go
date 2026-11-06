@@ -441,7 +441,7 @@ type SysPermVersion struct {
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 }
 
-// 角色表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
+// 角色表 [@scope: id in_any fn_visible_role_ids(user_id:int) @default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]
 type SysRole struct {
 	// 主键 ID [@dynamic: exact, in @sortable @hideable]
 	ID int64 `db:"id" json:"id"`
@@ -759,8 +759,10 @@ type SysUserGroupMapping struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 用户-角色映射表。映射行无可变业务字段，解除关联走物理删除，因此仅保留 created_by/created_at 最小审计字段（谁在何时授予），不含 updated_*/deleted_*
+// 用户-角色映射表。映射行无可变业务字段，仅保留最小审计列；撤销映射走软删（deleted_at/deleted_by 留痕，谁在何时撤销），重复授予插入新行、历史不覆盖。活跃映射由部分唯一索引 (tenant_id, user_id, role_id) WHERE deleted_at IS NULL 约束唯一
 type SysUserRoleMapping struct {
+	// 主键 ID（应用层发号）
+	ID int64 `db:"id" json:"id"`
 	// 用户 ID
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 角色 ID
@@ -771,4 +773,8 @@ type SysUserRoleMapping struct {
 	CreatedBy int64 `db:"created_by" json:"created_by"`
 	// 授予时间（创建时间）
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 撤销人，由应用层写入
+	DeletedBy *int64 `db:"deleted_by" json:"deleted_by"`
+	// 撤销时间（软删时间）
+	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 }

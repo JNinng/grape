@@ -47,6 +47,8 @@ const (
 // 写侧判定不通过返回 FORBIDDEN。
 type UserServiceClient interface {
 	// CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
+	// 请求携带的归属三元组经库内 fn_can_set_owner 校验（归属对象存在、
+	// 启用且在操作者可见范围内），不通过返回 FORBIDDEN。
 	// 租户内 name/email/phone 唯一，冲突返回 ALREADY_EXISTS。
 	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*User, error)
 	// GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
@@ -62,24 +64,29 @@ type UserServiceClient interface {
 	SetUserPassword(ctx context.Context, in *SetUserPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
 	DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
-	// AssignRoles 把多个角色分配给目标用户：先库内批量判定
-	// （fn_can_assign_role），全部通过才写入映射；任一不通过整批拒绝
-	// （FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
+	// AssignRoles 把多个角色分配给目标用户：先按 ID 锁定目标（不判可见性，
+	// 不存在返回 NOT_FOUND），再经库内批量判定（fn_can_assign_role：角色
+	// 可见性 + 目标部门范围 + 分配权限码），全部通过才写入映射；任一不通过
+	// 整批拒绝（FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
 	AssignRoles(ctx context.Context, in *AssignRolesRequest, opts ...grpc.CallOption) (*AssignRolesReply, error)
 	// TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(ctx context.Context, in *TransferUserOwnerRequest, opts ...grpc.CallOption) (*User, error)
 	// ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
-	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
-	// 等同不存在（NOT_FOUND）。
+	//（操作者按 fn_can_assign_role 判定：角色可见性 + 目标部门范围 +
+	// 分配权限码）。分配不要求目标用户可见；目标不存在/软删返回
+	// NOT_FOUND。
 	ListAssignableRoles(ctx context.Context, in *ListAssignableRolesRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
 	// ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
-	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	// 只计数不暴露明细）与版本号；目标不存在/软删返回 NOT_FOUND
+	//（分配读面不要求目标可见）。
 	ListUserRoles(ctx context.Context, in *ListUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error)
 	// SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
 	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
-	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	// 新增按 fn_can_assign_role 判定，移除按 fn_can_revoke_role 软删（放宽
+	// 角色/目标状态校验）；任一拒绝、请求触及 locked 或版本不一致整批
+	// 回滚。目标按 ID 定位（分配不要求目标可见），不存在返回 NOT_FOUND。
 	SetUserRoles(ctx context.Context, in *SetUserRolesRequest, opts ...grpc.CallOption) (*UserRoleSet, error)
 	// ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
 	ListOwnerUserOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
@@ -247,6 +254,8 @@ func (c *userServiceClient) ListOwnerGroupOptions(ctx context.Context, in *ListO
 // 写侧判定不通过返回 FORBIDDEN。
 type UserServiceServer interface {
 	// CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
+	// 请求携带的归属三元组经库内 fn_can_set_owner 校验（归属对象存在、
+	// 启用且在操作者可见范围内），不通过返回 FORBIDDEN。
 	// 租户内 name/email/phone 唯一，冲突返回 ALREADY_EXISTS。
 	CreateUser(context.Context, *CreateUserRequest) (*User, error)
 	// GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
@@ -262,24 +271,29 @@ type UserServiceServer interface {
 	SetUserPassword(context.Context, *SetUserPasswordRequest) (*emptypb.Empty, error)
 	// DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
 	DeleteUser(context.Context, *DeleteUserRequest) (*emptypb.Empty, error)
-	// AssignRoles 把多个角色分配给目标用户：先库内批量判定
-	// （fn_can_assign_role），全部通过才写入映射；任一不通过整批拒绝
-	// （FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
+	// AssignRoles 把多个角色分配给目标用户：先按 ID 锁定目标（不判可见性，
+	// 不存在返回 NOT_FOUND），再经库内批量判定（fn_can_assign_role：角色
+	// 可见性 + 目标部门范围 + 分配权限码），全部通过才写入映射；任一不通过
+	// 整批拒绝（FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
 	AssignRoles(context.Context, *AssignRolesRequest) (*AssignRolesReply, error)
 	// TransferUserOwner 修改用户的归属三元组，两头校验：该用户本身
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(context.Context, *TransferUserOwnerRequest) (*User, error)
 	// ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
-	// （操作者按 fn_can_assign_role 判定可管理的子集）。目标用户不可见
-	// 等同不存在（NOT_FOUND）。
+	//（操作者按 fn_can_assign_role 判定：角色可见性 + 目标部门范围 +
+	// 分配权限码）。分配不要求目标用户可见；目标不存在/软删返回
+	// NOT_FOUND。
 	ListAssignableRoles(context.Context, *ListAssignableRolesRequest) (*v1.OptionSet, error)
 	// ListUserRoles 返回目标用户当前可管理范围的角色集合（locked 角色
-	// 只计数不暴露明细）与版本号；不可见等同不存在。
+	// 只计数不暴露明细）与版本号；目标不存在/软删返回 NOT_FOUND
+	//（分配读面不要求目标可见）。
 	ListUserRoles(context.Context, *ListUserRolesRequest) (*UserRoleSet, error)
 	// SetUserRoles 用「管理范围内的整组替换」写入目标用户的角色：请求
 	// 只表达调用方可管理范围内的目标集合，范围外（locked）角色原样保留；
-	// 任一角色不可分配/不可撤销、请求触及 locked 或版本不一致整批拒绝。
+	// 新增按 fn_can_assign_role 判定，移除按 fn_can_revoke_role 软删（放宽
+	// 角色/目标状态校验）；任一拒绝、请求触及 locked 或版本不一致整批
+	// 回滚。目标按 ID 定位（分配不要求目标可见），不存在返回 NOT_FOUND。
 	SetUserRoles(context.Context, *SetUserRolesRequest) (*UserRoleSet, error)
 	// ListOwnerUserOptions 返回归属用户候选（操作者可见范围内的活跃用户）。
 	ListOwnerUserOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)

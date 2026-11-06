@@ -63,10 +63,12 @@ const (
 	RoleIDScopeTypeGroup int32 = 3
 )
 
-// Role 是角色领域模型。角色是租户内资源：租户边界由存储层 RLS 承担，表
-// 无 @scope（租户内全可见），故仓储方法不携带 Scope。code 与 role_type
-// 是身份列（创建后不变）；data_scope 与 scope_dept_id 归数据范围配置面
-// 维护，不经 Update 用例修改。
+// Role 是角色领域模型。角色是租户内资源：租户边界由存储层 RLS 承担，
+// 行级可见性由表级 @scope 守卫（动态 List/Count，fn_visible_role_ids）
+// 与 fn_can_see_role（详情共用判定）承担——角色对操作人可见与否由
+// A（分发映射命中可见部门集合）与 G（组织可见范围 + data_scope 档位）
+// 库内推导。code 与 role_type 是身份列（创建后不变）；data_scope 与
+// scope_dept_id 归数据范围配置面维护，不经 Update 用例修改。
 type Role struct {
 	ID          int64
 	Status      int32 // 0 禁用、1 启用
@@ -116,9 +118,10 @@ type RoleDataScope struct {
 // 执行（RLS）；写路径先锁角色行再操作明细/映射表。List 消费 dynq 动态
 // 查询协议。数据范围明细与角色-菜单映射不单独立资源，随本仓储维护。
 type RoleRepo interface {
-	// GetByID 按 id 查询单个角色；不存在或跨租户返回 ErrRoleNotFound。
+	// GetByID 按 id 查询单个角色；不存在、跨租户或对操作人不可见
+	//（fn_can_see_role）返回 ErrRoleNotFound。
 	GetByID(ctx context.Context, auth Identity, id int64) (*Role, error)
-	// List 按动态查询协议返回分页集合（租户内平铺视图）。
+	// List 按动态查询协议返回分页集合（结果按角色可见性 @scope 守卫过滤）。
 	List(ctx context.Context, auth Identity, q *dynq.Query) (*RoleList, error)
 	// Create 创建角色（服务端定 role_type=2、data_scope=1、scope_dept_id
 	// 为空）；编码/角色名冲突映射 ErrRoleAlreadyExists。
@@ -131,7 +134,7 @@ type RoleRepo interface {
 	// 判定与功能权限判定都以角色表启用且未删除过滤，残留行不产生可见副作用。
 	SoftDelete(ctx context.Context, auth Identity, id int64) error
 	// GetDataScope 读取角色的数据范围配置（角色行标量 + 两张明细表活跃行）；
-	// 角色不存在或跨租户返回 ErrRoleNotFound。
+	// 角色不存在、跨租户或对操作人不可见返回 ErrRoleNotFound。
 	GetDataScope(ctx context.Context, auth Identity, id int64) (*RoleDataScope, error)
 	// SetDataScope 整组替换角色的数据范围配置：角色行标量随入参更新，
 	// 两张明细表按入参集合差量同步（移除物理删除、补建缺失、既有命中行
@@ -141,8 +144,8 @@ type RoleRepo interface {
 	SetDataScope(ctx context.Context, auth Identity, cfg *RoleDataScope) (*RoleDataScope, error)
 	// ListMenus 返回角色当前的有效授权菜单 ID 集合（升序；停用/软删菜单
 	// 的残留映射不出现在回显集合，与 fn_has_permission 的活跃口径一致，
-	// 回显集合可原样作为 SetMenus 输入）；角色不存在或跨租户返回
-	// ErrRoleNotFound。
+	// 回显集合可原样作为 SetMenus 输入）；角色不存在、跨租户或对操作人
+	// 不可见返回 ErrRoleNotFound。
 	ListMenus(ctx context.Context, auth Identity, id int64) ([]int64, error)
 	// SetMenus 整组替换角色的菜单授权（差量同步：以映射物理行为对账基线，
 	// 不在新集合内的行物理删除——含失活菜单的残留授权，补建缺失并记录

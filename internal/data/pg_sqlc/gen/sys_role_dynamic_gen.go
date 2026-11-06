@@ -5,6 +5,7 @@
 //	table sys_role: [@page: 20/400]
 //	table sys_role: [@default_sort: updated_at DESC]
 //	table sys_role: [@pk: id]
+//	table sys_role: [@scope: id in_any fn_visible_role_ids(user_id:int)]
 //	table sys_role: [@filter: deleted_at is_null]
 //	column sys_role.id: [@dynamic: eq, neq, in, not_in @sortable @hideable]
 //	column sys_role.status: [@dynamic: eq, neq, in, not_in @sortable @hideable @updatable: set @label: 状态 @options: 0=禁用 1=启用]
@@ -268,6 +269,13 @@ var SysRoleField = struct {
 	UpdatedAt:   "updatedAt",
 }
 
+// SysRoleScope 是 @scope 守卫函数的参数载体:字段为全部守卫声明的标识符参数并集
+// (字面量参数已内联进谓词,不占用字段)。协议门结构性无法设置该字段;
+// 缺省时 List/Count fail-closed 报错(Kind=scope),不静默退化为全量可见。
+type SysRoleScope struct {
+	UserID int64
+}
+
 // ListSysRoleParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
 // 每个字段以单值承载一个操作符,因此无法表达协议门可拒绝的条件冲突——
 // 冲突检测仅在协议门执行。
@@ -332,6 +340,11 @@ type ListSysRoleParams struct {
 	UpdatedAtGte     *time.Time
 	UpdatedAtLt      *time.Time
 	UpdatedAtLte     *time.Time
+	// Scope 是数据权限上下文(表级 @scope 声明的资源必填,fail-closed):
+	// 与业务槽位"零值=条件不参与"不同,Scope 为 nil 时 List/Count 直接报错。
+	// 协议门(Parse)无法设置该字段——客户端请求不构成注入通道;
+	// 注入方式:params.Scope = dynq.ScopeFromContext[SysRoleScope](ctx) 或直接构造。
+	Scope *SysRoleScope
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -1057,7 +1070,8 @@ func ParseSysRoleQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysRolePara
 }
 
 // validateSysRoleParams 校验 params 在当前 opts 下的合法性,List 与 Count 共用。
-// 禁用字段携带非零值、IsNull 与 NotNull 同时为真均显式报错,不做静默剔除。
+// 禁用字段携带非零值、IsNull 与 NotNull 同时为真均显式报错,不做静默剔除;
+// 声明 @scope 的资源缺省 Scope 时 fail-closed 报错。
 //
 // 参数:
 //   - params: 待复核的查询参数。
@@ -1066,6 +1080,11 @@ func ParseSysRoleQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysRolePara
 // 返回值:
 //   - error: 复核通过返回 nil,否则返回结构化错误。
 func validateSysRoleParams(params ListSysRoleParams, cfg *dynq.QueryConfig) error {
+	// 数据权限 fail-closed:声明 @scope 的表缺省 Scope 时显式报错,
+	// 宁可拒绝服务也不静默退化为全量可见。
+	if params.Scope == nil {
+		return dynq.ErrScopeRequired()
+	}
 	if cfg.WhereDisabled("id") && (params.ID != nil || params.IDNeq != nil || params.IDIn != nil || params.IDNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "id", "field disabled in this context", -1)
 	}
@@ -1108,7 +1127,9 @@ func validateSysRoleParams(params ListSysRoleParams, cfg *dynq.QueryConfig) erro
 // buildSysRoleWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
 // 所有值均经占位符参数化,列名与操作符为白名单字面量;
 // 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
-// List 与 Count 共用,过滤视图天然一致。
+// List 与 Count 共用,过滤视图天然一致;
+// 声明 @scope 的表头部注入数据权限谓词(守卫函数名同为生成期白名单字面量),
+// 与业务条件 AND 组合,total 与 items 的权限视图天然一致
 //
 // 参数:
 //   - params: 已通过 validate 形态复核的查询参数。
@@ -1121,6 +1142,11 @@ func buildSysRoleWhere(params ListSysRoleParams) []sq.Sqlizer {
 	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
 	// 不拼进 SQL 文本,零注入面。
 	conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	// 数据权限谓词(@scope):多守卫 OR 组合,与业务条件 AND;列名/操作符/
+	// 守卫函数名/字面量参数为生成期白名单字面量,标识符参数经占位符参数化;
+	// IN-子查询与不相关标量函数在单条语句内只求值一次;params.Scope 非 nil
+	// 已由 validate 保证。
+	conds = append(conds, sq.Expr("(fn_visible_role_ids(?) IS NULL OR id = ANY(fn_visible_role_ids(?)))", params.Scope.UserID, params.Scope.UserID))
 	if params.ID != nil {
 		conds = append(conds, sq.Eq{"id": *params.ID})
 	}

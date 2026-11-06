@@ -104,7 +104,7 @@ func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing
 		}
 		index[name] = i
 	}
-	wantOrder := []string{"role.sql", "rls.sql", "operate.sql", "expose.sql", "seed.sql", "agent_session.sql"}
+	wantOrder := []string{"role.sql", "rls.sql", "expose.sql", "operate.sql", "seed.sql", "agent_session.sql"}
 	for i, name := range wantOrder {
 		pos, ok := index[name]
 		if !ok {

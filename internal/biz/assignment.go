@@ -73,10 +73,11 @@ type SetUserRolesInput struct {
 // 执行（RLS）。
 type AssignmentRepo interface {
 	// ListAssignableRoles 返回目标用户可分配、尚未拥有的活跃角色；
-	// 目标用户不可见返回 ErrUserNotFound。
+	// 目标不存在/软删返回 ErrUserNotFound（分配不要求目标可见，不可见
+	// 仍可分配）。
 	ListAssignableRoles(ctx context.Context, auth Identity, targetUserID int64, q OptionQuery) (*OptionSet, error)
 	// ListUserRoles 返回目标用户当前可管理角色集合、locked 计数与版本；
-	// 目标用户不可见返回 ErrUserNotFound。
+	// 目标不存在/软删返回 ErrUserNotFound（分配读面不要求目标可见）。
 	ListUserRoles(ctx context.Context, auth Identity, userID int64) (*UserRoleSet, error)
 	// SetUserRoles 在单个事务内按「管理范围内整组替换」写入角色集合：
 	// locked 原样保留、请求触及 locked/不可分配/不可撤销/版本不一致/

@@ -20,6 +20,9 @@ import (
 // test_seed.sql。顺序与仓库根 deploy_db.md 的「执行顺序」表互为镜像，
 // 两处禁止另行维护副本；各步骤的依赖关系、执行者身份与幂等边界以该表为准
 // （要点：role.sql 先于 rls/operate/expose——函数授权依赖角色先行；
+// rls.sql → expose.sql → operate.sql：LANGUAGE sql 函数体创建期解析，
+// operate 的 fn_can_* 引用 rls 的 fn_accessible_* 与 expose 的
+// fn_has_permission，引用必须后于定义；
 // seed.sql 在 RLS 启用后以超级用户/表 owner 执行；agent 域尾部追加，
 // 只依赖 role.sql 的角色存在）。
 var DeployFiles = []string{
@@ -34,8 +37,8 @@ var DeployFiles = []string{
 	"schema/90_config.sql",
 	"role.sql",
 	"rls.sql",
-	"operate.sql",
 	"expose.sql",
+	"operate.sql",
 	"seed.sql",
 	// Agent 会话存储：CREATE SCHEMA agent + 框架
 	// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户

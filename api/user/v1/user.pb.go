@@ -45,11 +45,14 @@ type User struct {
 	Remark *string `protobuf:"bytes,7,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
 	// 语言偏好（BCP-47），如 zh-CN。缺省 zh-CN。
 	Locale string `protobuf:"bytes,8,opt,name=locale,proto3" json:"locale,omitempty"`
-	// 归属用户。读接口可见，仅 TransferUserOwner 可写。
+	// 归属用户。读接口可见，仅 CreateUser（经 fn_can_set_owner 校验）与
+	// TransferUserOwner 可写。
 	OwnerUserId *int64 `protobuf:"varint,9,opt,name=owner_user_id,json=ownerUserId,proto3,oneof" json:"owner_user_id,omitempty"`
-	// 归属部门。读接口可见，仅 TransferUserOwner 可写。
+	// 归属部门。读接口可见，仅 CreateUser（经 fn_can_set_owner 校验）与
+	// TransferUserOwner 可写。
 	OwnerDeptId *int64 `protobuf:"varint,10,opt,name=owner_dept_id,json=ownerDeptId,proto3,oneof" json:"owner_dept_id,omitempty"`
-	// 归属用户组。读接口可见，仅 TransferUserOwner 可写。
+	// 归属用户组。读接口可见，仅 CreateUser（经 fn_can_set_owner 校验）与
+	// TransferUserOwner 可写。
 	OwnerUserGroupId *int64 `protobuf:"varint,11,opt,name=owner_user_group_id,json=ownerUserGroupId,proto3,oneof" json:"owner_user_group_id,omitempty"`
 	// 创建人。只读。
 	CreatedBy int64 `protobuf:"varint,12,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`

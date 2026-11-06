@@ -26,9 +26,10 @@ const (
 	groupTenantEmpty = "t-test-02"
 )
 
-// groupAuth 返回指定租户的操作者身份；用户组表无 @scope，操作者仅落入审计列。
+// groupAuth 返回指定租户的种子操作者身份（tenantOperators 定义见
+// role_repo_test.go）；组长归属校验（fn_can_set_owner）要求有效身份。
 func groupAuth(tenant string) biz.Identity {
-	return biz.Identity{TenantID: tenant, UserID: 1}
+	return biz.Identity{TenantID: tenant, UserID: tenantOperators[tenant]}
 }
 
 // mustCreateUserGroup 在指定租户内创建用户组，失败即终止用例。
@@ -111,8 +112,8 @@ func TestUserGroupRepo_create_writes_fields_and_tenant(t *testing.T) {
 	if got.Remark == nil || *got.Remark != "ops team" || got.OwnerUserID == nil || *got.OwnerUserID != 5 {
 		t.Fatalf("optional fields = (remark %+v, owner %+v), want (ops team, 5)", got.Remark, got.OwnerUserID)
 	}
-	if got.CreatedBy != 1 || got.UpdatedBy != 1 || got.DeletedAt != nil {
-		t.Fatalf("audit = (by %d/%d, deleted %+v), want (1/1, nil)", got.CreatedBy, got.UpdatedBy, got.DeletedAt)
+	if got.CreatedBy != auth.UserID || got.UpdatedBy != auth.UserID || got.DeletedAt != nil {
+		t.Fatalf("audit = (by %d/%d, deleted %+v), want (%d/%d, nil)", got.CreatedBy, got.UpdatedBy, got.DeletedAt, auth.UserID, auth.UserID)
 	}
 }
 

@@ -33,8 +33,8 @@ make dbdeploy ARGS="--database <库名>"
 | 9 | [schema/90_config.sql](internal/data/pg_sqlc/sqlc/schema/90_config.sql) | 全局配置、租户配置、功能开关、翻译 | 同上 |
 | 10 | [role.sql](internal/data/pg_sqlc/sqlc/role.sql) | grape_u 运行角色与 test_u 演示用户（口令占位符）、schema 使用权与全表/全序列 DML 授权、默认权限、GRANT SET ON PARAMETER | 必须先于步骤 12–13：operate/expose 的函数授权依赖角色存在 |
 | 11 | [rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) | RLS 策略、权限过滤函数（fn_accessible_* 三件套）、updated_at 触发器 | 依赖步骤 1–9 的表已存在 |
-| 12 | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) | 写前判断函数（fn_can_* 四件） | 依赖步骤 11 的 fn_accessible_* |
-| 13 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) | 权限查询判定函数、范围版本表与 bump 触发器 | 必须先于步骤 14：种子的角色映射写入要 bump 版本表 |
+| 12 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) | 权限查询判定函数、范围版本表与 bump 触发器 | 依赖步骤 11 的 fn_accessible_*；必须先于步骤 13：operate 的 fn_can_* 函数体创建期引用 fn_has_permission；也必须先于步骤 14：种子的角色映射写入要 bump 版本表 |
+| 13 | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) | 写前判断函数（fn_can_* 四件）与角色判定族（fn_role_visibility_core / fn_can_see_role / fn_visible_role_ids） | 依赖步骤 11 的 fn_accessible_*、步骤 12 的 fn_has_permission（均为函数体创建期引用）；fn_visible_role_ids 依赖同文件的 fn_can_see_role |
 | 14 | [seed.sql](internal/data/pg_sqlc/sqlc/seed.sql) | 生产默认种子：平台树根租户 t-super-01 的自举数据（租户/admin/角色 101/菜单/配置/开关/翻译；字典不播种，系统级枚举走列注释 @options，测试演示字典见 test_seed.sql） | RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS） |
 | 15 | [agent_session.sql](internal/data/pg_sqlc/sqlc/agent_session.sql) | Agent 会话存储：`CREATE SCHEMA agent` + 框架 session/postgres 六张 `agent_*` 表与索引 + grape_u 授权（trpc-agent-go 框架自管表，不入 sqlc catalog） | 只依赖步骤 10 的 grape_u 存在（授权对象）；与 public 业务域零耦合，放尾部不动既有顺序；schema 幂等建立 |
 | 16 | [agent_vector.sql](internal/data/pg_sqlc/sqlc/agent_vector.sql) | 向量检索设施（pgvector 扩展、agent schema、agent_document 多嵌入空间表——裸 vector 列 + embedder/embed_dim 身份列 + CHECK 绑定、每维度表达式部分 HNSW 索引与运行角色授权；非 sqlc catalog，存取 SQL 见 internal/data/pg_sqlc/vector/vector_repo.go） | 必须后于步骤 10（授权语句引用 grape_u/test_u）；以**超级用户/表 owner** 连接执行；不启用 RLS，租户隔离由应用层适配器强制；授权收窄到 agent_document，不覆盖 agent schema 全表 |
@@ -54,7 +54,7 @@ cd internal/data/pg_sqlc/sqlc
 set -e
 for f in schema/10_basic.sql schema/20_tenant.sql schema/30_user.sql schema/40_rbac.sql \
          schema/50_dept.sql schema/60_dict.sql schema/70_audit.sql schema/80_session.sql \
-         schema/90_config.sql role.sql rls.sql operate.sql expose.sql seed.sql \
+         schema/90_config.sql role.sql rls.sql expose.sql operate.sql seed.sql \
          agent_session.sql agent_vector.sql schema/95_agent_audit.sql \
          96_agent_grant.sql schema/97_agent_retrieval_log.sql 98_menu_write.sql \
          98_config_write.sql 98_tenant_guard.sql 99_perm_seed.sql; do
@@ -100,6 +100,8 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 [98_tenant_guard.sql](internal/data/pg_sqlc/sqlc/98_tenant_guard.sql) 同为历史库追加对象（98_menu_write.sql 同口径）：以部署超级用户连接目标库单独执行即可。文件只含一个 `CREATE OR REPLACE FUNCTION`（fn_tenant_active_child_count，可重复执行，不含表/索引/策略等裸创建 DDL）；函数属主 = 执行者，换执行者重跑会连带改属主——SECURITY DEFINER 的属主语义随之改变，部署口径以 dbdeploy 为准。未部署本函数的历史库在删除租户时调用失败，属预期收紧——先执行本文件再运行应用。
 
 [99_perm_seed.sql](internal/data/pg_sqlc/sqlc/99_perm_seed.sql) 对历史版本部署过的库同为追加对象：以超级用户连接目标库单独执行即可（纯种子，`ON CONFLICT DO NOTHING` 可重复）。已部署库升级时，新权限点在种子执行前不存在——入口层判定对相应端点返回 403（超级管理员角色同样失去这些码），属预期收紧，执行种子后即恢复。
+
+`sys_user_role_mapping` 撤销改软删（schema/30_user.sql）属**结构变更**，历史库需手工迁移或重建库：新表以应用层发号 `id` 为主键、加 `deleted_by`/`deleted_at`，原主键 (user_id, role_id) 由部分唯一索引 `(tenant_id, user_id, role_id) WHERE deleted_at IS NULL` 替代；迁移 SQL 大致为 `ALTER TABLE ... ADD COLUMN id int8, ADD COLUMN deleted_by int8, ADD COLUMN deleted_at timestamp(0) DEFAULT NULL`、回填 `id`（如 row_number 或外部发号）、`ADD PRIMARY KEY (id)`、`DROP CONSTRAINT sys_user_role_mapping_pkey`（旧主键先改名再替换）并建部分唯一索引；未迁移的历史库在撤销/重复授予路径会因缺列或主键冲突报错。判定函数（fn_can_see_role / fn_can_assign_role / fn_can_revoke_role / fn_visible_role_ids / fn_can_set_owner 等）经部署清单的 `CREATE OR REPLACE` 重放即可生效，无需额外迁移。
 
 ## 种子口令
 

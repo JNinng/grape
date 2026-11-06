@@ -1,8 +1,10 @@
 -- 角色固定 CRUD（sys_role）与数据范围明细、分发部门、角色-菜单映射的
 -- 读写（sys_role_id_scope / sys_role_allowed_dept / sys_role_menu）。
--- 角色是租户内资源：表无 @scope，租户边界由 RLS 承担，行级无范围；动态
--- 查询能力由 schema/40_rbac.sql 的列注释 DSL 声明，本文件只写固定命名
--- 查询。三张明细/映射表不单独立资源，随宿主角色的管理面维护：
+-- 角色是租户内资源：租户边界由 RLS 承担，行级可见性由表级 @scope 守卫
+--（动态 List/Count，fn_visible_role_ids）与 fn_can_see_role（详情点查
+-- GetSysRoleVisibleByID）承担，共用同一 A AND G 口径；动态查询能力由
+-- schema/40_rbac.sql 的表/列注释 DSL 声明，本文件只写固定命名查询。
+-- 三张明细/映射表不单独立资源，随宿主角色的管理面维护：
 -- sys_role_id_scope 与 sys_role_allowed_dept 是配置明细行（软删架构），
 -- 设置走差量同步——移除走物理删除（避免重复配置堆积软删残留），补建
 -- 记录配置人，既有命中行保留原审计；sys_role_menu 映射行无可变业务字段
@@ -20,6 +22,15 @@
 SELECT * FROM public.sys_role
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL;
+
+-- 按 id 读取操作人可见的未软删角色（fn_can_see_role：A AND G 共用判定；
+-- 不可见等同不存在，不泄露存在性；详情读面专用，写路径仍走
+-- GetSysRoleByID/LockSysRoleByID）
+-- name: GetSysRoleVisibleByID :one
+SELECT * FROM public.sys_role
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+  AND public.fn_can_see_role(sqlc.arg('operator'), sqlc.arg('id'));
 
 -- 按 id 锁定未软删的角色（FOR UPDATE，写路径先锁后写；行级无 @scope，
 -- 租户边界由 RLS 承担）
