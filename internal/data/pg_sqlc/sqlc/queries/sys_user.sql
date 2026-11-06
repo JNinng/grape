@@ -94,3 +94,39 @@ SELECT id,
 FROM public.sys_user
 WHERE "name" = sqlc.arg('name')
   AND deleted_at IS NULL;
+
+-- 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
+-- 定位参数；不判行级归属，RLS 仍强制租户边界；属身份成立后的内部回读例外）
+-- name: GetMyProfileByID :one
+SELECT *
+FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL;
+
+-- 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
+-- 目标恒取 auth.UserID，不判行级归属
+-- name: UpdateMyProfile :one
+UPDATE public.sys_user
+SET nickname = sqlc.arg('nickname'),
+    email    = sqlc.narg('email'),
+    phone    = sqlc.narg('phone'),
+    remark   = sqlc.narg('remark'),
+    locale   = sqlc.arg('locale'),
+    updated_by = sqlc.arg('updated_by')
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+RETURNING *;
+
+-- 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验）
+-- name: GetMyPasswordHash :one
+SELECT "password" AS password_hash
+FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL;
+
+-- 个人中心专用：替换本人口令哈希
+-- name: SetMyPassword :execrows
+UPDATE public.sys_user
+SET "password" = sqlc.arg('password'), updated_by = sqlc.arg('updated_by')
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL;

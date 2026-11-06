@@ -113,6 +113,41 @@ func (r *FakeUserRepo) GetCredentialForLogin(context.Context, string, string) (*
 	return nil, biz.ErrUserNotFound
 }
 
+func (r *FakeUserRepo) GetMyProfile(_ context.Context, auth biz.Identity) (*biz.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.rows[auth.UserID]
+	if !ok {
+		return nil, biz.ErrUserNotFound
+	}
+	return cloneUser(u), nil
+}
+
+func (r *FakeUserRepo) UpdateMyProfile(_ context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	row, ok := r.rows[auth.UserID]
+	if !ok {
+		return nil, biz.ErrUserNotFound
+	}
+	updated := cloneUser(row)
+	updated.Nickname = u.Nickname
+	updated.Email = u.Email
+	updated.Phone = u.Phone
+	updated.Remark = u.Remark
+	updated.Locale = u.Locale
+	r.rows[auth.UserID] = updated
+	return cloneUser(updated), nil
+}
+
+func (r *FakeUserRepo) GetMyPasswordHash(context.Context, biz.Identity) (string, error) {
+	return "", biz.ErrUserNotFound
+}
+
+func (r *FakeUserRepo) SetMyPassword(context.Context, biz.Identity, string) error {
+	return biz.ErrUserInvalidArgument
+}
+
 // Updates 返回 Update 收到的调用副本。
 func (r *FakeUserRepo) Updates() []*biz.User {
 	r.mu.Lock()

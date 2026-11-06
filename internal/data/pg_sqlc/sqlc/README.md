@@ -369,6 +369,10 @@ biz helper）→ 自锁计数 → `DeleteUserRoles`（按 fn_can_revoke_role 软
 | SoftDeleteSysUser | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除用户 |
 | UpdateSysUserOwner | :exec | 新归属三元组 + 操作者 + id | 更新用户归属三元组；归属参数为 NULL 表示清空该归属 |
 | GetUserCredentialByName | :one | 用户名 → 凭据行（含口令哈希） | 登录路径专用：按用户名读取口令哈希与状态（仅未软删行） |
+| GetMyProfileByID | :one | id → SysUser | 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不判行级归属；身份成立后的内部回读例外） |
+| UpdateMyProfile | :one | 昵称/可空邮箱/手机号/备注/语言 + 操作者 + id → SysUser | 个人中心专用：覆盖本人可编辑资料（目标恒取 auth.UserID，不判行级归属） |
+| GetMyPasswordHash | :one | id → 口令哈希 | 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验） |
+| SetMyPassword | :execrows | 密码哈希 + 操作者 + id → 行数 | 个人中心专用：替换本人口令哈希 |
 
 ### sys_dept.sql（部门固定 CRUD）
 

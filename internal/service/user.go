@@ -76,6 +76,50 @@ func (s *UserService) GetUser(ctx context.Context, req *userv1.GetUserRequest) (
 	return toProtoUser(out), nil
 }
 
+// GetMyProfile 返回当前认证用户的个人资料；目标恒取认证身份。
+func (s *UserService) GetMyProfile(ctx context.Context, _ *userv1.GetMyProfileRequest) (*userv1.User, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.GetMyProfile(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	return toProtoUser(out), nil
+}
+
+// UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称/邮箱/手机号/备注/语言）。
+func (s *UserService) UpdateMyProfile(ctx context.Context, req *userv1.UpdateMyProfileRequest) (*userv1.User, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.UpdateMyProfile(ctx, auth, &biz.User{
+		Nickname: req.GetNickname(),
+		Email:    optionalString(req.Email),
+		Phone:    optionalString(req.Phone),
+		Remark:   optionalString(req.Remark),
+		Locale:   strings.TrimSpace(req.GetLocale()),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toProtoUser(out), nil
+}
+
+// ChangeMyPassword 校验当前口令后替换为新口令。
+func (s *UserService) ChangeMyPassword(ctx context.Context, req *userv1.ChangeMyPasswordRequest) (*emptypb.Empty, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.uc.ChangeMyPassword(ctx, auth, req.GetOldPassword(), req.GetNewPassword()); err != nil {
+		return nil, err
+	}
+	return &emptypb.Empty{}, nil
+}
+
 // ListUsers 按动态查询协议返回一页用户；协议非法映射为 INVALID_ARGUMENT。
 func (s *UserService) ListUsers(ctx context.Context, req *userv1.ListUsersRequest) (*userv1.UserSet, error) {
 	auth, err := authOf(ctx)

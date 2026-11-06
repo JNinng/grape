@@ -289,7 +289,7 @@ func (r *userRepo) SoftDelete(ctx context.Context, auth biz.Identity, id int64) 
 // AssignRoles 批量分配角色：先按 ID 锁目标行（不判可见性——分配规则
 // 不要求目标可见；无行等同不存在；行锁串行化并发分配，与 SetUserRoles
 // 共用同一把锁），fn_can_assign_role 逐角色判定，任一不通过整体拒绝
-//（不写入任何映射）。
+// （不写入任何映射）。
 func (r *userRepo) AssignRoles(ctx context.Context, auth biz.Identity, userID int64, roleIDs []int64) (int64, error) {
 	var added int64
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -367,6 +367,84 @@ func (r *userRepo) TransferOwner(ctx context.Context, auth biz.Identity, id int6
 		return nil, r.mapErr(err)
 	}
 	return out, nil
+}
+
+// GetMyProfile 返回认证用户本人的资料。目标恒取 auth.UserID（请求不携带
+// 定位参数），不判行级归属；属身份成立后的内部回读例外，RLS 仍强制租户
+// 边界。软删除行等同不存在。
+func (r *userRepo) GetMyProfile(ctx context.Context, auth biz.Identity) (*biz.User, error) {
+	var out *biz.User
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		row, err := s.Q().GetMyProfileByID(ctx, auth.UserID)
+		if err != nil {
+			return err
+		}
+		out = toBizUser(&row)
+		return nil
+	})
+	if err != nil {
+		return nil, r.mapErr(err)
+	}
+	return out, nil
+}
+
+// UpdateMyProfile 覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）。目标
+// 恒取 auth.UserID，不判行级归属；软删除行等同不存在。
+func (r *userRepo) UpdateMyProfile(ctx context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {
+	var out *biz.User
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		row, err := s.Q().UpdateMyProfile(ctx, gen.UpdateMyProfileParams{
+			Nickname:  u.Nickname,
+			Email:     u.Email,
+			Phone:     u.Phone,
+			Remark:    u.Remark,
+			Locale:    u.Locale,
+			UpdatedBy: auth.UserID,
+			ID:        auth.UserID,
+		})
+		if err != nil {
+			return err
+		}
+		out = toBizUser(&row)
+		return nil
+	})
+	if err != nil {
+		return nil, r.mapErr(err)
+	}
+	return out, nil
+}
+
+// GetMyPasswordHash 返回本人口令哈希，仅供用例内当前口令校验单点使用。
+func (r *userRepo) GetMyPasswordHash(ctx context.Context, auth biz.Identity) (string, error) {
+	var out string
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		hash, err := s.Q().GetMyPasswordHash(ctx, auth.UserID)
+		if err != nil {
+			return err
+		}
+		out = hash
+		return nil
+	})
+	if err != nil {
+		return "", r.mapErr(err)
+	}
+	return out, nil
+}
+
+// SetMyPassword 替换本人口令哈希。目标恒取 auth.UserID；软删除行等同不存在。
+func (r *userRepo) SetMyPassword(ctx context.Context, auth biz.Identity, hashedPassword string) error {
+	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		rows, err := s.Q().SetMyPassword(ctx, gen.SetMyPasswordParams{
+			Password: hashedPassword, UpdatedBy: auth.UserID, ID: auth.UserID,
+		})
+		if err != nil {
+			return err
+		}
+		if rows == 0 {
+			return pgx.ErrNoRows
+		}
+		return nil
+	}))
 }
 
 // pgAuth 将 biz 层身份事实映射为存储层会话门面入参。

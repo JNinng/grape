@@ -125,6 +125,22 @@ func (*agentStubUserRepo) GetCredentialForLogin(context.Context, string, string)
 	return nil, biz.ErrUserNotFound
 }
 
+func (*agentStubUserRepo) GetMyProfile(context.Context, biz.Identity) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) UpdateMyProfile(context.Context, biz.Identity, *biz.User) (*biz.User, error) {
+	return nil, biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) GetMyPasswordHash(context.Context, biz.Identity) (string, error) {
+	return "", biz.ErrUserInvalidArgument
+}
+
+func (*agentStubUserRepo) SetMyPassword(context.Context, biz.Identity, string) error {
+	return biz.ErrUserInvalidArgument
+}
+
 // newAgentTestServer 用替身模型装配完整 HTTP 服务器：真实 trace / auth /
 // 路由级超时中间件链与真实挂载，越界与超时治理在链上验证。返回服务器
 // 与资源释放函数。

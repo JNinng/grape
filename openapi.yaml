@@ -913,6 +913,59 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/perm.v1.GetMyPermissionsReply'
+    /v1/profile:
+        get:
+            tags:
+                - UserService
+            description: |-
+                GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+                 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+            operationId: UserService_GetMyProfile
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+        put:
+            tags:
+                - UserService
+            description: |-
+                UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+                 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+            operationId: UserService_UpdateMyProfile
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.UpdateMyProfileRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/user.v1.User'
+    /v1/profile/password:
+        post:
+            tags:
+                - UserService
+            description: |-
+                ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+                 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+            operationId: UserService_ChangeMyPassword
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/user.v1.ChangeMyPasswordRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content: {}
     /v1/query/schema:
         get:
             tags:
@@ -3893,6 +3946,19 @@ components:
                         type: string
                     description: 要分配的角色列表；重复项去重。
             description: AssignRolesRequest 是 UserService.AssignRoles 的输入。
+        user.v1.ChangeMyPasswordRequest:
+            required:
+                - oldPassword
+                - newPassword
+            type: object
+            properties:
+                oldPassword:
+                    type: string
+                    description: 当前口令，仅本次校验使用。
+                newPassword:
+                    type: string
+                    description: 新口令，服务端哈希后落库。
+            description: ChangeMyPasswordRequest 是 UserService.ChangeMyPassword 的输入。
         user.v1.CreateUserRequest:
             required:
                 - user
@@ -3977,6 +4043,27 @@ components:
                     type: string
                     description: 新归属用户组；null 表示清掉该归属。
             description: TransferUserOwnerRequest 是 UserService.TransferUserOwner 的输入。
+        user.v1.UpdateMyProfileRequest:
+            type: object
+            properties:
+                nickname:
+                    type: string
+                    description: 昵称，必填。
+                email:
+                    type: string
+                    description: 邮箱，可空；空表示清空。
+                phone:
+                    type: string
+                    description: 手机号，可空；空表示清空。
+                remark:
+                    type: string
+                    description: 备注，可空；空表示清空。
+                locale:
+                    type: string
+                    description: 语言偏好（BCP-47）；缺省 zh-CN。
+            description: |-
+                UpdateMyProfileRequest 是 UserService.UpdateMyProfile 的输入：覆盖语义，
+                 email/phone/remark 缺省或空串表示清空。
         user.v1.User:
             type: object
             properties:

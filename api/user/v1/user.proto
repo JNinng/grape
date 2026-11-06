@@ -146,6 +146,32 @@ service UserService {
       body: "*"
     };
   }
+
+  // GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+  // 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+  rpc GetMyProfile (GetMyProfileRequest) returns (User) {
+    option (google.api.http) = {
+      get: "/v1/profile"
+    };
+  }
+
+  // UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+  // 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+  rpc UpdateMyProfile (UpdateMyProfileRequest) returns (User) {
+    option (google.api.http) = {
+      put: "/v1/profile"
+      body: "*"
+    };
+  }
+
+  // ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+  // 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+  rpc ChangeMyPassword (ChangeMyPasswordRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/profile/password"
+      body: "*"
+    };
+  }
 }
 
 // User 是用户的规范表示。password 列为 @internal，不跨越 API 边界；
@@ -307,4 +333,32 @@ message UserRoleSet {
   int64 unmanaged_count = 2;
   // 含 user_id 与排序后可管理角色 ID 的 hash；提交 SetUserRoles 时原样回传。
   string version = 3;
+}
+
+// GetMyProfileRequest 是 UserService.GetMyProfile 的输入；目标恒取认证
+// 身份，请求不携带定位参数。
+message GetMyProfileRequest {
+}
+
+// UpdateMyProfileRequest 是 UserService.UpdateMyProfile 的输入：覆盖语义，
+// email/phone/remark 缺省或空串表示清空。
+message UpdateMyProfileRequest {
+  // 昵称，必填。
+  string nickname = 1;
+  // 邮箱，可空；空表示清空。
+  optional string email = 2;
+  // 手机号，可空；空表示清空。
+  optional string phone = 3;
+  // 备注，可空；空表示清空。
+  optional string remark = 4;
+  // 语言偏好（BCP-47）；缺省 zh-CN。
+  string locale = 5;
+}
+
+// ChangeMyPasswordRequest 是 UserService.ChangeMyPassword 的输入。
+message ChangeMyPasswordRequest {
+  // 当前口令，仅本次校验使用。
+  string old_password = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新口令，服务端哈希后落库。
+  string new_password = 2 [(google.api.field_behavior) = REQUIRED];
 }

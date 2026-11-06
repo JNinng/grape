@@ -3,12 +3,15 @@ import type { LoginReply } from './types'
 import { clearSession, setSession } from '../auth/store'
 import {
   assignRoles,
+  changeMyPassword,
   createUser,
   deleteUser,
   fetchUser,
+  getMyProfile,
   listUsers,
   setUserPassword,
   transferUserOwner,
+  updateMyProfile,
   updateUser,
 } from './users'
 
@@ -311,6 +314,53 @@ describe('transferUserOwner', () => {
     await expect(transferUserOwner('1', { ownerUserId: '8' })).rejects.toThrow(
       'owner not reachable',
     )
+  })
+})
+
+describe('my profile', () => {
+  it('gets_the_profile_without_a_user_id', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: '11', name: 'alice', nickname: 'Alice', locale: 'zh-CN' }))
+
+    const user = await getMyProfile()
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/v1/profile')
+    expect(requestInit(fetchMock.mock.calls[0]).method).toBeUndefined()
+    expect(user.nickname).toBe('Alice')
+  })
+
+  it('puts_the_editable_fields_and_omits_blank_optionals', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: '11', nickname: 'Alice', locale: 'zh-CN' }))
+
+    await updateMyProfile({ nickname: 'Alice', email: undefined, phone: undefined, remark: 'note', locale: 'zh-CN' })
+
+    expect(requestInit(fetchMock.mock.calls[0]).method).toBe('PUT')
+    expect(fetchMock.mock.calls[0][0]).toBe('/v1/profile')
+    expect(sentBody(fetchMock.mock.calls[0])).toEqual({
+      nickname: 'Alice',
+      remark: 'note',
+      locale: 'zh-CN',
+    })
+  })
+
+  it('posts_the_old_and_new_password', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+
+    await changeMyPassword('old-pass', 'new-pass')
+
+    expect(requestInit(fetchMock.mock.calls[0]).method).toBe('POST')
+    expect(fetchMock.mock.calls[0][0]).toBe('/v1/profile/password')
+    expect(sentBody(fetchMock.mock.calls[0])).toEqual({ oldPassword: 'old-pass', newPassword: 'new-pass' })
+  })
+
+  it('surfaces_the_password_mismatch_reason', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, { reason: 'USER_PASSWORD_MISMATCH', message: 'password mismatch' }),
+    )
+
+    await expect(changeMyPassword('wrong-pass', 'new-pass')).rejects.toMatchObject({
+      message: 'password mismatch',
+      reason: 'USER_PASSWORD_MISMATCH',
+    })
   })
 })
 

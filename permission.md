@@ -111,6 +111,7 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 | 删除 `DeleteUser` | `LockSysUserPermitted` 锁定并判定 → `SoftDeleteSysUser` 置 `deleted_at` |
 | 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |
 | 改归属 `TransferUserOwner` | `LockSysUserPermitted`（旧归属）→ `fn_can_transfer_owner`（新归属存在、启用且可达）→ `UpdateSysUserOwner` |
+| 个人中心 `GetMyProfile` / `UpdateMyProfile` / `ChangeMyPassword` | 目标恒取 `auth.UserID`（请求不携带定位参数）：读取本人行不判行级归属（身份成立后的内部回读例外，RLS 仍强制租户）；更新只覆盖昵称/邮箱/手机号/备注/语言；改密先校验当前口令，不匹配返回 400 `USER_PASSWORD_MISMATCH`。三者不设功能权限码，只受认证约束 |
 | 分配角色 `AssignRoles` | `LockSysUserByID` 按 ID 锁目标（不判可见性；不存在返回 NotFound）→ `fn_can_assign_roles` 逐角色判定 → `AssignUserRoles`（应用层发号 id，重复分配跳过）；任一 false 整体回滚 |
 | 设置角色 `SetUserRoles` | `LockSysUserByID` 按 ID 锁目标（不判可见性）→ 读全部活跃映射并按 `fn_can_assign_role` 分出 manageable/locked → `fn_can_assign_role` 判新增、`DeleteUserRoles`（SQL 内按 `fn_can_revoke_role` 判定）软删撤销 → `AssignUserRoles`；版本冲突 Conflict，任意拒绝整批回滚 |
 

@@ -11,6 +11,7 @@ import {
   ListTreeIcon,
   ScrollTextIcon,
   ShapesIcon,
+  UserRoundIcon,
   UsersIcon,
 } from 'lucide-react'
 import { cn } from 'cn'
@@ -19,20 +20,23 @@ import { Spinner } from '@/components/ui/spinner'
 import { GrapeMark } from '@/ui/icons'
 
 // SettingsModule 描述左侧导航的一个模块项：code 是打开该模块页面的页面级
-// 权限码（对齐部署面菜单种子的 sys:* 页面码）；path 缺省即未开放模块
-//（禁用态展示）。新增模块时补上 path 并在 App 注册子路由。
+// 权限码（对齐部署面菜单种子的 sys:* 页面码），缺省表示只受认证约束的
+// 个人面（如个人中心）；path 缺省即未开放模块（禁用态展示）。新增模块时
+// 补上 path 并在 App 注册子路由。
 interface SettingsModule {
   key: string
   label: string
   icon: ComponentType<{ className?: string }>
-  code: string
+  code?: string
   path?: string
 }
 
 // SETTINGS_MODULES 是管理面模块全量清单与各自的页面级权限码（来源：部署
 // 面菜单种子 seed.sql / 99_perm_seed.sql 的页面菜单 permission_code）。
-// 持有对应权限码才展示导航项；未开放模块的禁用占位项同样参与过滤。
+// 有码的模块持有对应权限码才展示导航项；无码模块（个人中心）只受认证
+// 约束，始终展示。未开放模块的禁用占位项同样参与过滤。
 const SETTINGS_MODULES: SettingsModule[] = [
+  { key: 'profile', label: '个人中心', icon: UserRoundIcon, code: undefined, path: '/settings/profile' },
   { key: 'users', label: '用户', icon: UsersIcon, code: 'sys:user', path: '/settings/users' },
   { key: 'depts', label: '部门', icon: FolderTreeIcon, code: 'sys:dept', path: '/settings/depts' },
   { key: 'user-groups', label: '用户组', icon: ShapesIcon, code: 'sys:user-group', path: '/settings/user-groups' },
@@ -54,9 +58,9 @@ interface SettingsAccess {
 
 const SettingsAccessContext = createContext<SettingsAccess>({ loading: true, visible: [] })
 
-// SettingsIndexRedirect 是 /settings 的索引路由：权限码加载完成后跳到导
-// 航清单中第一个有权限且已开放的模块；加载失败沿用全量回落，无任何可见
-// 模块时给出空状态而不是硬跳固定页面。与左侧导航共用同一份过滤结果。
+// SettingsIndexRedirect 是 /settings 的索引路由：权限码加载完成后优先跳到
+// 导航清单中第一个有权限的管理模块，没有管理权限时回落到无码模块（个人
+// 中心）；加载失败沿用全量回落。与左侧导航共用同一份过滤结果。
 export function SettingsIndexRedirect() {
   const { loading, visible } = useContext(SettingsAccessContext)
   if (loading) {
@@ -66,7 +70,9 @@ export function SettingsIndexRedirect() {
       </div>
     )
   }
-  const target = visible.find((module) => module.path !== undefined)
+  const target =
+    visible.find((module) => module.path !== undefined && module.code !== undefined) ??
+    visible.find((module) => module.path !== undefined)
   if (target?.path === undefined) {
     return (
       <p className="grid min-h-32 place-items-center text-sm text-muted-foreground">
@@ -114,7 +120,7 @@ export function SettingsLayout() {
     ? []
     : granted === null
       ? SETTINGS_MODULES
-      : SETTINGS_MODULES.filter((module) => granted.has(module.code))
+      : SETTINGS_MODULES.filter((module) => module.code === undefined || granted.has(module.code))
 
   return (
     <SettingsAccessContext.Provider value={{ loading, visible }}>

@@ -1036,6 +1036,182 @@ func (x *UserRoleSet) GetVersion() string {
 	return ""
 }
 
+// GetMyProfileRequest 是 UserService.GetMyProfile 的输入；目标恒取认证
+// 身份，请求不携带定位参数。
+type GetMyProfileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMyProfileRequest) Reset() {
+	*x = GetMyProfileRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMyProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMyProfileRequest) ProtoMessage() {}
+
+func (x *GetMyProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMyProfileRequest.ProtoReflect.Descriptor instead.
+func (*GetMyProfileRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{16}
+}
+
+// UpdateMyProfileRequest 是 UserService.UpdateMyProfile 的输入：覆盖语义，
+// email/phone/remark 缺省或空串表示清空。
+type UpdateMyProfileRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 昵称，必填。
+	Nickname string `protobuf:"bytes,1,opt,name=nickname,proto3" json:"nickname,omitempty"`
+	// 邮箱，可空；空表示清空。
+	Email *string `protobuf:"bytes,2,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	// 手机号，可空；空表示清空。
+	Phone *string `protobuf:"bytes,3,opt,name=phone,proto3,oneof" json:"phone,omitempty"`
+	// 备注，可空；空表示清空。
+	Remark *string `protobuf:"bytes,4,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
+	// 语言偏好（BCP-47）；缺省 zh-CN。
+	Locale        string `protobuf:"bytes,5,opt,name=locale,proto3" json:"locale,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateMyProfileRequest) Reset() {
+	*x = UpdateMyProfileRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateMyProfileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateMyProfileRequest) ProtoMessage() {}
+
+func (x *UpdateMyProfileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateMyProfileRequest.ProtoReflect.Descriptor instead.
+func (*UpdateMyProfileRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UpdateMyProfileRequest) GetNickname() string {
+	if x != nil {
+		return x.Nickname
+	}
+	return ""
+}
+
+func (x *UpdateMyProfileRequest) GetEmail() string {
+	if x != nil && x.Email != nil {
+		return *x.Email
+	}
+	return ""
+}
+
+func (x *UpdateMyProfileRequest) GetPhone() string {
+	if x != nil && x.Phone != nil {
+		return *x.Phone
+	}
+	return ""
+}
+
+func (x *UpdateMyProfileRequest) GetRemark() string {
+	if x != nil && x.Remark != nil {
+		return *x.Remark
+	}
+	return ""
+}
+
+func (x *UpdateMyProfileRequest) GetLocale() string {
+	if x != nil {
+		return x.Locale
+	}
+	return ""
+}
+
+// ChangeMyPasswordRequest 是 UserService.ChangeMyPassword 的输入。
+type ChangeMyPasswordRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 当前口令，仅本次校验使用。
+	OldPassword string `protobuf:"bytes,1,opt,name=old_password,json=oldPassword,proto3" json:"old_password,omitempty"`
+	// 新口令，服务端哈希后落库。
+	NewPassword   string `protobuf:"bytes,2,opt,name=new_password,json=newPassword,proto3" json:"new_password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ChangeMyPasswordRequest) Reset() {
+	*x = ChangeMyPasswordRequest{}
+	mi := &file_user_v1_user_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ChangeMyPasswordRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ChangeMyPasswordRequest) ProtoMessage() {}
+
+func (x *ChangeMyPasswordRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_v1_user_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ChangeMyPasswordRequest.ProtoReflect.Descriptor instead.
+func (*ChangeMyPasswordRequest) Descriptor() ([]byte, []int) {
+	return file_user_v1_user_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ChangeMyPasswordRequest) GetOldPassword() string {
+	if x != nil {
+		return x.OldPassword
+	}
+	return ""
+}
+
+func (x *ChangeMyPasswordRequest) GetNewPassword() string {
+	if x != nil {
+		return x.NewPassword
+	}
+	return ""
+}
+
 var File_user_v1_user_proto protoreflect.FileDescriptor
 
 const file_user_v1_user_proto_rawDesc = "" +
@@ -1120,7 +1296,20 @@ const file_user_v1_user_proto_rawDesc = "" +
 	"\vUserRoleSet\x12&\n" +
 	"\x05items\x18\x01 \x03(\v2\x10.query.v1.OptionR\x05items\x12'\n" +
 	"\x0funmanaged_count\x18\x02 \x01(\x03R\x0eunmanagedCount\x12\x18\n" +
-	"\aversion\x18\x03 \x01(\tR\aversion2\xaa\v\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\"\x15\n" +
+	"\x13GetMyProfileRequest\"\xbe\x01\n" +
+	"\x16UpdateMyProfileRequest\x12\x1a\n" +
+	"\bnickname\x18\x01 \x01(\tR\bnickname\x12\x19\n" +
+	"\x05email\x18\x02 \x01(\tH\x00R\x05email\x88\x01\x01\x12\x19\n" +
+	"\x05phone\x18\x03 \x01(\tH\x01R\x05phone\x88\x01\x01\x12\x1b\n" +
+	"\x06remark\x18\x04 \x01(\tH\x02R\x06remark\x88\x01\x01\x12\x16\n" +
+	"\x06locale\x18\x05 \x01(\tR\x06localeB\b\n" +
+	"\x06_emailB\b\n" +
+	"\x06_phoneB\t\n" +
+	"\a_remark\"i\n" +
+	"\x17ChangeMyPasswordRequest\x12&\n" +
+	"\fold_password\x18\x01 \x01(\tB\x03\xe0A\x02R\voldPassword\x12&\n" +
+	"\fnew_password\x18\x02 \x01(\tB\x03\xe0A\x02R\vnewPassword2\xc6\r\n" +
 	"\vUserService\x12T\n" +
 	"\n" +
 	"CreateUser\x12\x1a.user.v1.CreateUserRequest\x1a\r.user.v1.User\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*\"\x10/v1/users/create\x12I\n" +
@@ -1138,7 +1327,10 @@ const file_user_v1_user_proto_rawDesc = "" +
 	"\fSetUserRoles\x12\x1c.user.v1.SetUserRolesRequest\x1a\x14.user.v1.UserRoleSet\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/users/set-roles\x12v\n" +
 	"\x14ListOwnerUserOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/users/owner-user-options\x12v\n" +
 	"\x14ListOwnerDeptOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/users/owner-dept-options\x12x\n" +
-	"\x15ListOwnerGroupOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"(\x82\xd3\xe4\x93\x02\":\x01*\"\x1d/v1/users/owner-group-optionsB=\n" +
+	"\x15ListOwnerGroupOptions\x12 .user.v1.ListOwnerOptionsRequest\x1a\x13.query.v1.OptionSet\"(\x82\xd3\xe4\x93\x02\":\x01*\"\x1d/v1/users/owner-group-options\x12P\n" +
+	"\fGetMyProfile\x12\x1c.user.v1.GetMyProfileRequest\x1a\r.user.v1.User\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/profile\x12Y\n" +
+	"\x0fUpdateMyProfile\x12\x1f.user.v1.UpdateMyProfileRequest\x1a\r.user.v1.User\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\x1a\v/v1/profile\x12m\n" +
+	"\x10ChangeMyPassword\x12 .user.v1.ChangeMyPasswordRequest\x1a\x16.google.protobuf.Empty\"\x1f\x82\xd3\xe4\x93\x02\x19:\x01*\"\x14/v1/profile/passwordB=\n" +
 	"\x18io.grpc.examples.user.v1B\tUserProtoP\x01Z\x14grape/api/user/v1;v1b\x06proto3"
 
 var (
@@ -1153,7 +1345,7 @@ func file_user_v1_user_proto_rawDescGZIP() []byte {
 	return file_user_v1_user_proto_rawDescData
 }
 
-var file_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_user_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_user_v1_user_proto_goTypes = []any{
 	(*User)(nil),                       // 0: user.v1.User
 	(*UserSet)(nil),                    // 1: user.v1.UserSet
@@ -1171,24 +1363,27 @@ var file_user_v1_user_proto_goTypes = []any{
 	(*SetUserRolesRequest)(nil),        // 13: user.v1.SetUserRolesRequest
 	(*ListOwnerOptionsRequest)(nil),    // 14: user.v1.ListOwnerOptionsRequest
 	(*UserRoleSet)(nil),                // 15: user.v1.UserRoleSet
-	(*timestamppb.Timestamp)(nil),      // 16: google.protobuf.Timestamp
-	(*v1.Query)(nil),                   // 17: query.v1.Query
-	(*v1.OptionQuery)(nil),             // 18: query.v1.OptionQuery
-	(*v1.Option)(nil),                  // 19: query.v1.Option
-	(*emptypb.Empty)(nil),              // 20: google.protobuf.Empty
-	(*v1.OptionSet)(nil),               // 21: query.v1.OptionSet
+	(*GetMyProfileRequest)(nil),        // 16: user.v1.GetMyProfileRequest
+	(*UpdateMyProfileRequest)(nil),     // 17: user.v1.UpdateMyProfileRequest
+	(*ChangeMyPasswordRequest)(nil),    // 18: user.v1.ChangeMyPasswordRequest
+	(*timestamppb.Timestamp)(nil),      // 19: google.protobuf.Timestamp
+	(*v1.Query)(nil),                   // 20: query.v1.Query
+	(*v1.OptionQuery)(nil),             // 21: query.v1.OptionQuery
+	(*v1.Option)(nil),                  // 22: query.v1.Option
+	(*emptypb.Empty)(nil),              // 23: google.protobuf.Empty
+	(*v1.OptionSet)(nil),               // 24: query.v1.OptionSet
 }
 var file_user_v1_user_proto_depIdxs = []int32{
-	16, // 0: user.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	16, // 1: user.v1.User.updated_at:type_name -> google.protobuf.Timestamp
-	16, // 2: user.v1.User.deleted_at:type_name -> google.protobuf.Timestamp
+	19, // 0: user.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	19, // 1: user.v1.User.updated_at:type_name -> google.protobuf.Timestamp
+	19, // 2: user.v1.User.deleted_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: user.v1.UserSet.items:type_name -> user.v1.User
 	0,  // 4: user.v1.CreateUserRequest.user:type_name -> user.v1.User
-	17, // 5: user.v1.ListUsersRequest.query:type_name -> query.v1.Query
+	20, // 5: user.v1.ListUsersRequest.query:type_name -> query.v1.Query
 	0,  // 6: user.v1.UpdateUserRequest.user:type_name -> user.v1.User
-	18, // 7: user.v1.ListAssignableRolesRequest.query:type_name -> query.v1.OptionQuery
-	18, // 8: user.v1.ListOwnerOptionsRequest.query:type_name -> query.v1.OptionQuery
-	19, // 9: user.v1.UserRoleSet.items:type_name -> query.v1.Option
+	21, // 7: user.v1.ListAssignableRolesRequest.query:type_name -> query.v1.OptionQuery
+	21, // 8: user.v1.ListOwnerOptionsRequest.query:type_name -> query.v1.OptionQuery
+	22, // 9: user.v1.UserRoleSet.items:type_name -> query.v1.Option
 	2,  // 10: user.v1.UserService.CreateUser:input_type -> user.v1.CreateUserRequest
 	3,  // 11: user.v1.UserService.GetUser:input_type -> user.v1.GetUserRequest
 	4,  // 12: user.v1.UserService.ListUsers:input_type -> user.v1.ListUsersRequest
@@ -1203,22 +1398,28 @@ var file_user_v1_user_proto_depIdxs = []int32{
 	14, // 21: user.v1.UserService.ListOwnerUserOptions:input_type -> user.v1.ListOwnerOptionsRequest
 	14, // 22: user.v1.UserService.ListOwnerDeptOptions:input_type -> user.v1.ListOwnerOptionsRequest
 	14, // 23: user.v1.UserService.ListOwnerGroupOptions:input_type -> user.v1.ListOwnerOptionsRequest
-	0,  // 24: user.v1.UserService.CreateUser:output_type -> user.v1.User
-	0,  // 25: user.v1.UserService.GetUser:output_type -> user.v1.User
-	1,  // 26: user.v1.UserService.ListUsers:output_type -> user.v1.UserSet
-	0,  // 27: user.v1.UserService.UpdateUser:output_type -> user.v1.User
-	20, // 28: user.v1.UserService.SetUserPassword:output_type -> google.protobuf.Empty
-	20, // 29: user.v1.UserService.DeleteUser:output_type -> google.protobuf.Empty
-	9,  // 30: user.v1.UserService.AssignRoles:output_type -> user.v1.AssignRolesReply
-	0,  // 31: user.v1.UserService.TransferUserOwner:output_type -> user.v1.User
-	21, // 32: user.v1.UserService.ListAssignableRoles:output_type -> query.v1.OptionSet
-	15, // 33: user.v1.UserService.ListUserRoles:output_type -> user.v1.UserRoleSet
-	15, // 34: user.v1.UserService.SetUserRoles:output_type -> user.v1.UserRoleSet
-	21, // 35: user.v1.UserService.ListOwnerUserOptions:output_type -> query.v1.OptionSet
-	21, // 36: user.v1.UserService.ListOwnerDeptOptions:output_type -> query.v1.OptionSet
-	21, // 37: user.v1.UserService.ListOwnerGroupOptions:output_type -> query.v1.OptionSet
-	24, // [24:38] is the sub-list for method output_type
-	10, // [10:24] is the sub-list for method input_type
+	16, // 24: user.v1.UserService.GetMyProfile:input_type -> user.v1.GetMyProfileRequest
+	17, // 25: user.v1.UserService.UpdateMyProfile:input_type -> user.v1.UpdateMyProfileRequest
+	18, // 26: user.v1.UserService.ChangeMyPassword:input_type -> user.v1.ChangeMyPasswordRequest
+	0,  // 27: user.v1.UserService.CreateUser:output_type -> user.v1.User
+	0,  // 28: user.v1.UserService.GetUser:output_type -> user.v1.User
+	1,  // 29: user.v1.UserService.ListUsers:output_type -> user.v1.UserSet
+	0,  // 30: user.v1.UserService.UpdateUser:output_type -> user.v1.User
+	23, // 31: user.v1.UserService.SetUserPassword:output_type -> google.protobuf.Empty
+	23, // 32: user.v1.UserService.DeleteUser:output_type -> google.protobuf.Empty
+	9,  // 33: user.v1.UserService.AssignRoles:output_type -> user.v1.AssignRolesReply
+	0,  // 34: user.v1.UserService.TransferUserOwner:output_type -> user.v1.User
+	24, // 35: user.v1.UserService.ListAssignableRoles:output_type -> query.v1.OptionSet
+	15, // 36: user.v1.UserService.ListUserRoles:output_type -> user.v1.UserRoleSet
+	15, // 37: user.v1.UserService.SetUserRoles:output_type -> user.v1.UserRoleSet
+	24, // 38: user.v1.UserService.ListOwnerUserOptions:output_type -> query.v1.OptionSet
+	24, // 39: user.v1.UserService.ListOwnerDeptOptions:output_type -> query.v1.OptionSet
+	24, // 40: user.v1.UserService.ListOwnerGroupOptions:output_type -> query.v1.OptionSet
+	0,  // 41: user.v1.UserService.GetMyProfile:output_type -> user.v1.User
+	0,  // 42: user.v1.UserService.UpdateMyProfile:output_type -> user.v1.User
+	23, // 43: user.v1.UserService.ChangeMyPassword:output_type -> google.protobuf.Empty
+	27, // [27:44] is the sub-list for method output_type
+	10, // [10:27] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -1232,13 +1433,14 @@ func file_user_v1_user_proto_init() {
 	file_user_v1_user_proto_msgTypes[0].OneofWrappers = []any{}
 	file_user_v1_user_proto_msgTypes[1].OneofWrappers = []any{}
 	file_user_v1_user_proto_msgTypes[10].OneofWrappers = []any{}
+	file_user_v1_user_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_user_v1_user_proto_rawDesc), len(file_user_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

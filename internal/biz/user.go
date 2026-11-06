@@ -23,6 +23,9 @@ var (
 	// ErrUserAccessDenied 表示写侧权限判定不通过（分配角色、归属转移的
 	// 新归属不可达）；数据范围不可见不走这里——那等同不存在。
 	ErrUserAccessDenied = kratoserrors.Forbidden(v1.ErrorReason_USER_ACCESS_DENIED.String(), "user access denied")
+	// ErrUserPasswordMismatch 表示个人中心改密时当前口令不匹配；返回
+	// 400 而非 401，避免已认证会话被前端按失效处理。
+	ErrUserPasswordMismatch = kratoserrors.BadRequest(v1.ErrorReason_USER_PASSWORD_MISMATCH.String(), "password mismatch")
 )
 
 // User 是用户领域模型。Password 仅在创建与改密路径携带：创建时为明文
@@ -96,6 +99,16 @@ type UserRepo interface {
 	// Identity；属文档化例外，不使用 super 命名。软删除行等同不存在
 	// 返回 ErrUserNotFound。返回的哈希仅供口令校验单点使用，不跨越 biz。
 	GetCredentialForLogin(ctx context.Context, tenantID, name string) (*UserCredential, error)
+	// GetMyProfile 读取认证用户本人的资料。目标恒取 auth.UserID，不判
+	// 行级归属；属身份成立后的内部回读例外。
+	GetMyProfile(ctx context.Context, auth Identity) (*User, error)
+	// UpdateMyProfile 覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言），
+	// 目标恒取 auth.UserID。
+	UpdateMyProfile(ctx context.Context, auth Identity, u *User) (*User, error)
+	// GetMyPasswordHash 返回本人口令哈希，仅供当前口令校验单点使用。
+	GetMyPasswordHash(ctx context.Context, auth Identity) (string, error)
+	// SetMyPassword 替换本人口令哈希。
+	SetMyPassword(ctx context.Context, auth Identity, hashedPassword string) error
 }
 
 // UserUsecase 是用户用例。
@@ -179,6 +192,47 @@ func (uc *UserUsecase) SetUserPassword(ctx context.Context, auth Identity, id in
 		return err
 	}
 	return uc.repo.SetPassword(ctx, auth, id, hashed)
+}
+
+// GetMyProfile 返回认证用户本人的资料。
+func (uc *UserUsecase) GetMyProfile(ctx context.Context, auth Identity) (*User, error) {
+	return uc.repo.GetMyProfile(ctx, auth)
+}
+
+// UpdateMyProfile 覆盖本人可编辑资料：昵称必填，locale 缺省 zh-CN。
+func (uc *UserUsecase) UpdateMyProfile(ctx context.Context, auth Identity, u *User) (*User, error) {
+	if u == nil || strings.TrimSpace(u.Nickname) == "" ||
+		utf8.RuneCountInString(u.Nickname) > userNicknameMaxRunes {
+		return nil, ErrUserInvalidArgument
+	}
+	if u.Locale == "" {
+		u.Locale = "zh-CN"
+	}
+	return uc.repo.UpdateMyProfile(ctx, auth, u)
+}
+
+// ChangeMyPassword 校验当前口令后替换为新口令。当前口令不匹配返回
+// ErrUserPasswordMismatch（400，不触发会话失效）。
+func (uc *UserUsecase) ChangeMyPassword(ctx context.Context, auth Identity, oldPassword, newPassword string) error {
+	if oldPassword == "" || newPassword == "" {
+		return ErrUserInvalidArgument
+	}
+	hash, err := uc.repo.GetMyPasswordHash(ctx, auth)
+	if err != nil {
+		return err
+	}
+	ok, _, err := VerifyPassword(hash, oldPassword)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrUserPasswordMismatch
+	}
+	hashed, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	return uc.repo.SetMyPassword(ctx, auth, hashed)
 }
 
 // DeleteUser 软删除用户。
