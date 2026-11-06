@@ -126,10 +126,14 @@ func (r *deptRepo) ListAll(ctx context.Context, auth biz.Identity) ([]*biz.Dept,
 
 // Create 创建部门：主键由应用层发号（newID），租户取自会话，审计列记
 // 操作者；租户内未删除部门间 name 唯一冲突映射为 ErrDeptAlreadyExists。
-// 父级合法性由触发器在同一事务内兜底校验。
+// 父级合法性由触发器在同一事务内兜底校验。归属字段先经 fn_can_set_owner
+// 校验（存在、启用且在操作人可见范围内），不通过返回 ErrDeptInvalidArgument。
 func (r *deptRepo) Create(ctx context.Context, auth biz.Identity, d *biz.Dept) (*biz.Dept, error) {
 	var out *biz.Dept
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		if err := checkDeptOwner(ctx, s, auth.UserID, d); err != nil {
+			return err
+		}
 		row, err := s.Q().InsertSysDept(ctx, gen.InsertSysDeptParams{
 			ID:               newID(),
 			Status:           int16(d.Status),
@@ -155,11 +159,14 @@ func (r *deptRepo) Create(ctx context.Context, auth biz.Identity, d *biz.Dept) (
 // Update 覆盖可变字段（name、status、parent_id、owner_user_id、
 // owner_user_group_id）。目标行先经 LockSysDeptByID 锁定：不存在或跨租户
 // 等同不存在（NotFound），锁持有到提交；parent_id 变更由触发器在同一事务
-// 内校验并重写闭包路径。
+// 内校验并重写闭包路径。归属字段经 fn_can_set_owner 校验（与创建同口径）。
 func (r *deptRepo) Update(ctx context.Context, auth biz.Identity, d *biz.Dept) (*biz.Dept, error) {
 	var out *biz.Dept
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		if _, err := s.Q().LockSysDeptByID(ctx, d.ID); err != nil {
+			return err
+		}
+		if err := checkDeptOwner(ctx, s, auth.UserID, d); err != nil {
 			return err
 		}
 		updated, err := s.Q().UpdateSysDept(ctx, gen.UpdateSysDeptParams{
@@ -237,6 +244,25 @@ func (r *deptRepo) SoftDelete(ctx context.Context, auth biz.Identity, id int64) 
 		}
 		return nil
 	}))
+}
+
+// checkDeptOwner 校验部门归属字段（owner_user_id/owner_user_group_id）
+// 可挂：经 fn_can_set_owner 判定存在、启用且在操作人可见范围内，不通过
+// 返回 ErrDeptInvalidArgument（数据完整性口径：归属引用无效）。
+func checkDeptOwner(ctx context.Context, s *IdentityTx, operator int64, d *biz.Dept) error {
+	ok, err := s.Q().CanSetOwner(ctx, gen.CanSetOwnerParams{
+		Operator:   operator,
+		OwnerUser:  &d.OwnerUserID,
+		OwnerDept:  nil,
+		OwnerGroup: d.OwnerUserGroupID,
+	})
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return biz.ErrDeptInvalidArgument
+	}
+	return nil
 }
 
 // mapErr 将驱动与协议错误映射为部门资源的领域错误：无行（含跨租户

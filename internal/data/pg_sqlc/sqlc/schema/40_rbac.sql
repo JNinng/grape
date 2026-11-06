@@ -27,7 +27,7 @@ CREATE TABLE public.sys_role
 );
 CREATE UNIQUE INDEX sys_role_tenant_code_un ON public.sys_role USING btree (tenant_id, code) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_role_tenant_name_un ON public.sys_role USING btree (tenant_id, name) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_role IS '角色表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_role IS '角色表 [@scope: id in_any fn_visible_role_ids(user_id:int) @default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
 
 -- Column comments
 

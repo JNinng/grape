@@ -304,27 +304,27 @@ VALUES (12, 1, 1, '2026-06-01 11:30:00.000', 1, '2026-06-01 11:30:00.000', NULL,
 -- ===========================
 -- 7. 用户角色映射表 (sys_user_role_mapping)
 -- ===========================
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (2, 103, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900103, 2, 103, 't-test-01', 1) ON CONFLICT DO NOTHING;
 -- zhangsan 追加用户组演示角色 → 与 103 组成多角色并集演示
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (2, 108, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (3, 103, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (4, 102, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (5, 105, 't-test-02', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (6, 109, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (7, 102, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (8, 106, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (9, 107, 't-test-01', 1) ON CONFLICT DO NOTHING;
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (11, 110, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900108, 2, 108, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900203, 3, 103, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900302, 4, 102, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900405, 5, 105, 't-test-02', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900509, 6, 109, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900602, 7, 102, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900706, 8, 106, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900807, 9, 107, 't-test-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (901010, 11, 110, 't-test-01', 1) ON CONFLICT DO NOTHING;
 
 -- ===========================
 -- 8. 用户组表 (sys_user_group) 与成员映射

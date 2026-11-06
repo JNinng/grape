@@ -198,6 +198,46 @@ func (q *Queries) InsertSysUser(ctx context.Context, arg InsertSysUserParams) (S
 	return i, err
 }
 
+const lockSysUserByID = `-- name: LockSysUserByID :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
+WHERE id = $1
+  AND deleted_at IS NULL
+FOR UPDATE
+`
+
+// 按 id 锁定未软删的用户（FOR UPDATE，不判可见性）：角色分配/撤销路径
+// 按新方案不要求目标可见，按 ID 锁目标串行化并发分配，行锁持有到提交；
+// 无行等同不存在（NotFound）
+func (q *Queries) LockSysUserByID(ctx context.Context, id int64) (SysUser, error) {
+	row := q.db.QueryRow(ctx, lockSysUserByID, id)
+	var i SysUser
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.Password,
+		&i.Email,
+		&i.Phone,
+		&i.Remark,
+		&i.Locale,
+		&i.LastLoginAt,
+		&i.FailedCount,
+		&i.LockedUntil,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
+	)
+	return i, err
+}
+
 const lockSysUserPermitted = `-- name: LockSysUserPermitted :one
 SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
 FROM public.sys_user

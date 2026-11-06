@@ -10,39 +10,54 @@ import (
 )
 
 const assignUserRole = `-- name: AssignUserRole :exec
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES ($1, $2, current_setting('app.tenant_id'), $3)
-ON CONFLICT (user_id, role_id) DO NOTHING
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES ($1, $2, $3, current_setting('app.tenant_id'), $4)
+ON CONFLICT DO NOTHING
 `
 
 type AssignUserRoleParams struct {
+	ID        int64 `db:"id" json:"id"`
 	UserID    int64 `db:"user_id" json:"user_id"`
 	RoleID    int64 `db:"role_id" json:"role_id"`
 	CreatedBy int64 `db:"created_by" json:"created_by"`
 }
 
-// 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过
+// 写入一条用户-角色映射；id 为应用层发号主键，租户取会话
+// app.tenant_id，与活跃映射冲突（部分唯一索引）时跳过
 func (q *Queries) AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error {
-	_, err := q.db.Exec(ctx, assignUserRole, arg.UserID, arg.RoleID, arg.CreatedBy)
+	_, err := q.db.Exec(ctx, assignUserRole,
+		arg.ID,
+		arg.UserID,
+		arg.RoleID,
+		arg.CreatedBy,
+	)
 	return err
 }
 
 const assignUserRoles = `-- name: AssignUserRoles :execrows
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-SELECT $1, r, current_setting('app.tenant_id'), $2
-FROM unnest($3::int8[]) AS r
-ON CONFLICT (user_id, role_id) DO NOTHING
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+SELECT ($1::int8[])[rs.i], $2, rs.r, current_setting('app.tenant_id'), $3
+FROM unnest($4::int8[]) WITH ORDINALITY AS rs(r, i)
+ON CONFLICT DO NOTHING
 `
 
 type AssignUserRolesParams struct {
+	Ids       []int64 `db:"ids" json:"ids"`
 	UserID    int64   `db:"user_id" json:"user_id"`
 	CreatedBy int64   `db:"created_by" json:"created_by"`
 	RoleIds   []int64 `db:"role_ids" json:"role_ids"`
 }
 
-// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过
+// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过。ids 与
+// role_ids 下标对齐（应用层发号，按 WITH ORDINALITY 序号取位），撤销改
+// 软删后重复授予插入新行、历史不覆盖
 func (q *Queries) AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error) {
-	result, err := q.db.Exec(ctx, assignUserRoles, arg.UserID, arg.CreatedBy, arg.RoleIds)
+	result, err := q.db.Exec(ctx, assignUserRoles,
+		arg.Ids,
+		arg.UserID,
+		arg.CreatedBy,
+		arg.RoleIds,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -130,6 +145,104 @@ func (q *Queries) CanOperateRow(ctx context.Context, arg CanOperateRowParams) (b
 	return ok, err
 }
 
+const canRevokeRole = `-- name: CanRevokeRole :one
+SELECT public.fn_can_revoke_role($1, $2, $3) AS ok
+`
+
+type CanRevokeRoleParams struct {
+	Operator int64 `db:"operator" json:"operator"`
+	Role     int64 `db:"role" json:"role"`
+	Target   int64 `db:"target" json:"target"`
+}
+
+// 判断操作者能否撤销目标用户的指定角色映射（状态放宽：禁用/软删也可撤）
+func (q *Queries) CanRevokeRole(ctx context.Context, arg CanRevokeRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canRevokeRole, arg.Operator, arg.Role, arg.Target)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const canRevokeRoles = `-- name: CanRevokeRoles :many
+SELECT r::int8 AS role_id,
+       public.fn_can_revoke_role($1, r, $2) AS ok
+FROM unnest($3::int8[]) AS r
+`
+
+type CanRevokeRolesParams struct {
+	Operator int64   `db:"operator" json:"operator"`
+	Target   int64   `db:"target" json:"target"`
+	RoleIds  []int64 `db:"role_ids" json:"role_ids"`
+}
+
+type CanRevokeRolesRow struct {
+	RoleID int64 `db:"role_id" json:"role_id"`
+	Ok     bool  `db:"ok" json:"ok"`
+}
+
+// 逐角色判断角色列表能否从目标用户撤销，每行返回 (role_id, ok)
+func (q *Queries) CanRevokeRoles(ctx context.Context, arg CanRevokeRolesParams) ([]CanRevokeRolesRow, error) {
+	rows, err := q.db.Query(ctx, canRevokeRoles, arg.Operator, arg.Target, arg.RoleIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CanRevokeRolesRow
+	for rows.Next() {
+		var i CanRevokeRolesRow
+		if err := rows.Scan(&i.RoleID, &i.Ok); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const canSeeRole = `-- name: CanSeeRole :one
+SELECT public.fn_can_see_role($1, $2) AS ok
+`
+
+type CanSeeRoleParams struct {
+	Operator int64 `db:"operator" json:"operator"`
+	Role     int64 `db:"role" json:"role"`
+}
+
+// 判断操作者能否看见指定角色（角色读面共用判定）
+func (q *Queries) CanSeeRole(ctx context.Context, arg CanSeeRoleParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canSeeRole, arg.Operator, arg.Role)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
+const canSetOwner = `-- name: CanSetOwner :one
+SELECT public.fn_can_set_owner($1,
+                               $2, $3, $4) AS ok
+`
+
+type CanSetOwnerParams struct {
+	Operator   int64  `db:"operator" json:"operator"`
+	OwnerUser  *int64 `db:"owner_user" json:"owner_user"`
+	OwnerDept  *int64 `db:"owner_dept" json:"owner_dept"`
+	OwnerGroup *int64 `db:"owner_group" json:"owner_group"`
+}
+
+// 判断操作者能否把新归属三元组挂上（存在、启用且在可见范围内；NULL=无该归属）
+func (q *Queries) CanSetOwner(ctx context.Context, arg CanSetOwnerParams) (bool, error) {
+	row := q.db.QueryRow(ctx, canSetOwner,
+		arg.Operator,
+		arg.OwnerUser,
+		arg.OwnerDept,
+		arg.OwnerGroup,
+	)
+	var ok bool
+	err := row.Scan(&ok)
+	return ok, err
+}
+
 const canTransferOwner = `-- name: CanTransferOwner :one
 SELECT public.fn_can_transfer_owner($1,
                                     $2, $3, $4,
@@ -167,7 +280,8 @@ const hasUserRole = `-- name: HasUserRole :one
 SELECT EXISTS (SELECT 1
                FROM public.sys_user_role_mapping
                WHERE user_id = $1
-                 AND role_id = $2) AS has
+                 AND role_id = $2
+                 AND deleted_at IS NULL) AS has
 `
 
 type HasUserRoleParams struct {
@@ -175,7 +289,7 @@ type HasUserRoleParams struct {
 	RoleID int64 `db:"role_id" json:"role_id"`
 }
 
-// 判断用户是否拥有指定角色
+// 判断用户是否拥有指定角色的活跃映射
 func (q *Queries) HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error) {
 	row := q.db.QueryRow(ctx, hasUserRole, arg.UserID, arg.RoleID)
 	var has bool

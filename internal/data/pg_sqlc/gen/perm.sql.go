@@ -42,6 +42,7 @@ SELECT DISTINCT mu.permission_code
 FROM public.sys_user u
          JOIN public.sys_user_role_mapping m ON m.user_id = u.id
          JOIN public.sys_role r ON r.id = m.role_id
+    AND m.deleted_at IS NULL
     AND r.status = 1 AND r.deleted_at IS NULL
          JOIN public.sys_role_menu rm ON rm.role_id = r.id
          JOIN public.sys_menu mu ON mu.id = rm.menu_id
@@ -122,6 +123,7 @@ FROM public.sys_role r
          JOIN public.sys_user_role_mapping m ON m.role_id = r.id
          JOIN public.sys_user u ON u.id = m.user_id
 WHERE m.user_id = $1
+  AND m.deleted_at IS NULL
   AND u.status = 1
   AND u.deleted_at IS NULL
   AND r.status = 1

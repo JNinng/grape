@@ -315,6 +315,32 @@ describe('UserManagePage create', () => {
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
   })
 
+  it('sends_the_selected_ownership_triple_on_create', async () => {
+    const user2 = userEvent.setup()
+    mockCreateUser.mockResolvedValue(user({ id: '99', name: 'carol', nickname: 'Carol' }))
+    renderPage()
+    await screen.findByText('alice')
+
+    await user2.click(screen.getByRole('button', { name: '新建用户' }))
+    const dialog = screen.getByRole('dialog')
+    await user2.type(within(dialog).getByLabelText('用户名'), 'carol')
+    await user2.type(within(dialog).getByLabelText('昵称'), 'Carol')
+    await user2.type(within(dialog).getByLabelText('初始密码'), 'secret-1')
+
+    await user2.click(within(dialog).getByRole('combobox', { name: '归属用户' }))
+    await user2.click(await screen.findByRole('option', { name: /李四/ }))
+    await user2.click(within(dialog).getByRole('combobox', { name: '归属部门' }))
+    await user2.click(await screen.findByRole('option', { name: /技术部/ }))
+    await user2.click(within(dialog).getByRole('button', { name: '创建' }))
+
+    await waitFor(() =>
+      expect(mockCreateUser).toHaveBeenCalledWith(
+        { name: 'carol', nickname: 'Carol', ownerUserId: '9', ownerDeptId: '2' },
+        'secret-1',
+      ),
+    )
+  })
+
   it('shows_an_inline_error_and_keeps_the_dialog_when_required_fields_are_missing', async () => {
     const user2 = userEvent.setup()
     renderPage()

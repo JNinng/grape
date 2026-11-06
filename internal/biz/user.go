@@ -27,7 +27,7 @@ var (
 
 // User 是用户领域模型。Password 仅在创建与改密路径携带：创建时为明文
 // 入参、经用例哈希后传仓储；读取路径不携带，绝不跨越传输层。
-// 归属三元组仅经归属转移用例可写。
+// 归属三元组仅在创建（经 fn_can_set_owner 校验）与归属转移用例可写。
 type User struct {
 	ID       int64
 	Status   int32 // 0 禁用、1 启用
@@ -83,8 +83,10 @@ type UserRepo interface {
 	SetPassword(ctx context.Context, auth Identity, id int64, hashedPassword string) error
 	// SoftDelete 软删除用户（deleted_at 置位）。
 	SoftDelete(ctx context.Context, auth Identity, id int64) error
-	// AssignRoles 批量分配角色：先库内判定，全部通过才写入；任一不通过
-	// 整体拒绝返回 ErrUserAccessDenied。返回实际新增条数（已拥有的跳过）。
+	// AssignRoles 批量分配角色：按 ID 锁目标行（不判可见性；不存在/软删
+	// 返回 ErrUserNotFound），库内 fn_can_assign_role 逐角色判定（可见性
+	// + 目标范围 + 分配权限码），全部通过才写入；任一不通过整体拒绝返回
+	// ErrUserAccessDenied。返回实际新增条数（已拥有的跳过）。
 	AssignRoles(ctx context.Context, auth Identity, userID int64, roleIDs []int64) (int64, error)
 	// TransferOwner 修改归属三元组：两头校验（该用户有权操作 + 新归属
 	// 可达），新归属不可达返回 ErrUserAccessDenied。返回转移后的用户。
@@ -119,10 +121,15 @@ func (uc *UserUsecase) ListUsers(ctx context.Context, auth Identity, q *dynq.Que
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库。
+// CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库；
+// 请求未指定归属人时缺省为创建人，避免落一条所有非全租户角色都不可见的行。
 func (uc *UserUsecase) CreateUser(ctx context.Context, auth Identity, u *User) (*User, error) {
 	if err := validateUserMutable(u); err != nil {
 		return nil, err
+	}
+	if u.OwnerUserID == nil {
+		creator := auth.UserID
+		u.OwnerUserID = &creator
 	}
 	hashed, err := HashPassword(u.Password)
 	if err != nil {

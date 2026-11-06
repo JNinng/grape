@@ -38,7 +38,8 @@ export interface UserSetDTO {
 }
 
 // CreateUserInput 对齐 user.v1.CreateUserRequest.user 的可填字段：
-// id、归属三元组与时间戳由服务端管理；status 缺省启用；locale 缺省 zh-CN。
+// id 与时间戳由服务端管理；归属三元组可选（未指定归属人时服务端缺省为
+// 创建人）；status 缺省启用；locale 缺省 zh-CN。
 export interface CreateUserInput {
   status?: number
   name: string
@@ -47,6 +48,9 @@ export interface CreateUserInput {
   phone?: string
   remark?: string
   locale?: string
+  ownerUserId?: string
+  ownerDeptId?: string
+  ownerUserGroupId?: string
 }
 
 // UpdateUserInput 对齐 user.v1.UpdateUserRequest.user：id 标识目标记录，

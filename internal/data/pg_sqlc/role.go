@@ -10,12 +10,13 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// roleRepo 是 biz.RoleRepo 的 PostgreSQL 实现。角色是租户内资源：表无
-// @scope，行级无范围，租户边界由 IdentityTx 的 RLS 会话变量承担。数据
-// 范围明细（sys_role_id_scope）、分发部门（sys_role_allowed_dept）与
-// 角色-菜单映射（sys_role_menu）不单独立资源，随本仓储的方法维护：写
-// 路径先锁角色行，差量在事务内读活跃行集合后在应用层算出并逐行增删，
-// 角色行锁串行化同一角色的全部配置写。
+// roleRepo 是 biz.RoleRepo 的 PostgreSQL 实现。角色是租户内资源：租户
+// 边界由 IdentityTx 的 RLS 会话变量承担，行级可见性由表级 @scope 守卫
+//（动态 List/Count，fn_visible_role_ids）与 fn_can_see_role（详情共用
+// 判定）承担。数据范围明细（sys_role_id_scope）、分发部门
+//（sys_role_allowed_dept）与角色-菜单映射（sys_role_menu）不单独立
+// 资源，随本仓储的方法维护：写路径先锁角色行，差量在事务内读活跃行
+// 集合后在应用层算出并逐行增删，角色行锁串行化同一角色的全部配置写。
 type roleRepo struct {
 	data *Data
 }
@@ -47,11 +48,15 @@ func toBizRole(po *gen.SysRole) *biz.Role {
 	}
 }
 
-// GetByID 按主键读取角色。租户边界由 RLS 承担，跨租户等同不存在。
+// GetByID 按主键读取角色。租户边界由 RLS 承担，跨租户等同不存在；
+// 行级可见性由 fn_can_see_role（A AND G）判定，不可见等同不存在，
+// 一律返回 ErrRoleNotFound，不泄露存在性。
 func (r *roleRepo) GetByID(ctx context.Context, auth biz.Identity, id int64) (*biz.Role, error) {
 	var out *biz.Role
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetSysRoleByID(ctx, id)
+		row, err := s.Q().GetSysRoleVisibleByID(ctx, gen.GetSysRoleVisibleByIDParams{
+			ID: id, Operator: auth.UserID,
+		})
 		if err != nil {
 			return err
 		}
@@ -64,10 +69,11 @@ func (r *roleRepo) GetByID(ctx context.Context, auth biz.Identity, id int64) (*b
 	return out, nil
 }
 
-// List 解析动态查询协议并返回分页信封；表无 @scope，无需注入守卫，软删
-// 过滤由表级 @filter 声明在解析期作为服务端固定不变量注入（协议不可见、
-// 调用方不可控），字段、操作符、投影与游标合法性由生成代码校验，协议
-// 错误映射为 ErrRoleInvalidArgument。
+// List 解析动态查询协议并返回分页信封；角色可见性由表级 @scope 守卫
+//（fn_visible_role_ids，与 fn_can_see_role 共用 A AND G 口径）注入，
+// 软删过滤由表级 @filter 声明在解析期作为服务端固定不变量注入（协议
+// 不可见、调用方不可控），字段、操作符、投影与游标合法性由生成代码
+// 校验，协议错误映射为 ErrRoleInvalidArgument。
 func (r *roleRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.RoleList, error) {
 	var out *biz.RoleList
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -75,6 +81,7 @@ func (r *roleRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (
 		if err != nil {
 			return err
 		}
+		params.Scope = s.SysRoleScope()
 		res, err := gen.ListSysRole(ctx, s.Tx(), params)
 		if err != nil {
 			return err
@@ -190,13 +197,15 @@ func (r *roleRepo) SoftDelete(ctx context.Context, auth biz.Identity, id int64) 
 	}))
 }
 
-// GetDataScope 读取角色的数据范围配置：角色行先锁定（不存在或跨租户等同
-// 不存在），标量取自锁定行，两张明细表取活跃行集合，与判定函数的消费
-// 口径（仅活跃行参与推导）一致。
+// GetDataScope 读取角色的数据范围配置：角色读面按 fn_can_see_role 判定
+// 可见（不可见或跨租户等同不存在），标量取自可见行，两张明细表取活跃
+// 行集合，与判定函数的消费口径（仅活跃行参与推导）一致。
 func (r *roleRepo) GetDataScope(ctx context.Context, auth biz.Identity, id int64) (*biz.RoleDataScope, error) {
 	var out *biz.RoleDataScope
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().LockSysRoleByID(ctx, id)
+		row, err := s.Q().GetSysRoleVisibleByID(ctx, gen.GetSysRoleVisibleByIDParams{
+			ID: id, Operator: auth.UserID,
+		})
 		if err != nil {
 			return err
 		}
@@ -376,12 +385,14 @@ func keysOf(set map[int64]struct{}) []int64 {
 }
 
 // ListMenus 返回角色当前的有效授权菜单 ID 集合（停用/软删菜单的残留映射
-// 不出现在回显集合，与 fn_has_permission 的活跃口径一致）。角色行先锁定
-// （不存在或跨租户等同不存在）。
+// 不出现在回显集合，与 fn_has_permission 的活跃口径一致）。角色读面按
+// fn_can_see_role 判定可见（不存在或跨租户等同不存在）。
 func (r *roleRepo) ListMenus(ctx context.Context, auth biz.Identity, id int64) ([]int64, error) {
 	var out []int64
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().LockSysRoleByID(ctx, id); err != nil {
+		if _, err := s.Q().GetSysRoleVisibleByID(ctx, gen.GetSysRoleVisibleByIDParams{
+			ID: id, Operator: auth.UserID,
+		}); err != nil {
 			return err
 		}
 		rows, err := s.Q().ListSysRoleMenus(ctx, id)

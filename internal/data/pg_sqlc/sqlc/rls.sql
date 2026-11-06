@@ -7,8 +7,10 @@
 --
 -- 内容：
 --   1. fn_touch_updated_at 触发器：UPDATE 时兜底刷新 updated_at
---   2. 三个权限过滤函数：算出"当前用户能看到哪些用户/部门/用户组"，
---      动态查询（List/Count）会把结果自动拼进 WHERE
+--   2. 权限过滤函数：算出"当前用户能看到哪些用户/部门/用户组"，
+--      动态查询（List/Count）会把结果自动拼进 WHERE（sys_role 的
+--      @scope 守卫 fn_visible_role_ids 因依赖写侧 fn_can_see_role，
+--      随角色判定族放 operate.sql）
 --   3. 21 张基线租户表的 RLS 策略（范围版本表策略在 expose.sql）：
 --      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）；
 --      sys_session 另加令牌维度策略：校验/登出/刷新先于租户身份成立，
@@ -108,6 +110,7 @@ my_roles AS (
     FROM public.sys_role r
              JOIN public.sys_user_role_mapping m ON m.role_id = r.id
     WHERE m.user_id = p_user_id
+      AND m.deleted_at IS NULL
       AND r.status = 1
       AND r.deleted_at IS NULL
 ),
@@ -211,6 +214,7 @@ my_roles AS (
     FROM public.sys_role r
              JOIN public.sys_user_role_mapping m ON m.role_id = r.id
     WHERE m.user_id = p_user_id
+      AND m.deleted_at IS NULL
       AND r.status = 1
       AND r.deleted_at IS NULL
 ),
@@ -311,6 +315,7 @@ my_roles AS (
     FROM public.sys_role r
              JOIN public.sys_user_role_mapping m ON m.role_id = r.id
     WHERE m.user_id = p_user_id
+      AND m.deleted_at IS NULL
       AND r.status = 1
       AND r.deleted_at IS NULL
 ),

@@ -10,7 +10,7 @@ import {
   type OptionQueryInput,
   type UserRoleSetDTO,
 } from '@/api/assignOptions'
-import { createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type OwnerTripleInput, type UserDTO } from '@/api/users'
+import { createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type CreateUserInput, type OwnerTripleInput, type UserDTO } from '@/api/users'
 import { ApiError } from '@/api/toApiError'
 import type { QueryCondition, QuerySort } from '@/api/query'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
@@ -113,6 +113,76 @@ function FormError({ message }: { message: string | null }) {
   )
 }
 
+// ---------- 归属三元组 ----------
+
+// OwnerTripleDraft 是归属三元组的三个单选值：空数组表示不设该归属。
+interface OwnerTripleDraft {
+  userId: string[]
+  deptId: string[]
+  groupId: string[]
+}
+
+// emptyOwnerTriple 返回空的归属草稿（用作创建弹窗的初始值）。
+function emptyOwnerTriple(): OwnerTripleDraft {
+  return { userId: [], deptId: [], groupId: [] }
+}
+
+// OwnerTripleSelects 渲染归属三元组的三个单选选择器：候选由对应 owner
+// options 端点按操作者可见范围返回，空选择表示不设该归属；pinned 用于
+// 固定保留当前值，避免清空后无法重新选回。
+function OwnerTripleSelects({
+  idPrefix,
+  value,
+  onChange,
+  pinned,
+}: {
+  idPrefix: string
+  value: OwnerTripleDraft
+  onChange: (next: OwnerTripleDraft) => void
+  pinned?: OwnerTripleDraft
+}) {
+  return (
+    <>
+      <Field id={`${idPrefix}-user-id`} label="归属用户">
+        <OptionSelect
+          id={`${idPrefix}-user-id`}
+          ariaLabel="归属用户"
+          mode="single"
+          value={value.userId}
+          onChange={(userId) => onChange({ ...value, userId })}
+          loadOptions={listOwnerUserOptions}
+          pinnedValues={pinned?.userId ?? []}
+          placeholder="不设归属用户"
+        />
+      </Field>
+      <Field id={`${idPrefix}-dept-id`} label="归属部门">
+        <OptionSelect
+          id={`${idPrefix}-dept-id`}
+          ariaLabel="归属部门"
+          mode="single"
+          value={value.deptId}
+          onChange={(deptId) => onChange({ ...value, deptId })}
+          loadOptions={listOwnerDeptOptions}
+          pinnedValues={pinned?.deptId ?? []}
+          placeholder="不设归属部门"
+        />
+      </Field>
+      <Field id={`${idPrefix}-user-group-id`} label="归属用户组">
+        <OptionSelect
+          id={`${idPrefix}-user-group-id`}
+          ariaLabel="归属用户组"
+          mode="single"
+          value={value.groupId}
+          onChange={(groupId) => onChange({ ...value, groupId })}
+          loadOptions={listOwnerGroupOptions}
+          pinnedValues={pinned?.groupId ?? []}
+          placeholder="不设归属用户组"
+        />
+      </Field>
+    </>
+  )
+}
+
 // ---------- 新建用户 ----------
 
 function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
@@ -123,6 +193,7 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
   const [remark, setRemark] = useState('')
   const [locale, setLocale] = useState('')
   const [password, setPassword] = useState('')
+  const [owner, setOwner] = useState<OwnerTripleDraft>(emptyOwnerTriple)
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -134,17 +205,24 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
     }
     setPending(true)
     try {
-      await createUser(
-        {
-          name: name.trim(),
-          nickname: nickname.trim(),
-          email: email.trim() === '' ? undefined : email.trim(),
-          phone: phone.trim() === '' ? undefined : phone.trim(),
-          remark: remark.trim() === '' ? undefined : remark.trim(),
-          locale: locale.trim() === '' ? undefined : locale.trim(),
-        },
-        password,
-      )
+      const input: CreateUserInput = {
+        name: name.trim(),
+        nickname: nickname.trim(),
+        email: email.trim() === '' ? undefined : email.trim(),
+        phone: phone.trim() === '' ? undefined : phone.trim(),
+        remark: remark.trim() === '' ? undefined : remark.trim(),
+        locale: locale.trim() === '' ? undefined : locale.trim(),
+      }
+      if (owner.userId[0] !== undefined) {
+        input.ownerUserId = owner.userId[0]
+      }
+      if (owner.deptId[0] !== undefined) {
+        input.ownerDeptId = owner.deptId[0]
+      }
+      if (owner.groupId[0] !== undefined) {
+        input.ownerUserGroupId = owner.groupId[0]
+      }
+      await createUser(input, password)
       toast.success(`用户 ${name.trim()} 已创建`)
       onCreated()
       onClose()
@@ -160,7 +238,7 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
       <DialogContent>
         <DialogHeader>
           <DialogTitle>新建用户</DialogTitle>
-          <DialogDescription>初始密码服务端哈希后落库；创建后可用「转移归属」设置归属。</DialogDescription>
+          <DialogDescription>初始密码服务端哈希后落库；归属未选时归属用户默认为创建人。</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
           <Field id="create-user-name" label="用户名">
@@ -181,6 +259,7 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
           <Field id="create-user-locale" label="语言（BCP-47）">
             <Input id="create-user-locale" value={locale} onChange={(e) => setLocale(e.target.value)} placeholder="zh-CN" />
           </Field>
+          <OwnerTripleSelects idPrefix="create-owner" value={owner} onChange={setOwner} />
           <Field id="create-user-remark" label="备注">
             <Input id="create-user-remark" value={remark} onChange={(e) => setRemark(e.target.value)} />
           </Field>
@@ -489,24 +568,25 @@ function UserOwnerDialog({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [ownerUserId, setOwnerUserId] = useState<string[]>(
-    user.ownerUserId === undefined ? [] : [user.ownerUserId],
-  )
-  const [ownerDeptId, setOwnerDeptId] = useState<string[]>(
-    user.ownerDeptId === undefined ? [] : [user.ownerDeptId],
-  )
-  const [ownerUserGroupId, setOwnerUserGroupId] = useState<string[]>(
-    user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId],
-  )
+  const [owner, setOwner] = useState<OwnerTripleDraft>(() => ({
+    userId: user.ownerUserId === undefined ? [] : [user.ownerUserId],
+    deptId: user.ownerDeptId === undefined ? [] : [user.ownerDeptId],
+    groupId: user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId],
+  }))
+  const pinned: OwnerTripleDraft = {
+    userId: user.ownerUserId === undefined ? [] : [user.ownerUserId],
+    deptId: user.ownerDeptId === undefined ? [] : [user.ownerDeptId],
+    groupId: user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId],
+  }
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     const to: OwnerTripleInput = {
-      ownerUserId: ownerUserId[0] ?? null,
-      ownerDeptId: ownerDeptId[0] ?? null,
-      ownerUserGroupId: ownerUserGroupId[0] ?? null,
+      ownerUserId: owner.userId[0] ?? null,
+      ownerDeptId: owner.deptId[0] ?? null,
+      ownerUserGroupId: owner.groupId[0] ?? null,
     }
     setPending(true)
     try {
@@ -531,42 +611,7 @@ function UserOwnerDialog({
           </DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
-          <Field id="owner-user-id" label="归属用户">
-            <OptionSelect
-              id="owner-user-id"
-              ariaLabel="归属用户"
-              mode="single"
-              value={ownerUserId}
-              onChange={setOwnerUserId}
-              loadOptions={listOwnerUserOptions}
-              pinnedValues={user.ownerUserId === undefined ? [] : [user.ownerUserId]}
-              placeholder="不设归属用户"
-            />
-          </Field>
-          <Field id="owner-dept-id" label="归属部门">
-            <OptionSelect
-              id="owner-dept-id"
-              ariaLabel="归属部门"
-              mode="single"
-              value={ownerDeptId}
-              onChange={setOwnerDeptId}
-              loadOptions={listOwnerDeptOptions}
-              pinnedValues={user.ownerDeptId === undefined ? [] : [user.ownerDeptId]}
-              placeholder="不设归属部门"
-            />
-          </Field>
-          <Field id="owner-user-group-id" label="归属用户组">
-            <OptionSelect
-              id="owner-user-group-id"
-              ariaLabel="归属用户组"
-              mode="single"
-              value={ownerUserGroupId}
-              onChange={setOwnerUserGroupId}
-              loadOptions={listOwnerGroupOptions}
-              pinnedValues={user.ownerUserGroupId === undefined ? [] : [user.ownerUserGroupId]}
-              placeholder="不设归属用户组"
-            />
-          </Field>
+          <OwnerTripleSelects idPrefix="owner" value={owner} onChange={setOwner} pinned={pinned} />
           <FormError message={error} />
           <DialogActions pending={pending} submitLabel="转移" />
         </form>

@@ -27,9 +27,10 @@ const (
 	testTenantEmpty = "t-test-02"
 )
 
-// deptAuth 返回指定租户的操作者身份；部门表无 @scope，操作者仅落入审计列。
+// deptAuth 返回指定租户的种子操作者身份（tenantOperators 定义见
+// role_repo_test.go）；归属字段校验（fn_can_set_owner）要求有效身份。
 func deptAuth(tenant string) biz.Identity {
-	return biz.Identity{TenantID: tenant, UserID: 1}
+	return biz.Identity{TenantID: tenant, UserID: tenantOperators[tenant]}
 }
 
 // mustCreateDept 在指定租户内创建部门，失败即终止用例。
@@ -90,7 +91,7 @@ func TestDeptRepo_create_root_builds_self_closure_path(t *testing.T) {
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 
-	created := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-0", OwnerUserID: 1})
+	created := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-0", OwnerUserID: 5})
 	paths := closureSet(t, d, auth)
 	if len(paths) != 1 || paths[closureKey(created.ID, created.ID)] != 0 {
 		t.Fatalf("closure = %v, want only self path depth 0 for %d", paths, created.ID)
@@ -101,11 +102,11 @@ func TestDeptRepo_create_child_links_ancestor_paths(t *testing.T) {
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 
-	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-1", OwnerUserID: 1})
+	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-1", OwnerUserID: 5})
 	parent := root.ID
-	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-1", OwnerUserID: 1, ParentID: &parent})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-1", OwnerUserID: 5, ParentID: &parent})
 	grand := child.ID
-	leaf := mustCreateDept(t, d, auth, &biz.Dept{Name: "leaf-1", OwnerUserID: 1, ParentID: &grand})
+	leaf := mustCreateDept(t, d, auth, &biz.Dept{Name: "leaf-1", OwnerUserID: 5, ParentID: &grand})
 
 	paths := closureSet(t, d, auth)
 	want := map[string]int64{
@@ -132,7 +133,7 @@ func TestDeptRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing
 	ghost := int64(987654321)
 
 	repo := NewDeptRepo(d)
-	if _, err := repo.Create(context.Background(), auth, &biz.Dept{Name: "orphan", OwnerUserID: 1, ParentID: &ghost}); err == nil {
+	if _, err := repo.Create(context.Background(), auth, &biz.Dept{Name: "orphan", OwnerUserID: 5, ParentID: &ghost}); err == nil {
 		t.Fatal("create with unknown parent = nil error, want trigger rejection")
 	}
 	if _, err := repo.GetByID(context.Background(), auth, ghost); !errors.Is(err, biz.ErrDeptNotFound) {
@@ -148,7 +149,9 @@ func TestDeptRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 
-	_, err := NewDeptRepo(d).Create(context.Background(), auth, &biz.Dept{Name: "总公司", OwnerUserID: 1})
+	// 归属人取种子操作者 11（t-test-01 内有效且对全租户操作者可见；
+	// 种子行里的 owner_user_id=1 是悬空引用，Create 归属校验会先拒绝）。
+	_, err := NewDeptRepo(d).Create(context.Background(), auth, &biz.Dept{Name: "总公司", OwnerUserID: 11})
 	if !errors.Is(err, biz.ErrDeptAlreadyExists) {
 		t.Fatalf("err = %v, want ErrDeptAlreadyExists", err)
 	}
@@ -245,7 +248,7 @@ func TestDeptRepo_update_changes_name_and_status(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	created := mustCreateDept(t, d, auth, &biz.Dept{Name: "before", OwnerUserID: 1, Status: biz.DeptStatusEnabled})
+	created := mustCreateDept(t, d, auth, &biz.Dept{Name: "before", OwnerUserID: 5, Status: biz.DeptStatusEnabled})
 	created.Name = "after"
 	created.Status = biz.DeptStatusDisabled
 	if _, err := repo.Update(context.Background(), auth, created); err != nil {
@@ -265,20 +268,20 @@ func TestDeptRepo_update_owner_and_parent_rewrites_closure(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 1})
-	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 1})
-	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child", OwnerUserID: 1, ParentID: &rootA.ID})
+	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 5})
+	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 5})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child", OwnerUserID: 5, ParentID: &rootA.ID})
 
-	group := int64(42)
+	// 归属用户改为 t-test-02 内的有效用户（5）并移动父级：归属校验
+	//（fn_can_set_owner）通过，闭包路径由触发器重写。
 	child.ParentID = &rootB.ID
-	child.OwnerUserID = 7
-	child.OwnerUserGroupID = &group
+	child.OwnerUserID = 5
 	updated, err := repo.Update(context.Background(), auth, child)
 	if err != nil {
 		t.Fatalf("update dept: %v", err)
 	}
-	if updated.OwnerUserID != 7 || updated.OwnerUserGroupID == nil || *updated.OwnerUserGroupID != group {
-		t.Fatalf("owner = (%d, %v), want (7, %d)", updated.OwnerUserID, updated.OwnerUserGroupID, group)
+	if updated.OwnerUserID != 5 || updated.OwnerUserGroupID != nil {
+		t.Fatalf("owner = (%d, %v), want (5, nil)", updated.OwnerUserID, updated.OwnerUserGroupID)
 	}
 	if updated.ParentID == nil || *updated.ParentID != rootB.ID {
 		t.Fatalf("parent = %v, want %d", updated.ParentID, rootB.ID)
@@ -307,12 +310,12 @@ func TestDeptRepo_move_under_other_root_rewrites_closure(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 1})
-	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 1})
+	rootA := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-a", OwnerUserID: 5})
+	rootB := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-b", OwnerUserID: 5})
 	pa := rootA.ID
-	mid := mustCreateDept(t, d, auth, &biz.Dept{Name: "mid", OwnerUserID: 1, ParentID: &pa})
+	mid := mustCreateDept(t, d, auth, &biz.Dept{Name: "mid", OwnerUserID: 5, ParentID: &pa})
 	pm := mid.ID
-	leaf := mustCreateDept(t, d, auth, &biz.Dept{Name: "leaf", OwnerUserID: 1, ParentID: &pm})
+	leaf := mustCreateDept(t, d, auth, &biz.Dept{Name: "leaf", OwnerUserID: 5, ParentID: &pm})
 
 	// mid 子树整体移到 root-b 之下。
 	if _, err := repo.Move(context.Background(), auth, mid.ID, &rootB.ID); err != nil {
@@ -350,9 +353,9 @@ func TestDeptRepo_move_to_root_clears_ancestor_paths(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-r", OwnerUserID: 1})
+	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-r", OwnerUserID: 5})
 	pr := root.ID
-	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-r", OwnerUserID: 1, ParentID: &pr})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-r", OwnerUserID: 5, ParentID: &pr})
 
 	// child 移为根部门。
 	if _, err := repo.Move(context.Background(), auth, child.ID, nil); err != nil {
@@ -378,9 +381,9 @@ func TestDeptRepo_move_into_own_subtree_rejected_and_rolled_back(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-c", OwnerUserID: 1})
+	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-c", OwnerUserID: 5})
 	pr := root.ID
-	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-c", OwnerUserID: 1, ParentID: &pr})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-c", OwnerUserID: 5, ParentID: &pr})
 
 	// 根移到其直接子节点之下：触发器拒绝，整事务回滚。
 	if _, err := repo.Move(context.Background(), auth, root.ID, &child.ID); err == nil {
@@ -415,9 +418,9 @@ func TestDeptRepo_delete_leaf_soft_deletes_and_cleans_closure(t *testing.T) {
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
 
-	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-d", OwnerUserID: 1})
+	root := mustCreateDept(t, d, auth, &biz.Dept{Name: "root-d", OwnerUserID: 5})
 	pr := root.ID
-	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-d", OwnerUserID: 1, ParentID: &pr})
+	child := mustCreateDept(t, d, auth, &biz.Dept{Name: "child-d", OwnerUserID: 5, ParentID: &pr})
 
 	if err := repo.SoftDelete(context.Background(), auth, child.ID); err != nil {
 		t.Fatalf("delete leaf: %v", err)
@@ -459,5 +462,30 @@ func TestDeptRepo_delete_missing_dept_maps_not_found(t *testing.T) {
 	err := NewDeptRepo(d).SoftDelete(context.Background(), deptAuth(testTenantSeeded), 424242)
 	if !errors.Is(err, biz.ErrDeptNotFound) {
 		t.Fatalf("err = %v, want ErrDeptNotFound", err)
+	}
+}
+
+func TestDeptRepo_owner_reference_validated(t *testing.T) {
+	d := setupTestDB(t)
+	auth := deptAuth(testTenantSeeded)
+	repo := NewDeptRepo(d)
+
+	// 归属用户悬空（不存在/跨租户等同不存在）→ 整组拒绝，无写入。
+	if _, err := repo.Create(context.Background(), auth, &biz.Dept{Name: "bad-owner", OwnerUserID: 424242}); !errors.Is(err, biz.ErrDeptInvalidArgument) {
+		t.Fatalf("unknown owner user err = %v, want ErrDeptInvalidArgument", err)
+	}
+	// 归属用户组悬空同口径。
+	group := int64(424242)
+	if _, err := repo.Create(context.Background(), auth, &biz.Dept{Name: "bad-group", OwnerUserID: 2, OwnerUserGroupID: &group}); !errors.Is(err, biz.ErrDeptInvalidArgument) {
+		t.Fatalf("unknown owner group err = %v, want ErrDeptInvalidArgument", err)
+	}
+	// 禁用归属对象同样拒绝（fn_can_set_owner 要求存在且启用）。
+	execIdentityTx(t, d, auth, `UPDATE public.sys_user SET status = 0 WHERE id = 9`)
+	if _, err := repo.Create(context.Background(), auth, &biz.Dept{Name: "disabled-owner", OwnerUserID: 9}); !errors.Is(err, biz.ErrDeptInvalidArgument) {
+		t.Fatalf("disabled owner user err = %v, want ErrDeptInvalidArgument", err)
+	}
+	// 更新路径同口径：悬空归属引用拒绝且行不落变更。
+	if _, err := repo.Update(context.Background(), auth, &biz.Dept{ID: 1, Name: "总公司", Status: biz.DeptStatusEnabled, OwnerUserID: 424242}); !errors.Is(err, biz.ErrDeptInvalidArgument) {
+		t.Fatalf("unknown owner on update err = %v, want ErrDeptInvalidArgument", err)
 	}
 }

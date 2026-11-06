@@ -2,7 +2,8 @@
 -- sqlc.yaml 全量按序加载，部署执行顺序见 ../README.md）。
 --
 -- 身份域：sys_user（归属三元组 + @scope 守卫）、用户-角色/用户组映射、
--- sys_user_group。映射行无可变业务字段，仅保留最小审计列。
+-- sys_user_group。映射行无可变业务字段：用户-角色映射撤销走软删（保留
+-- 授予/撤销双侧审计），用户组成员映射移除走物理删除（仅最小审计列）。
 CREATE TABLE public.sys_user
 (
     id                  int8                                                   NOT NULL,
@@ -63,24 +64,32 @@ COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID [@d
 
 CREATE TABLE public.sys_user_role_mapping
 (
-    user_id    int8                                   NOT NULL,
-    role_id    int8                                   NOT NULL,
-    tenant_id  varchar(16)                            NOT NULL,
-    created_by int8                                   NOT NULL,
-    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    CONSTRAINT sys_user_role_mapping_pkey PRIMARY KEY (user_id, role_id)
+    id         int8                                                   NOT NULL,
+    user_id    int8                                                   NOT NULL,
+    role_id    int8                                                   NOT NULL,
+    tenant_id  varchar(16)                                            NOT NULL,
+    created_by int8                                                   NOT NULL,
+    created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+    deleted_by int8                                                   NULL,
+    deleted_at timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+    CONSTRAINT sys_user_role_mapping_pkey PRIMARY KEY (id)
 );
+CREATE UNIQUE INDEX sys_user_role_mapping_tenant_user_role_un ON public.sys_user_role_mapping USING btree (tenant_id, user_id, role_id) WHERE deleted_at IS NULL;
 CREATE INDEX idx_surm_tenant ON public.sys_user_role_mapping USING btree (tenant_id);
+CREATE INDEX idx_surm_user_id ON public.sys_user_role_mapping USING btree (user_id);
 CREATE INDEX idx_surm_role_id ON public.sys_user_role_mapping USING btree (role_id);
 
 -- Column comments
 
-COMMENT ON TABLE public.sys_user_role_mapping IS '用户-角色映射表。映射行无可变业务字段，解除关联走物理删除，因此仅保留 created_by/created_at 最小审计字段（谁在何时授予），不含 updated_*/deleted_*';
+COMMENT ON TABLE public.sys_user_role_mapping IS '用户-角色映射表。映射行无可变业务字段，仅保留最小审计列；撤销映射走软删（deleted_at/deleted_by 留痕，谁在何时撤销），重复授予插入新行、历史不覆盖。活跃映射由部分唯一索引 (tenant_id, user_id, role_id) WHERE deleted_at IS NULL 约束唯一';
+COMMENT ON COLUMN public.sys_user_role_mapping.id IS '主键 ID（应用层发号）';
 COMMENT ON COLUMN public.sys_user_role_mapping.user_id IS '用户 ID';
 COMMENT ON COLUMN public.sys_user_role_mapping.role_id IS '角色 ID';
 COMMENT ON COLUMN public.sys_user_role_mapping.tenant_id IS '租户 ID';
 COMMENT ON COLUMN public.sys_user_role_mapping.created_by IS '授予人（创建人），由应用层/ORM 写入';
 COMMENT ON COLUMN public.sys_user_role_mapping.created_at IS '授予时间（创建时间）';
+COMMENT ON COLUMN public.sys_user_role_mapping.deleted_by IS '撤销人，由应用层写入';
+COMMENT ON COLUMN public.sys_user_role_mapping.deleted_at IS '撤销时间（软删时间）';
 
 
 -- public.sys_user_group 定义

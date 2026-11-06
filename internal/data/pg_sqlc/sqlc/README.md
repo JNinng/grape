@@ -14,8 +14,8 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 |---|---|---|---|---|
 | 1 | schema/10_basic.sql | 定义 basic 业务表：租户列、审计列、归属三元组与 @scope 列注释 | 是 | 1 张表 |
 | 2 | schema/20_tenant.sql | 定义 sys_tenant 租户表 | 是 | 1 张表 |
-| 3 | schema/30_user.sql | 定义 sys_user 用户表、用户-角色/用户组映射与用户组表；sys_user 带 @scope 列注释 | 是 | 4 张表 |
-| 4 | schema/40_rbac.sql | 定义角色、data_scope 范围明细、角色可分发部门、菜单与角色-菜单授权表 | 是 | 5 张表 |
+| 3 | schema/30_user.sql | 定义 sys_user 用户表、用户-角色/用户组映射与用户组表；sys_user 带 @scope 列注释；sys_user_role_mapping 撤销走软删（deleted_by/deleted_at + 活跃映射部分唯一索引） | 是 | 4 张表 |
+| 4 | schema/40_rbac.sql | 定义角色、data_scope 范围明细、角色可分发部门、菜单与角色-菜单授权表；sys_role 带 @scope 表注释（fn_visible_role_ids 角色可见性守卫） | 是 | 5 张表 |
 | 5 | schema/50_dept.sql | 定义组织树与闭包表，以及闭包维护触发器函数 | 是 | 2 张表、1 个触发器函数 |
 | 6 | schema/60_dict.sql | 定义字典类型与字典数据表 | 是 | 2 张表 |
 | 7 | schema/70_audit.sql | 定义登录日志与操作日志表（append-only） | 是 | 2 张表 |
@@ -23,11 +23,11 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 9 | schema/90_config.sql | 定义全局配置、租户配置、功能开关与翻译表 | 是 | 4 张表 |
 | 10 | schema/95_agent_audit.sql | 定义 Agent 业务审计表：工具调用审计与授权确认审计（append-only，无动态协议），含租户 RLS（策略落本域文件，理由见文件头注释） | 是 | 2 张表、6 个索引、2 条策略 |
 | 11 | rls.sql | 定义租户隔离 RLS 策略、fn_accessible_* 权限过滤函数、updated_at 触发器与会话令牌维度策略 | 是（只读函数签名） | 24 条策略（含 sys_session 令牌维度 3 条）、4 个函数 |
-| 12 | operate.sql | 定义 fn_can_* 写前判断函数 | 是（只读函数签名） | 4 个判断函数 |
-| 13 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
+| 12 | expose.sql | 定义只读权限查询判定函数、范围版本表与 bump 触发器 | 是（只读函数签名） | 3 个查询判断函数、1 张版本表、3 个触发器函数 |
+| 13 | operate.sql | 定义 fn_can_* 写前判断函数与角色判定族（fn_role_visibility_core / fn_can_see_role / fn_visible_role_ids / fn_can_revoke_role / fn_can_set_owner） | 是（只读函数签名） | 9 个判断函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、用户分配选择器/角色整组替换、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 17 个文件、138 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、用户分配选择器/角色整组替换、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 17 个文件、144 条命名查询 |
 | 17 | 98_menu_write.sql | 定义 sys_menu 受控写面：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
 | 18 | 98_config_write.sql | 定义 sys_config 受控写面：fn_config_create/update/delete 三个 SECURITY DEFINER 固定口径写函数（建/改/软删），认证事务纪律校验（app.tenant_id 未设置即拒绝）与软删口径收在函数内；config_key/value_type 身份/值语义列不经更新路径；role.sql 对 sys_config 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款） | 是（只读函数签名） | 3 个受控写函数 |
 | 19 | 98_tenant_guard.sql | 定义 sys_tenant 删除前置完整性判定（受控读取面）：fn_tenant_active_child_count 一个 SECURITY DEFINER 计数函数——租户树 RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、不返回行数据，不构成跨租户数据读面，函数内校验 app.tenant_id 已设置（空串/未设置即拒绝，fail-closed）且目标对调用方可见（消除结构侧信道）；EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC | 是（只读函数签名） | 1 个受控判定函数 |
@@ -125,8 +125,10 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | `@scope` 守卫 | 数据范围（data_scope 1-7，多角色并集） | 生成代码 WHERE 头部注入守卫谓词 | 缺 Scope → fail-closed 报错 |
 | 判断函数（写侧） | 操作权限 | `operate.sql` 布尔判定，经 `LockXxxPermitted` 在取行语句内过滤 + 同事务写入 | 行级 false → 无行（NotFound）；业务授权 false → Forbidden |
 
-- **@scope 只挂在有归属字段的表上**：当前为 `basic` 与 `sys_user`
-  （见 schema 文件表注释）；其余表租户内所有人可见。
+- **@scope 挂两类表**：有归属字段的 `basic` 与 `sys_user`（守卫取
+  `fn_accessible_*` 三件套），与 `sys_role`（守卫取 `fn_visible_role_ids`，
+  与写侧 `fn_can_see_role` 共用同一 A AND G 角色可见性口径）（见 schema
+  文件表注释）；其余表租户内所有人可见。
 - **软删过滤收敛为 @filter**：所有带 `deleted_at` 的业务表在表注释声明
   `@filter: deleted_at is_null`，动态读面（List/Count）与写面（Update）
   都附加该服务端固定不变量，协议不暴露 `deletedAt` 条件；写面可在调用
@@ -178,10 +180,15 @@ INVOKER（以调用者身份执行，受 RLS 约束）。除触发器函数与�
 
 | 函数 | 签名 | 属性 | 判断什么 |
 |---|---|---|---|
-| fn_can_assign_role | (操作者, 角色, 目标用户) → boolean | S | 能否把角色分配给用户。角色配了分发部门时：目标部门须在配置内，且操作者部门命中配置、或能看见目标用户；没配时按 scope_dept_id 子树 + 能看见目标用户判断 |
+| fn_role_visibility_core | (操作者, 角色) → boolean | S | 内部核心：角色可见性 A AND G 判定（读/写面共用）。A=分发映射命中操作人可见部门集合（M 为空恒真，命中不替代 G）；G=组织可见范围（S 为 NULL 仅全租户操作人；S 非空时全租户操作人恒可见，受限操作人须 S∈O_d 且目标角色 data_scope 档位满足对应条件）。不校验角色行状态 |
+| fn_can_see_role | (操作者, 角色) → boolean | S | 操作人能否看见某个角色（ListRoles/GetRole/GetRoleDataScope/ListRoleMenus 共用，与动态列表 fn_visible_role_ids 同源）。角色未软删且 A AND G 通过即可见，不按启用状态过滤 |
+| fn_visible_role_ids | (用户ID) → int8[] | S | 能看到哪些角色（sys_role @scope 守卫；逐角色调用 fn_can_see_role 过滤，共用 A AND G；NULL=全租户操作人，不过滤；不按角色启用状态过滤） |
+| fn_can_assign_role | (操作者, 角色, 目标用户) → boolean | S | 能否把角色分配给用户。前置：操作人/角色/目标有效、fn_can_see_role 可见、持有 sys:user:assign-role。目标部门须同时落入 sys_role_allowed_dept 映射与 scope_dept_id 子树（均配置时取交集）；无部门目标仅「无映射且无组织范围」可分配；不要求目标用户对操作人可见 |
 | fn_can_assign_roles | (操作者, 角色数组, 目标用户) → (role_id, ok) 行集 | S | 上面那条的批量版：对数组里每个角色独立判断，逐个返回结论；全部通过才批量写入 |
+| fn_can_revoke_role | (操作者, 角色, 目标用户) → boolean | S | 能否撤销一条用户-角色映射。沿用可见性（fn_role_visibility_core）与目标范围约束并持有 sys:user:assign-role；放宽角色/目标状态校验——禁用/软删角色、禁用/软删用户也可撤销 |
 | fn_can_operate_row | (用户, 归属人, 归属部门, 归属组) → boolean | S | 能否修改/删除一条数据。能看见就能操作：有全租户角色直接通过；否则任一归属命中可见范围即通过；三个归属全空的数据只有全租户能操作 |
-| fn_can_transfer_owner | (用户, 旧归属×3, 新归属×3) → boolean | S | 能否修改数据的归属。两头都要过：这条数据本身有权操作，且新归属的人/部门/组在可见范围内（防止把数据转给自己看不见的人） |
+| fn_can_set_owner | (用户, 归属人, 归属部门, 归属组) → boolean | S | 给定归属三元组的每个非空归属是否可挂（存在、启用、未删除且在当前用户可见范围内；NULL=无该归属直接通过）。创建路径与 fn_can_transfer_owner 的新归属段共用，三维度同口径 |
+| fn_can_transfer_owner | (用户, 旧归属×3, 新归属×3) → boolean | S | 能否修改数据的归属。两头都要过：这条数据本身有权操作（fn_can_operate_row），且新归属存在、启用且在可见范围内（fn_can_set_owner） |
 
 ### 查询判断函数（expose.sql，只读判定）
 
@@ -291,13 +298,17 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
-| CanAssignRole | :one | 操作者/角色/目标 → bool | 判断操作者能否把指定角色授予目标用户 |
+| CanSeeRole | :one | 操作者/角色 → bool | 判断操作者能否看见指定角色（A AND G，角色读面共用判定） |
+| CanAssignRole | :one | 操作者/角色/目标 → bool | 判断操作者能否把指定角色授予目标用户（可见性 + 目标范围 + 分配权限码） |
 | CanAssignRoles | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 逐角色判断角色列表能否授予目标用户，每行返回 (role_id, ok) |
-| CanTransferOwner | :one | 操作者 + 旧/新归属（可空）→ bool | 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作且新归属可达） |
+| CanRevokeRole | :one | 操作者/角色/目标 → bool | 判断操作者能否撤销目标用户的指定角色映射（状态放宽：禁用/软删也可撤） |
+| CanRevokeRoles | :many | 操作者/角色列表/目标 → (role_id, ok) 行 | 逐角色判断角色列表能否从目标用户撤销，每行返回 (role_id, ok) |
+| CanTransferOwner | :one | 操作者 + 旧/新归属（可空）→ bool | 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作且新归属存在、启用、可达） |
 | CanOperateRow | :one | 操作者 + 归属三元组（可空）→ bool | 判断操作者能否修改/删除指定归属的数据（读写同权） |
-| AssignUserRole | :exec | 用户/角色/操作者 | 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过 |
-| AssignUserRoles | :execrows | 用户/角色列表/操作者 → 新增条数 | 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过 |
-| HasUserRole | :one | 用户/角色 → bool | 判断用户是否拥有指定角色 |
+| CanSetOwner | :one | 操作者 + 归属三元组（可空）→ bool | 判断操作者能否把新归属三元组挂上（存在、启用且在可见范围内；NULL=无该归属） |
+| AssignUserRole | :exec | id/用户/角色/操作者 | 写入一条用户-角色映射；id 为应用层发号主键，租户取会话 app.tenant_id，与活跃映射冲突（部分唯一索引）时跳过 |
+| AssignUserRoles | :execrows | ids/用户/角色列表/操作者 → 新增条数 | 批量写入用户-角色映射；ids 与 role_ids 下标对齐（应用层发号），返回实际新增行数；已拥有的角色跳过 |
+| HasUserRole | :one | 用户/角色 → bool | 判断用户是否拥有指定角色的活跃映射（已撤销的软删行排除） |
 
 ### assign_options.sql（用户分配选择器与角色整组替换）
 
@@ -309,20 +320,21 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
-| ListAssignableRoleOptions | :many | 操作者/目标/keyword/limit/offset → (id, name) 行 | 目标用户可分配、尚未拥有的活跃角色；`fn_can_assign_role` 过滤，匹配 name/code，按 name/id 升序 |
-| ListUserRoleIDs | :many | 用户 → role_id 列表 | 用户的全部角色映射（含停用/软删角色残留），升序；供 locked 差集计算 |
+| ListAssignableRoleOptions | :many | 操作者/目标/keyword/limit/offset → (id, name) 行 | 目标用户可分配、尚未拥有的活跃角色（只按活跃映射排除，已撤销的软删历史行不排除）；`fn_can_assign_role` 过滤（可见性 + 目标范围 + 分配权限码），匹配 name/code，按 name/id 升序 |
+| ListUserRoleIDs | :many | 用户 → role_id 列表 | 用户的全部活跃映射（含停用/软删角色残留；已撤销的软删行排除），升序；供 locked 差集计算 |
 | ListActiveRoleOptionsByIDs | :many | role_id 数组 → (id, name) 行 | 活跃角色（status=1 且未软删）的标签与 desired 存在性校验，按 name/id 升序 |
-| DeleteUserRoles | :execrows | 用户/role_id 数组/操作者 → 行数 | 批量解除映射：只删 `fn_can_assign_role` 仍为 true 的角色；调用方要求行数等于请求数，否则回滚 |
+| DeleteUserRoles | :execrows | 用户/role_id 数组/操作者 → 行数 | 批量撤销映射（软删留痕：deleted_at/deleted_by 记撤销人）：只撤 `fn_can_revoke_role`（可见性 + 目标范围，放宽角色/目标状态）仍可撤销的角色；调用方要求行数等于请求数，否则回滚 |
 | CountRolesGrantingPermission | :one | role_id 数组/权限码 → 角色数 | 统计携带指定权限码的有效角色数（角色/菜单活跃联结，与 fn_has_permission 同口径）；自锁保护 |
 | ListOwnerUserOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属用户候选：`fn_accessible_user_ids` 三态过滤，label=`COALESCE(NULLIF(nickname,''),name)`，匹配 name/nickname |
 | ListOwnerDeptOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属部门候选：`fn_accessible_dept_ids` 三态过滤，label=name，匹配 name |
 | ListOwnerGroupOptions | :many | 操作者/keyword/limit/offset → (id, label) 行 | 归属用户组候选：`fn_accessible_group_ids` 三态过滤，label=name，匹配 name/code |
 
-`SetUserRoles` 的权威顺序（同一 IdentityTx）：`LockSysUserPermitted` 锁目标 →
-`ListUserRoleIDs` → `ListActiveRoleOptionsByIDs` → `CanAssignRoles` 分区
-managed/locked → 触及 locked / desired 失活 / 新增不可分配即拒绝 → 版本比对
-（`sha256("<user_id>|<升序 manageable ID>")`，biz helper）→ 自锁计数 →
-`DeleteUserRoles`（行数必须相等）→ `AssignUserRoles`。不变量与错误语义见
+`SetUserRoles` 的权威顺序（同一 IdentityTx）：`LockSysUserByID` 按 ID 锁目标
+（不判可见性）→ `ListUserRoleIDs` → `ListActiveRoleOptionsByIDs` →
+`CanAssignRoles` 分区 managed/locked → 触及 locked / desired 失活 / 新增
+不可分配即拒绝 → 版本比对（`sha256("<user_id>|<升序 manageable ID>")`，
+biz helper）→ 自锁计数 → `DeleteUserRoles`（按 fn_can_revoke_role 软删，
+行数必须相等）→ `AssignUserRoles`（应用层发号 id）。不变量与错误语义见
 根目录 [permission.md](../../../../permission.md)。
 
 ### perm.sql（权限查询接口）
@@ -347,9 +359,10 @@ managed/locked → 触及 locked / desired 失活 / 新增不可分配即拒绝 
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
-| GetSysUserByID | :one | id → SysUser | 按 id 读取未软删的用户（不做数据范围过滤；仅限已授权事务内回读） |
+| GetSysUserByID | :one | id → SysUser | 按 id 读取未软删的用户（不做数据范围过滤；分配读面按 ID 判目标存在与已授权事务内回读共用） |
 | GetSysUserPermitted | :one | id/操作者/可空权限码 → SysUser | 按 id 读取数据范围内可见的用户；permission_code 非空时同时校验功能权限 |
 | LockSysUserPermitted | :one | id/操作者/可空权限码 → SysUser | 按 id 锁定数据范围内可操作的用户（FOR UPDATE）；permission_code 非空时同时校验功能权限 |
+| LockSysUserByID | :one | id → SysUser | 按 id 锁定未软删的用户（FOR UPDATE，不判可见性）：角色分配/撤销路径按新方案不要求目标可见，按 ID 锁目标串行化并发分配 |
 | InsertSysUser | :one | 用户字段 + 操作者 → SysUser | 插入用户记录；租户取会话 app.tenant_id |
 | UpdateSysUser | :one | 可变字段 + 操作者 + id → SysUser | 更新可变字段（不含 password 与归属三元组）；updated_at 由触发器刷新 |
 | SetSysUserPassword | :execrows | 密码哈希 + 操作者 + id → 行数 | 替换口令哈希 |
@@ -427,8 +440,10 @@ schema/30_user.sql 的列注释 DSL 声明（ParseSysUserGroupQuery 等顶层
 
 ### sys_role.sql（角色固定 CRUD 与数据范围/菜单授权映射）
 
-角色是租户内资源（表无 @scope，租户内全可见）；动态查询能力由
-schema/40_rbac.sql 的列注释 DSL 声明（ParseSysRoleQuery 等顶层函数为
+角色是租户内资源（租户边界由 RLS 承担，行级可见性由表级 @scope 守卫
+fn_visible_role_ids 与详情点查 fn_can_see_role 承担，共用同一 A AND G
+口径）；动态查询能力由
+schema/40_rbac.sql 的表/列注释 DSL 声明（ParseSysRoleQuery 等顶层函数为
 生成物）。数据范围明细 sys_role_id_scope、分发部门
 sys_role_allowed_dept 与角色-菜单映射 sys_role_menu 不单独立资源，随
 宿主角色的管理面维护：设置走差量同步——事务内先锁角色行、读活跃行
@@ -443,7 +458,8 @@ fn_can_assign_role / fn_has_permission）都以角色表 status=1 且未删除
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
-| GetSysRoleByID | :one | id → SysRole | 按 id 读取未软删的角色（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| GetSysRoleByID | :one | id → SysRole | 按 id 读取未软删的角色（租户边界由 RLS 承担；写路径与已授权事务内回读用） |
+| GetSysRoleVisibleByID | :one | id/操作者 → SysRole | 按 id 读取操作人可见的未软删角色（fn_can_see_role：A AND G 共用判定；不可见等同不存在；详情读面专用） |
 | LockSysRoleByID | :one | id → SysRole | 按 id 锁定未软删的角色（FOR UPDATE，角色与其明细/映射的写路径先锁后写） |
 | InsertSysRole | :one | 角色字段 + 操作者 → SysRole | 插入角色记录；租户取会话 app.tenant_id；code/name 唯一冲突映射 AlreadyExists |
 | UpdateSysRole | :one | name/status/remark + 操作者 + id → SysRole | 更新可变字段（不含 code/role_type 与 data_scope/scope_dept_id——身份列与数据范围配置不经本路径变更）；updated_at 由触发器刷新 |

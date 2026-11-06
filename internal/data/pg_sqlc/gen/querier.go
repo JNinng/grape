@@ -20,9 +20,12 @@ type Querier interface {
 	AddSysRoleMenu(ctx context.Context, arg AddSysRoleMenuParams) (int64, error)
 	// 批量写入成员映射；租户取会话 app.tenant_id，重复添加跳过
 	AddSysUserGroupMembers(ctx context.Context, arg AddSysUserGroupMembersParams) (int64, error)
-	// 写入一条用户-角色映射；租户取会话 app.tenant_id，重复分配跳过
+	// 写入一条用户-角色映射；id 为应用层发号主键，租户取会话
+	// app.tenant_id，与活跃映射冲突（部分唯一索引）时跳过
 	AssignUserRole(ctx context.Context, arg AssignUserRoleParams) error
-	// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过
+	// 批量写入用户-角色映射，返回实际新增行数；已拥有的角色跳过。ids 与
+	// role_ids 下标对齐（应用层发号，按 WITH ORDINALITY 序号取位），撤销改
+	// 软删后重复授予插入新行、历史不覆盖
 	AssignUserRoles(ctx context.Context, arg AssignUserRolesParams) (int64, error)
 	// 判断操作者能否把指定角色授予目标用户
 	CanAssignRole(ctx context.Context, arg CanAssignRoleParams) (bool, error)
@@ -30,6 +33,14 @@ type Querier interface {
 	CanAssignRoles(ctx context.Context, arg CanAssignRolesParams) ([]CanAssignRolesRow, error)
 	// 判断操作者能否修改/删除指定归属的数据（读写同权）
 	CanOperateRow(ctx context.Context, arg CanOperateRowParams) (bool, error)
+	// 判断操作者能否撤销目标用户的指定角色映射（状态放宽：禁用/软删也可撤）
+	CanRevokeRole(ctx context.Context, arg CanRevokeRoleParams) (bool, error)
+	// 逐角色判断角色列表能否从目标用户撤销，每行返回 (role_id, ok)
+	CanRevokeRoles(ctx context.Context, arg CanRevokeRolesParams) ([]CanRevokeRolesRow, error)
+	// 判断操作者能否看见指定角色（角色读面共用判定）
+	CanSeeRole(ctx context.Context, arg CanSeeRoleParams) (bool, error)
+	// 判断操作者能否把新归属三元组挂上（存在、启用且在可见范围内；NULL=无该归属）
+	CanSetOwner(ctx context.Context, arg CanSetOwnerParams) (bool, error)
 	// 判断操作者能否把数据的归属从旧三元组改为新三元组（旧数据可操作
 	// 且新归属可达）
 	CanTransferOwner(ctx context.Context, arg CanTransferOwnerParams) (bool, error)
@@ -87,9 +98,10 @@ type Querier interface {
 	DeleteSysRoleIDScope(ctx context.Context, arg DeleteSysRoleIDScopeParams) (int64, error)
 	// 清除指定的一条角色-菜单映射（物理删除；解除授权即删除）
 	DeleteSysRoleMenu(ctx context.Context, arg DeleteSysRoleMenuParams) (int64, error)
-	// 批量解除用户-角色映射：只删除操作者按 fn_can_assign_role 仍可分配
-	// （授予/撤销同口径）的角色；调用方要求受影响行数等于请求数，否则整批
-	// 回滚。映射行无可变业务字段，解除走物理删除
+	// 批量撤销用户-角色映射（软删留痕：deleted_at/deleted_by 记撤销人）：
+	// 只撤销操作者按 fn_can_revoke_role（可见性 + 目标范围，放宽角色/目标
+	// 状态校验）仍可撤销的角色；调用方要求受影响行数等于请求数，否则整批
+	// 回滚
 	DeleteUserRoles(ctx context.Context, arg DeleteUserRolesParams) (int64, error)
 	// 会话级活跃许可：许可评估第一优先（会话级先于全局级，次序由用例层
 	// 编排）；tenant_id 显式过滤是 RLS 之外的应用层兜底（与向量层隔离口径一致）
@@ -171,9 +183,11 @@ type Querier interface {
 	GetSysOperationLogByID(ctx context.Context, id int64) (SysOperationLog, error)
 	// 角色固定 CRUD（sys_role）与数据范围明细、分发部门、角色-菜单映射的
 	// 读写（sys_role_id_scope / sys_role_allowed_dept / sys_role_menu）。
-	// 角色是租户内资源：表无 @scope，租户边界由 RLS 承担，行级无范围；动态
-	// 查询能力由 schema/40_rbac.sql 的列注释 DSL 声明，本文件只写固定命名
-	// 查询。三张明细/映射表不单独立资源，随宿主角色的管理面维护：
+	// 角色是租户内资源：租户边界由 RLS 承担，行级可见性由表级 @scope 守卫
+	//（动态 List/Count，fn_visible_role_ids）与 fn_can_see_role（详情点查
+	// GetSysRoleVisibleByID）承担，共用同一 A AND G 口径；动态查询能力由
+	// schema/40_rbac.sql 的表/列注释 DSL 声明，本文件只写固定命名查询。
+	// 三张明细/映射表不单独立资源，随宿主角色的管理面维护：
 	// sys_role_id_scope 与 sys_role_allowed_dept 是配置明细行（软删架构），
 	// 设置走差量同步——移除走物理删除（避免重复配置堆积软删残留），补建
 	// 记录配置人，既有命中行保留原审计；sys_role_menu 映射行无可变业务字段
@@ -187,6 +201,10 @@ type Querier interface {
 	// 可见副作用。
 	// 按 id 读取未软删的角色（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysRoleByID(ctx context.Context, id int64) (SysRole, error)
+	// 按 id 读取操作人可见的未软删角色（fn_can_see_role：A AND G 共用判定；
+	// 不可见等同不存在，不泄露存在性；详情读面专用，写路径仍走
+	// GetSysRoleByID/LockSysRoleByID）
+	GetSysRoleVisibleByID(ctx context.Context, arg GetSysRoleVisibleByIDParams) (SysRole, error)
 	// 租户固定 CRUD（sys_tenant）。租户树的每一行归属其父租户（tenant_id
 	// 列），RLS 策略 sys_tenant_tenant_isolation 允许命中 tenant_id =
 	// app.tenant_id 或 id = app.tenant_id 的行：平台租户可读写自身与直接
@@ -224,7 +242,7 @@ type Querier interface {
 	GetUserRoles(ctx context.Context, userID int64) ([]SysRole, error)
 	// 判断用户是否持有指定功能权限码（角色→菜单→权限码，与数据范围正交）
 	HasPermission(ctx context.Context, arg HasPermissionParams) (bool, error)
-	// 判断用户是否拥有指定角色
+	// 判断用户是否拥有指定角色的活跃映射
 	HasUserRole(ctx context.Context, arg HasUserRoleParams) (bool, error)
 	// 写入一条授权确认审计；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentConfirmationLog(ctx context.Context, arg InsertAgentConfirmationLogParams) (AgentConfirmationLog, error)
@@ -303,17 +321,18 @@ type Querier interface {
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentToolCallLogs(ctx context.Context, arg ListAgentToolCallLogsParams) ([]AgentToolCallLog, error)
 	// 用户分配选择器与「管理范围内的整组替换」的固定命名查询。
-	// 角色分配复用 operate.sql 的判定函数与写入查询（fn_can_assign_role /
-	// fn_can_assign_roles / AssignUserRoles），本文件只补选择器候选、当前
-	// 角色集合、撤销写入与指定权限码的角色计数。全部查询经 IdentityTx 在
-	// 租户事务内执行（RLS 承担租户边界），操作者由认证上下文注入。
+	// 角色分配/撤销复用 operate.sql 的判定函数与写入查询（fn_can_assign_role /
+	// fn_can_assign_roles / fn_can_revoke_role / AssignUserRoles），本文件只补
+	// 选择器候选、当前角色集合、撤销写入与指定权限码的角色计数。全部查询经
+	// IdentityTx 在租户事务内执行（RLS 承担租户边界），操作者由认证上下文注入。
 	//
 	// 关键字搜索统一用 strpos(lower(col), lower(keyword)) > 0（避免 LIKE
 	// 通配符转义），keyword 为空串不过滤；分页以 limit+1 / offset 实现，
 	// total 不计算（调用方裁掉多取的一行判定 has_more）。
 	// 读取目标用户可分配、且尚未拥有的活跃角色（操作者按 fn_can_assign_role
 	// 判定；角色匹配 name/code，按 name/id 稳定排序）；limit 由调用方传
-	// page_size+1 以判定 has_more
+	// page_size+1 以判定 has_more。「尚未拥有」只按活跃映射排除，已撤销的
+	// 软删历史行不排除（重复授予由部分唯一索引与 ON CONFLICT 兜底）
 	ListAssignableRoleOptions(ctx context.Context, arg ListAssignableRoleOptionsParams) ([]ListAssignableRoleOptionsRow, error)
 	// 归属部门候选：fn_accessible_dept_ids 三态过滤，只返回活跃且未删除的
 	// 部门；关键字匹配 name，label 取 name
@@ -346,8 +365,8 @@ type Querier interface {
 	// 分页返回组成员（联结用户表展示字段；按添加时间升序、user_id 升序稳定
 	// 排序）。已软删用户不出现在结果中（残留映射行被联结过滤）
 	ListSysUserGroupMembers(ctx context.Context, arg ListSysUserGroupMembersParams) ([]ListSysUserGroupMembersRow, error)
-	// 读取用户的全部角色映射（含停用/软删角色的残留映射），升序稳定排序；
-	// 供当前集合与 locked 差集计算
+	// 读取用户的全部活跃角色映射（含停用/软删角色的残留映射；已撤销的
+	// 软删行排除），升序稳定排序；供当前集合与 locked 差集计算
 	ListUserRoleIDs(ctx context.Context, userID int64) ([]int64, error)
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
@@ -361,6 +380,10 @@ type Querier interface {
 	LockSysRoleByID(ctx context.Context, id int64) (SysRole, error)
 	// 按 id 锁定未软删的租户（FOR UPDATE，更新/停用/恢复/删除路径先锁后写）
 	LockSysTenantByID(ctx context.Context, id string) (SysTenant, error)
+	// 按 id 锁定未软删的用户（FOR UPDATE，不判可见性）：角色分配/撤销路径
+	// 按新方案不要求目标可见，按 ID 锁目标串行化并发分配，行锁持有到提交；
+	// 无行等同不存在（NotFound）
+	LockSysUserByID(ctx context.Context, id int64) (SysUser, error)
 	// 按 id 锁定未软删的用户组（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysUserGroupByID(ctx context.Context, id int64) (SysUserGroup, error)

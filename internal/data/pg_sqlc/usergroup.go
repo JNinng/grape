@@ -117,10 +117,24 @@ func (r *userGroupRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Que
 
 // Create 创建用户组：主键由应用层发号（newID），租户取自会话，审计列记
 // 操作者；租户内未删除用户组间 code/name 唯一冲突映射为
-// ErrUserGroupAlreadyExists。
+// ErrUserGroupAlreadyExists。组长归属（owner_user_id，可空）先经
+// fn_can_set_owner 校验（存在、启用且在操作人可见范围内），不通过返回
+// ErrUserGroupInvalidArgument。
 func (r *userGroupRepo) Create(ctx context.Context, auth biz.Identity, g *biz.UserGroup) (*biz.UserGroup, error) {
 	var out *biz.UserGroup
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		if g.OwnerUserID != nil {
+			ok, err := s.Q().CanSetOwner(ctx, gen.CanSetOwnerParams{
+				Operator:  auth.UserID,
+				OwnerUser: g.OwnerUserID,
+			})
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return biz.ErrUserGroupInvalidArgument
+			}
+		}
 		row, err := s.Q().InsertSysUserGroup(ctx, gen.InsertSysUserGroupParams{
 			ID:          newID(),
 			Status:      int16(g.Status),

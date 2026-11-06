@@ -50,8 +50,8 @@ VALUES (1, 1, 1, '2026-06-01 10:00:00.000', 1, '2026-06-01 10:00:00.000', NULL, 
         'admin@example.com', '13800000001', '2026-06-30 08:00:00.000', '超级管理员账号', 'zh-CN') ON CONFLICT DO NOTHING;
 
 -- 用户角色映射：admin → 超级管理员
-INSERT INTO public.sys_user_role_mapping (user_id, role_id, tenant_id, created_by)
-VALUES (1, 101, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_user_role_mapping (id, user_id, role_id, tenant_id, created_by)
+VALUES (900101, 1, 101, 't-super-01', 1) ON CONFLICT DO NOTHING;
 
 -- ===========================
 -- 4. 菜单/权限表 (sys_menu)

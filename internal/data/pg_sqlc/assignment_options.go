@@ -10,8 +10,9 @@ import (
 
 // assignmentRepo 是 biz.AssignmentRepo 的 PostgreSQL 实现：用户分配选择器
 // 候选与「管理范围内整组替换」的角色写入。全部操作经 IdentityTx 在租户
-// 事务内执行（RLS 承担租户边界）；写路径先经 LockSysUserPermitted 锁定
-// 目标行，判定、版本校验与写入同一事务完成。
+// 事务内执行（RLS 承担租户边界）；新分配方案不要求目标用户可见，写路径
+// 先经 LockSysUserByID 按 ID 锁定目标行（串行化并发分配），判定、版本
+// 校验与写入同一事务完成。
 type assignmentRepo struct {
 	data *Data
 }
@@ -21,15 +22,14 @@ func NewAssignmentOptionRepo(data *Data) biz.AssignmentRepo {
 	return &assignmentRepo{data: data}
 }
 
-// ListAssignableRoles 列出目标用户可分配且尚未拥有的活跃角色：目标用户
-// 不可见（GetSysUserPermitted 无行）等同不存在；候选范围由库内
-// fn_can_assign_role 逐角色判定，分页以 limit+1 判定 has_more。
+// ListAssignableRoles 列出目标用户可分配且尚未拥有的活跃角色：目标按 ID
+// 判存在（分配不要求目标可见，不可见仍可分配；不存在/软删等同不存在）；
+// 候选范围由库内 fn_can_assign_role 逐角色判定（可见性 + 目标范围 +
+// 分配权限码），分页以 limit+1 判定 has_more。
 func (r *assignmentRepo) ListAssignableRoles(ctx context.Context, auth biz.Identity, targetUserID int64, q biz.OptionQuery) (*biz.OptionSet, error) {
 	var out *biz.OptionSet
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
-			ID: targetUserID, Operator: auth.UserID, PermissionCode: nil,
-		}); err != nil {
+		if _, err := s.Q().GetSysUserByID(ctx, targetUserID); err != nil {
 			return err
 		}
 		limit, offset := optionLimitOffset(q)
@@ -53,15 +53,14 @@ func (r *assignmentRepo) ListAssignableRoles(ctx context.Context, auth biz.Ident
 	return out, nil
 }
 
-// ListUserRoles 读取目标用户当前可管理角色集合与版本：currentAll 是全部
-// 映射（含停用/软删角色的残留映射），activeCurrent 是其中活跃的角色；
-// 按 fn_can_assign_role 分区后 manageable 返回明细、locked 只计数。
+// ListUserRoles 读取目标用户当前可管理角色集合与版本：目标按 ID 读取
+//（分配读面不要求目标可见）；currentAll 是全部活跃映射（含停用/软删
+// 角色的残留映射），activeCurrent 是其中活跃的角色；按 fn_can_assign_role
+// 分区后 manageable 返回明细、locked 只计数。
 func (r *assignmentRepo) ListUserRoles(ctx context.Context, auth biz.Identity, userID int64) (*biz.UserRoleSet, error) {
 	var out *biz.UserRoleSet
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().GetSysUserPermitted(ctx, gen.GetSysUserPermittedParams{
-			ID: userID, Operator: auth.UserID, PermissionCode: nil,
-		}); err != nil {
+		if _, err := s.Q().GetSysUserByID(ctx, userID); err != nil {
 			return err
 		}
 		set, err := readUserRoleSet(ctx, s, auth.UserID, userID)
@@ -79,19 +78,21 @@ func (r *assignmentRepo) ListUserRoles(ctx context.Context, auth biz.Identity, u
 
 // SetUserRoles 按「管理范围内整组替换」写入角色集合，全部步骤在同一事务：
 //
-//  1. LockSysUserPermitted 锁定目标（不可见等同不存在）；
-//  2. 读全部映射与活跃角色，按 fn_can_assign_role 分区出 manageable/locked；
+//  1. LockSysUserByID 按 ID 锁定目标（不判可见性——分配规则不要求目标
+//     可见；无行等同不存在；行锁串行化并发分配/撤销，与 AssignRoles 共用）；
+//  2. 读全部活跃映射与活跃角色，按 fn_can_assign_role / fn_can_revoke_role
+//     分区出 manageable/revocable/locked（两者皆否才是 locked——撤销改
+//     软删后禁用目标、禁用/软删角色的残留映射仍可撤）；
 //  3. 请求触及 locked、desired 有失活角色、新增角色任一不可分配 → 拒绝；
 //  4. expected_version 与当前 manageable 集合不一致 → Conflict；
 //  5. 操作目标为本人时，最终集合必须至少保留一个带分配权限码的有效角色；
-//  6. 先删 removed（SQL 内再带 fn_can_assign_role 且要求行数相等）、
+//  6. 先软删 removed（SQL 内按 fn_can_revoke_role 判定且要求行数相等，
+//     放宽角色/目标状态校验——禁用用户、并发失活角色也可撤）、
 //     再补 added，最后以最终原集合重算 version 返回。
 func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in biz.SetUserRolesInput) (*biz.UserRoleSet, error) {
 	var out *biz.UserRoleSet
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().LockSysUserPermitted(ctx, gen.LockSysUserPermittedParams{
-			ID: in.UserID, Operator: auth.UserID, PermissionCode: nil,
-		}); err != nil {
+		if _, err := s.Q().LockSysUserByID(ctx, in.UserID); err != nil {
 			return err
 		}
 
@@ -113,6 +114,12 @@ func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in
 		if err != nil {
 			return err
 		}
+		// removed 分支按 fn_can_revoke_role 放宽判定（禁用目标、禁用/软删
+		// 角色也可撤）：既不可分配也不可撤销的既有映射才是 locked。
+		revocable, err := revocableSet(ctx, s, auth.UserID, activeIDs, in.UserID)
+		if err != nil {
+			return err
+		}
 		manageableIDs := make([]int64, 0, len(manageable))
 		lockedIDs := make([]int64, 0, len(currentAll))
 		for _, id := range activeIDs {
@@ -121,12 +128,12 @@ func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in
 			}
 		}
 		for _, id := range currentAll {
-			if !manageable[id] {
+			if !manageable[id] && !revocable[id] {
 				lockedIDs = append(lockedIDs, id)
 			}
 		}
-		// role_ids 只表达可管理范围：触及 locked（范围外/停用/软删角色的
-		// 既有映射）即拒绝，绝不误删调用方看不见的分配。
+		// role_ids 只表达可管理范围：触及 locked（范围外且不可撤销的既有
+		// 映射）即拒绝，绝不误删调用方看不见的分配。
 		for _, id := range in.RoleIDs {
 			if slices.Contains(lockedIDs, id) {
 				return biz.ErrUserAccessDenied
@@ -159,9 +166,14 @@ func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in
 		}
 
 		desiredSet := toIDSet(in.RoleIDs)
-		removed := make([]int64, 0, len(manageableIDs))
-		for _, id := range manageableIDs {
-			if !desiredSet[id] {
+		// 待移除集合 = 当前活跃映射中不在 desired、且可管理或可撤销的
+		// 角色；SQL 内再按 fn_can_revoke_role 终审（行数不齐整批回滚）。
+		removed := make([]int64, 0, len(currentAll))
+		for _, id := range currentAll {
+			if desiredSet[id] {
+				continue
+			}
+			if manageable[id] || revocable[id] {
 				removed = append(removed, id)
 			}
 		}
@@ -190,20 +202,24 @@ func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in
 
 		if len(removed) > 0 {
 			affected, err := s.Q().DeleteUserRoles(ctx, gen.DeleteUserRolesParams{
-				UserID: in.UserID, RoleIds: removed, Operator: auth.UserID,
+				UserID: in.UserID, RoleIds: removed, Operator: &auth.UserID,
 			})
 			if err != nil {
 				return err
 			}
-			// SQL 内已带 fn_can_assign_role：行数不齐说明并发改动或判定不通过，
-			// 整批回滚。
+			// SQL 内按 fn_can_revoke_role 判定并软删：行数不齐说明并发改动或
+			// 判定不通过，整批回滚。
 			if affected != int64(len(removed)) {
 				return biz.ErrUserAccessDenied
 			}
 		}
 		if len(added) > 0 {
+			ids := make([]int64, len(added))
+			for i := range added {
+				ids[i] = newID()
+			}
 			if _, err := s.Q().AssignUserRoles(ctx, gen.AssignUserRolesParams{
-				UserID: in.UserID, RoleIds: added, CreatedBy: auth.UserID,
+				Ids: ids, UserID: in.UserID, RoleIds: added, CreatedBy: auth.UserID,
 			}); err != nil {
 				return err
 			}
@@ -298,9 +314,9 @@ func (r *assignmentRepo) ListOwnerGroupOptions(ctx context.Context, auth biz.Ide
 	return out, nil
 }
 
-// readUserRoleSet 在同一事务内读取目标用户的当前角色集合：全部映射 →
+// readUserRoleSet 在同一事务内读取目标用户的当前角色集合：全部活跃映射 →
 // 活跃角色 → 按 fn_can_assign_role 分区；返回可管理明细（assigned=true）、
-// locked 计数与版本。调用方须已完成目标可见性校验。
+// locked 计数与版本。调用方须已按 ID 确认目标存在。
 func readUserRoleSet(ctx context.Context, s *IdentityTx, operator, userID int64) (*biz.UserRoleSet, error) {
 	currentAll, err := s.Q().ListUserRoleIDs(ctx, userID)
 	if err != nil {
@@ -344,6 +360,27 @@ func assignableSet(ctx context.Context, s *IdentityTx, operator int64, roleIDs [
 	}
 	verdicts, err := s.Q().CanAssignRoles(ctx, gen.CanAssignRolesParams{
 		Operator: operator, RoleIds: roleIDs, Target: target,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range verdicts {
+		if v.Ok {
+			out[v.RoleID] = true
+		}
+	}
+	return out, nil
+}
+
+// revocableSet 调 fn_can_revoke_roles 批量判定角色集合，返回可撤销的
+// role_id 集合（放宽角色/目标状态校验——禁用用户、禁用/软删角色也可撤）。
+func revocableSet(ctx context.Context, s *IdentityTx, operator int64, roleIDs []int64, target int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(roleIDs))
+	if len(roleIDs) == 0 {
+		return out, nil
+	}
+	verdicts, err := s.Q().CanRevokeRoles(ctx, gen.CanRevokeRolesParams{
+		Operator: operator, Target: target, RoleIds: roleIDs,
 	})
 	if err != nil {
 		return nil, err

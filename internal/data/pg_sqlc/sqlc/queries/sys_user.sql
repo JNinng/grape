@@ -27,6 +27,16 @@ WHERE id = sqlc.arg('id')
     OR public.fn_has_permission(sqlc.arg('operator'), sqlc.narg('permission_code')::varchar))
 FOR UPDATE;
 
+-- 按 id 锁定未软删的用户（FOR UPDATE，不判可见性）：角色分配/撤销路径
+-- 按新方案不要求目标可见，按 ID 锁目标串行化并发分配，行锁持有到提交；
+-- 无行等同不存在（NotFound）
+-- name: LockSysUserByID :one
+SELECT *
+FROM public.sys_user
+WHERE id = sqlc.arg('id')
+  AND deleted_at IS NULL
+FOR UPDATE;
+
 -- 插入用户记录；租户取会话 app.tenant_id
 -- name: InsertSysUser :one
 INSERT INTO public.sys_user (id, tenant_id, status, "name", nickname, "password", email, phone,

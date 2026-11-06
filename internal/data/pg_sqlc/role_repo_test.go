@@ -30,9 +30,19 @@ const (
 	roleTenantEmpty = "t-test-02"
 )
 
-// roleAuth 返回指定租户的操作者身份；角色表无 @scope，操作者仅落入审计列。
+// tenantOperators 是各测试租户内有效（启用且未删除）的种子操作者：
+// 角色可见性判定与归属校验都要求有效身份——t-test-01 取 11（testadmin，
+// data_scope=7）、t-test-02 取 5（租户管理员，data_scope=7）、
+// t-super-01 取 1（admin）。
+var tenantOperators = map[string]int64{
+	"t-test-01":  11,
+	"t-test-02":  5,
+	"t-super-01": 1,
+}
+
+// roleAuth 返回指定租户的种子操作者身份。
 func roleAuth(tenant string) biz.Identity {
-	return biz.Identity{TenantID: tenant, UserID: 1}
+	return biz.Identity{TenantID: tenant, UserID: tenantOperators[tenant]}
 }
 
 // mustCreateRole 在指定租户内创建角色，失败即终止用例。
@@ -241,8 +251,8 @@ func TestRoleRepo_create_writes_fields_and_defaults(t *testing.T) {
 	if got.Remark == nil || *got.Remark != "ops role" {
 		t.Fatalf("remark = %+v, want ops role", got.Remark)
 	}
-	if got.CreatedBy != 1 || got.UpdatedBy != 1 || got.DeletedAt != nil {
-		t.Fatalf("audit = (by %d/%d, deleted %+v), want (1/1, nil)", got.CreatedBy, got.UpdatedBy, got.DeletedAt)
+	if got.CreatedBy != auth.UserID || got.UpdatedBy != auth.UserID || got.DeletedAt != nil {
+		t.Fatalf("audit = (by %d/%d, deleted %+v), want (%d/%d, nil)", got.CreatedBy, got.UpdatedBy, got.DeletedAt, auth.UserID, auth.UserID)
 	}
 }
 
@@ -586,8 +596,8 @@ func TestRoleRepo_set_data_scope_preserves_retained_rows_audit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read added row creator: %v", err)
 	}
-	if createdBy2 != 1 || createdBy4 != 1 {
-		t.Fatalf("creators = (retained %d, added %d), want (1, 1)", createdBy2, createdBy4)
+	if createdBy2 != 1 || createdBy4 != auth.UserID {
+		t.Fatalf("creators = (retained %d, added %d), want (1, %d)", createdBy2, createdBy4, auth.UserID)
 	}
 }
 
@@ -717,6 +727,9 @@ func TestRoleRepo_set_menus_replaces_grants_and_preserves_retained_creator(t *te
 	}
 	for _, row := range rows {
 		wantCreator := int64(1)
+		if row.MenuID == 3204 {
+			wantCreator = auth.UserID // 新增授权记当前操作者
+		}
 		if row.CreatedBy != wantCreator {
 			t.Fatalf("menu %d creator = %d, want %d (retained rows keep original grantor)", row.MenuID, row.CreatedBy, wantCreator)
 		}
@@ -883,31 +896,49 @@ func TestRoleRepo_can_assign_role_allowed_dept_mapping_changes_judgment(t *testi
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	// 种子基线：角色 102 分发部门 {2,5}；操作者 7（部门 2，命中映射）可把
-	// 角色分配给用户 10（部门 5，命中映射且不被操作者数据范围覆盖）。
-	if !mustCanAssignRole(t, d, auth, 7, 102, 10) {
-		t.Fatal("seeded mapping must allow operator 7 to assign role 102 to user 10")
+	// 种子基线：角色 102 scope_dept_id=2、分发部门 {2,5}。新方案目标部门
+	// 须同时落入 M 与 subtree(S)（取交集）：用户 2（部门 2）两处命中 →
+	// 可分配；用户 10（部门 5）只命中 M、落在 subtree(2) 之外 → 拒绝
+	//（映射命中不再豁免组织范围）。
+	if !mustCanAssignRole(t, d, auth, 11, 102, 2) {
+		t.Fatal("target dept in both mapping and scope subtree must be assignable")
 	}
-	// 改配分发部门为 {5}（移除操作者所在部门 2）：同一分配被判拒绝。
+	if mustCanAssignRole(t, d, auth, 11, 102, 10) {
+		t.Fatal("target outside scope subtree must be rejected even if dept hits mapping")
+	}
+	// 操作者 7（部门 2，持有分配权限码）：可见部门 {2,7,8} 与映射交集
+	// 非空（A 成立），同样受目标范围交集约束。
+	if !mustCanAssignRole(t, d, auth, 7, 102, 2) {
+		t.Fatal("operator 7 with mapping hit must stay allowed for in-range target")
+	}
+	// 改配分发部门为 {7}：目标 6（部门 7）∈ M ∩ subtree(2) → 可分配；
+	// 目标 2（部门 2）不在收窄后的映射内 → 拒绝。（SetDataScope 对
+	// scope_dept_id 整字段覆盖，须显式保留种子层级限定 2）
+	scopeDept := int64(2)
 	mustSetDataScope(t, d, auth, &biz.RoleDataScope{
 		RoleID:         102,
 		DataScope:      biz.RoleDataScopeDeptSubtree,
-		AllowedDeptIDs: []int64{5},
+		ScopeDeptID:    &scopeDept,
+		AllowedDeptIDs: []int64{7},
 	})
-	if mustCanAssignRole(t, d, auth, 7, 102, 10) {
-		t.Fatal("operator outside mapping without visibility must be rejected")
+	if !mustCanAssignRole(t, d, auth, 7, 102, 6) {
+		t.Fatal("target dept 7 in narrowed mapping and subtree must be assignable")
 	}
-	// 全租户操作者 11 不受映射的操作者侧限制，仍可分配（目标部门仍须命中映射）。
-	if !mustCanAssignRole(t, d, auth, 11, 102, 10) {
-		t.Fatal("tenant-wide operator must stay allowed while target dept is in mapping")
+	if mustCanAssignRole(t, d, auth, 7, 102, 2) {
+		t.Fatal("target dept 2 outside narrowed mapping must be rejected")
 	}
-	// 恢复种子映射 {2,5}：判定恢复基线。
+	// 全租户操作者 11 同样受目标范围交集约束。
+	if !mustCanAssignRole(t, d, auth, 11, 102, 6) {
+		t.Fatal("tenant-wide operator is bounded by the same target range")
+	}
+	// 恢复种子映射 {2,5}：判定恢复基线（scope_dept_id 显式保留 2）。
 	mustSetDataScope(t, d, auth, &biz.RoleDataScope{
 		RoleID:         102,
 		DataScope:      biz.RoleDataScopeDeptSubtree,
+		ScopeDeptID:    &scopeDept,
 		AllowedDeptIDs: []int64{2, 5},
 	})
-	if !mustCanAssignRole(t, d, auth, 7, 102, 10) {
+	if !mustCanAssignRole(t, d, auth, 11, 102, 2) {
 		t.Fatal("restored mapping must restore baseline judgment")
 	}
 }

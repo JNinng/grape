@@ -46,7 +46,9 @@ SQL 对象签名与索引见 [sqlc/README.md](internal/data/pg_sqlc/sqlc/README.
 - 三个归属全空的数据只有全租户角色可见；
 - 用户无效什么都看不到。
 
-`@scope` 只挂在有归属三元组（`owner_user_id` / `owner_dept_id` / `owner_user_group_id`）的表上，当前为 `basic` 与 `sys_user`；其余表租户内全可见。修改推导口径时，列表守卫、单行判定、写前判定三处必须同改。
+`@scope` 挂在两类表上：有归属三元组（`owner_user_id` / `owner_dept_id` / `owner_user_group_id`）的 `basic` 与 `sys_user`（守卫取 `fn_accessible_*` 三件套），以及 `sys_role`（守卫取 `fn_visible_role_ids`——角色可见性与写侧 `fn_can_see_role` 共用同一 A AND G 口径）；其余表租户内全可见。修改推导口径时，列表守卫、单行判定、写前判定三处必须同改。
+
+角色可见性（A AND G）：A=目标角色在 `sys_role_allowed_dept` 的有效映射部门集合（M）为空恒真，非空时要求 M ∩ 操作人可见部门集合 ≠ ∅（命中口径是「可见部门集合」而非「所属部门」，且命中不能替代 G）；G=组织可见范围 `scope_dept_id`（S）为 NULL 时仅全租户操作人（O_d 为 NULL）可见，S 非空时要求 S ∈ O_d 且目标角色 data_scope 档位满足对应条件（D=1/2 操作人存在有效角色 D≠1；D=3 存在 D∉{1,2}；D=4/5/6 该角色的 ID 范围明细全部落在操作人可见集合内；D=7 仅全租户操作人）。角色未软删即可见（不按启用状态过滤——管理面需要看到停用角色；候选接口自行叠加启用过滤）。
 
 ## 写形态
 
@@ -93,54 +95,63 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 | 操作 | 判定函数 |
 |---|---|
 | 修改 / 删除 | `fn_can_operate_row` |
-| 修改归属 | `fn_can_transfer_owner`（旧归属可操作 + 新归属可达） |
-| 分配角色 | `fn_can_assign_role` / `fn_can_assign_roles` |
+| 挂新归属（创建路径） | `fn_can_set_owner`（归属对象存在、启用且在可见范围内） |
+| 修改归属 | `fn_can_transfer_owner`（旧归属可操作 + 新归属经 `fn_can_set_owner`） |
+| 分配角色 | `fn_can_assign_role` / `fn_can_assign_roles`（可见性 `fn_can_see_role` + 目标部门范围 M ∩ subtree(S) + 分配权限码） |
+| 撤销角色 | `fn_can_revoke_role`（沿用可见性 + 目标范围，放宽角色/目标状态校验） |
+| 角色读面 | `fn_can_see_role`（详情）+ `fn_visible_role_ids`（动态 List @scope 守卫），共用 A AND G |
 | 其他业务授权 | 在 `operate.sql` 新增专用 `fn_can_*`，配命名查询并同步索引 |
 
 ### 以 User 增删改为例
 
 | 操作 | 判定与写入 |
 |---|---|
-| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID`。请求可携带归属三元组，按约束应校验新归属可达（口径同 `fn_can_transfer_owner` 的新归属部分）；`CreateUser` 尚未接入该判定 |
+| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：请求未指定归属人时由用例缺省为创建人，归属三元组再经 `fn_can_set_owner` 校验（存在、启用且在可见范围内），不通过 Forbidden；`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID` |
 | 修改 `UpdateUser` | `LockSysUserPermitted` 锁定并判定 → `UpdateSysUser`；不可见返回 NotFound |
 | 删除 `DeleteUser` | `LockSysUserPermitted` 锁定并判定 → `SoftDeleteSysUser` 置 `deleted_at` |
 | 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |
-| 改归属 `TransferUserOwner` | `LockSysUserPermitted`（旧归属）→ `fn_can_transfer_owner`（新归属可达）→ `UpdateSysUserOwner` |
-| 分配角色 `AssignRoles` | `fn_can_assign_roles` 逐角色判定（不锁目标行）→ `AssignUserRoles`；任一 false 整体回滚 |
-| 设置角色 `SetUserRoles` | `LockSysUserPermitted` 锁定目标 → 读全部映射并按 `fn_can_assign_role` 分出 manageable/locked → `fn_can_assign_role` 判新增、`DeleteUserRoles`（SQL 内再判一次）判撤销 → `AssignUserRoles`；版本冲突 Conflict，任意拒绝整批回滚 |
+| 改归属 `TransferUserOwner` | `LockSysUserPermitted`（旧归属）→ `fn_can_transfer_owner`（新归属存在、启用且可达）→ `UpdateSysUserOwner` |
+| 分配角色 `AssignRoles` | `LockSysUserByID` 按 ID 锁目标（不判可见性；不存在返回 NotFound）→ `fn_can_assign_roles` 逐角色判定 → `AssignUserRoles`（应用层发号 id，重复分配跳过）；任一 false 整体回滚 |
+| 设置角色 `SetUserRoles` | `LockSysUserByID` 按 ID 锁目标（不判可见性）→ 读全部活跃映射并按 `fn_can_assign_role` 分出 manageable/locked → `fn_can_assign_role` 判新增、`DeleteUserRoles`（SQL 内按 `fn_can_revoke_role` 判定）软删撤销 → `AssignUserRoles`；版本冲突 Conflict，任意拒绝整批回滚 |
 
 ### 角色整组替换（SetUserRoles）
 
-`SetUserRoles` 只表达调用方**可管理范围**内的目标集合：locked 角色（范围外、
-停用/软删角色的残留映射）原样保留，请求触及 locked 返回 Forbidden，绝不误删
-调用方看不见的分配。不变量：
+`SetUserRoles` 只表达调用方**可管理范围**内的目标集合：locked 角色（新分配
+判定不可达的既有映射，含范围外与停用/软删角色的残留映射）原样保留，请求
+触及 locked 返回 Forbidden，绝不误删调用方看不见的分配。不变量：
 
-1. 目标必须可见：`LockSysUserPermitted` 锁定目标行，无行等同不存在（NotFound）。
-2. managed/locked 分区：`currentAll`（全部映射）→ `activeCurrent`（活跃角色）→
-   `fn_can_assign_role` 逐角色判定；`locked = currentAll - manageable`。
-3. `desired` 必须全部是活跃角色；新增/撤销同口径要求 `fn_can_assign_role=true`，
-   任一不通过整批回滚。`DeleteUserRoles` 在 SQL 内再带一次判定，受影响行数
-   与请求数不等同样回滚。
+1. 目标按 ID 定位：`LockSysUserByID` 锁定目标行——新分配方案不要求目标
+   可见，无行等同不存在（NotFound）；行锁与 `AssignRoles` 共用，串行化
+   并发分配/撤销。
+2. managed/locked 分区（依据新分配判定）：`currentAll`（全部活跃映射）→
+   `activeCurrent`（活跃角色）→ `fn_can_assign_role` 逐角色判定；
+   `locked = currentAll - manageable`。
+3. `desired` 必须全部是活跃角色；新增要求 `fn_can_assign_role=true`；撤销
+   分支按 `fn_can_revoke_role` 判定并软删（放宽角色/目标状态校验——禁用
+   用户、并发失活的 manageable 角色也可撤），`DeleteUserRoles` 在 SQL 内
+   再带一次判定，受影响行数与请求数不等同样回滚。禁用/软删角色的残留
+   映射属 locked，整组替换不触碰（与「locked 只计数不暴露明细」一致）。
 4. 版本 `sha256("<user_id>|<升序 manageable ID 逗号列表>")`，`ListUserRoles` 与
    `SetUserRoles` 共用同一 helper；与 `expected_version` 不一致返回 Conflict
    （`USER_ROLE_SET_CHANGED`），客户端应重载而非重试。
 5. 自锁保护：目标为操作者本人时，最终集合（locked ∪ desired）至少保留一个
    携带 `sys:user:assign-role` 的有效角色，否则 Forbidden。
 
-目标可见性是这个接口的硬前提；`fn_can_assign_role` 的「操作者部门命中分发
-映射但看不见目标」分支不进入本接口，只能走保留的只增 `AssignRoles`。
-
 ### 选择器候选（Option 契约）
 
-角色候选 `ListAssignableRoles` 先经 `GetSysUserPermitted` 判目标可见，再以
-`fn_can_assign_role` 过滤活跃、可分配且目标尚未拥有的角色；三个归属候选
+角色候选 `ListAssignableRoles` 按 ID 判目标存在（分配不要求目标可见，不可见
+仍可分配），再以 `fn_can_assign_role`（可见性 + 目标部门范围 + 分配权限码）
+过滤活跃、可分配且目标尚未拥有的角色；当前角色 `ListUserRoles` 同样按 ID
+读取目标。三个归属候选
 （`ListOwnerUserOptions` / `ListOwnerDeptOptions` / `ListOwnerGroupOptions`）
 无目标参数，直接按 `fn_accessible_user_ids` / `fn_accessible_dept_ids` /
 `fn_accessible_group_ids` 的三态过滤活跃对象。候选不复用
 `ListUsers`/`ListRoles`/`ListDepts`/`ListUserGroups`：动态查询的 `@scope` 是
-按行归属过滤，不等于「人员可见集」或「可分配角色集」；`where` 恒为 AND 也
+按行归属/可见性过滤，不等于「人员可见集」或「可分配角色集」；`where` 恒为 AND 也
 无法做 name OR code 的跨字段关键字搜索。分页以 limit+1 判定 `has_more`，
-`total` v1 不返回。
+`total` v1 不返回。功能码分离：角色管理读面用 `sys:role:query`，分配候选/
+当前角色属分配面用 `sys:user:assign-role`；可见性判定是数据层，不替代
+功能码。
 
 ## 读形态
 
@@ -148,7 +159,7 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 |---|---|
 | 列表 / 计数 | 动态查询协议；生成代码在 WHERE 头部注入 `@scope` 三维守卫，缺 Scope fail-closed；List 与 Count 共用守卫，`total` 与 `items` 权限视图一致 |
 | 单行 / 详情 | `GetXxxPermitted`：`fn_check_visible`（掩码 7）+ 可空权限码，一条查询完成取行与判定；不可见 → NotFound |
-| 选择器候选 | 专用命名查询：角色候选经 `GetSysUserPermitted` 判目标可见 + `fn_can_assign_role`；归属候选直接按 `fn_accessible_*` 三态过滤；不复用动态 List |
+| 选择器候选 | 专用命名查询：角色候选按 ID 判目标存在 + `fn_can_assign_role`；归属候选直接按 `fn_accessible_*` 三态过滤；不复用动态 List |
 | 外部批量过滤 | `fn_filter_visible_rows`；只读，拒绝表现为空集，不是错误 |
 
 ```sql
@@ -172,7 +183,8 @@ WHERE id = sqlc.arg('id')
 |---|---|
 | 列表 | `ParseSysUserQuery` → `params.Scope = s.SysUserScope()` → `ListSysUser` / `CountSysUser`；守卫由 `@scope` 注入，缺 Scope 报错 |
 | 详情 | `GetSysUserPermitted`（掩码 7；权限码可空）→ 不可见 NotFound，不泄露存在性 |
-| 角色设置/候选 | `ListUserRoles` / `SetUserRoles` / `ListAssignableRoles`：目标经 `GetSysUserPermitted` / `LockSysUserPermitted` 判可见；集合按 `fn_can_assign_role` 分区与过滤 |
+| 角色读面 | `ListRoles` 走动态协议的 `sys_role` @scope 守卫（`fn_visible_role_ids`）；`GetRole` / `GetRoleDataScope` / `ListRoleMenus` 走 `GetSysRoleVisibleByID`（`fn_can_see_role`）——四处共用同一 A AND G 判定，详情按 ID 不得绕过 |
+| 角色设置/候选 | `ListUserRoles` / `SetUserRoles` / `ListAssignableRoles`：目标按 ID 判存在/锁定（不判可见性）；集合按 `fn_can_assign_role` 分区与过滤，撤销按 `fn_can_revoke_role` |
 | 归属候选 | 三个 owner options 专用查询按 `fn_accessible_*` 三态过滤；无目标参数 |
 | 登录凭据 | `GetUserCredentialByName` 走 `TenantTx`：身份成立前只注入租户，不做数据范围判定；仅返回未软删行的口令哈希 |
 
@@ -182,7 +194,8 @@ WHERE id = sqlc.arg('id')
 |---|---|---|
 | 行不存在 / 数据范围不可见 / 权限码不匹配 | NotFound | 不泄露存在性；`LockXxxPermitted` / `GetXxxPermitted` 未命中返回 `pgx.ErrNoRows`，由仓储 `mapErr` 统一映射 |
 | 看得见，但业务授权不允许（分配角色、转归属到不可达对象） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感，明确拒绝 |
-| `SetUserRoles` 请求触及 locked 角色、新增/撤销角色不可分配，或目标为操作者本人时移除最后一个带 `sys:user:assign-role` 的角色（自锁） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感；整批回滚，不产生部分写入 |
+| `SetUserRoles` 请求触及 locked 角色、新增角色不可分配、撤销角色不可撤销，或目标为操作者本人时移除最后一个带 `sys:user:assign-role` 的角色（自锁） | Forbidden（`ErrUserAccessDenied`） | 存在性不敏感；整批回滚，不产生部分写入 |
+| `AssignRoles` / `SetUserRoles` / `ListUserRoles` / `ListAssignableRoles` 的目标不存在或已软删 | NotFound（按 ID 锁定/判定无行） | 分配不要求目标可见，但目标必须存在；不可见目标仍可分配 |
 | `SetUserRoles` 的 `expected_version` 与当前可管理集合不一致 | Conflict（`ErrUserRoleSetChanged` / `USER_ROLE_SET_CHANGED`） | 并发改动要求调用方重载，不是权限拒绝；客户端不自动重试写入 |
 | `expected_version` 缺失/空串、`user_id`/`role_ids` 非正 | InvalidArgument（`ErrUserInvalidArgument`） | 请求参数非法 |
 | `OptionQuery` 越界（page<1、page_size<1 或 >100） | 归一化后正常返回 | page→1、page_size→20/100（对齐成员列表先例） |
@@ -228,8 +241,8 @@ WHERE id = sqlc.arg('id')
 | 内容 | 位置 |
 |---|---|
 | 运行角色授权、RLS 会话变量写入权（`GRANT SET ON PARAMETER`） | [role.sql](internal/data/pg_sqlc/sqlc/role.sql) |
-| 租户 RLS、`fn_accessible_*` 三件套 | [rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) |
-| 写前判断函数 `fn_can_*` | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) |
+| 租户 RLS、`fn_accessible_*` 三件套、`fn_visible_role_ids` 角色可见集合 | [rls.sql](internal/data/pg_sqlc/sqlc/rls.sql) |
+| 写前判断函数 `fn_can_*`（含角色可见性核心 `fn_role_visibility_core` / `fn_can_see_role` / `fn_can_revoke_role` / `fn_can_set_owner`） | [operate.sql](internal/data/pg_sqlc/sqlc/operate.sql) |
 | 只读判定、功能权限码、范围版本 | [expose.sql](internal/data/pg_sqlc/sqlc/expose.sql) |
 | 判定函数的命名查询 | [queries/operate.sql](internal/data/pg_sqlc/sqlc/queries/operate.sql)、[queries/perm.sql](internal/data/pg_sqlc/sqlc/queries/perm.sql) |
 | 取行与判定的合并查询（`GetSysUserPermitted` / `LockSysUserPermitted`） | [queries/sys_user.sql](internal/data/pg_sqlc/sqlc/queries/sys_user.sql) |

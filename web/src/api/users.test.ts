@@ -94,6 +94,20 @@ describe('createUser', () => {
     })
   })
 
+  it('passes_the_selected_ownership_triple_to_the_nested_user', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { id: '1' }))
+
+    await createUser(
+      { name: 'bob', nickname: 'Bob', ownerUserId: '7', ownerDeptId: '3', ownerUserGroupId: '5' },
+      'secret-1',
+    )
+
+    expect(sentBody(fetchMock.mock.calls[0])).toEqual({
+      user: { name: 'bob', nickname: 'Bob', ownerUserId: '7', ownerDeptId: '3', ownerUserGroupId: '5' },
+      password: 'secret-1',
+    })
+  })
+
   it('propagates_the_backend_error_message_on_conflict', async () => {
     fetchMock.mockResolvedValue(jsonResponse(409, { message: 'name already exists' }))
 

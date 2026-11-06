@@ -118,10 +118,24 @@ func (r *userRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (
 
 // Create 创建用户：主键由应用层发号（newID，见 id.go），
 // 租户取自会话，审计列记操作者；租户内 name/email/phone 唯一冲突映射
-// 为 ErrUserAlreadyExists。
+// 为 ErrUserAlreadyExists。请求携带的归属三元组先经 fn_can_set_owner
+// 校验（存在、启用且在操作人可见范围内；与 fn_can_transfer_owner 的
+// 新归属段同口径），不通过返回 ErrUserAccessDenied。
 func (r *userRepo) Create(ctx context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {
 	var out *biz.User
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		ok, err := s.Q().CanSetOwner(ctx, gen.CanSetOwnerParams{
+			Operator:   auth.UserID,
+			OwnerUser:  u.OwnerUserID,
+			OwnerDept:  u.OwnerDeptID,
+			OwnerGroup: u.OwnerUserGroupID,
+		})
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return biz.ErrUserAccessDenied
+		}
 		row, err := s.Q().InsertSysUser(ctx, gen.InsertSysUserParams{
 			ID:               newID(),
 			Status:           int16(u.Status),
@@ -272,11 +286,16 @@ func (r *userRepo) SoftDelete(ctx context.Context, auth biz.Identity, id int64) 
 	}))
 }
 
-// AssignRoles 批量分配角色：fn_can_assign_role 逐角色判定，任一不通过
-// 整体拒绝（不写入任何映射）；目标/角色/操作者无效同样表现为拒绝。
+// AssignRoles 批量分配角色：先按 ID 锁目标行（不判可见性——分配规则
+// 不要求目标可见；无行等同不存在；行锁串行化并发分配，与 SetUserRoles
+// 共用同一把锁），fn_can_assign_role 逐角色判定，任一不通过整体拒绝
+//（不写入任何映射）。
 func (r *userRepo) AssignRoles(ctx context.Context, auth biz.Identity, userID int64, roleIDs []int64) (int64, error) {
 	var added int64
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		if _, err := s.Q().LockSysUserByID(ctx, userID); err != nil {
+			return err
+		}
 		rows, err := s.Q().CanAssignRoles(ctx, gen.CanAssignRolesParams{
 			Operator: auth.UserID, RoleIds: roleIDs, Target: userID,
 		})
@@ -288,8 +307,12 @@ func (r *userRepo) AssignRoles(ctx context.Context, auth biz.Identity, userID in
 				return biz.ErrUserAccessDenied
 			}
 		}
+		ids := make([]int64, len(roleIDs))
+		for i := range roleIDs {
+			ids[i] = newID()
+		}
 		added, err = s.Q().AssignUserRoles(ctx, gen.AssignUserRolesParams{
-			UserID: userID, RoleIds: roleIDs, CreatedBy: auth.UserID,
+			Ids: ids, UserID: userID, RoleIds: roleIDs, CreatedBy: auth.UserID,
 		})
 		return err
 	})

@@ -138,6 +138,7 @@ AS $$
 SELECT EXISTS (SELECT 1
                FROM public.sys_user u
                         JOIN public.sys_user_role_mapping m ON m.user_id = u.id
+                        AND m.deleted_at IS NULL
                         JOIN public.sys_role r ON r.id = m.role_id
                         AND r.status = 1 AND r.deleted_at IS NULL
                         JOIN public.sys_role_menu rm ON rm.role_id = r.id
@@ -156,9 +157,9 @@ COMMENT ON FUNCTION public.fn_has_permission(int8, varchar) IS '查询判断（�
 -- 范围版本：sys_perm_version 表 + bump 触发器
 --
 -- 外部进程缓存可视范围/权限码结果是既定用法，必须有失效信号。
--- 影响判定结果的表里 sys_user_role_mapping、sys_role_id_scope、
--- sys_role_menu 是物理删除且无 updated_at，max(updated_at) 聚合
--- 对删除视而不见，所以版本由触发器维护。
+-- 影响判定结果的表里 sys_user_role_mapping（撤销为软删 UPDATE）、
+-- sys_role_id_scope、sys_role_menu 的变更不会稳定刷新 updated_at，
+-- 所以版本由触发器维护。
 --
 -- 双粒度：
 --   user_id = 0   租户级行——影响多个用户的变更（角色/菜单/组织侧、
