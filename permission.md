@@ -106,7 +106,7 @@ updated, err := s.Q().UpdateSysUser(ctx, params) // 同一事务，行锁持有�
 
 | 操作 | 判定与写入 |
 |---|---|
-| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：请求携带的归属三元组先经 `fn_can_set_owner` 校验（存在、启用且在可见范围内），不通过 Forbidden；`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID` |
+| 新增 `CreateUser` | 无既有行，不适用 `fn_can_operate_row`：请求未指定归属人时由用例缺省为创建人，归属三元组再经 `fn_can_set_owner` 校验（存在、启用且在可见范围内），不通过 Forbidden；`InsertSysUser` 在同一 `IdentityTx` 写入，租户取 `app.tenant_id`，`created_by` / `updated_by` 取 `auth.UserID` |
 | 修改 `UpdateUser` | `LockSysUserPermitted` 锁定并判定 → `UpdateSysUser`；不可见返回 NotFound |
 | 删除 `DeleteUser` | `LockSysUserPermitted` 锁定并判定 → `SoftDeleteSysUser` 置 `deleted_at` |
 | 改密 `SetUserPassword` | `LockSysUserPermitted` 锁定并判定 → `SetSysUserPassword` |

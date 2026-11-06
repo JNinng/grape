@@ -121,10 +121,15 @@ func (uc *UserUsecase) ListUsers(ctx context.Context, auth Identity, q *dynq.Que
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库。
+// CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库；
+// 请求未指定归属人时缺省为创建人，避免落一条所有非全租户角色都不可见的行。
 func (uc *UserUsecase) CreateUser(ctx context.Context, auth Identity, u *User) (*User, error) {
 	if err := validateUserMutable(u); err != nil {
 		return nil, err
+	}
+	if u.OwnerUserID == nil {
+		creator := auth.UserID
+		u.OwnerUserID = &creator
 	}
 	hashed, err := HashPassword(u.Password)
 	if err != nil {
