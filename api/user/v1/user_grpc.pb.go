@@ -35,6 +35,9 @@ const (
 	UserService_ListOwnerUserOptions_FullMethodName  = "/user.v1.UserService/ListOwnerUserOptions"
 	UserService_ListOwnerDeptOptions_FullMethodName  = "/user.v1.UserService/ListOwnerDeptOptions"
 	UserService_ListOwnerGroupOptions_FullMethodName = "/user.v1.UserService/ListOwnerGroupOptions"
+	UserService_GetMyProfile_FullMethodName          = "/user.v1.UserService/GetMyProfile"
+	UserService_UpdateMyProfile_FullMethodName       = "/user.v1.UserService/UpdateMyProfile"
+	UserService_ChangeMyPassword_FullMethodName      = "/user.v1.UserService/ChangeMyPassword"
 )
 
 // UserServiceClient is the client API for UserService service.
@@ -94,6 +97,15 @@ type UserServiceClient interface {
 	ListOwnerDeptOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
 	// ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
 	ListOwnerGroupOptions(ctx context.Context, in *ListOwnerOptionsRequest, opts ...grpc.CallOption) (*v1.OptionSet, error)
+	// GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+	// 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+	GetMyProfile(ctx context.Context, in *GetMyProfileRequest, opts ...grpc.CallOption) (*User, error)
+	// UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+	// 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+	UpdateMyProfile(ctx context.Context, in *UpdateMyProfileRequest, opts ...grpc.CallOption) (*User, error)
+	// ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+	// 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+	ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type userServiceClient struct {
@@ -244,6 +256,36 @@ func (c *userServiceClient) ListOwnerGroupOptions(ctx context.Context, in *ListO
 	return out, nil
 }
 
+func (c *userServiceClient) GetMyProfile(ctx context.Context, in *GetMyProfileRequest, opts ...grpc.CallOption) (*User, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(User)
+	err := c.cc.Invoke(ctx, UserService_GetMyProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) UpdateMyProfile(ctx context.Context, in *UpdateMyProfileRequest, opts ...grpc.CallOption) (*User, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(User)
+	err := c.cc.Invoke(ctx, UserService_UpdateMyProfile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, UserService_ChangeMyPassword_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UserServiceServer is the server API for UserService service.
 // All implementations must embed UnimplementedUserServiceServer
 // for forward compatibility.
@@ -301,6 +343,15 @@ type UserServiceServer interface {
 	ListOwnerDeptOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
 	// ListOwnerGroupOptions 返回归属用户组候选（操作者可见范围内的活跃组）。
 	ListOwnerGroupOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error)
+	// GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+	// 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+	GetMyProfile(context.Context, *GetMyProfileRequest) (*User, error)
+	// UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+	// 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+	UpdateMyProfile(context.Context, *UpdateMyProfileRequest) (*User, error)
+	// ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+	// 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+	ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
 
@@ -352,6 +403,15 @@ func (UnimplementedUserServiceServer) ListOwnerDeptOptions(context.Context, *Lis
 }
 func (UnimplementedUserServiceServer) ListOwnerGroupOptions(context.Context, *ListOwnerOptionsRequest) (*v1.OptionSet, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOwnerGroupOptions not implemented")
+}
+func (UnimplementedUserServiceServer) GetMyProfile(context.Context, *GetMyProfileRequest) (*User, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMyProfile not implemented")
+}
+func (UnimplementedUserServiceServer) UpdateMyProfile(context.Context, *UpdateMyProfileRequest) (*User, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateMyProfile not implemented")
+}
+func (UnimplementedUserServiceServer) ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ChangeMyPassword not implemented")
 }
 func (UnimplementedUserServiceServer) mustEmbedUnimplementedUserServiceServer() {}
 func (UnimplementedUserServiceServer) testEmbeddedByValue()                     {}
@@ -626,6 +686,60 @@ func _UserService_ListOwnerGroupOptions_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_GetMyProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).GetMyProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_GetMyProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).GetMyProfile(ctx, req.(*GetMyProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_UpdateMyProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateMyProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UpdateMyProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UpdateMyProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UpdateMyProfile(ctx, req.(*UpdateMyProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ChangeMyPassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChangeMyPasswordRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ChangeMyPassword(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ChangeMyPassword_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ChangeMyPassword(ctx, req.(*ChangeMyPasswordRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // UserService_ServiceDesc is the grpc.ServiceDesc for UserService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -688,6 +802,18 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOwnerGroupOptions",
 			Handler:    _UserService_ListOwnerGroupOptions_Handler,
+		},
+		{
+			MethodName: "GetMyProfile",
+			Handler:    _UserService_GetMyProfile_Handler,
+		},
+		{
+			MethodName: "UpdateMyProfile",
+			Handler:    _UserService_UpdateMyProfile_Handler,
+		},
+		{
+			MethodName: "ChangeMyPassword",
+			Handler:    _UserService_ChangeMyPassword_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

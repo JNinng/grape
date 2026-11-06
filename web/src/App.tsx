@@ -12,6 +12,7 @@ import { ConfigManagePage } from './pages/settings/ConfigManagePage'
 import { DeptManagePage } from './pages/settings/DeptManagePage'
 import { DictManagePage } from './pages/settings/DictManagePage'
 import { MenuManagePage } from './pages/settings/MenuManagePage'
+import { ProfilePage } from './pages/settings/ProfilePage'
 import { RoleManagePage } from './pages/settings/RoleManagePage'
 import { SessionManagePage } from './pages/settings/SessionManagePage'
 import { SettingsIndexRedirect, SettingsLayout } from './pages/settings/SettingsLayout'
@@ -70,9 +71,10 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* 管理页子路由：按已交付页面注册。索引路由按权限码跳转到第一个
-           * 有权限的模块，避免先落到无权页面。 */}
+          {/* 管理页子路由：按已交付页面注册。索引路由优先跳转到第一个
+           * 有权限的管理模块，无管理权限时落到个人中心。 */}
           <Route index element={<SettingsIndexRedirect />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="users" element={<UserManagePage />} />
           <Route path="depts" element={<DeptManagePage />} />
           <Route path="user-groups" element={<UserGroupManagePage />} />

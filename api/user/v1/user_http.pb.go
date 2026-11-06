@@ -20,8 +20,10 @@ var _ = new(context.Context)
 const _ = http.SupportPackageIsVersion3
 
 const OperationUserServiceAssignRoles = "/user.v1.UserService/AssignRoles"
+const OperationUserServiceChangeMyPassword = "/user.v1.UserService/ChangeMyPassword"
 const OperationUserServiceCreateUser = "/user.v1.UserService/CreateUser"
 const OperationUserServiceDeleteUser = "/user.v1.UserService/DeleteUser"
+const OperationUserServiceGetMyProfile = "/user.v1.UserService/GetMyProfile"
 const OperationUserServiceGetUser = "/user.v1.UserService/GetUser"
 const OperationUserServiceListAssignableRoles = "/user.v1.UserService/ListAssignableRoles"
 const OperationUserServiceListOwnerDeptOptions = "/user.v1.UserService/ListOwnerDeptOptions"
@@ -32,6 +34,7 @@ const OperationUserServiceListUsers = "/user.v1.UserService/ListUsers"
 const OperationUserServiceSetUserPassword = "/user.v1.UserService/SetUserPassword"
 const OperationUserServiceSetUserRoles = "/user.v1.UserService/SetUserRoles"
 const OperationUserServiceTransferUserOwner = "/user.v1.UserService/TransferUserOwner"
+const OperationUserServiceUpdateMyProfile = "/user.v1.UserService/UpdateMyProfile"
 const OperationUserServiceUpdateUser = "/user.v1.UserService/UpdateUser"
 
 type UserServiceHTTPServer interface {
@@ -40,6 +43,9 @@ type UserServiceHTTPServer interface {
 	// 可见性 + 目标部门范围 + 分配权限码），全部通过才写入映射；任一不通过
 	// 整批拒绝（FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
 	AssignRoles(context.Context, *AssignRolesRequest) (*AssignRolesReply, error)
+	// ChangeMyPassword ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+	// 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+	ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*emptypb.Empty, error)
 	// CreateUser CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
 	// 请求携带的归属三元组经库内 fn_can_set_owner 校验（归属对象存在、
 	// 启用且在操作者可见范围内），不通过返回 FORBIDDEN。
@@ -47,6 +53,9 @@ type UserServiceHTTPServer interface {
 	CreateUser(context.Context, *CreateUserRequest) (*User, error)
 	// DeleteUser DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
 	DeleteUser(context.Context, *DeleteUserRequest) (*emptypb.Empty, error)
+	// GetMyProfile GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+	// 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+	GetMyProfile(context.Context, *GetMyProfileRequest) (*User, error)
 	// GetUser GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
 	GetUser(context.Context, *GetUserRequest) (*User, error)
 	// ListAssignableRoles ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
@@ -80,6 +89,9 @@ type UserServiceHTTPServer interface {
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(context.Context, *TransferUserOwnerRequest) (*User, error)
+	// UpdateMyProfile UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+	// 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+	UpdateMyProfile(context.Context, *UpdateMyProfileRequest) (*User, error)
 	// UpdateUser UpdateUser 覆盖可变字段（name、nickname、email、phone、remark、
 	// locale、status）。password、归属三元组与时间戳不由本接口写入。
 	UpdateUser(context.Context, *UpdateUserRequest) (*User, error)
@@ -101,6 +113,9 @@ func RegisterUserServiceHTTPServer(s *http.Server, srv UserServiceHTTPServer) {
 	r.Handle("POST", "/v1/users/owner-user-options", _UserService_ListOwnerUserOptions0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/users/owner-dept-options", _UserService_ListOwnerDeptOptions0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/users/owner-group-options", _UserService_ListOwnerGroupOptions0_HTTP_Handler(srv))
+	r.Handle("GET", "/v1/profile", _UserService_GetMyProfile0_HTTP_Handler(srv))
+	r.Handle("PUT", "/v1/profile", _UserService_UpdateMyProfile0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/profile/password", _UserService_ChangeMyPassword0_HTTP_Handler(srv))
 }
 
 func _UserService_CreateUser0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
@@ -384,12 +399,72 @@ func _UserService_ListOwnerGroupOptions0_HTTP_Handler(srv UserServiceHTTPServer)
 	}
 }
 
+func _UserService_GetMyProfile0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetMyProfileRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceGetMyProfile)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetMyProfile(ctx, req.(*GetMyProfileRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*User)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_UpdateMyProfile0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in UpdateMyProfileRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceUpdateMyProfile)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.UpdateMyProfile(ctx, req.(*UpdateMyProfileRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*User)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _UserService_ChangeMyPassword0_HTTP_Handler(srv UserServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ChangeMyPasswordRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationUserServiceChangeMyPassword)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ChangeMyPassword(ctx, req.(*ChangeMyPasswordRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*emptypb.Empty)
+		return ctx.Result(200, reply)
+	}
+}
+
 type UserServiceHTTPClient interface {
 	// AssignRoles AssignRoles 把多个角色分配给目标用户：先按 ID 锁定目标（不判可见性，
 	// 不存在返回 NOT_FOUND），再经库内批量判定（fn_can_assign_role：角色
 	// 可见性 + 目标部门范围 + 分配权限码），全部通过才写入映射；任一不通过
 	// 整批拒绝（FORBIDDEN）。已拥有的角色跳过，返回实际新增条数。
 	AssignRoles(ctx context.Context, req *AssignRolesRequest, opts ...http.CallOption) (rsp *AssignRolesReply, err error)
+	// ChangeMyPassword ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+	// 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+	ChangeMyPassword(ctx context.Context, req *ChangeMyPasswordRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// CreateUser CreateUser 创建用户并设置初始密码（服务端哈希后落库）。
 	// 请求携带的归属三元组经库内 fn_can_set_owner 校验（归属对象存在、
 	// 启用且在操作者可见范围内），不通过返回 FORBIDDEN。
@@ -397,6 +472,9 @@ type UserServiceHTTPClient interface {
 	CreateUser(ctx context.Context, req *CreateUserRequest, opts ...http.CallOption) (rsp *User, err error)
 	// DeleteUser DeleteUser 软删除用户（deleted_at 置位，租户内唯一键随之可复用）。
 	DeleteUser(ctx context.Context, req *DeleteUserRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
+	// GetMyProfile GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+	// 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+	GetMyProfile(ctx context.Context, req *GetMyProfileRequest, opts ...http.CallOption) (rsp *User, err error)
 	// GetUser GetUser 按 id 查询单个用户。数据范围不可见等同不存在。
 	GetUser(ctx context.Context, req *GetUserRequest, opts ...http.CallOption) (rsp *User, err error)
 	// ListAssignableRoles ListAssignableRoles 返回目标用户可分配、且尚未拥有的活跃角色
@@ -430,6 +508,9 @@ type UserServiceHTTPClient interface {
 	// 有权操作，且新归属的人/部门/组在可见范围内，否则 FORBIDDEN。
 	// 归属字段传 null 表示清掉该归属。
 	TransferUserOwner(ctx context.Context, req *TransferUserOwnerRequest, opts ...http.CallOption) (rsp *User, err error)
+	// UpdateMyProfile UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+	// 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+	UpdateMyProfile(ctx context.Context, req *UpdateMyProfileRequest, opts ...http.CallOption) (rsp *User, err error)
 	// UpdateUser UpdateUser 覆盖可变字段（name、nickname、email、phone、remark、
 	// locale、status）。password、归属三元组与时间戳不由本接口写入。
 	UpdateUser(ctx context.Context, req *UpdateUserRequest, opts ...http.CallOption) (rsp *User, err error)
@@ -455,6 +536,25 @@ func (c *UserServiceHTTPClientImpl) AssignRoles(ctx context.Context, in *AssignR
 		http.Accept("application/protojson"),
 		http.ContentType("application/protojson"),
 		http.Operation(OperationUserServiceAssignRoles),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ChangeMyPassword ChangeMyPassword 校验当前口令后替换为新口令（服务端哈希后落库）。
+// 当前口令不匹配返回 INVALID_ARGUMENT，不触发会话失效。
+func (c *UserServiceHTTPClientImpl) ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
+	var out emptypb.Empty
+	pattern := "/v1/profile/password"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceChangeMyPassword),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
@@ -496,6 +596,24 @@ func (c *UserServiceHTTPClientImpl) DeleteUser(ctx context.Context, in *DeleteUs
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "DELETE", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetMyProfile GetMyProfile 返回当前认证用户的个人资料。目标恒取认证身份，请求不
+// 携带定位参数，也不设功能权限码；只暴露个人中心可维护的字段。
+func (c *UserServiceHTTPClientImpl) GetMyProfile(ctx context.Context, in *GetMyProfileRequest, opts ...http.CallOption) (*User, error) {
+	var out User
+	pattern := "/v1/profile"
+	path := http.BuildPath(pattern, in, http.WithQueryParams())
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.Operation(OperationUserServiceGetMyProfile),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -687,6 +805,25 @@ func (c *UserServiceHTTPClientImpl) TransferUserOwner(ctx context.Context, in *T
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// UpdateMyProfile UpdateMyProfile 覆盖当前认证用户的可编辑资料（昵称、邮箱、手机号、
+// 备注、语言）。用户名、状态、归属三元组与时间戳不由本接口写入。
+func (c *UserServiceHTTPClientImpl) UpdateMyProfile(ctx context.Context, in *UpdateMyProfileRequest, opts ...http.CallOption) (*User, error) {
+	var out User
+	pattern := "/v1/profile"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationUserServiceUpdateMyProfile),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "PUT", path, in, &out, opts...)
 	if err != nil {
 		return nil, err
 	}

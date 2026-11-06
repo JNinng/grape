@@ -184,3 +184,48 @@ export async function transferUserOwner(id: string, to: OwnerTripleInput): Promi
   }
   return (await res.json()) as UserDTO
 }
+
+// UpdateMyProfileInput 对齐 user.v1.UpdateMyProfileRequest：覆盖语义，
+// email/phone/remark 缺省或空串表示清空。
+export interface UpdateMyProfileInput {
+  nickname: string
+  email?: string
+  phone?: string
+  remark?: string
+  locale?: string
+}
+
+// getMyProfile 调用 GET /v1/profile：目标恒取认证身份，不设权限码。
+export async function getMyProfile(): Promise<UserDTO> {
+  const res = await authFetch('/v1/profile')
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+  return (await res.json()) as UserDTO
+}
+
+// updateMyProfile 调用 PUT /v1/profile：覆盖当前用户可编辑资料。
+export async function updateMyProfile(input: UpdateMyProfileInput): Promise<UserDTO> {
+  const res = await authFetch('/v1/profile', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: compact(input),
+  })
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+  return (await res.json()) as UserDTO
+}
+
+// changeMyPassword 调用 POST /v1/profile/password：先校验当前口令；
+// 不匹配返回 400 USER_PASSWORD_MISMATCH（不触发会话失效）。
+export async function changeMyPassword(oldPassword: string, newPassword: string): Promise<void> {
+  const res = await authFetch('/v1/profile/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: compact({ oldPassword, newPassword }),
+  })
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+}

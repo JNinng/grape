@@ -9,6 +9,59 @@ import (
 	"context"
 )
 
+const getMyPasswordHash = `-- name: GetMyPasswordHash :one
+SELECT "password" AS password_hash
+FROM public.sys_user
+WHERE id = $1
+  AND deleted_at IS NULL
+`
+
+// 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验）
+func (q *Queries) GetMyPasswordHash(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRow(ctx, getMyPasswordHash, id)
+	var password_hash string
+	err := row.Scan(&password_hash)
+	return password_hash, err
+}
+
+const getMyProfileByID = `-- name: GetMyProfileByID :one
+SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+FROM public.sys_user
+WHERE id = $1
+  AND deleted_at IS NULL
+`
+
+// 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
+// 定位参数；不判行级归属，RLS 仍强制租户边界；属身份成立后的内部回读例外）
+func (q *Queries) GetMyProfileByID(ctx context.Context, id int64) (SysUser, error) {
+	row := q.db.QueryRow(ctx, getMyProfileByID, id)
+	var i SysUser
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.Password,
+		&i.Email,
+		&i.Phone,
+		&i.Remark,
+		&i.Locale,
+		&i.LastLoginAt,
+		&i.FailedCount,
+		&i.LockedUntil,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
+	)
+	return i, err
+}
+
 const getSysUserByID = `-- name: GetSysUserByID :one
 SELECT id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.sys_user
 WHERE id = $1
@@ -286,6 +339,28 @@ func (q *Queries) LockSysUserPermitted(ctx context.Context, arg LockSysUserPermi
 	return i, err
 }
 
+const setMyPassword = `-- name: SetMyPassword :execrows
+UPDATE public.sys_user
+SET "password" = $1, updated_by = $2
+WHERE id = $3
+  AND deleted_at IS NULL
+`
+
+type SetMyPasswordParams struct {
+	Password  string `db:"password" json:"password"`
+	UpdatedBy int64  `db:"updated_by" json:"updated_by"`
+	ID        int64  `db:"id" json:"id"`
+}
+
+// 个人中心专用：替换本人口令哈希
+func (q *Queries) SetMyPassword(ctx context.Context, arg SetMyPasswordParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setMyPassword, arg.Password, arg.UpdatedBy, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setSysUserPassword = `-- name: SetSysUserPassword :execrows
 UPDATE public.sys_user
 SET "password" = $1, updated_by = $2
@@ -326,6 +401,68 @@ func (q *Queries) SoftDeleteSysUser(ctx context.Context, arg SoftDeleteSysUserPa
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const updateMyProfile = `-- name: UpdateMyProfile :one
+UPDATE public.sys_user
+SET nickname = $1,
+    email    = $2,
+    phone    = $3,
+    remark   = $4,
+    locale   = $5,
+    updated_by = $6
+WHERE id = $7
+  AND deleted_at IS NULL
+RETURNING id, status, name, nickname, password, email, phone, remark, locale, last_login_at, failed_count, locked_until, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+`
+
+type UpdateMyProfileParams struct {
+	Nickname  string  `db:"nickname" json:"nickname"`
+	Email     *string `db:"email" json:"email"`
+	Phone     *string `db:"phone" json:"phone"`
+	Remark    *string `db:"remark" json:"remark"`
+	Locale    string  `db:"locale" json:"locale"`
+	UpdatedBy int64   `db:"updated_by" json:"updated_by"`
+	ID        int64   `db:"id" json:"id"`
+}
+
+// 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
+// 目标恒取 auth.UserID，不判行级归属
+func (q *Queries) UpdateMyProfile(ctx context.Context, arg UpdateMyProfileParams) (SysUser, error) {
+	row := q.db.QueryRow(ctx, updateMyProfile,
+		arg.Nickname,
+		arg.Email,
+		arg.Phone,
+		arg.Remark,
+		arg.Locale,
+		arg.UpdatedBy,
+		arg.ID,
+	)
+	var i SysUser
+	err := row.Scan(
+		&i.ID,
+		&i.Status,
+		&i.Name,
+		&i.Nickname,
+		&i.Password,
+		&i.Email,
+		&i.Phone,
+		&i.Remark,
+		&i.Locale,
+		&i.LastLoginAt,
+		&i.FailedCount,
+		&i.LockedUntil,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedBy,
+		&i.UpdatedAt,
+		&i.DeletedAt,
+		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
+	)
+	return i, err
 }
 
 const updateSysUser = `-- name: UpdateSysUser :one

@@ -38,7 +38,7 @@ function renderLayout(initialEntry = '/settings/users') {
 }
 
 // ALL_LABELS 是静态全量模块标签（与 SETTINGS_MODULES 对齐）。
-const ALL_LABELS = ['用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']
+const ALL_LABELS = ['个人中心', '用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']
 
 describe('SettingsLayout navigation filtering', () => {
   it('keeps_only_the_modules_whose_page_code_is_granted_after_loading', async () => {
@@ -47,13 +47,22 @@ describe('SettingsLayout navigation filtering', () => {
     // 授权集合不含 sys:config / sys:tenant：配置与租户导航项一并隐藏。
     expect(await screen.findByRole('link', { name: '用户' })).toBeInTheDocument()
     const nav = screen.getByLabelText('管理模块')
-    for (const label of ['用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话']) {
+    for (const label of ['个人中心', '用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话']) {
       expect(within(nav).getByText(label)).toBeInTheDocument()
     }
     for (const label of ['配置', '租户']) {
       expect(within(nav).queryByText(label)).not.toBeInTheDocument()
     }
     expect(mockFetchMyPermissions).toHaveBeenCalledTimes(1)
+  })
+
+  it('always_shows_the_personal_center_without_any_permission_code', async () => {
+    mockFetchMyPermissions.mockResolvedValue([])
+    renderLayout()
+
+    const nav = screen.getByLabelText('管理模块')
+    expect(await within(nav).findByRole('link', { name: '个人中心' })).toHaveAttribute('href', '/settings/profile')
+    expect(within(nav).queryByText('用户')).not.toBeInTheDocument()
   })
 
   it('falls_back_to_the_full_static_list_when_the_permissions_fetch_fails', async () => {
@@ -92,7 +101,8 @@ describe('SettingsLayout navigation links', () => {
     mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:dept', 'sys:user-group', 'sys:role', 'sys:menu', 'sys:dict', 'sys:audit', 'sys:session', 'sys:config', 'sys:tenant'])
     renderLayout()
 
-    expect(await screen.findByRole('link', { name: '用户' })).toHaveAttribute('href', '/settings/users')
+    expect(await screen.findByRole('link', { name: '个人中心' })).toHaveAttribute('href', '/settings/profile')
+    expect(screen.getByRole('link', { name: '用户' })).toHaveAttribute('href', '/settings/users')
     expect(screen.getByRole('link', { name: '部门' })).toHaveAttribute('href', '/settings/depts')
     expect(screen.getByRole('link', { name: '用户组' })).toHaveAttribute('href', '/settings/user-groups')
     expect(screen.getByRole('link', { name: '角色' })).toHaveAttribute('href', '/settings/roles')
@@ -160,6 +170,7 @@ function renderIndex() {
       <Routes>
         <Route path="/settings" element={<SettingsLayout />}>
           <Route index element={<SettingsIndexRedirect />} />
+          <Route path="profile" element={<div>profile-page</div>} />
           <Route path="users" element={<div>users-page</div>} />
           <Route path="dicts" element={<div>dicts-page</div>} />
           <Route path="audit-logs" element={<div>audit-page</div>} />
@@ -195,11 +206,11 @@ describe('SettingsLayout index redirect', () => {
     expect(await screen.findByText('users-page')).toBeInTheDocument()
   })
 
-  it('shows_an_empty_state_when_no_module_is_permitted', async () => {
+  it('falls_back_to_the_personal_center_when_no_management_module_is_permitted', async () => {
     mockFetchMyPermissions.mockResolvedValue([])
     renderIndex()
 
-    expect(await screen.findByText('暂无可访问的管理模块')).toBeInTheDocument()
+    expect(await screen.findByText('profile-page')).toBeInTheDocument()
     expect(screen.queryByText('users-page')).not.toBeInTheDocument()
   })
 

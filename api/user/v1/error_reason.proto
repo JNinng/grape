@@ -21,4 +21,6 @@ enum ErrorReason {
   USER_ACCESS_DENIED = 4;
   // 角色集合版本冲突：加载后集合已被他人改动，客户端需重载再提交。
   USER_ROLE_SET_CHANGED = 5;
+  // 个人中心改密时当前口令不匹配（400，不触发会话失效）。
+  USER_PASSWORD_MISMATCH = 6;
 }

@@ -118,6 +118,11 @@ type Querier interface {
 	GetAgentToolGrantByID(ctx context.Context, arg GetAgentToolGrantByIDParams) (AgentToolGrant, error)
 	// 按 id 锁定并读取一行 basic（FOR UPDATE）
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
+	// 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验）
+	GetMyPasswordHash(ctx context.Context, id int64) (string, error)
+	// 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
+	// 定位参数；不判行级归属，RLS 仍强制租户边界；属身份成立后的内部回读例外）
+	GetMyProfileByID(ctx context.Context, id int64) (SysUser, error)
 	// 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集
 	GetPermissionCodes(ctx context.Context, userID int64) ([]string, error)
 	// 一次取回三个维度的可见集合；列 NULL 表示全租户不过滤，
@@ -419,6 +424,8 @@ type Querier interface {
 	// 按当前刷新令牌哈希轮换令牌；仅命中启用、未撤销且未过期的会话，
 	// 未命中时更新 0 行
 	RotateSysSession(ctx context.Context, arg RotateSysSessionParams) (SysSession, error)
+	// 个人中心专用：替换本人口令哈希
+	SetMyPassword(ctx context.Context, arg SetMyPasswordParams) (int64, error)
 	// 置位目标状态（停用 0 / 恢复 1，幂等目标状态写）；updated_at 由触发器刷新
 	SetSysTenantStatus(ctx context.Context, arg SetSysTenantStatusParams) (SysTenant, error)
 	// 替换口令哈希
@@ -454,6 +461,9 @@ type Querier interface {
 	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
 	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
+	// 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
+	// 目标恒取 auth.UserID，不判行级归属
+	UpdateMyProfile(ctx context.Context, arg UpdateMyProfileParams) (SysUser, error)
 	// 覆盖可变字段（name/status/value/remark）：调用受控写函数 fn_config_update
 	//（config_key/value_type 是身份/值语义列不经本路径变更）；目标未命中
 	// 函数返回 NULL 复合行，以 id IS NOT NULL 过滤成空集（映射 NotFound）
