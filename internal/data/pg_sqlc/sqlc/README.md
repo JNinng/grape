@@ -42,7 +42,11 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 > `internal/data/pg_sqlc/deploy/deploy.go` 的 DeployFiles 清单与仓库根
 > deploy_db.md 为准。
 
-- schema 目录是表结构与注释 DSL（@dynamic/@scope/@filter/@page 等）的单一事实源；
+- schema 目录是表结构与注释 DSL（@dynamic / @internal / @updatable 与表级
+  @scope / @filter / @pk / @default_sort）的单一事实源；UI 元数据
+  （label / desc / order / visibility / options / api）与分页策略在
+  `sqlc.yaml` 的 `codegen.options.ui` / `codegen.options.page` 声明，
+  注释里的人类文本不参与生成。
   列级/表级指令的语法、类型映射与校验规则以上游参考为准：
   [dsl.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/dsl.md)（指令总表）、
   [scope.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/scope.md)（行级数据权限）、

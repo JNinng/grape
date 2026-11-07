@@ -33,31 +33,31 @@ CREATE TABLE public.sys_user
 CREATE UNIQUE INDEX sys_user_tenant_name_un ON public.sys_user USING btree (tenant_id, name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_user_tenant_email_un ON public.sys_user USING btree (tenant_id, email) WHERE deleted_at IS NULL AND email IS NOT NULL;
 CREATE UNIQUE INDEX sys_user_tenant_phone_un ON public.sys_user USING btree (tenant_id, phone) WHERE deleted_at IS NULL AND phone IS NOT NULL;
-COMMENT ON TABLE public.sys_user IS '用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_user IS '用户表 [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 -- Column comments
 
-COMMENT ON COLUMN public.sys_user.id IS '用户 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_user.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user."name" IS '用户名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.nickname IS '昵称 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
+COMMENT ON COLUMN public.sys_user.id IS '用户 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, membership, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user."name" IS '用户名 [@dynamic: fuzzy, exact, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user.nickname IS '昵称 [@dynamic: fuzzy, exact, sort @updatable: set]';
 COMMENT ON COLUMN public.sys_user."password" IS '密码 [@internal @updatable: set]';
-COMMENT ON COLUMN public.sys_user.email IS '邮箱 [@dynamic: exact, prefix @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.phone IS '手机号 [@dynamic: exact, prefix @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.locale IS '用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言 [@label: 语言 @desc: 用户语言偏好（BCP-47），影响界面展示语言 @dynamic: exact @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.last_login_at IS '最后登录时间 [@dynamic: range, is_null, not_null @sortable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.failed_count IS '连续密码错误次数 [@dynamic: exact, in, range @sortable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.locked_until IS '账号锁定截止时间，NULL 表示未锁定 [@label: 锁定截止时间 @desc: NULL 表示未锁定 @dynamic: range, is_null, not_null @updatable: set]';
-COMMENT ON COLUMN public.sys_user.remark IS '备注 [@dynamic: fuzzy @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user.created_by IS '创建人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_user.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
-COMMENT ON COLUMN public.sys_user.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
-COMMENT ON COLUMN public.sys_user.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
+COMMENT ON COLUMN public.sys_user.email IS '邮箱 [@dynamic: exact, prefix @updatable: set]';
+COMMENT ON COLUMN public.sys_user.phone IS '手机号 [@dynamic: exact, prefix @updatable: set]';
+COMMENT ON COLUMN public.sys_user.locale IS '用户语言偏好（BCP-47），如 zh-CN、en-US，影响界面展示语言 [@dynamic: exact @updatable: set]';
+COMMENT ON COLUMN public.sys_user.last_login_at IS '最后登录时间 [@dynamic: range, is_null, not_null, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user.failed_count IS '连续密码错误次数 [@dynamic: exact, membership, range, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user.locked_until IS '账号锁定截止时间，NULL 表示未锁定 [@dynamic: range, is_null, not_null @updatable: set]';
+COMMENT ON COLUMN public.sys_user.remark IS '备注 [@dynamic: fuzzy @updatable: set]';
+COMMENT ON COLUMN public.sys_user.created_by IS '创建人 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user.created_at IS '创建时间 [@dynamic: exact, membership, range, sort]';
+COMMENT ON COLUMN public.sys_user.updated_by IS '更新人 [@dynamic: exact, membership @updatable: set]';
+COMMENT ON COLUMN public.sys_user.updated_at IS '更新时间 [@dynamic: exact, membership, range]';
 COMMENT ON COLUMN public.sys_user.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_user.tenant_id IS '租户 ID [@internal]';
-COMMENT ON COLUMN public.sys_user.owner_user_id IS '归属用户 ID [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';
+COMMENT ON COLUMN public.sys_user.owner_user_id IS '归属用户 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user.owner_dept_id IS '归属部门 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, membership]';
 
 
 -- public.sys_user_role_mapping 定义
@@ -113,22 +113,22 @@ CREATE TABLE public.sys_user_group
 );
 CREATE UNIQUE INDEX sys_user_group_tenant_code_un ON public.sys_user_group USING btree (tenant_id, code) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_user_group_tenant_name_un ON public.sys_user_group USING btree (tenant_id, name) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_user_group IS '用户组表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_user_group IS '用户组表 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 -- Column comments
 
-COMMENT ON COLUMN public.sys_user_group.id IS '用户组 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_user_group.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user_group."name" IS '组名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user_group.code IS '组编码 [@dynamic: exact, prefix @hideable]';
-COMMENT ON COLUMN public.sys_user_group.remark IS '备注 [@dynamic: fuzzy @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_user_group.created_by IS '创建人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_user_group.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
-COMMENT ON COLUMN public.sys_user_group.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
-COMMENT ON COLUMN public.sys_user_group.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
+COMMENT ON COLUMN public.sys_user_group.id IS '用户组 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user_group.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, membership, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user_group."name" IS '组名 [@dynamic: fuzzy, exact, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_user_group.code IS '组编码 [@dynamic: exact, prefix]';
+COMMENT ON COLUMN public.sys_user_group.remark IS '备注 [@dynamic: fuzzy @updatable: set]';
+COMMENT ON COLUMN public.sys_user_group.created_by IS '创建人 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_user_group.created_at IS '创建时间 [@dynamic: exact, membership, range, sort]';
+COMMENT ON COLUMN public.sys_user_group.updated_by IS '更新人 [@dynamic: exact, membership @updatable: set]';
+COMMENT ON COLUMN public.sys_user_group.updated_at IS '更新时间 [@dynamic: exact, membership, range]';
 COMMENT ON COLUMN public.sys_user_group.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_user_group.tenant_id IS '租户 ID [@internal]';
-COMMENT ON COLUMN public.sys_user_group.owner_user_id IS '组长/归属用户 [@dynamic: exact, in]';
+COMMENT ON COLUMN public.sys_user_group.owner_user_id IS '组长/归属用户 [@dynamic: exact, membership]';
 
 
 -- public.sys_user_group_mapping 定义

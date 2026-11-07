@@ -1029,44 +1029,28 @@ function TranslationRowActions({
 
 // ---------- 列定义 ----------
 
-// insertAfter 在指定列之后插入附加列：value 列不在 ListSchema 的可显隐
-// 字段集内（库层未声明 @hideable），由页面补齐在配置键之后。
-function insertAfter<T>(
-  columns: DataTableColumn<T>[],
-  afterKey: string,
-  column: DataTableColumn<T>,
-): DataTableColumn<T>[] {
-  const index = columns.findIndex((item) => item.key === afterKey)
-  if (index < 0) {
-    return [...columns, column]
-  }
-  return [...columns.slice(0, index + 1), column, ...columns.slice(index + 1)]
-}
-
 function actionsColumn<T>(render: (item: T) => ReactNode): DataTableColumn<T> {
   return { key: 'actions', header: '操作', className: 'w-16 text-right', sticky: 'right', render }
 }
 
+// buildConfigColumns 以 schemaColumns 生成列定义；value 由 UI manifest
+// 声明为 optional（默认显示、可切换），页面只覆写列头。
 function buildConfigColumns<T extends ConfigDTO>(
   schema: ListSchemaDTO,
   renderActions: (row: T) => ReactNode,
 ): DataTableColumn<T>[] {
-  const columns = schemaColumns<T>(
+  return schemaColumns<T>(
     schema,
     {
       name: { header: '配置名称' },
       configKey: { header: '配置键' },
+      value: { header: '配置值' },
       valueType: { header: '值类型' },
       status: { header: '状态', render: (row) => statusBadge(row.status) },
       updatedAt: { header: '更新时间' },
     },
     [actionsColumn(renderActions)],
   )
-  return insertAfter(columns, 'configKey', {
-    key: 'value',
-    header: '配置值',
-    render: (row) => row.value ?? '—',
-  })
 }
 
 function buildFeatureFlagColumns(

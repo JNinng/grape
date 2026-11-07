@@ -105,22 +105,22 @@ function optionSet(items: OptionSetDTO['items'] = []): OptionSetDTO {
 }
 
 // schema 基线对齐 GetListSchema 响应口径：字段 label/ops/dataType 直取
-// 响应（status 带 @options 静态字典即下拉），hideable 驱动列显隐，默认
+// 响应（status 带 @options 静态字典即下拉），visibility 驱动列显隐，默认
 // 排序与页大小驱动表格。
 function schema(): ListSchemaDTO {
   return {
     resource: 'sys_user',
     hash: 'test-hash',
     fields: [
-      { field: 'id', label: '用户 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'] },
-      { field: 'status', label: '状态', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'], options: [{ value: 0, label: '禁用' }, { value: 1, label: '启用' }] },
-      { field: 'name', label: '用户名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'nickname', label: '昵称', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'email', label: '邮箱', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
-      { field: 'phone', label: '手机号', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
+      { field: 'id', label: '用户 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in'] },
+      { field: 'status', label: '状态', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in'], options: [{ value: 0, label: '禁用' }, { value: 1, label: '启用' }] },
+      { field: 'name', label: '用户名', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'nickname', label: '昵称', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'email', label: '邮箱', dataType: 'string', nullable: true, visibility: 'optional', ops: ['eq', 'neq', 'prefix'] },
+      { field: 'phone', label: '手机号', dataType: 'string', nullable: true, visibility: 'optional', ops: ['eq', 'neq', 'prefix'] },
       { field: 'lastLoginAt', label: '最后登录时间', dataType: 'datetime', nullable: true, sortable: true, ops: ['gt', 'gte', 'lt', 'lte', 'between', 'is_null', 'not_null'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
     ],
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },
@@ -259,12 +259,12 @@ describe('UserManagePage list & filters', () => {
     expect(mockGetListSchema).toHaveBeenCalledTimes(2)
   })
 
-  it('toggles_a_hideable_column_via_the_column_settings_menu', async () => {
+  it('toggles_an_optional_column_via_the_column_settings_menu', async () => {
     const user2 = userEvent.setup()
     renderPage()
     expect(await screen.findByRole('columnheader', { name: '昵称' })).toBeInTheDocument()
 
-    // 契约：hideable 列可显隐——菜单勾选后保持打开，可连续切换。modal 菜单
+    // 契约：optional 列可显隐——菜单勾选后保持打开，可连续切换。modal 菜单
     // 打开期间外部内容被标记 aria-hidden，列头断言须带 hidden 查询（列隐藏
     // 时节点是真不存在，而非仅不可见）。
     await user2.click(screen.getByRole('button', { name: '列设置' }))

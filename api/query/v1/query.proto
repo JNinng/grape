@@ -45,7 +45,7 @@ message Condition {
 
 // SortItem 是单个排序项。
 message SortItem {
-  // 字段键，小驼峰。仅 @sortable 列被接受。
+  // 字段键，小驼峰。仅 schema 声明 sortable 的字段被接受。
   string field = 1;
   // 排序方向：asc（默认）或 desc。
   string order = 2;
@@ -127,8 +127,9 @@ message GetListSchemaRequest {
 }
 
 // ListSchema 是动态 List 查询的能力契约，镜像存储层 dynq.ResourceSchema。
-// 被完全禁用（或 @internal）的字段不出现在 fields 中；JSON 键统一小驼峰，
-// 与存储层 schema 的 JSON 协议一致。
+// fields 是展示字段集合：非 @internal 且未被查询选项禁用的字段；visibility
+// 为 hidden 的字段仍会出现（前端默认收起）。JSON 键统一小驼峰，与存储层
+// schema 的 JSON 协议一致。
 message ListSchema {
   // 资源名（存储表名）。
   string resource = 1;
@@ -156,11 +157,12 @@ message ListSchemaField {
   bool nullable = 4;
   // 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
   bool sortable = 5;
-  // 列头可显隐交互提示。false 时 JSON 响应键省略。
-  bool hideable = 6;
-  // hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
-  // JSON 响应键省略。
-  bool selectable = 7;
+  // 前端列表初始显隐：always（固定显示、不可切换）/ optional（默认显示、
+  // 可切换；缺省）/ hidden（默认收起、可在列设置展开）。键始终存在。
+  string visibility = 6;
+  // 已删除的过渡期布尔键（v0.6.0 由 visibility 取代）。
+  reserved 7;
+  reserved "hideable", "selectable";
   // 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
   // between、contains、prefix、suffix、has、is_null、not_null）。空集合时
   // 键省略，客户端按空数组处理。
@@ -171,12 +173,12 @@ message ListSchemaField {
   // 选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
   // options）。未声明时 JSON 响应键省略。
   ListSchemaFieldAPI api = 10;
-  // 字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
-  // JSON 响应键省略。
+  // 字段描述（枚举值释义、单位说明等），镜像存储层 UI manifest 的 desc。
+  // 为空时 JSON 响应键省略。
   string desc = 11;
-  // 静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
-  // 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
-  // （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
+  // 静态字典选项，镜像存储层 UI manifest 的 options，渲染下拉/多选值控件；
+  // value 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键
+  // 省略（空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
   repeated ListSchemaFieldOption options = 12;
 }
 
@@ -189,13 +191,13 @@ message ListSchemaFieldOption {
   string label = 2;
 }
 
-// ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
-// GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
-// 命名的顶层字段。
+// ListSchemaFieldAPI 是 UI manifest api 字段的选项数据源契约：where 值控件
+// 的选项经 GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key /
+// label_key 命名的顶层字段。
 //
 // 本声明只服务 query-filter 的字段级选项来源；用户分配选择器使用的
 // OptionQuery / Option / OptionSet 是并行的独立接口，不接入本字段
-// （选择器端点按分配动作设权限码，不复用动态查询的 @api 解析）。
+// （选择器端点按分配动作设权限码，不复用动态查询的选项源解析）。
 message ListSchemaFieldAPI {
   // 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
   string endpoint = 1;

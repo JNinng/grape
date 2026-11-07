@@ -21,22 +21,22 @@ CREATE TABLE public.sys_dept
     CONSTRAINT sys_dept_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_dept_tenant_name_un ON public.sys_dept USING btree (tenant_id, name) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_dept IS '部门表 [@default_sort: updated_at DESC @pk: id @page: 20/400 @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_dept IS '部门表 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 -- Column comments
 
-COMMENT ON COLUMN public.sys_dept.id IS '部门 ID [@dynamic: exact, in @sortable @hideable]';
-COMMENT ON COLUMN public.sys_dept.status IS '数据状态，0：禁用、1：启用 [@label: 状态 @options: 0=禁用 1=启用 @dynamic: exact, in @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_dept."name" IS '部门名 [@dynamic: fuzzy, exact @sortable @hideable @updatable: set]';
-COMMENT ON COLUMN public.sys_dept.parent_id IS '父级部门 ID [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_dept.created_by IS '创建人 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_dept.created_at IS '创建时间 [@dynamic: exact, in, range @sortable @hideable]';
-COMMENT ON COLUMN public.sys_dept.updated_by IS '更新人 [@dynamic: exact, in @updatable: set]';
-COMMENT ON COLUMN public.sys_dept.updated_at IS '更新时间 [@dynamic: exact, in, range @sortable @hideable]';
+COMMENT ON COLUMN public.sys_dept.id IS '部门 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_dept.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, membership, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_dept."name" IS '部门名 [@dynamic: fuzzy, exact, sort @updatable: set]';
+COMMENT ON COLUMN public.sys_dept.parent_id IS '父级部门 ID [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_dept.created_by IS '创建人 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_dept.created_at IS '创建时间 [@dynamic: exact, membership, range, sort]';
+COMMENT ON COLUMN public.sys_dept.updated_by IS '更新人 [@dynamic: exact, membership @updatable: set]';
+COMMENT ON COLUMN public.sys_dept.updated_at IS '更新时间 [@dynamic: exact, membership, range]';
 COMMENT ON COLUMN public.sys_dept.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.sys_dept.tenant_id IS '租户 ID [@internal]';
-COMMENT ON COLUMN public.sys_dept.owner_user_id IS '部门管理员用户 [@dynamic: exact, in]';
-COMMENT ON COLUMN public.sys_dept.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, in]';
+COMMENT ON COLUMN public.sys_dept.owner_user_id IS '部门管理员用户 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_dept.owner_user_group_id IS '归属用户组 ID [@dynamic: exact, membership]';
 
 -- 闭包表维护触发器函数，语义约定：
 --   1. 输入校验：拒绝自身为父、父级不存在/已删除/跨租户、移入自身子树（环）

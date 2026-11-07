@@ -48,20 +48,20 @@ const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
 // groupSchema 基线对齐 GetListSchema(sys_user_group) 响应口径：label 直取
-// 列注释原文（status 为长文案），hideable 驱动列显隐，默认排序与页大小
+// 列注释原文（status 为长文案），visibility 驱动列显隐，默认排序与页大小
 // 驱动表格。
 function groupSchema(): ListSchemaDTO {
   return {
     resource: 'sys_user_group',
     hash: 'test-hash',
     fields: [
-      { field: 'id', label: '用户组 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'name', label: '组名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'code', label: '组编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'id', label: '用户组 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'name', label: '组名', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'code', label: '组编码', dataType: 'string', visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
     ],
     defaultSort: [{ field: 'createdAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },

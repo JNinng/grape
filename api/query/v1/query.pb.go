@@ -180,7 +180,7 @@ func (x *Condition) GetRightValue() *structpb.Value {
 // SortItem 是单个排序项。
 type SortItem struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 字段键，小驼峰。仅 @sortable 列被接受。
+	// 字段键，小驼峰。仅 schema 声明 sortable 的字段被接受。
 	Field string `protobuf:"bytes,1,opt,name=field,proto3" json:"field,omitempty"`
 	// 排序方向：asc（默认）或 desc。
 	Order         string `protobuf:"bytes,2,opt,name=order,proto3" json:"order,omitempty"`
@@ -578,8 +578,9 @@ func (x *GetListSchemaRequest) GetResource() string {
 }
 
 // ListSchema 是动态 List 查询的能力契约，镜像存储层 dynq.ResourceSchema。
-// 被完全禁用（或 @internal）的字段不出现在 fields 中；JSON 键统一小驼峰，
-// 与存储层 schema 的 JSON 协议一致。
+// fields 是展示字段集合：非 @internal 且未被查询选项禁用的字段；visibility
+// 为 hidden 的字段仍会出现（前端默认收起）。JSON 键统一小驼峰，与存储层
+// schema 的 JSON 协议一致。
 type ListSchema struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 资源名（存储表名）。
@@ -676,11 +677,9 @@ type ListSchemaField struct {
 	Nullable bool `protobuf:"varint,4,opt,name=nullable,proto3" json:"nullable,omitempty"`
 	// 是否可排序（sort 接受该字段）。false 时 JSON 响应键省略。
 	Sortable bool `protobuf:"varint,5,opt,name=sortable,proto3" json:"sortable,omitempty"`
-	// 列头可显隐交互提示。false 时 JSON 响应键省略。
-	Hideable bool `protobuf:"varint,6,opt,name=hideable,proto3" json:"hideable,omitempty"`
-	// hideable 的过渡期旧键，与 hideable 恒同值；新代码不得依赖。false 时
-	// JSON 响应键省略。
-	Selectable bool `protobuf:"varint,7,opt,name=selectable,proto3" json:"selectable,omitempty"`
+	// 前端列表初始显隐：always（固定显示、不可切换）/ optional（默认显示、
+	// 可切换；缺省）/ hidden（默认收起、可在列设置展开）。键始终存在。
+	Visibility string `protobuf:"bytes,6,opt,name=visibility,proto3" json:"visibility,omitempty"`
 	// 该字段可用的过滤操作符集合（eq、neq、in、not_in、gt、gte、lt、lte、
 	// between、contains、prefix、suffix、has、is_null、not_null）。空集合时
 	// 键省略，客户端按空数组处理。
@@ -691,12 +690,12 @@ type ListSchemaField struct {
 	// 选项数据源为远程接口的声明；为空表示选项取静态清单（enum 或
 	// options）。未声明时 JSON 响应键省略。
 	Api *ListSchemaFieldAPI `protobuf:"bytes,10,opt,name=api,proto3" json:"api,omitempty"`
-	// 字段描述（枚举值释义、单位说明等），镜像存储层 @desc 注解。为空时
-	// JSON 响应键省略。
+	// 字段描述（枚举值释义、单位说明等），镜像存储层 UI manifest 的 desc。
+	// 为空时 JSON 响应键省略。
 	Desc string `protobuf:"bytes,11,opt,name=desc,proto3" json:"desc,omitempty"`
-	// 静态字典选项，镜像存储层 @options 注解，渲染下拉/多选值控件；value
-	// 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键省略
-	// （空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
+	// 静态字典选项，镜像存储层 UI manifest 的 options，渲染下拉/多选值控件；
+	// value 按字段 data_type 定型为 number 或 string。未声明时 JSON 响应键
+	// 省略（空集合不输出）。与 api 互斥：一个字段的选项只有一种来源。
 	Options       []*ListSchemaFieldOption `protobuf:"bytes,12,rep,name=options,proto3" json:"options,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -767,18 +766,11 @@ func (x *ListSchemaField) GetSortable() bool {
 	return false
 }
 
-func (x *ListSchemaField) GetHideable() bool {
+func (x *ListSchemaField) GetVisibility() string {
 	if x != nil {
-		return x.Hideable
+		return x.Visibility
 	}
-	return false
-}
-
-func (x *ListSchemaField) GetSelectable() bool {
-	if x != nil {
-		return x.Selectable
-	}
-	return false
+	return ""
 }
 
 func (x *ListSchemaField) GetOps() []string {
@@ -872,13 +864,13 @@ func (x *ListSchemaFieldOption) GetLabel() string {
 	return ""
 }
 
-// ListSchemaFieldAPI 是 @api 字段的选项数据源契约：where 值控件的选项经
-// GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key / label_key
-// 命名的顶层字段。
+// ListSchemaFieldAPI 是 UI manifest api 字段的选项数据源契约：where 值控件
+// 的选项经 GET {endpoint} 拉取，响应 body 为 items 数组，每项含 value_key /
+// label_key 命名的顶层字段。
 //
 // 本声明只服务 query-filter 的字段级选项来源；用户分配选择器使用的
 // OptionQuery / Option / OptionSet 是并行的独立接口，不接入本字段
-// （选择器端点按分配动作设权限码，不复用动态查询的 @api 解析）。
+// （选择器端点按分配动作设权限码，不复用动态查询的选项源解析）。
 type ListSchemaFieldAPI struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 相对前端 baseURL 的路径；查询参数由前端按协议拼接。
@@ -1143,17 +1135,17 @@ const file_query_v1_query_proto_rawDesc = "" +
 	"\x05label\x18\x02 \x01(\tR\x05label\x12\x1b\n" +
 	"\tdata_type\x18\x03 \x01(\tR\bdataType\x12\x1a\n" +
 	"\bnullable\x18\x04 \x01(\bR\bnullable\x12\x1a\n" +
-	"\bsortable\x18\x05 \x01(\bR\bsortable\x12\x1a\n" +
-	"\bhideable\x18\x06 \x01(\bR\bhideable\x12\x1e\n" +
+	"\bsortable\x18\x05 \x01(\bR\bsortable\x12\x1e\n" +
 	"\n" +
-	"selectable\x18\a \x01(\bR\n" +
-	"selectable\x12\x10\n" +
+	"visibility\x18\x06 \x01(\tR\n" +
+	"visibility\x12\x10\n" +
 	"\x03ops\x18\b \x03(\tR\x03ops\x12\x19\n" +
 	"\venum_values\x18\t \x03(\tR\x04enum\x12.\n" +
 	"\x03api\x18\n" +
 	" \x01(\v2\x1c.query.v1.ListSchemaFieldAPIR\x03api\x12\x12\n" +
 	"\x04desc\x18\v \x01(\tR\x04desc\x129\n" +
-	"\aoptions\x18\f \x03(\v2\x1f.query.v1.ListSchemaFieldOptionR\aoptions\"[\n" +
+	"\aoptions\x18\f \x03(\v2\x1f.query.v1.ListSchemaFieldOptionR\aoptionsJ\x04\b\a\x10\bR\bhideableR\n" +
+	"selectable\"[\n" +
 	"\x15ListSchemaFieldOption\x12,\n" +
 	"\x05value\x18\x01 \x01(\v2\x16.google.protobuf.ValueR\x05value\x12\x14\n" +
 	"\x05label\x18\x02 \x01(\tR\x05label\"~\n" +

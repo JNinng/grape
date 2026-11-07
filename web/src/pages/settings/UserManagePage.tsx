@@ -708,7 +708,7 @@ export function UserManagePage() {
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
   // columns 动态响应 schema：列集/顺序/表头/排序/显隐全部来自 GetListSchema
-  // 响应（hideable 字段逐列输出），页面仅覆写必要附加项——schema label
+  // 响应（visibility 决定列初始显隐），页面仅覆写必要附加项——schema label
   // 为长文案无法直接作列头的字段与需自定义渲染的状态徽标；行操作列不
   // 对应查询字段，恒追加在末尾。
   const columns = useMemo<DataTableColumn<UserDTO>[]>(

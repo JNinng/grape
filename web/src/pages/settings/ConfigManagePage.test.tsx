@@ -75,17 +75,18 @@ const mockDeleteTranslation = vi.mocked(deleteTranslation)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
-// configFields 对齐 sys_config 的 GetListSchema 口径：value 未声明 @hideable，
-// 不在 schema 的可显隐字段集内（页面自行补齐该列）。
+// configFields 对齐 sys_config 的 GetListSchema 口径：value 由 UI manifest
+// 声明为 optional（默认显示、可切换）。
 const CONFIG_FIELDS: ListSchemaDTO['fields'] = [
-  { field: 'id', label: '配置 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'] },
-  { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in'] },
-  { field: 'name', label: '配置名称', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-  { field: 'configKey', label: '配置键（唯一），如 smtp.host', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'neq', 'prefix'] },
-  { field: 'valueType', label: '值类型：string/integer/boolean/float/json', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'neq'] },
-  { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
-  { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
-  { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+  { field: 'id', label: '配置 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in'] },
+  { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in'] },
+  { field: 'name', label: '配置名称', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+  { field: 'configKey', label: '配置键（唯一），如 smtp.host', dataType: 'string', visibility: 'optional', ops: ['eq', 'neq', 'prefix'] },
+  { field: 'value', label: '配置值', dataType: 'string', nullable: true, visibility: 'optional' },
+  { field: 'valueType', label: '值类型：string/integer/boolean/float/json', dataType: 'string', visibility: 'optional', ops: ['eq', 'neq'] },
+  { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix'] },
+  { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+  { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
 ]
 
 function configSchema(resource: 'sys_config' | 'sys_tenant_config'): ListSchemaDTO {
@@ -104,15 +105,15 @@ function featureFlagSchema(): ListSchemaDTO {
     resource: 'sys_feature_flag',
     hash: 'test-hash-sys-feature-flag',
     fields: [
-      { field: 'id', label: '特性 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'name', label: '特性名称', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'eq'] },
-      { field: 'flagKey', label: '特性键（租户内唯一）', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'description', label: '特性描述', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains'] },
-      { field: 'isEnabled', label: '是否启用：true-开启功能 false-关闭功能', dataType: 'boolean', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
+      { field: 'id', label: '特性 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'name', label: '特性名称', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'eq'] },
+      { field: 'flagKey', label: '特性键（租户内唯一）', dataType: 'string', visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'description', label: '特性描述', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains'] },
+      { field: 'isEnabled', label: '是否启用：true-开启功能 false-关闭功能', dataType: 'boolean', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
     ],
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 200, modes: ['offset', 'cursor'], includeTotal: true },
@@ -124,16 +125,16 @@ function translationSchema(): ListSchemaDTO {
     resource: 'sys_translation',
     hash: 'test-hash-sys-translation',
     fields: [
-      { field: 'id', label: '翻译 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'tableName', label: '来源表名', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'rowId', label: '来源行主键 ID', dataType: 'integer', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'columnName', label: '来源列名', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'locale', label: '语言代码（BCP-47）', dataType: 'string', hideable: true, selectable: true, ops: ['eq'] },
-      { field: 'value', label: '翻译文本', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'eq'] },
-      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
+      { field: 'id', label: '翻译 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'tableName', label: '来源表名', dataType: 'string', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'rowId', label: '来源行主键 ID', dataType: 'integer', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'columnName', label: '来源列名', dataType: 'string', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'locale', label: '语言代码（BCP-47）', dataType: 'string', visibility: 'optional', ops: ['eq'] },
+      { field: 'value', label: '翻译文本', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'eq'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
     ],
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 200, modes: ['offset', 'cursor'], includeTotal: true },

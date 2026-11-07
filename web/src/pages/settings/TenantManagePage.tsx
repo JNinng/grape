@@ -710,33 +710,25 @@ function TenantRowActions({
 
 // ---------- 列定义 ----------
 
-// insertAfter 在指定列之后插入页面补充列：parentId/maxUserCount/expiredAt
-// 在库层未声明 @hideable（不参与列设置），由页面按其业务位置补齐。
-function insertAfter<T>(
-  columns: DataTableColumn<T>[],
-  afterKey: string,
-  column: DataTableColumn<T>,
-): DataTableColumn<T>[] {
-  const index = columns.findIndex((item) => item.key === afterKey)
-  if (index < 0) {
-    return [...columns, column]
-  }
-  return [...columns.slice(0, index + 1), column, ...columns.slice(index + 1)]
-}
-
-// buildTenantColumns 以 schemaColumns 生成 hideable 列（列序、列头、可排序性
-// 与列设置显隐全部动态响应 ListSchema），再在业务位置插入 parentId/
-// maxUserCount/expiredAt 三个未声明 @hideable 的补充列。
+// buildTenantColumns 以 schemaColumns 生成列定义（列序、列头、可排序性与
+// 列显隐全部动态响应 ListSchema）；parentId/maxUserCount/expiredAt 由
+// UI manifest 声明为 optional，这里只覆写业务列头与日期展示形态。
 function buildTenantColumns(
   schema: ListSchemaDTO,
   renderActions: (row: TenantDTO) => ReactNode,
 ): DataTableColumn<TenantDTO>[] {
-  const columns = schemaColumns<TenantDTO>(
+  return schemaColumns<TenantDTO>(
     schema,
     {
       code: { header: '租户编码' },
       name: { header: '租户名' },
       status: { header: '状态', render: (row) => statusBadge(row.status) },
+      parentId: { header: '父级租户' },
+      maxUserCount: { header: '最大用户数' },
+      expiredAt: {
+        header: '到期时间',
+        render: (row) => (row.expiredAt === undefined ? '—' : formatTenantDate(row.expiredAt)),
+      },
       defaultLocale: { header: '默认语言' },
       updatedAt: {
         header: '更新时间',
@@ -753,23 +745,6 @@ function buildTenantColumns(
       },
     ],
   )
-  const withParent = insertAfter(columns, 'name', {
-    key: 'parentId',
-    header: '父级租户',
-    render: (row) => row.parentId ?? '—',
-  })
-  const withMaxUserCount = insertAfter(withParent, 'defaultLocale', {
-    key: 'maxUserCount',
-    header: '最大用户数',
-    sortable: 'maxUserCount',
-    render: (row) => (row.maxUserCount === undefined ? '—' : String(row.maxUserCount)),
-  })
-  return insertAfter(withMaxUserCount, 'maxUserCount', {
-    key: 'expiredAt',
-    header: '到期时间',
-    sortable: 'expiredAt',
-    render: (row) => (row.expiredAt === undefined ? '—' : formatTenantDate(row.expiredAt)),
-  })
 }
 
 // ---------- 页面 ----------

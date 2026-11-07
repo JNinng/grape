@@ -68,22 +68,22 @@ const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
 // roleSchema 基线对齐 GetListSchema(sys_role) 响应口径：label 直取列注释
-// 原文（status/roleType/dataScope 为长文案），hideable 驱动列显隐，默认
+// 原文（status/roleType/dataScope 为长文案），visibility 驱动列显隐，默认
 // 排序与页大小驱动表格。
 function roleSchema(): ListSchemaDTO {
   return {
     resource: 'sys_role',
     hash: 'test-hash',
     fields: [
-      { field: 'id', label: '角色 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'name', label: '角色名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'code', label: '权限编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'roleType', label: '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义', dataType: 'integer', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'dataScope', label: '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户', dataType: 'integer', hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'id', label: '角色 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'name', label: '角色名', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'code', label: '权限编码', dataType: 'string', visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'roleType', label: '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义', dataType: 'integer', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'dataScope', label: '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户', dataType: 'integer', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
     ],
     defaultSort: [{ field: 'createdAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },

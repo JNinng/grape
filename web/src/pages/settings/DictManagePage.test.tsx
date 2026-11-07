@@ -50,20 +50,20 @@ const mockDeleteData = vi.mocked(deleteDictData)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
-// typeSchema 基线对齐 GetListSchema(sys_dict_type) 响应口径：hideable 驱动
+// typeSchema 基线对齐 GetListSchema(sys_dict_type) 响应口径：visibility 驱动
 // 列显隐，默认排序与页大小驱动表格。
 function typeSchema(): ListSchemaDTO {
   return {
     resource: 'sys_dict_type',
     hash: 'test-hash',
     fields: [
-      { field: 'id', label: '字典类型 ID', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'name', label: '字典类型名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'code', label: '字典类型编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'remark', label: '备注', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'id', label: '字典类型 ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：禁用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'name', label: '字典类型名', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'code', label: '字典类型编码', dataType: 'string', visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'remark', label: '备注', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['eq', 'neq', 'in', 'not_in', 'gt', 'gte', 'lt', 'lte', 'between'] },
     ],
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },

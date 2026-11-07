@@ -46,26 +46,26 @@ const mockRestoreTenant = vi.mocked(restoreTenant)
 const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 const mockGetListSchema = vi.mocked(getListSchema)
 
-// tenantSchema 基线对齐 GetListSchema(sys_tenant) 响应口径：hideable 驱动
+// tenantSchema 基线对齐 GetListSchema(sys_tenant) 响应口径：visibility 驱动
 // 列显隐，sortable 门控表头排序，默认排序与页大小驱动表格。
 function tenantSchema(): ListSchemaDTO {
   return {
     resource: 'sys_tenant',
     hash: 'test-hash',
     fields: [
-      { field: 'id', label: '租户 ID', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'status', label: '数据状态，0：停用、1：启用', dataType: 'integer', sortable: true, hideable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'code', label: '租户编码', dataType: 'string', hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'name', label: '租户名', dataType: 'string', sortable: true, hideable: true, selectable: true, ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
-      { field: 'parentId', label: '父级租户 ID', dataType: 'string', selectable: true, ops: ['eq', 'in'] },
-      { field: 'contactName', label: '联系人', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['contains'] },
-      { field: 'contactPhone', label: '联系电话', dataType: 'string', nullable: true, hideable: true, selectable: true, ops: ['eq', 'prefix'] },
-      { field: 'expiredAt', label: '到期时间', dataType: 'datetime', sortable: true, selectable: true, ops: ['between'] },
-      { field: 'maxUserCount', label: '最大用户数', dataType: 'integer', sortable: true, selectable: true, ops: ['eq', 'in'] },
-      { field: 'defaultLocale', label: '租户默认语言', dataType: 'string', hideable: true, selectable: true, ops: ['eq'] },
-      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
-      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, hideable: true, selectable: true, ops: ['between'] },
-      { field: 'tenantId', label: '租户 ID', dataType: 'string', hideable: true, selectable: true, ops: ['eq'] },
+      { field: 'id', label: '租户 ID', dataType: 'string', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'status', label: '数据状态，0：停用、1：启用', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'code', label: '租户编码', dataType: 'string', visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'name', label: '租户名', dataType: 'string', sortable: true, visibility: 'optional', ops: ['contains', 'prefix', 'suffix', 'eq', 'neq'] },
+      { field: 'parentId', label: '父级租户 ID', dataType: 'string', visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'contactName', label: '联系人', dataType: 'string', nullable: true, visibility: 'optional', ops: ['contains'] },
+      { field: 'contactPhone', label: '联系电话', dataType: 'string', nullable: true, visibility: 'optional', ops: ['eq', 'prefix'] },
+      { field: 'expiredAt', label: '到期时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'maxUserCount', label: '最大用户数', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq', 'in'] },
+      { field: 'defaultLocale', label: '租户默认语言', dataType: 'string', visibility: 'optional', ops: ['eq'] },
+      { field: 'createdAt', label: '创建时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'updatedAt', label: '更新时间', dataType: 'datetime', sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'tenantId', label: '租户 ID', dataType: 'string', visibility: 'optional', ops: ['eq'] },
     ],
     defaultSort: [{ field: 'updatedAt', desc: true }],
     pagination: { defaultPageSize: 20, maxPageSize: 400, modes: ['offset', 'cursor'], includeTotal: true },

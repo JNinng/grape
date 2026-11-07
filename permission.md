@@ -223,7 +223,7 @@ WHERE id = sqlc.arg('id')
 
 ## 新增资源 / 操作速查
 
-1. **建表**：`tenant_id`（列注释 `[@internal]`，不参与动态 schema/投影/过滤/排序；`sys_tenant.tenant_id` 为租户树结构例外，保留 `[@dynamic: exact @hideable]`）+ 审计列 + 归属三元组；表注释声明 `@scope`、`@filter: deleted_at is_null`、`@pk`、`@page`；`owner_*` 建索引；`rls.sql` 补策略并 ENABLE + FORCE。
+1. **建表**：`tenant_id`（列注释 `[@internal]`，不参与动态 schema/投影/过滤/排序；`sys_tenant.tenant_id` 为租户树结构例外，保留 `[@dynamic: exact]`）+ 审计列 + 归属三元组；表注释声明 `@scope`、`@filter: deleted_at is_null`、`@pk`；分页与 UI 显隐元数据在 sqlc.yaml 的 `codegen.options.page` / `codegen.options.ui` 声明；`owner_*` 建索引；`rls.sql` 补策略并 ENABLE + FORCE。
 2. **列表 / 计数**：复用 `query.v1.Query` 动态协议，Scope 由 `IdentityTx` 注入。
 3. **详情**：`GetXxxPermitted`（`fn_check_visible` 掩码 7，权限码可空），不可见返回 NotFound。
 4. **修改 / 删除 / 改密**：`LockXxxPermitted`（`fn_can_operate_row` + `FOR UPDATE`，权限码可空）→ 写入；业务授权另判。

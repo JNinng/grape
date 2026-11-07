@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DynamicQuery, QuerySet } from '@/api/query'
@@ -148,25 +148,25 @@ describe('DataTable pagination', () => {
 })
 
 describe('schemaColumns', () => {
-  // schemaFixture 覆盖 hideable 门控、sortable 声明、可空 datetime 缺省
+  // schemaFixture 覆盖 visibility 三态、sortable 声明、可空 datetime 缺省
   // 渲染与 label 长文案。
   const schemaFixture: ListSchemaDTO = {
     resource: 'demo',
     hash: 'h',
     fields: [
-      { field: 'id', label: 'ID', dataType: 'integer', sortable: true, hideable: true, ops: ['eq'] },
-      { field: 'name', label: '名称', dataType: 'string', hideable: true, ops: ['contains'] },
-      { field: 'deletedAt', label: '删除时间', dataType: 'datetime', nullable: true, sortable: true, hideable: true, ops: ['between'] },
-      { field: 'active', label: '启用', dataType: 'boolean', hideable: true, ops: ['eq'] },
-      { field: 'secret', label: '机密', dataType: 'string', ops: ['contains'] },
+      { field: 'id', label: 'ID', dataType: 'integer', sortable: true, visibility: 'optional', ops: ['eq'] },
+      { field: 'name', label: '名称', dataType: 'string', visibility: 'optional', ops: ['contains'] },
+      { field: 'deletedAt', label: '删除时间', dataType: 'datetime', nullable: true, sortable: true, visibility: 'optional', ops: ['between'] },
+      { field: 'active', label: '启用', dataType: 'boolean', visibility: 'optional', ops: ['eq'] },
+      { field: 'secret', label: '机密', dataType: 'string', visibility: 'hidden', ops: ['contains'] },
     ],
   }
 
-  it('builds_columns_from_hideable_fields_in_schema_order_with_sortable_flags', () => {
+  it('builds_columns_from_schema_fields_in_order_with_sortable_flags', () => {
     const cols = schemaColumns<Row>(schemaFixture)
 
-    expect(cols.map((column) => column.key)).toEqual(['id', 'name', 'deletedAt', 'active'])
-    expect(cols.map((column) => column.header)).toEqual(['ID', '名称', '删除时间', '启用'])
+    expect(cols.map((column) => column.key)).toEqual(['id', 'name', 'deletedAt', 'active', 'secret'])
+    expect(cols.map((column) => column.header)).toEqual(['ID', '名称', '删除时间', '启用', '机密'])
     expect(cols[0]?.sortable).toBe('id')
     expect(cols[2]?.sortable).toBe('deletedAt')
     expect(cols[1]?.sortable).toBeUndefined()
@@ -183,11 +183,11 @@ describe('schemaColumns', () => {
       [{ key: 'actions', header: '操作', render: () => 'ops' }],
     )
 
-    expect(cols.map((column) => column.header)).toEqual(['ID', '用户名', '删除时间', '启用', '操作'])
+    expect(cols.map((column) => column.header)).toEqual(['ID', '用户名', '删除时间', '启用', '机密', '操作'])
     expect(cols[0]?.className).toBe('w-16')
     expect(cols[1]?.render({ id: '1', name: 'alice' })).toBe('named:alice')
     // 操作列不声明 field，恒可见且不参与显隐。
-    expect(cols[4]?.field).toBeUndefined()
+    expect(cols[5]?.field).toBeUndefined()
   })
 
   it('renders_default_values_with_dash_for_nullables_and_datetime_formatting', () => {
@@ -204,6 +204,52 @@ describe('schemaColumns', () => {
     expect(deletedAtColumn.render({ id: '1', name: 'a', active: false, deletedAt: 'not-a-date' })).toBe('not-a-date')
     expect(activeColumn.render({ id: '1', name: 'a', active: true })).toBe('是')
     expect(activeColumn.render({ id: '1', name: 'a', active: false })).toBe('否')
+  })
+})
+
+describe('DataTable visibility', () => {
+  // visibility 三态：always 恒显示且不可切换、optional 默认显示可切换、
+  // hidden 默认收起但可在列设置展开。
+  const visibilitySchema: ListSchemaDTO = {
+    resource: 'demo',
+    hash: 'h',
+    fields: [
+      { field: 'id', label: 'ID', dataType: 'integer', visibility: 'always', ops: ['eq'] },
+      { field: 'name', label: '名称', dataType: 'string', visibility: 'optional', ops: ['contains'] },
+      { field: 'secret', label: '机密', dataType: 'string', visibility: 'hidden', ops: ['contains'] },
+    ],
+  }
+  type VisibilityRow = Row & { secret?: string }
+
+  it('applies_always_optional_and_hidden_visibility_and_toggles_hidden_columns', async () => {
+    const fetchPage = vi.fn().mockResolvedValue(pageSet([{ id: '1', name: 'alice' }]))
+    const user = userEvent.setup()
+    render(
+      <DataTable
+        rowKey={(row) => row.id}
+        columns={schemaColumns<VisibilityRow>(visibilitySchema)}
+        fetchPage={fetchPage}
+        schema={visibilitySchema}
+      />,
+    )
+
+    await screen.findByText('alice')
+    // always 与 optional 默认显示，hidden 默认收起。
+    expect(screen.getByRole('columnheader', { name: 'ID' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '名称' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '机密', hidden: true })).not.toBeInTheDocument()
+
+    // 列设置只列 optional / hidden；always 不进入菜单。
+    await user.click(screen.getByRole('button', { name: '列设置' }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).queryByRole('menuitemcheckbox', { name: 'ID' })).not.toBeInTheDocument()
+    expect(within(menu).getByRole('menuitemcheckbox', { name: '机密' })).not.toBeChecked()
+
+    await user.click(within(menu).getByRole('menuitemcheckbox', { name: '机密' }))
+    expect(await screen.findByRole('columnheader', { name: '机密', hidden: true })).toBeInTheDocument()
+
+    await user.click(within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: '机密' }))
+    expect(screen.queryByRole('columnheader', { name: '机密', hidden: true })).not.toBeInTheDocument()
   })
 })
 

@@ -28,7 +28,7 @@ sqlc generate -f sqlc.yaml
 | 产物                                                                                 | 来源块              | 说明                                                                                  |
 | ------------------------------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------- |
 | `gen/models.go` `gen/db.go` `gen/querier.go` `gen/<查询文件>.sql.go`（如 `operate`/`basic`/`perm`/`sys_user`/`sys_session`） | sqlc-gen-go（块 1） | PO 模型与固定形态查询（权限判断、角色映射写入、锁行读取、权限查询接口、资源 CRUD 等命名查询），按查询文件逐一产出 |
-| `gen/<表名>_dynamic_gen.go`（按表生成，仅声明了 `@dynamic` 的表，如 `basic`/`sys_user`）                       | sqlc_gen_dynamic 插件（块 2） | 动态 List/Count：Parse / List / Count，能力由 schema 列注释 DSL 声明，@scope 守卫 fail-closed |
+| `gen/<表名>_dynamic_gen.go`（按表生成，入选表需声明 `@pk` / `@dynamic` / set-capable `@updatable`，如 `basic`/`sys_user`） | sqlc_gen_dynamic 插件（块 2） | 动态 List/Count 与动态更新面：Parse / List / Count / UpdateXxx / UpdateXxxReturning；能力由 schema 列注释 DSL 与 sqlc.yaml 的 `options.ui` / `options.page` 声明，@scope 守卫 fail-closed |
 
 修改 sqlc 输入（`schema/`、`rls/operate/expose`、`96_agent_grant.sql`、`queries/`）后必须重新执行
 `sqlc generate -f sqlc.yaml` 并提交生成物；`seed.sql` 不参与生成，改动按部署流程执行。

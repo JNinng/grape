@@ -39,8 +39,7 @@ func stubListSchema() dynq.ResourceSchema {
 				Label:      "状态",
 				DataType:   "integer",
 				Sortable:   true,
-				Hideable:   true,
-				Selectable: true,
+				Visibility: string(dynq.VisibilityOptional),
 				Ops:        []string{"eq", "in"},
 				Desc:       "0：禁用、1：启用",
 				Options: []dynq.FieldOption{
@@ -52,8 +51,7 @@ func stubListSchema() dynq.ResourceSchema {
 				Field:      "valueType",
 				Label:      "值类型",
 				DataType:   "string",
-				Hideable:   true,
-				Selectable: true,
+				Visibility: string(dynq.VisibilityOptional),
 				Ops:        []string{"eq"},
 				Options: []dynq.FieldOption{
 					{Value: "string", Label: "字符串"},
@@ -64,15 +62,15 @@ func stubListSchema() dynq.ResourceSchema {
 				Field:      "name",
 				Label:      "名称",
 				DataType:   "string",
-				Hideable:   true,
-				Selectable: true,
+				Visibility: string(dynq.VisibilityOptional),
 				Ops:        []string{"contains"},
 			},
 			{
-				Field: "ownerUserId",
-				Label: "归属用户 ID",
-				Ops:   []string{"eq"},
-				API:   &dynq.FieldAPI{Endpoint: "/v1/users/list", ValueKey: "id", LabelKey: "nickname", Mode: "multi"},
+				Field:      "ownerUserId",
+				Label:      "归属用户 ID",
+				Visibility: string(dynq.VisibilityHidden),
+				Ops:        []string{"eq"},
+				API:        &dynq.FieldAPI{Endpoint: "/v1/users/list", ValueKey: "id", LabelKey: "nickname", Mode: "multi"},
 			},
 		},
 		DefaultSort: []dynq.OrderBy{{Field: "createdAt", Desc: true}},
@@ -108,6 +106,9 @@ func TestQueryServiceGetListSchemaConvertsContract(t *testing.T) {
 		status := out.GetFields()[0]
 		if status.GetField() != "status" || status.GetDesc() != "0：禁用、1：启用" {
 			t.Fatalf("status field/desc = %+v, want field status with carried desc", status)
+		}
+		if status.GetVisibility() != string(dynq.VisibilityOptional) {
+			t.Fatalf("status visibility = %q, want optional", status.GetVisibility())
 		}
 		opts := status.GetOptions()
 		if len(opts) != 2 {
@@ -160,6 +161,9 @@ func TestQueryServiceGetListSchemaConvertsContract(t *testing.T) {
 	api := out.GetFields()[3].GetApi()
 	if api.GetEndpoint() != "/v1/users/list" || api.GetValueKey() != "id" || api.GetLabelKey() != "nickname" || api.GetMode() != "multi" {
 		t.Fatalf("api = %+v, want endpoint/valueKey/labelKey/mode carried", api)
+	}
+	if got := out.GetFields()[3].GetVisibility(); got != string(dynq.VisibilityHidden) {
+		t.Fatalf("ownerUserId visibility = %q, want hidden", got)
 	}
 	sort := out.GetDefaultSort()
 	if len(sort) != 1 || sort[0].GetField() != "createdAt" || !sort[0].GetDesc() {
