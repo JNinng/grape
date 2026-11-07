@@ -49,7 +49,7 @@ func TestTokenLookupValidate(t *testing.T) {
 }
 
 // 存储边界集成测试：以真实 PostgreSQL 验证会话门面、RLS/@scope 运行
-// 纪律与用户/会话仓储（断言基于 sqlc/seed.sql 与 sqlc/test_seed.sql 的
+// 纪律与用户/会话仓储（断言基于 sqlc/seed/ 与 sqlc/test_seed.sql 的
 // 种子事实）。设置以下环境变量后运行，未设置时跳过：
 //
 //	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \

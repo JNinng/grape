@@ -14,10 +14,10 @@ import (
 // 的错误语义表。
 var ErrPermissionDenied = kratoserrors.Forbidden(v1.ErrorReason_PERM_ACCESS_DENIED.String(), "permission denied")
 
-// 管理面功能权限码常量：<资源>:<操作> 形态，与种子菜单权限点
-// （部署面 99_perm_seed.sql 与 seed.sql 的 sys_menu.permission_code）
-// 一一对应。码只被入口层（middleware 的操作码表）与测试引用，业务用例
-// 不携带权限参数（permission.md 落点约束）。
+// 管理面功能权限码常量：<资源>:<操作> 形态，与生产种子菜单权限点
+// （sqlc/seed/ 的 sys_menu.permission_code）一一对应。码只被入口层
+// （middleware 的操作码表）与测试引用，业务用例不携带权限参数
+// （permission.md 落点约束）。
 const (
 	// 用户管理（sys_user，种子菜单 202 子树）。
 	PermUserQuery         = "sys:user:query"
@@ -61,7 +61,7 @@ const (
 	PermMenuDelete = "sys:menu:delete"
 
 	// 字典管理（sys_dict_type / sys_dict_data，种子菜单 224 子树：操作级
-	// 权限点 225-228 由 seed.sql 预铺）。类型与数据两级共用同一组操作码
+	// 权限点 225-228 由 seed 包预铺）。类型与数据两级共用同一组操作码
 	//（同一管理页内的两级维护，权限粒度不细分到级）。
 	PermDictQuery  = "sys:dict:query"
 	PermDictCreate = "sys:dict:create"
@@ -69,7 +69,7 @@ const (
 	PermDictDelete = "sys:dict:delete"
 
 	// 配置管理（sys_config / sys_tenant_config，种子菜单 233/234 子树：
-	// 操作级权限点 258-265 由 99_perm_seed.sql 预铺）。全局配置读取本身
+	// 操作级权限点 258-265 由 seed 包预铺）。全局配置读取本身
 	// 即全局口径（sys_config 无 tenant_id、无 RLS，读取不设 super），
 	// 写端点经受控写函数（Create/Update/DeleteSuper）；写码只应由平台
 	// 根租户持有，且 ConfigUsecase 的写路径另强制根租户校验（子租户即使
@@ -85,7 +85,7 @@ const (
 	PermConfigTenantDelete = "sys:config:tenant:delete"
 
 	// 功能开关（sys_feature_flag，种子菜单 235 子树：操作级权限点
-	// 266-269 由 99_perm_seed.sql 预铺）与通用翻译（sys_translation，
+	// 266-269 由 seed 包预铺）与通用翻译（sys_translation，
 	// 种子菜单 257 子树：操作级权限点 270-273 同批预铺）。两表均为租户
 	// 表，读写走 RLS 与普通 DML，无 super；操作码按表分设。
 	PermConfigFeatureFlagQuery  = "sys:config:feature-flag:query"
@@ -98,18 +98,18 @@ const (
 	PermConfigTranslationDelete = "sys:config:translation:delete"
 
 	// 审计日志（sys_login_log / sys_operation_log，种子菜单 230/231）：两表
-	// append-only 只读面，沿用 seed.sql 预铺的页面级权限点，List 与点查
+	// append-only 只读面，沿用 seed 包预铺的页面级权限点，List 与点查
 	// 同码。
 	PermAuditOperationLog = "sys:audit:operation-log"
 	PermAuditLoginLog     = "sys:audit:login-log"
 
 	// 会话治理（sys_session，种子菜单 254 子树：查询/撤销两枚操作码
-	// 255/256 由 99_perm_seed.sql 预铺）。
+	// 255/256 由 seed 包预铺）。
 	PermSessionQuery  = "sys:session:query"
 	PermSessionRevoke = "sys:session:revoke"
 
 	// 租户管理（sys_tenant，种子菜单 219 子树：操作级权限点 220-223 由
-	// seed.sql 预铺）。平台级租户实体管理面：方法名带 super 表达「管理
+	// seed 包预铺）。平台级租户实体管理面：方法名带 super 表达「管理
 	// 一整个租户实体」而非「绕过 RLS」（租户树边界仍由 RLS 承担，见
 	// permission.md 的 super 口径条目）。停用/恢复并入 sys:tenant:update
 	//（状态变更属编辑形态，种子权限点不设独立码）。

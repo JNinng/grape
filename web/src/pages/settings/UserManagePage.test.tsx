@@ -696,3 +696,26 @@ describe('UserManagePage delete', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('删除失败：user not found')
   })
 })
+
+describe('UserManagePage permission visibility', () => {
+  it('hides_create_and_row_actions_without_action_codes', async () => {
+    mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:user:query'])
+    renderPage()
+
+    expect(await screen.findByText('alice')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '新建用户' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: '操作 alice' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows_create_but_not_row_actions_with_only_create_code', async () => {
+    mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:user:query', 'sys:user:create'])
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: '新建用户' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '操作 alice' })).not.toBeInTheDocument()
+    })
+  })
+})

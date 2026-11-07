@@ -34,7 +34,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -607,6 +609,21 @@ function RowActions({
   menu: MenuDTO
   onOpen: (state: MenuDialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.MenuUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', menu }) })
+    actions.push({ label: '移动', onSelect: () => onOpen({ kind: 'move', menu }) })
+  }
+  if (can(PERM.MenuCreate)) {
+    actions.push({ label: '新建子菜单', onSelect: () => onOpen({ kind: 'create', parent: menu }) })
+  }
+  if (can(PERM.MenuDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', menu }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={menu.name}
@@ -614,12 +631,7 @@ function RowActions({
         { label: '菜单名', value: menu.name },
         { label: '权限码', value: menu.permissionCode ?? '' },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', menu }) },
-        { label: '移动', onSelect: () => onOpen({ kind: 'move', menu }) },
-        { label: '新建子菜单', onSelect: () => onOpen({ kind: 'create', parent: menu }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', menu }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -636,6 +648,7 @@ export function MenuManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set())
   const [dialog, setDialog] = useState<MenuDialogState | null>(null)
+  const { can } = usePermissions()
 
   // 取数：reloadKey 变化（动作成功后或手动重试）即重查全树；requestSeq 使
   // 迟到旧响应被丢弃，卸载后不再写状态。
@@ -714,10 +727,12 @@ export function MenuManagePage() {
           <p aria-label="列表统计" className="text-sm text-muted-foreground">
             {totalNum !== undefined ? `共 ${totalNum} 个菜单` : ''}
           </p>
-          <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
-            <PlusIcon aria-hidden className="size-4" />
-            新建菜单
-          </Button>
+          {can(PERM.MenuCreate) && (
+            <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
+              <PlusIcon aria-hidden className="size-4" />
+              新建菜单
+            </Button>
+          )}
         </div>
       </div>
 

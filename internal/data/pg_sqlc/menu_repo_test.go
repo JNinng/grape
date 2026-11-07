@@ -15,14 +15,13 @@ import (
 // 全部写入经 98_menu_write.sql 的 SECURITY DEFINER 固定口径写函数
 //（fn_menu_create/update/move/delete：租户边界复位、父级校验、防环、软删
 // 口径收在函数内）。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/seed.sql、sqlc/test_seed.sql 与 sqlc/99_perm_seed.sql：
-// t-super-01 有菜单树 201-265 + 257/266-273 共 73 行（246-249/254-256/
-// 258-265/257/266-273 由 99_perm_seed.sql 预铺），t-test-02 有菜单树
+// 种子数据见 sqlc/seed/ 与 sqlc/test_seed.sql：
+// t-super-01 有菜单树 201-249、252-273 共 71 行，t-test-02 有菜单树
 // 1201-1237 共 9 行）。各用例经 setupTestDB 重建数据库实现隔离；新建菜单
 // 用 newID() 发号 + 独立权限码，不与种子冲突。
 
 const (
-	// menuTenantSeeded 是种子菜单树 201-265 所在租户。
+	// menuTenantSeeded 是种子菜单树 201-249、252-273 所在租户。
 	menuTenantSeeded = "t-super-01"
 	// menuTenantOther 是种子菜单树 1201-1237 所在租户，供新建子树的用例使用。
 	menuTenantOther = "t-test-02"
@@ -187,8 +186,8 @@ func TestMenuRepo_list_all_scopes_to_current_tenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list menus in t-super-01: %v", err)
 	}
-	if len(seeded) != 73 {
-		t.Fatalf("t-super-01 rows = %d, want 73 (seed menus 201-265 + 权限码种子 257/266-273)", len(seeded))
+	if len(seeded) != 71 {
+		t.Fatalf("t-super-01 rows = %d, want 71 (seed menus 201-249, 252-273)", len(seeded))
 	}
 }
 

@@ -15,7 +15,9 @@ import {
 import { fetchMenuTree, type MenuTreeNodeDTO, type MenuTreeReplyDTO } from '@/api/menus'
 import type { QueryCondition, QuerySort } from '@/api/query'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -820,6 +822,23 @@ function RowActions({
   role: RoleDTO
   onOpen: (state: RoleDialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.RoleUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', role }) })
+  }
+  if (can(PERM.RoleSetDataScope)) {
+    actions.push({ label: '数据范围', onSelect: () => onOpen({ kind: 'data-scope', role }) })
+  }
+  if (can(PERM.RoleSetMenus)) {
+    actions.push({ label: '菜单授权', onSelect: () => onOpen({ kind: 'menus', role }) })
+  }
+  if (can(PERM.RoleDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', role }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={role.name}
@@ -827,12 +846,7 @@ function RowActions({
         { label: '角色名', value: role.name },
         { label: '编码', value: role.code },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', role }) },
-        { label: '数据范围', onSelect: () => onOpen({ kind: 'data-scope', role }) },
-        { label: '菜单授权', onSelect: () => onOpen({ kind: 'menus', role }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', role }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -847,6 +861,10 @@ export function RoleManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<RoleDialogState | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_role')
+  const { can } = usePermissions()
+  const canCreate = can(PERM.RoleCreate)
+  const hasRowActions =
+    can(PERM.RoleUpdate) || can(PERM.RoleSetDataScope) || can(PERM.RoleSetMenus) || can(PERM.RoleDelete)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -855,7 +873,7 @@ export function RoleManagePage() {
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
   // columns 动态响应 schema：页面仅覆写必要附加项——长 label 列头与徽标/
-  // 规则名渲染；行操作列不对应查询字段，恒追加在末尾。
+  // 规则名渲染；行操作列不对应查询字段，有操作权限时追加在末尾。
   const columns = useMemo<DataTableColumn<RoleDTO>[]>(
     () =>
       schema === null
@@ -867,17 +885,19 @@ export function RoleManagePage() {
               dataScope: { header: '数据范围', render: (role) => dataScopeLabel(role.dataScope) },
               status: { header: '状态', render: (role) => statusBadge(role.status) },
             },
-            [
-              {
-                key: 'actions',
-                header: '操作',
-                className: 'w-16 text-right',
-                sticky: 'right',
-                render: (role) => <RowActions role={role} onOpen={setDialog} />,
-              },
-            ],
+            hasRowActions
+              ? [
+                  {
+                    key: 'actions',
+                    header: '操作',
+                    className: 'w-16 text-right',
+                    sticky: 'right' as const,
+                    render: (role: RoleDTO) => <RowActions role={role} onOpen={setDialog} />,
+                  },
+                ]
+              : [],
           ),
-    [schema],
+    [schema, hasRowActions],
   )
 
   return (
@@ -912,9 +932,11 @@ export function RoleManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的角色"
           toolbar={
-            <ToolbarIconButton label="新建角色" onClick={() => setDialog({ kind: 'create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            canCreate ? (
+              <ToolbarIconButton label="新建角色" onClick={() => setDialog({ kind: 'create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       )}

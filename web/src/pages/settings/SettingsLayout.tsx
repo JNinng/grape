@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ComponentType } from 'react'
+import { createContext, useContext, type ComponentType } from 'react'
 import { Link, Navigate, NavLink, Outlet } from 'react-router'
 import {
   ArrowLeftIcon,
@@ -15,39 +15,122 @@ import {
   UsersIcon,
 } from 'lucide-react'
 import { cn } from 'cn'
-import { fetchMyPermissions } from '@/api/permissions'
+import { PERM } from '@/auth/permissionCodes'
+import {
+  isRequirementMet,
+  PermissionProvider,
+  usePermissions,
+  type PermissionRequirement,
+} from '@/auth/permissions'
 import { Spinner } from '@/components/ui/spinner'
 import { GrapeMark } from '@/ui/icons'
 
-// SettingsModule 描述左侧导航的一个模块项：code 是打开该模块页面的页面级
-// 权限码（对齐部署面菜单种子的 sys:* 页面码），缺省表示只受认证约束的
-// 个人面（如个人中心）；path 缺省即未开放模块（禁用态展示）。新增模块时
-// 补上 path 并在 App 注册子路由。
+// SettingsModule 描述左侧导航的一个模块项：requirement 是打开该模块的
+// 权限要求（列表/树页为「页面码 + Query 码」，多视图页为「页面码 + 任一
+// 视图码」），缺省表示只受认证约束的个人面（如个人中心）；path 缺省即
+// 未开放模块（禁用态展示）。新增模块时补上 path、权限要求并在 App 注册
+// 带 RequirePermission 的子路由。
 interface SettingsModule {
   key: string
   label: string
   icon: ComponentType<{ className?: string }>
-  code?: string
+  requirement?: PermissionRequirement
   path?: string
 }
 
-// SETTINGS_MODULES 是管理面模块全量清单与各自的页面级权限码（来源：部署
-// 面菜单种子 seed.sql / 99_perm_seed.sql 的页面菜单 permission_code）。
-// 有码的模块持有对应权限码才展示导航项；无码模块（个人中心）只受认证
-// 约束，始终展示。未开放模块的禁用占位项同样参与过滤。
+// SETTINGS_MODULES 是管理面模块全量清单与各自的权限要求。列表/树页必须
+// 同时持有页面码与 Query 码，避免进入页面后列表请求 403；审计/配置按
+// 页面码 + 任一视图码判定。
 const SETTINGS_MODULES: SettingsModule[] = [
-  { key: 'profile', label: '个人中心', icon: UserRoundIcon, code: undefined, path: '/settings/profile' },
-  { key: 'users', label: '用户', icon: UsersIcon, code: 'sys:user', path: '/settings/users' },
-  { key: 'depts', label: '部门', icon: FolderTreeIcon, code: 'sys:dept', path: '/settings/depts' },
-  { key: 'user-groups', label: '用户组', icon: ShapesIcon, code: 'sys:user-group', path: '/settings/user-groups' },
-  { key: 'roles', label: '角色', icon: KeyRoundIcon, code: 'sys:role', path: '/settings/roles' },
-  { key: 'menus', label: '菜单', icon: ListTreeIcon, code: 'sys:menu', path: '/settings/menus' },
-  { key: 'dicts', label: '字典', icon: ScrollTextIcon, code: 'sys:dict', path: '/settings/dicts' },
-  { key: 'audit-logs', label: '审计日志', icon: ClipboardListIcon, code: 'sys:audit', path: '/settings/audit-logs' },
-  { key: 'sessions', label: '会话', icon: KeyIcon, code: 'sys:session', path: '/settings/sessions' },
-  { key: 'configs', label: '配置', icon: FileCogIcon, code: 'sys:config', path: '/settings/configs' },
-  { key: 'tenants', label: '租户', icon: BuildingIcon, code: 'sys:tenant', path: '/settings/tenants' },
+  { key: 'profile', label: '个人中心', icon: UserRoundIcon, path: '/settings/profile' },
+  {
+    key: 'users',
+    label: '用户',
+    icon: UsersIcon,
+    requirement: { required: [PERM.UserPage, PERM.UserQuery] },
+    path: '/settings/users',
+  },
+  {
+    key: 'depts',
+    label: '部门',
+    icon: FolderTreeIcon,
+    requirement: { required: [PERM.DeptPage, PERM.DeptQuery] },
+    path: '/settings/depts',
+  },
+  {
+    key: 'user-groups',
+    label: '用户组',
+    icon: ShapesIcon,
+    requirement: { required: [PERM.UserGroupPage, PERM.UserGroupQuery] },
+    path: '/settings/user-groups',
+  },
+  {
+    key: 'roles',
+    label: '角色',
+    icon: KeyRoundIcon,
+    requirement: { required: [PERM.RolePage, PERM.RoleQuery] },
+    path: '/settings/roles',
+  },
+  {
+    key: 'menus',
+    label: '菜单',
+    icon: ListTreeIcon,
+    requirement: { required: [PERM.MenuPage, PERM.MenuQuery] },
+    path: '/settings/menus',
+  },
+  {
+    key: 'dicts',
+    label: '字典',
+    icon: ScrollTextIcon,
+    requirement: { required: [PERM.DictPage, PERM.DictQuery] },
+    path: '/settings/dicts',
+  },
+  {
+    key: 'audit-logs',
+    label: '审计日志',
+    icon: ClipboardListIcon,
+    requirement: {
+      required: [PERM.AuditPage],
+      anyOf: [PERM.AuditOperationLog, PERM.AuditLoginLog],
+    },
+    path: '/settings/audit-logs',
+  },
+  {
+    key: 'sessions',
+    label: '会话',
+    icon: KeyIcon,
+    requirement: { required: [PERM.SessionPage, PERM.SessionQuery] },
+    path: '/settings/sessions',
+  },
+  {
+    key: 'configs',
+    label: '配置',
+    icon: FileCogIcon,
+    requirement: {
+      required: [PERM.ConfigPage],
+      anyOf: [
+        PERM.ConfigGlobalQuery,
+        PERM.ConfigTenantQuery,
+        PERM.ConfigFeatureFlagQuery,
+        PERM.ConfigTranslationQuery,
+      ],
+    },
+    path: '/settings/configs',
+  },
+  {
+    key: 'tenants',
+    label: '租户',
+    icon: BuildingIcon,
+    requirement: { required: [PERM.TenantPage, PERM.TenantQuery] },
+    path: '/settings/tenants',
+  },
 ]
+
+// modulePermitted 判定模块是否满足权限要求；无 requirement 的模块（个人
+// 中心）只受认证约束，恒通过。
+function modulePermitted(module: SettingsModule, can: (code?: string) => boolean): boolean {
+  return module.requirement === undefined || isRequirementMet(can, module.requirement)
+}
 
 // SettingsAccess 是布局向索引路由共享的权限视图：loading 期间不下结论
 //（避免先跳到无权页再纠正）；visible 已按权限码过滤且保持模块声明顺序。
@@ -71,7 +154,7 @@ export function SettingsIndexRedirect() {
     )
   }
   const target =
-    visible.find((module) => module.path !== undefined && module.code !== undefined) ??
+    visible.find((module) => module.path !== undefined && module.requirement !== undefined) ??
     visible.find((module) => module.path !== undefined)
   if (target?.path === undefined) {
     return (
@@ -83,44 +166,21 @@ export function SettingsIndexRedirect() {
   return <Navigate to={target.path} replace />
 }
 
-// SettingsLayout 是管理页布局：左侧模块导航 + 右侧子路由内容区。挂载时拉
-// 取当前用户的功能权限码（GET /v1/permissions/mine）过滤导航项；拉取失败
-// 回落静态全量展示（M0 口径，越权由 API 拒绝兜底）。加载完成前导航留空，
-// 避免先展示无权模块再移除的闪烁。
+// SettingsLayout 是管理页布局：左侧模块导航 + 右侧子路由内容区。权限码由
+// PermissionProvider 统一拉取一次（GET /v1/permissions/mine），导航、路由
+// 守卫与页面按钮共用；拉取失败回落静态全量展示（越权由 API 拒绝兜底）。
+// 加载完成前导航留空，避免先展示无权模块再移除的闪烁。
 export function SettingsLayout() {
-  // granted 为 null 且非加载中即回落态（展示全量）；loading 期间导航留空。
-  const [granted, setGranted] = useState<ReadonlySet<string> | null>(null)
-  const [loading, setLoading] = useState(true)
+  return (
+    <PermissionProvider>
+      <SettingsLayoutContent />
+    </PermissionProvider>
+  )
+}
 
-  // 取数：requestSeq 使迟到旧响应被丢弃，卸载后不再写状态。
-  const requestSeq = useRef(0)
-  useEffect(() => {
-    const seq = requestSeq.current + 1
-    requestSeq.current = seq
-    setLoading(true)
-    fetchMyPermissions()
-      .then((codes) => {
-        if (requestSeq.current !== seq) {
-          return
-        }
-        setGranted(new Set(codes))
-        setLoading(false)
-      })
-      .catch(() => {
-        // 拉取失败（含 403/网络错误）回落全量展示，越权由 API 拒绝兜底。
-        if (requestSeq.current !== seq) {
-          return
-        }
-        setGranted(null)
-        setLoading(false)
-      })
-  }, [])
-
-  const visible = loading
-    ? []
-    : granted === null
-      ? SETTINGS_MODULES
-      : SETTINGS_MODULES.filter((module) => module.code === undefined || granted.has(module.code))
+function SettingsLayoutContent() {
+  const { loading, can } = usePermissions()
+  const visible = loading ? [] : SETTINGS_MODULES.filter((module) => modulePermitted(module, can))
 
   return (
     <SettingsAccessContext.Provider value={{ loading, visible }}>

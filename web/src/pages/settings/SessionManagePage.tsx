@@ -9,6 +9,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { listSessions, revokeSession, type SessionAdminDTO } from '@/api/sessionAdmin'
@@ -102,6 +104,10 @@ function RowActions({
   session: SessionAdminDTO
   onOpen: (session: SessionAdminDTO) => void
 }) {
+  const { can } = usePermissions()
+  if (!can(PERM.SessionRevoke)) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={`#${session.id}`}
@@ -123,6 +129,8 @@ export function SessionManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [revokeTarget, setRevokeTarget] = useState<SessionAdminDTO | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_session')
+  const { can } = usePermissions()
+  const canRevoke = can(PERM.SessionRevoke)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -130,7 +138,8 @@ export function SessionManagePage() {
 
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
-  // columns 动态响应 schema：页面覆写状态与撤销徽标；行操作列恒追加在末尾。
+  // columns 动态响应 schema：页面覆写状态与撤销徽标；行操作列有撤销权限
+  // 时追加在末尾。
   const columns = useMemo<DataTableColumn<SessionAdminDTO>[]>(
     () =>
       schema === null
@@ -141,17 +150,19 @@ export function SessionManagePage() {
               status: { header: '状态', render: (row) => statusBadge(row.status) },
               isRevoked: { header: '撤销', render: (row) => revokedBadge(row.isRevoked) },
             },
-            [
-              {
-                key: 'actions',
-                header: '操作',
-                className: 'w-16 text-right',
-                sticky: 'right',
-                render: (row) => <RowActions session={row} onOpen={setRevokeTarget} />,
-              },
-            ],
+            canRevoke
+              ? [
+                  {
+                    key: 'actions',
+                    header: '操作',
+                    className: 'w-16 text-right',
+                    sticky: 'right' as const,
+                    render: (row: SessionAdminDTO) => <RowActions session={row} onOpen={setRevokeTarget} />,
+                  },
+                ]
+              : [],
           ),
-    [schema],
+    [schema, canRevoke],
   )
 
   return (

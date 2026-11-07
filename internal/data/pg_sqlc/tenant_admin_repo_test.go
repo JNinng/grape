@@ -18,7 +18,7 @@ import (
 // 租户仓储集成测试：以真实 PostgreSQL 验证 sys_tenant 的租户树 RLS 边界
 //（tenant_id = app.tenant_id 或 id = app.tenant_id）、固定 CRUD、唯一键与
 // 软删语义、子租户删除守卫、目标状态写与动态查询协议。种子数据见
-// sqlc/seed.sql 与 sqlc/test_seed.sql：t-super-01 是树根（tenant_id =
+// sqlc/seed/ 与 sqlc/test_seed.sql：t-super-01 是树根（tenant_id =
 // 自身 id），其名下直接子租户为 t-test-01/t-test-02（tenant_id 均为
 // t-super-01）。各用例经 setupTestDB 重建数据库实现隔离；新建行由
 // newTenantID 发号（`t-` + 14 位十六进制），不与种子主键冲突。

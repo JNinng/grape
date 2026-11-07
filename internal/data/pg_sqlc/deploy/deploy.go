@@ -13,6 +13,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"grape/internal/data/pg_sqlc/sqlc/seed"
 )
 
 // DeployFiles 是生产数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
@@ -23,86 +25,86 @@ import (
 // rls.sql → expose.sql → operate.sql：LANGUAGE sql 函数体创建期解析，
 // operate 的 fn_can_* 引用 rls 的 fn_accessible_* 与 expose 的
 // fn_has_permission，引用必须后于定义；
-// seed.sql 在 RLS 启用后以超级用户/表 owner 执行；agent 域尾部追加，
-// 只依赖 role.sql 的角色存在）。
-var DeployFiles = []string{
-	"schema/10_basic.sql",
-	"schema/20_tenant.sql",
-	"schema/30_user.sql",
-	"schema/40_rbac.sql",
-	"schema/50_dept.sql",
-	"schema/60_dict.sql",
-	"schema/70_audit.sql",
-	"schema/80_session.sql",
-	"schema/90_config.sql",
-	"role.sql",
-	"rls.sql",
-	"expose.sql",
-	"operate.sql",
-	"seed.sql",
-	// Agent 会话存储：CREATE SCHEMA agent + 框架
-	// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户
-	// 执行面，不入 sqlc catalog，升级以框架建表模板 diff 该文件。
-	"agent_session.sql",
-	// 向量设施：pgvector 扩展 + agent.agent_document
-	// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
-	"agent_vector.sql",
-	// Agent 业务审计：public.agent_tool_call_log 与
-	// public.agent_confirmation_log 两表、索引与租户 RLS；sqlc catalog
-	// 输入（命名查询见 queries/agent_audit.sql），尾部独立追加不改
-	// 既有顺序，grape_u 的 DML 授权由 role.sql 默认权限覆盖。
-	"schema/95_agent_audit.sql",
-	// Agent 工具授权：public.agent_tool_grant 表 + 租户
-	// RLS 策略 + 运行角色授权；入 sqlc catalog（命名查询见
-	// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
-	// sys_perm_version），只依赖 role.sql 的角色存在。
-	"96_agent_grant.sql",
-	// Agent 检索留痕：public.agent_retrieval_log 表 +
-	// 租户 RLS 策略；入 sqlc catalog（命名查询见
-	// queries/agent_retrieval_log.sql），策略随域文件走（95 同口径），
-	// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认
-	// 权限覆盖（文件内不含授权语句）。
-	"schema/97_agent_retrieval_log.sql",
-	// 菜单受控写面（D2）：sys_menu 的 SECURITY
-	// DEFINER 固定口径写函数（fn_menu_create/update/move/delete——建/
-	// 改/移/软删，租户边界复位、父级校验、防环与软删口径收在函数内）；
-	// 入 sqlc catalog（函数签名，命名查询见 queries/menu.sql），尾部
-	// 独立追加不改既有顺序，只依赖 schema/40_rbac.sql 的 sys_menu 存在。
-	// grape_u 对 sys_menu 的直写 REVOKE 在 role.sql，本文件不动授权：
-	// EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions
-	// 同款）。
-	"98_menu_write.sql",
-	// 全局配置受控写面（D2）：sys_config 的 SECURITY DEFINER
-	// 固定口径写函数（fn_config_create/update/delete——建/改/软删，
-	// 认证事务纪律校验与软删口径收在函数内）；入 sqlc catalog（函数
-	// 签名，命名查询见 queries/sys_config.sql），尾部独立追加不改既有
-	// 顺序，只依赖 schema/90_config.sql 的 sys_config 存在。grape_u 对
-	// sys_config 的直写 REVOKE 在 role.sql，本文件不动授权：EXECUTE
-	// 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款）。
-	"98_config_write.sql",
-	// 租户删除前置完整性判定（受控读取面）：sys_tenant 的
-	// SECURITY DEFINER 计数函数 fn_tenant_active_child_count——租户树
-	// RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、
-	// 不返回行数据（不构成跨租户数据读面），函数内校验 app.tenant_id
-	// 已设置（未设置即拒绝）。入 sqlc catalog（函数签名，命名查询见
-	// queries/sys_tenant.sql），尾部独立追加不改既有顺序，只依赖
-	// schema/20_tenant.sql 的 sys_tenant 存在；EXECUTE 沿用 PostgreSQL
-	// 默认授权 PUBLIC（fn_menu_* / fn_cleanup_expired_sessions 同款）。
-	"98_tenant_guard.sql",
-	// 管理面功能权限码种子：sys_menu 操作权限点
-	//（246-249 用户/用户组/角色管理补充操作码、254-256 会话治理权限点、
-	// 257 通用翻译页面、258-265 配置族全局/租户操作码、266-269 功能开关
-	// 操作码、270-273 翻译操作码）与超级管理员（101）的角色-菜单
-	// 映射；不入 sqlc catalog，尾部独立
-	// 追加不改既有顺序，只依赖 seed.sql 的租户/角色/既有菜单树存在。
-	// 全量 ON CONFLICT DO NOTHING（seed.sql 同款幂等口径），超级用户/
-	// 表 owner 执行。
-	"99_perm_seed.sql",
+// seed 包在 RLS 启用后以超级用户/表 owner 执行，文件顺序由 seed.Files
+// 声明；agent 域尾部追加，只依赖 role.sql 的角色存在）。
+var DeployFiles = deployFiles()
+
+// deployFiles 按序拼装清单：schema → 权限函数与角色 → 生产种子包 →
+// agent 域尾部追加。种子文件顺序只在 seed.Files 维护，避免两处副本。
+func deployFiles() []string {
+	files := []string{
+		"schema/10_basic.sql",
+		"schema/20_tenant.sql",
+		"schema/30_user.sql",
+		"schema/40_rbac.sql",
+		"schema/50_dept.sql",
+		"schema/60_dict.sql",
+		"schema/70_audit.sql",
+		"schema/80_session.sql",
+		"schema/90_config.sql",
+		"role.sql",
+		"rls.sql",
+		"expose.sql",
+		"operate.sql",
+	}
+	files = append(files, seed.Files...)
+	return append(files,
+		// Agent 会话存储：CREATE SCHEMA agent + 框架
+		// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户
+		// 执行面，不入 sqlc catalog，升级以框架建表模板 diff 该文件。
+		"agent_session.sql",
+		// 向量设施：pgvector 扩展 + agent.agent_document
+		// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
+		"agent_vector.sql",
+		// Agent 业务审计：public.agent_tool_call_log 与
+		// public.agent_confirmation_log 两表、索引与租户 RLS；sqlc catalog
+		// 输入（命名查询见 queries/agent_audit.sql），尾部独立追加不改
+		// 既有顺序，grape_u 的 DML 授权由 role.sql 默认权限覆盖。
+		"schema/95_agent_audit.sql",
+		// Agent 工具授权：public.agent_tool_grant 表 + 租户
+		// RLS 策略 + 运行角色授权；入 sqlc catalog（命名查询见
+		// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
+		// sys_perm_version），只依赖 role.sql 的角色存在。
+		"96_agent_grant.sql",
+		// Agent 检索留痕：public.agent_retrieval_log 表 +
+		// 租户 RLS 策略；入 sqlc catalog（命名查询见
+		// queries/agent_retrieval_log.sql），策略随域文件走（95 同口径），
+		// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认
+		// 权限覆盖（文件内不含授权语句）。
+		"schema/97_agent_retrieval_log.sql",
+		// 菜单受控写面（D2）：sys_menu 的 SECURITY
+		// DEFINER 固定口径写函数（fn_menu_create/update/move/delete——建/
+		// 改/移/软删，租户边界复位、父级校验、防环与软删口径收在函数内）；
+		// 入 sqlc catalog（函数签名，命名查询见 queries/menu.sql），尾部
+		// 独立追加不改既有顺序，只依赖 schema/40_rbac.sql 的 sys_menu 存在。
+		// grape_u 对 sys_menu 的直写 REVOKE 在 role.sql，本文件不动授权：
+		// EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions
+		// 同款）。
+		"98_menu_write.sql",
+		// 全局配置受控写面（D2）：sys_config 的 SECURITY DEFINER
+		// 固定口径写函数（fn_config_create/update/delete——建/改/软删，
+		// 认证事务纪律校验与软删口径收在函数内）；入 sqlc catalog（函数
+		// 签名，命名查询见 queries/sys_config.sql），尾部独立追加不改既有
+		// 顺序，只依赖 schema/90_config.sql 的 sys_config 存在。grape_u 对
+		// sys_config 的直写 REVOKE 在 role.sql，本文件不动授权：EXECUTE
+		// 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款）。
+		"98_config_write.sql",
+		// 租户删除前置完整性判定（受控读取面）：sys_tenant 的
+		// SECURITY DEFINER 计数函数 fn_tenant_active_child_count——租户树
+		// RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、
+		// 不返回行数据（不构成跨租户数据读面），函数内校验 app.tenant_id
+		// 已设置（未设置即拒绝）。入 sqlc catalog（函数签名，命名查询见
+		// queries/sys_tenant.sql），尾部独立追加不改既有顺序，只依赖
+		// schema/20_tenant.sql 的 sys_tenant 存在；EXECUTE 沿用 PostgreSQL
+		// 默认授权 PUBLIC（fn_menu_* / fn_cleanup_expired_sessions 同款）。
+		"98_tenant_guard.sql",
+	)
 }
 
 // TestSeedFiles 是测试专用种子清单：在 DeployFiles 全清单之后追加执行，
 // 仅由集成测试装载（setupTestDB 与 testsupport 套件部署，经 TestDeployFiles），
-// dbdeploy 生产部署不包含。文件依赖 seed.sql 的树根租户 t-super-01 存在；
+// dbdeploy 生产部署不包含。文件依赖 seed 包（010_sys_tenant.sql）的树根
+// 租户 t-super-01 存在；
 // 除平台租户用户 12（superplain）外，内容属测试租户（t-test-*），与生产
 // 默认数据分离。
 var TestSeedFiles = []string{

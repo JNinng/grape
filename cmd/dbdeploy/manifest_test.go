@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"grape/internal/data/pg_sqlc/deploy"
+	"grape/internal/data/pg_sqlc/sqlc/seed"
 )
 
 func TestValidateDeployFiles_real_manifest_passes(t *testing.T) {
@@ -104,7 +105,9 @@ func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing
 		}
 		index[name] = i
 	}
-	wantOrder := []string{"role.sql", "rls.sql", "expose.sql", "operate.sql", "seed.sql", "agent_session.sql"}
+	wantOrder := []string{"role.sql", "rls.sql", "expose.sql", "operate.sql"}
+	wantOrder = append(wantOrder, seed.Files...)
+	wantOrder = append(wantOrder, "agent_session.sql")
 	for i, name := range wantOrder {
 		pos, ok := index[name]
 		if !ok {
@@ -118,6 +121,6 @@ func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing
 		}
 	}
 	// agent_session.sql 只依赖 role.sql 的 grape_u 存在，与 public 业务域
-	// 零耦合：相对 seed.sql 在后即可。不锁「绝对最后」：后续域（如向量
-	// 域）追加的清单项可落在其后，避免尾部互斥。
+	// 零耦合：相对种子包最后一项在后即可。不锁「绝对最后」：后续域（如
+	// 向量域）追加的清单项可落在其后，避免尾部互斥。
 }

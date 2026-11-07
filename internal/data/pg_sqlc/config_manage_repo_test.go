@@ -20,7 +20,7 @@ import (
 // 无 RLS）与 sys_tenant_config（租户表，RLS）的固定 CRUD、受控写面
 //（grape_u 对 sys_config 无直写权限，经 98_config_write.sql 的 SECURITY
 // DEFINER 写函数）、唯一键与软删语义、动态查询协议与租户边界。复用根包
-// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed.sql 与
+// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed/ 与
 // sqlc/test_seed.sql：t-super-01 有全局配置 1-7 与租户配置 1-2；t-test-02
 // 有租户配置 3-4）。
 // 各用例经 setupTestDB 重建数据库实现隔离；新建行用 newID() 发号，不与

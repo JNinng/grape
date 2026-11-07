@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { PlusIcon } from 'lucide-react'
 import {
   createConfig,
@@ -26,7 +26,9 @@ import type { QueryCondition, QuerySort } from '@/api/query'
 import type { ListSchemaDTO } from '@/api/querySchema'
 import { ApiError } from '@/api/toApiError'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -73,8 +75,6 @@ const TRANSLATION_ROW_ID_MAX = 9223372036854775807n
 
 // ConfigTab 是配置管理页的四个资源视图（全局/租户/开关/翻译）。
 type ConfigTab = 'config' | 'tenant-config' | 'feature-flag' | 'translation'
-
-const TAB_ORDER: ConfigTab[] = ['config', 'tenant-config', 'feature-flag', 'translation']
 
 const TAB_SCHEMA_RESOURCES: Record<ConfigTab, string> = {
   config: 'sys_config',
@@ -948,6 +948,17 @@ function TranslationDeleteDialog({
 // ---------- 行内动作 ----------
 
 function ConfigRowActions({ config, onOpen }: { config: ConfigDTO; onOpen: (state: DialogState) => void }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.ConfigGlobalUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'config-edit', config }) })
+  }
+  if (can(PERM.ConfigGlobalDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'config-delete', config }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={config.name}
@@ -955,15 +966,23 @@ function ConfigRowActions({ config, onOpen }: { config: ConfigDTO; onOpen: (stat
         { label: '配置名称', value: config.name },
         { label: '配置键', value: config.configKey },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'config-edit', config }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'config-delete', config }) },
-      ]}
+      actions={actions}
     />
   )
 }
 
 function TenantConfigRowActions({ config, onOpen }: { config: TenantConfigDTO; onOpen: (state: DialogState) => void }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.ConfigTenantUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'tenant-edit', config }) })
+  }
+  if (can(PERM.ConfigTenantDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'tenant-delete', config }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={config.name}
@@ -971,10 +990,7 @@ function TenantConfigRowActions({ config, onOpen }: { config: TenantConfigDTO; o
         { label: '配置名称', value: config.name },
         { label: '配置键', value: config.configKey },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'tenant-edit', config }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'tenant-delete', config }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -988,6 +1004,18 @@ function FeatureFlagRowActions({
   onOpen: (state: DialogState) => void
   onToggle: (flag: FeatureFlagDTO) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.ConfigFeatureFlagUpdate)) {
+    actions.push({ label: flag.isEnabled === true ? '停用' : '启用', onSelect: () => onToggle(flag) })
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'flag-edit', flag }) })
+  }
+  if (can(PERM.ConfigFeatureFlagDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'flag-delete', flag }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={flag.name}
@@ -995,11 +1023,7 @@ function FeatureFlagRowActions({
         { label: '功能名称', value: flag.name },
         { label: '功能键', value: flag.flagKey },
       ]}
-      actions={[
-        { label: flag.isEnabled === true ? '停用' : '启用', onSelect: () => onToggle(flag) },
-        { label: '编辑', onSelect: () => onOpen({ kind: 'flag-edit', flag }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'flag-delete', flag }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -1011,6 +1035,17 @@ function TranslationRowActions({
   translation: TranslationDTO
   onOpen: (state: DialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.ConfigTranslationUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'translation-edit', translation }) })
+  }
+  if (can(PERM.ConfigTranslationDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'translation-delete', translation }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={`${translation.tableName}/${translation.columnName} ${translation.locale}`}
@@ -1019,10 +1054,7 @@ function TranslationRowActions({
         { label: '来源行', value: translation.rowId },
         { label: '语言', value: translation.locale },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'translation-edit', translation }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'translation-delete', translation }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -1037,7 +1069,7 @@ function actionsColumn<T>(render: (item: T) => ReactNode): DataTableColumn<T> {
 // 声明为 optional（默认显示、可切换），页面只覆写列头。
 function buildConfigColumns<T extends ConfigDTO>(
   schema: ListSchemaDTO,
-  renderActions: (row: T) => ReactNode,
+  renderActions?: (row: T) => ReactNode,
 ): DataTableColumn<T>[] {
   return schemaColumns<T>(
     schema,
@@ -1049,13 +1081,13 @@ function buildConfigColumns<T extends ConfigDTO>(
       status: { header: '状态', render: (row) => statusBadge(row.status) },
       updatedAt: { header: '更新时间' },
     },
-    [actionsColumn(renderActions)],
+    renderActions === undefined ? [] : [actionsColumn(renderActions)],
   )
 }
 
 function buildFeatureFlagColumns(
   schema: ListSchemaDTO,
-  renderActions: (row: FeatureFlagDTO) => ReactNode,
+  renderActions?: (row: FeatureFlagDTO) => ReactNode,
 ): DataTableColumn<FeatureFlagDTO>[] {
   return schemaColumns<FeatureFlagDTO>(
     schema,
@@ -1065,13 +1097,13 @@ function buildFeatureFlagColumns(
       isEnabled: { header: '功能状态', render: (row) => enabledBadge(row.isEnabled) },
       status: { header: '状态', render: (row) => statusBadge(row.status) },
     },
-    [actionsColumn(renderActions)],
+    renderActions === undefined ? [] : [actionsColumn(renderActions)],
   )
 }
 
 function buildTranslationColumns(
   schema: ListSchemaDTO,
-  renderActions: (row: TranslationDTO) => ReactNode,
+  renderActions?: (row: TranslationDTO) => ReactNode,
 ): DataTableColumn<TranslationDTO>[] {
   return schemaColumns<TranslationDTO>(
     schema,
@@ -1083,7 +1115,7 @@ function buildTranslationColumns(
       value: { header: '翻译文本' },
       status: { header: '状态', render: (row) => statusBadge(row.status) },
     },
-    [actionsColumn(renderActions)],
+    renderActions === undefined ? [] : [actionsColumn(renderActions)],
   )
 }
 
@@ -1093,7 +1125,22 @@ function buildTranslationColumns(
 // 标签切换，各自筛选与列定义动态响应 GetListSchema 响应。全局与租户配置
 // 的配置键与值类型、功能开关的功能键、翻译的身份四元组均创建后不可变。
 export function ConfigManagePage() {
-  const [tab, setTab] = useState<ConfigTab>('config')
+  const { loading: permissionLoading, can } = usePermissions()
+  const canConfigQuery = can(PERM.ConfigGlobalQuery)
+  const canTenantQuery = can(PERM.ConfigTenantQuery)
+  const canFlagQuery = can(PERM.ConfigFeatureFlagQuery)
+  const canTranslationQuery = can(PERM.ConfigTranslationQuery)
+  const allowedTabs = useMemo<ConfigTab[]>(() => {
+    const tabs: ConfigTab[] = []
+    if (canConfigQuery) tabs.push('config')
+    if (canTenantQuery) tabs.push('tenant-config')
+    if (canFlagQuery) tabs.push('feature-flag')
+    if (canTranslationQuery) tabs.push('translation')
+    return tabs
+  }, [canConfigQuery, canFlagQuery, canTenantQuery, canTranslationQuery])
+  // 默认落到第一个有查询权限的视图；权限加载完成后 effect 会校正到可用
+  // 集合内的标签。
+  const [tab, setTab] = useState<ConfigTab>(() => allowedTabs[0] ?? 'config')
   const [filters, setFilters] = useState<QueryCondition[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -1118,6 +1165,15 @@ export function ConfigManagePage() {
     setReloadKey((key) => key + 1)
   }, [])
 
+  // 权限码加载完成后校正默认标签：当前视图无查询权限时切到第一个可用
+  // 视图，避免对无权端点发首查。
+  useEffect(() => {
+    if (permissionLoading || allowedTabs.length === 0 || allowedTabs.includes(tab)) {
+      return
+    }
+    switchTab(allowedTabs[0])
+  }, [allowedTabs, permissionLoading, switchTab, tab])
+
   // toggleFlag 是功能开关的快捷启停：更新为覆盖语义，status 与 isEnabled
   // 必须同时显式上送；name/description/remark 带存量值，避免覆盖为空。
   const toggleFlag = useCallback(
@@ -1141,38 +1197,57 @@ export function ConfigManagePage() {
     [reload],
   )
 
+  const canConfigOperate = can(PERM.ConfigGlobalUpdate) || can(PERM.ConfigGlobalDelete)
+  const canTenantOperate = can(PERM.ConfigTenantUpdate) || can(PERM.ConfigTenantDelete)
+  const canFlagOperate = can(PERM.ConfigFeatureFlagUpdate) || can(PERM.ConfigFeatureFlagDelete)
+  const canTranslationOperate = can(PERM.ConfigTranslationUpdate) || can(PERM.ConfigTranslationDelete)
+
   const configColumns = useMemo<DataTableColumn<ConfigDTO>[]>(
     () =>
       schemaReady
-        ? buildConfigColumns<ConfigDTO>(schema, (row) => <ConfigRowActions config={row} onOpen={setDialog} />)
+        ? buildConfigColumns<ConfigDTO>(
+            schema,
+            canConfigOperate ? (row) => <ConfigRowActions config={row} onOpen={setDialog} /> : undefined,
+          )
         : [],
-    [schemaReady, schema],
+    [schemaReady, schema, canConfigOperate],
   )
 
   const tenantColumns = useMemo<DataTableColumn<TenantConfigDTO>[]>(
     () =>
       schemaReady
-        ? buildConfigColumns<TenantConfigDTO>(schema, (row) => <TenantConfigRowActions config={row} onOpen={setDialog} />)
+        ? buildConfigColumns<TenantConfigDTO>(
+            schema,
+            canTenantOperate ? (row) => <TenantConfigRowActions config={row} onOpen={setDialog} /> : undefined,
+          )
         : [],
-    [schemaReady, schema],
+    [schemaReady, schema, canTenantOperate],
   )
 
   const flagColumns = useMemo<DataTableColumn<FeatureFlagDTO>[]>(
     () =>
       schemaReady
-        ? buildFeatureFlagColumns(schema, (row) => (
-            <FeatureFlagRowActions flag={row} onOpen={setDialog} onToggle={(flag) => { void toggleFlag(flag) }} />
-          ))
+        ? buildFeatureFlagColumns(
+            schema,
+            canFlagOperate
+              ? (row) => (
+                  <FeatureFlagRowActions flag={row} onOpen={setDialog} onToggle={(flag) => { void toggleFlag(flag) }} />
+                )
+              : undefined,
+          )
         : [],
-    [schemaReady, schema, toggleFlag],
+    [schemaReady, schema, canFlagOperate, toggleFlag],
   )
 
   const translationColumns = useMemo<DataTableColumn<TranslationDTO>[]>(
     () =>
       schemaReady
-        ? buildTranslationColumns(schema, (row) => <TranslationRowActions translation={row} onOpen={setDialog} />)
+        ? buildTranslationColumns(
+            schema,
+            canTranslationOperate ? (row) => <TranslationRowActions translation={row} onOpen={setDialog} /> : undefined,
+          )
         : [],
-    [schemaReady, schema],
+    [schemaReady, schema, canTranslationOperate],
   )
 
   const renderDialog = () => {
@@ -1211,11 +1286,19 @@ export function ConfigManagePage() {
     }
   }
 
+  if (!permissionLoading && allowedTabs.length === 0) {
+    return (
+      <p className="grid min-h-32 place-items-center p-6 text-sm text-muted-foreground">
+        当前账号无权查看配置管理
+      </p>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col p-6">
       {/* 标签切换：四个资源视图共享管理页骨架，切换即清空筛选并重查。 */}
       <div role="tablist" aria-label="配置管理视图" className="mb-4 flex items-center gap-1">
-        {TAB_ORDER.map((key) => (
+        {allowedTabs.map((key) => (
           <button
             key={key}
             type="button"
@@ -1267,9 +1350,11 @@ export function ConfigManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的全局配置"
           toolbar={
-            <ToolbarIconButton label="新建全局配置" onClick={() => setDialog({ kind: 'config-create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            can(PERM.ConfigGlobalCreate) ? (
+              <ToolbarIconButton label="新建全局配置" onClick={() => setDialog({ kind: 'config-create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       ) : tab === 'tenant-config' ? (
@@ -1288,9 +1373,11 @@ export function ConfigManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的租户配置"
           toolbar={
-            <ToolbarIconButton label="新建租户配置" onClick={() => setDialog({ kind: 'tenant-create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            can(PERM.ConfigTenantCreate) ? (
+              <ToolbarIconButton label="新建租户配置" onClick={() => setDialog({ kind: 'tenant-create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       ) : tab === 'feature-flag' ? (
@@ -1309,9 +1396,11 @@ export function ConfigManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的功能开关"
           toolbar={
-            <ToolbarIconButton label="新建功能开关" onClick={() => setDialog({ kind: 'flag-create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            can(PERM.ConfigFeatureFlagCreate) ? (
+              <ToolbarIconButton label="新建功能开关" onClick={() => setDialog({ kind: 'flag-create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       ) : (
@@ -1330,9 +1419,11 @@ export function ConfigManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的翻译"
           toolbar={
-            <ToolbarIconButton label="新建翻译" onClick={() => setDialog({ kind: 'translation-create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            can(PERM.ConfigTranslationCreate) ? (
+              <ToolbarIconButton label="新建翻译" onClick={() => setDialog({ kind: 'translation-create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       )}

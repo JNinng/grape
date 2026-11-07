@@ -14,13 +14,21 @@ const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 beforeEach(() => {
   mockFetchMyPermissions.mockResolvedValue([
     'sys:user',
+    'sys:user:query',
     'sys:dept',
+    'sys:dept:query',
     'sys:user-group',
+    'sys:user-group:query',
     'sys:role',
+    'sys:role:query',
     'sys:menu',
+    'sys:menu:query',
     'sys:dict',
+    'sys:dict:query',
     'sys:audit',
+    'sys:audit:operation-log',
     'sys:session',
+    'sys:session:query',
   ])
 })
 
@@ -41,7 +49,7 @@ function renderLayout(initialEntry = '/settings/users') {
 const ALL_LABELS = ['个人中心', '用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']
 
 describe('SettingsLayout navigation filtering', () => {
-  it('keeps_only_the_modules_whose_page_code_is_granted_after_loading', async () => {
+  it('keeps_only_the_modules_whose_permission_requirement_is_met_after_loading', async () => {
     renderLayout()
 
     // 授权集合不含 sys:config / sys:tenant：配置与租户导航项一并隐藏。
@@ -76,6 +84,32 @@ describe('SettingsLayout navigation filtering', () => {
     }
   })
 
+  it('hides_a_list_module_when_the_query_code_is_missing', async () => {
+    // 只有页面码、没有 List 端点要求的 Query 码：模块不展示，避免进入后 403。
+    mockFetchMyPermissions.mockResolvedValue(['sys:user'])
+    renderLayout()
+
+    const nav = screen.getByLabelText('管理模块')
+    expect(await within(nav).findByRole('link', { name: '个人中心' })).toBeInTheDocument()
+    expect(within(nav).queryByText('用户')).not.toBeInTheDocument()
+  })
+
+  it('shows_a_multi_view_module_when_page_and_one_view_code_are_granted', async () => {
+    mockFetchMyPermissions.mockResolvedValue(['sys:audit', 'sys:audit:login-log'])
+    renderLayout()
+
+    expect(await screen.findByRole('link', { name: '审计日志' })).toBeInTheDocument()
+  })
+
+  it('hides_a_multi_view_module_when_no_view_code_is_granted', async () => {
+    mockFetchMyPermissions.mockResolvedValue(['sys:audit'])
+    renderLayout()
+
+    const nav = screen.getByLabelText('管理模块')
+    expect(await within(nav).findByRole('link', { name: '个人中心' })).toBeInTheDocument()
+    expect(within(nav).queryByText('审计日志')).not.toBeInTheDocument()
+  })
+
   it('shows_no_nav_items_while_the_permissions_fetch_is_pending', async () => {
     let resolveFetch: ((codes: string[]) => void) | undefined
     mockFetchMyPermissions.mockReturnValue(
@@ -89,7 +123,7 @@ describe('SettingsLayout navigation filtering', () => {
     expect(within(nav).queryByText('用户')).not.toBeInTheDocument()
     expect(nav).toHaveAttribute('aria-busy', 'true')
 
-    resolveFetch?.(['sys:user'])
+    resolveFetch?.(['sys:user', 'sys:user:query'])
     expect(await within(nav).findByText('用户')).toBeInTheDocument()
     expect(nav).toHaveAttribute('aria-busy', 'false')
   })
@@ -98,7 +132,18 @@ describe('SettingsLayout navigation filtering', () => {
 describe('SettingsLayout navigation links', () => {
   it('links_all_implemented_modules', async () => {
     // 全量授权：已实现模块全部渲染为可点击链接。
-    mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:dept', 'sys:user-group', 'sys:role', 'sys:menu', 'sys:dict', 'sys:audit', 'sys:session', 'sys:config', 'sys:tenant'])
+    mockFetchMyPermissions.mockResolvedValue([
+      'sys:user', 'sys:user:query',
+      'sys:dept', 'sys:dept:query',
+      'sys:user-group', 'sys:user-group:query',
+      'sys:role', 'sys:role:query',
+      'sys:menu', 'sys:menu:query',
+      'sys:dict', 'sys:dict:query',
+      'sys:audit', 'sys:audit:operation-log',
+      'sys:session', 'sys:session:query',
+      'sys:config', 'sys:config:global:query',
+      'sys:tenant', 'sys:tenant:query',
+    ])
     renderLayout()
 
     expect(await screen.findByRole('link', { name: '个人中心' })).toHaveAttribute('href', '/settings/profile')
@@ -116,7 +161,7 @@ describe('SettingsLayout navigation links', () => {
 
   it('links_back_to_the_workspace', async () => {
     const user2 = userEvent.setup()
-    mockFetchMyPermissions.mockResolvedValue(['sys:user'])
+    mockFetchMyPermissions.mockResolvedValue(['sys:user', 'sys:user:query'])
     render(
       <MemoryRouter initialEntries={['/settings/users']}>
         <Routes>
@@ -184,15 +229,21 @@ function renderIndex() {
 describe('SettingsLayout index redirect', () => {
   it('redirects_to_the_first_permitted_module_in_declaration_order', async () => {
     // 字典声明序在审计日志之前：两者都有权限时跳到字典。
-    mockFetchMyPermissions.mockResolvedValue(['sys:dict', 'sys:audit'])
+    mockFetchMyPermissions.mockResolvedValue([
+      'sys:dict', 'sys:dict:query',
+      'sys:audit', 'sys:audit:operation-log',
+    ])
     renderIndex()
 
     expect(await screen.findByText('dicts-page')).toBeInTheDocument()
     expect(screen.queryByText('audit-page')).not.toBeInTheDocument()
   })
 
-  it('skips_modules_without_the_page_code', async () => {
-    mockFetchMyPermissions.mockResolvedValue(['sys:role', 'sys:audit'])
+  it('skips_modules_without_the_full_permission_requirement', async () => {
+    mockFetchMyPermissions.mockResolvedValue([
+      'sys:role', 'sys:role:query',
+      'sys:audit', 'sys:audit:operation-log',
+    ])
     renderIndex()
 
     expect(await screen.findByText('roles-page')).toBeInTheDocument()
@@ -226,7 +277,7 @@ describe('SettingsLayout index redirect', () => {
     expect(screen.getByLabelText('管理模块加载中')).toBeInTheDocument()
     expect(screen.queryByText('users-page')).not.toBeInTheDocument()
 
-    resolveFetch?.(['sys:role'])
+    resolveFetch?.(['sys:role', 'sys:role:query'])
     expect(await screen.findByText('roles-page')).toBeInTheDocument()
   })
 })

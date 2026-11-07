@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"grape/internal/data/pg_sqlc/deploy"
+	"grape/internal/data/pg_sqlc/sqlc/seed"
 )
 
 // agentSessionDDLTables 是框架 session/postgres 服务启动校验要求的六张表
@@ -23,29 +24,30 @@ var agentSessionDDLTables = []string{
 
 // TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape
 // 守卫 agent_session.sql 与部署清单的一致性：文件在清单内且位于
-// seed.sql 之后、通过事务破坏语句校验、六张框架表与索引齐备、关键
+// 种子包之后、通过事务破坏语句校验、六张框架表与索引齐备、关键
 // 列型与框架期望一致。WithSkipDBInit(true) 下框架启动期零校验，本
 // 静态守卫是表结构漂移的唯一防线：框架表/索引名规则
 // （idx_{schema}_{前缀表}_{suffix}）由框架内部 builder 计算，列型/
 // 可空性与框架 verifySchema 的 expectedSchema 对应，DDL 偏离任何一项，
 // 框架升级跑全量校验或运行期读写即断。
 func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *testing.T) {
-	// 相对序约束：agent_session.sql 在 seed.sql 之后即可，不锁绝对
-	// 最后——向量域的清单项即落其后，避免尾部互斥。
+	// 相对序约束：agent_session.sql 在种子包最后一个文件之后即可，不锁
+	// 绝对最后——向量域的清单项即落其后，避免尾部互斥。
+	lastSeed := seed.Files[len(seed.Files)-1]
 	seedPos, agentPos := -1, -1
 	for i, name := range deploy.DeployFiles {
 		switch name {
-		case "seed.sql":
+		case lastSeed:
 			seedPos = i
 		case "agent_session.sql":
 			agentPos = i
 		}
 	}
 	if seedPos < 0 || agentPos < 0 {
-		t.Fatalf("manifest must contain seed.sql and agent_session.sql, got %v", deploy.DeployFiles)
+		t.Fatalf("manifest must contain %s and agent_session.sql, got %v", lastSeed, deploy.DeployFiles)
 	}
 	if agentPos <= seedPos {
-		t.Fatalf("agent_session.sql (pos %d) must come after seed.sql (pos %d)", agentPos, seedPos)
+		t.Fatalf("agent_session.sql (pos %d) must come after %s (pos %d)", agentPos, lastSeed, seedPos)
 	}
 	dir, err := deploy.DeployDir()
 	if err != nil {

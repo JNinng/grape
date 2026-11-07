@@ -25,8 +25,8 @@
 -- SECURITY DEFINER 的安全惯例（防 search_path 劫持函数体内的对象解析）。
 --
 -- 部署：尾部独立追加（DeployFiles 清单位于 98_config_write.sql 之后、
--- 99_perm_seed.sql 之前），只依赖 schema/20_tenant.sql 的 sys_tenant
--- 存在；入 sqlc catalog（函数签名），命名查询见 queries/sys_tenant.sql。
+-- 清单末尾），只依赖 schema/20_tenant.sql 的 sys_tenant 存在；入
+-- sqlc catalog（函数签名），命名查询见 queries/sys_tenant.sql。
 --
 -- 当前 schema 未设 sys_tenant.parent_id 索引，计数为全表扫描；后续迁移
 -- 补 parent_id 部分索引（WHERE deleted_at IS NULL）优化。

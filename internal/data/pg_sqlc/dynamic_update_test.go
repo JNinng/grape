@@ -14,7 +14,7 @@ import (
 // typed Update 面（@updatable 声明生成的动态更新）集成测试：以真实
 // PostgreSQL 验证 SET 白名单、@pk 定位、@filter 不变量与守卫语义。
 // 断言基于 sqlc/test_seed.sql 的种子事实（用户 2-4/6-11 属 t-test-01，
-// 用户 5 属 t-test-02，basic 行 1-10 属 t-test-01）与 sqlc/seed.sql 的
+// 用户 5 属 t-test-02，basic 行 1-10 属 t-test-01）与 sqlc/seed/ 的
 // 生产默认事实（功能开关 1-4 属 t-super-01）。环境变量未设置时跳过
 // （同 session_test.go）。
 func TestDynamicUpdate(t *testing.T) {
@@ -290,7 +290,7 @@ func TestDynamicUpdate(t *testing.T) {
 
 	t.Run("boolean_column_toggled_on_flag_row", func(t *testing.T) {
 		// 非 int/string 形态冒烟：bool 列（NOT NULL）走白名单 Set。
-		// 功能开关 1 属生产默认租户（seed.sql），用其全租户操作者。
+		// 功能开关 1 属生产默认租户（seed 包），用其全租户操作者。
 		flagAdmin := Identity{TenantID: "t-super-01", UserID: 1}
 		var n int64
 		err := d.IdentityTx(ctx, flagAdmin, func(s *IdentityTx) error {

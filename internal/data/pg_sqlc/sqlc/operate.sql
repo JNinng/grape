@@ -1,7 +1,7 @@
 -- ============================================================
 -- operate.sql — 写数据前的权限判断函数
 --
--- 在 schema/ 全部文件、rls.sql 与 expose.sql 之后，seed.sql 之前执行
+-- 在 schema/ 全部文件、rls.sql 与 expose.sql 之后，seed 包之前执行
 --（fn_can_* 的函数体引用 rls.sql 的 fn_accessible_* 与 expose.sql 的
 -- fn_has_permission，三文件依赖顺序 rls → expose → operate）。
 -- 本文件同时列在 sqlc.yaml 的 schema 里：queries/ 下的命名查询要

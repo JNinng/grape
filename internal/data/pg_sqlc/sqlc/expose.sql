@@ -1,7 +1,7 @@
 -- ============================================================
 -- expose.sql — 权限查询接口：读侧·面向外部进程的只读判定函数 + 范围版本
 --
--- 在 schema/ 全部文件、rls.sql、operate.sql 之后，seed.sql 之前执行。
+-- 在 schema/ 全部文件与 rls.sql 之后、operate.sql 与 seed 包之前执行。
 -- 本文件同时列在 sqlc.yaml 的 schema 里（同 operate.sql 的原因：
 -- queries/ 下的命名查询要调用这些函数，sqlc 需要读到函数签名；
 -- rls.sql 也因此纳入——GetScope 直接调 fn_accessible_* 三件套）。

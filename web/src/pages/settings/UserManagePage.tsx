@@ -13,9 +13,11 @@ import {
 import { createUser, deleteUser, listUsers, setUserPassword, transferUserOwner, updateUser, type CreateUserInput, type OwnerTripleInput, type UserDTO } from '@/api/users'
 import { ApiError } from '@/api/toApiError'
 import type { QueryCondition, QuerySort } from '@/api/query'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
 import { OptionSelect, type OptionPage } from '@/components/manage/option-select'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import {
   AlertDialog,
@@ -672,6 +674,26 @@ function UserDeleteDialog({
 
 // RowActions 是行内操作弹框：顶部展示用户名/昵称摘要，悬停即弹出。
 function RowActions({ user, onOpen }: { user: UserDTO; onOpen: (state: UserDialogState) => void }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.UserUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', user }) })
+  }
+  if (can(PERM.UserResetPwd)) {
+    actions.push({ label: '修改密码', onSelect: () => onOpen({ kind: 'password', user }) })
+  }
+  if (can(PERM.UserAssignRole)) {
+    actions.push({ label: '设置角色', onSelect: () => onOpen({ kind: 'roles', user }) })
+  }
+  if (can(PERM.UserTransferOwner)) {
+    actions.push({ label: '转移归属', onSelect: () => onOpen({ kind: 'owner', user }) })
+  }
+  if (can(PERM.UserDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', user }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={user.name}
@@ -679,13 +701,7 @@ function RowActions({ user, onOpen }: { user: UserDTO; onOpen: (state: UserDialo
         { label: '用户名', value: user.name },
         { label: '昵称', value: user.nickname },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', user }) },
-        { label: '修改密码', onSelect: () => onOpen({ kind: 'password', user }) },
-        { label: '设置角色', onSelect: () => onOpen({ kind: 'roles', user }) },
-        { label: '转移归属', onSelect: () => onOpen({ kind: 'owner', user }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', user }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -700,6 +716,14 @@ export function UserManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<UserDialogState | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_user')
+  const { can } = usePermissions()
+  const canCreate = can(PERM.UserCreate)
+  const hasRowActions =
+    can(PERM.UserUpdate) ||
+    can(PERM.UserResetPwd) ||
+    can(PERM.UserAssignRole) ||
+    can(PERM.UserTransferOwner) ||
+    can(PERM.UserDelete)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -710,7 +734,7 @@ export function UserManagePage() {
   // columns 动态响应 schema：列集/顺序/表头/排序/显隐全部来自 GetListSchema
   // 响应（visibility 决定列初始显隐），页面仅覆写必要附加项——schema label
   // 为长文案无法直接作列头的字段与需自定义渲染的状态徽标；行操作列不
-  // 对应查询字段，恒追加在末尾。
+  // 对应查询字段，有操作权限时追加在末尾。
   const columns = useMemo<DataTableColumn<UserDTO>[]>(
     () =>
       schema === null
@@ -721,17 +745,19 @@ export function UserManagePage() {
               status: { header: '状态', render: (u) => statusBadge(u.status) },
               locale: { header: '语言' },
             },
-            [
-              {
-                key: 'actions',
-                header: '操作',
-                className: 'w-16 text-right',
-                sticky: 'right',
-                render: (u) => <RowActions user={u} onOpen={setDialog} />,
-              },
-            ],
+            hasRowActions
+              ? [
+                  {
+                    key: 'actions',
+                    header: '操作',
+                    className: 'w-16 text-right',
+                    sticky: 'right' as const,
+                    render: (u: UserDTO) => <RowActions user={u} onOpen={setDialog} />,
+                  },
+                ]
+              : [],
           ),
-    [schema],
+    [schema, hasRowActions],
   )
 
   return (
@@ -766,9 +792,11 @@ export function UserManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的用户"
           toolbar={
-            <ToolbarIconButton label="新建用户" onClick={() => setDialog({ kind: 'create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            canCreate ? (
+              <ToolbarIconButton label="新建用户" onClick={() => setDialog({ kind: 'create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       )}

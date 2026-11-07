@@ -25,7 +25,7 @@ func argon2IKey(t *testing.T, plain string, salt []byte, time, memory uint32, th
 }
 
 // legacyScryptHash 构造 Spring Security SCryptPasswordEncoder 兼容的
-// 种子格式哈希（测试夹具，与 seed.sql 同格式）。
+// 种子格式哈希（测试夹具，与 seed 包同格式）。
 func legacyScryptHash(t *testing.T, plain string, logN, r, p int) string {
 	t.Helper()
 	salt := make([]byte, 64)

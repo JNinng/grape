@@ -31,7 +31,7 @@ sqlc generate -f sqlc.yaml
 | `gen/<表名>_dynamic_gen.go`（按表生成，入选表需声明 `@pk` / `@dynamic` / set-capable `@updatable`，如 `basic`/`sys_user`） | sqlc_gen_dynamic 插件（块 2） | 动态 List/Count 与动态更新面：Parse / List / Count / UpdateXxx / UpdateXxxReturning；能力由 schema 列注释 DSL 与 sqlc.yaml 的 `options.ui` / `options.page` 声明，@scope 守卫 fail-closed |
 
 修改 sqlc 输入（`schema/`、`rls/operate/expose`、`96_agent_grant.sql`、`queries/`）后必须重新执行
-`sqlc generate -f sqlc.yaml` 并提交生成物；`seed.sql` 不参与生成，改动按部署流程执行。
+`sqlc generate -f sqlc.yaml` 并提交生成物；`seed/` 种子包不参与生成，改动按部署流程执行。
 
 ## Agent 运维复现
 

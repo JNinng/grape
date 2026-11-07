@@ -52,6 +52,12 @@ export function RowActionsMenu({ rowLabel, info, actions }: {
     setOpen(true)
   }
 
+  // 空动作集不渲染触发钮：调用方按权限过滤后可能一项不剩，此时整列
+  // 也通常被省略，双保险避免出现无动作的空白按钮。
+  if (actions.length === 0) {
+    return null
+  }
+
   return (
     <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
       <DropdownMenuTrigger asChild>

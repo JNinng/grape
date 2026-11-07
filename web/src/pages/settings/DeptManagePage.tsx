@@ -35,7 +35,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { OptionSelect } from '@/components/manage/option-select'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -591,6 +593,21 @@ function RowActions({
   dept: DeptDTO
   onOpen: (state: DeptDialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.DeptUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', dept }) })
+    actions.push({ label: '移动', onSelect: () => onOpen({ kind: 'move', dept }) })
+  }
+  if (can(PERM.DeptCreate)) {
+    actions.push({ label: '新建子部门', onSelect: () => onOpen({ kind: 'create', parent: dept }) })
+  }
+  if (can(PERM.DeptDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', dept }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={dept.name}
@@ -598,12 +615,7 @@ function RowActions({
         { label: '部门名', value: dept.name },
         { label: '组长 ID', value: dept.ownerUserId },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', dept }) },
-        { label: '移动', onSelect: () => onOpen({ kind: 'move', dept }) },
-        { label: '新建子部门', onSelect: () => onOpen({ kind: 'create', parent: dept }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', dept }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -619,6 +631,7 @@ export function DeptManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(new Set())
   const [dialog, setDialog] = useState<DeptDialogState | null>(null)
+  const { can } = usePermissions()
 
   // 取数：reloadKey 变化（动作成功后或手动重试）即重查全树；requestSeq 使
   // 迟到旧响应被丢弃，卸载后不再写状态。
@@ -692,10 +705,12 @@ export function DeptManagePage() {
           <p aria-label="列表统计" className="text-sm text-muted-foreground">
             {totalNum !== undefined ? `共 ${totalNum} 个部门` : ''}
           </p>
-          <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
-            <PlusIcon aria-hidden className="size-4" />
-            新建部门
-          </Button>
+          {can(PERM.DeptCreate) && (
+            <Button type="button" onClick={() => setDialog({ kind: 'create' })}>
+              <PlusIcon aria-hidden className="size-4" />
+              新建部门
+            </Button>
+          )}
         </div>
       </div>
 

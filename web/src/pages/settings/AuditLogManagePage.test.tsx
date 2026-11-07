@@ -147,7 +147,7 @@ describe('AuditLogManagePage operation tab', () => {
   it('loads_operation_logs_with_the_schema_default_sort_on_mount', async () => {
     renderPage()
 
-    expect(await screen.findByText('操作日志')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '操作日志' })).toBeInTheDocument()
     expect(mockListOperationLogs).toHaveBeenCalledTimes(1)
     expect(mockListOperationLogs.mock.calls[0][0]).toEqual({
       where: [],

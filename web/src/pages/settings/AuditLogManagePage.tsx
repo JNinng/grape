@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from 'cn'
 import { fetchOperationLog, listLoginLogs, listOperationLogs, type LoginLogDTO, type OperationLogDTO } from '@/api/auditLogs'
 import type { QueryCondition, QuerySort } from '@/api/query'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { DataTable, schemaColumns, type DataTableColumn } from '@/components/manage/data-table'
 import { RowActionsMenu } from '@/components/manage/row-actions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
@@ -175,7 +177,18 @@ function OperationRowActions({ log, onOpen }: { log: OperationLogDTO; onOpen: (l
 // 各自筛选与列定义动态响应 GetListSchema 响应。append-only 无写动作，
 // 行内动作仅操作日志的详情查看。
 export function AuditLogManagePage() {
-  const [tab, setTab] = useState<AuditTab>('operation')
+  const { loading: permissionLoading, can } = usePermissions()
+  const canOperation = can(PERM.AuditOperationLog)
+  const canLogin = can(PERM.AuditLoginLog)
+  const allowedTabs = useMemo<AuditTab[]>(() => {
+    const tabs: AuditTab[] = []
+    if (canOperation) tabs.push('operation')
+    if (canLogin) tabs.push('login')
+    return tabs
+  }, [canOperation, canLogin])
+  // 默认落到第一个有查询权限的视图；权限加载完成后 effect 会校正到可用
+  // 集合内的标签。
+  const [tab, setTab] = useState<AuditTab>(() => allowedTabs[0] ?? 'operation')
   const [filters, setFilters] = useState<QueryCondition[]>([])
   const [reloadKey, setReloadKey] = useState(0)
   const [detailLog, setDetailLog] = useState<OperationLogDTO | null>(null)
@@ -196,6 +209,15 @@ export function AuditLogManagePage() {
     setFilters([])
     setReloadKey((key) => key + 1)
   }, [])
+
+  // 权限码加载完成后校正默认标签：无权查看操作日志但可查登录日志时
+  // 自动切到唯一可用视图，避免对无权端点发首查。
+  useEffect(() => {
+    if (permissionLoading || allowedTabs.length === 0 || allowedTabs.includes(tab)) {
+      return
+    }
+    switchTab(allowedTabs[0])
+  }, [allowedTabs, permissionLoading, switchTab, tab])
 
   // columns 动态响应 schema：页面仅覆写必要附加项；行操作列不对应查询
   // 字段，恒追加在末尾（仅操作日志视图）。
@@ -233,11 +255,19 @@ export function AuditLogManagePage() {
     [schema],
   )
 
+  if (!permissionLoading && allowedTabs.length === 0) {
+    return (
+      <p className="grid min-h-32 place-items-center p-6 text-sm text-muted-foreground">
+        当前账号无权查看审计日志
+      </p>
+    )
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col p-6">
       {/* 标签切换：同一管理页内的两个只读视图，切换即清空筛选并重查。 */}
       <div role="tablist" aria-label="审计日志视图" className="mb-4 flex items-center gap-1">
-        {(['operation', 'login'] as const).map((key) => (
+        {allowedTabs.map((key) => (
           <button
             key={key}
             type="button"

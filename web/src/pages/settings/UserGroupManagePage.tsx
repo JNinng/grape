@@ -13,7 +13,9 @@ import {
 } from '@/api/userGroups'
 import type { QueryCondition, QuerySort } from '@/api/query'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -347,6 +349,8 @@ function UserGroupMembersDialog({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const { can } = usePermissions()
+  const canAssignMember = can(PERM.UserGroupAssignMember)
 
   // 取数：page 或 reloadKey（增删后的重查信号）变化即拉当前页；requestSeq
   // 使迟到旧响应被丢弃，卸载后不再写状态。
@@ -423,22 +427,24 @@ function UserGroupMembersDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { void submit(e) }} aria-label="添加成员">
-          <div className="grid min-w-0 flex-1 gap-1.5">
-            <Label htmlFor="members-add-input">用户 ID</Label>
-            <Input
-              id="members-add-input"
-              value={raw}
-              onChange={(e) => setRaw(e.target.value)}
-              placeholder="如：11, 12"
-              autoComplete="off"
-            />
-          </div>
-          <Button type="submit" variant="outline" disabled={pending}>
-            <PlusIcon aria-hidden className="size-4" />
-            添加成员
-          </Button>
-        </form>
+        {canAssignMember && (
+          <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { void submit(e) }} aria-label="添加成员">
+            <div className="grid min-w-0 flex-1 gap-1.5">
+              <Label htmlFor="members-add-input">用户 ID</Label>
+              <Input
+                id="members-add-input"
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                placeholder="如：11, 12"
+                autoComplete="off"
+              />
+            </div>
+            <Button type="submit" variant="outline" disabled={pending}>
+              <PlusIcon aria-hidden className="size-4" />
+              添加成员
+            </Button>
+          </form>
+        )}
         <FormError message={error} />
 
         {loadError !== null ? (
@@ -458,13 +464,13 @@ function UserGroupMembersDialog({
                   <TableHead>昵称</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>添加时间</TableHead>
-                  <TableHead className="w-16 text-right">操作</TableHead>
+                  {canAssignMember && <TableHead className="w-16 text-right">操作</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {members.length === 0 && !loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={canAssignMember ? 6 : 5} className="h-24 text-center text-muted-foreground">
                       暂无成员
                     </TableCell>
                   </TableRow>
@@ -476,18 +482,20 @@ function UserGroupMembersDialog({
                       <TableCell>{member.nickname}</TableCell>
                       <TableCell>{statusBadge(member.status)}</TableCell>
                       <TableCell>{formatDateTime(member.addedAt)}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`移除 ${member.name}`}
-                          disabled={loading}
-                          onClick={() => { void remove(member) }}
-                        >
-                          移除
-                        </Button>
-                      </TableCell>
+                      {canAssignMember && (
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`移除 ${member.name}`}
+                            disabled={loading}
+                            onClick={() => { void remove(member) }}
+                          >
+                            移除
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -591,6 +599,20 @@ function RowActions({
   group: UserGroupDTO
   onOpen: (state: DialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (can(PERM.UserGroupQuery) || can(PERM.UserGroupAssignMember)) {
+    actions.push({ label: '成员管理', onSelect: () => onOpen({ kind: 'members', group }) })
+  }
+  if (can(PERM.UserGroupUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', group }) })
+  }
+  if (can(PERM.UserGroupDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', group }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={group.name}
@@ -598,11 +620,7 @@ function RowActions({
         { label: '组名', value: group.name },
         { label: '组编码', value: group.code },
       ]}
-      actions={[
-        { label: '成员管理', onSelect: () => onOpen({ kind: 'members', group }) },
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', group }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'delete', group }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -617,6 +635,13 @@ export function UserGroupManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_user_group')
+  const { can } = usePermissions()
+  const canCreate = can(PERM.UserGroupCreate)
+  const hasRowActions =
+    can(PERM.UserGroupQuery) ||
+    can(PERM.UserGroupAssignMember) ||
+    can(PERM.UserGroupUpdate) ||
+    can(PERM.UserGroupDelete)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -625,7 +650,7 @@ export function UserGroupManagePage() {
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
   // columns 动态响应 schema：页面仅覆写必要附加项（状态徽标 + 长 label
-  // 列头）；行操作列不对应查询字段，恒追加在末尾。
+  // 列头）；行操作列不对应查询字段，有操作权限时追加在末尾。
   const columns = useMemo<DataTableColumn<UserGroupDTO>[]>(
     () =>
       schema === null
@@ -633,17 +658,19 @@ export function UserGroupManagePage() {
         : schemaColumns<UserGroupDTO>(
             schema,
             { status: { header: '状态', render: (g) => statusBadge(g.status) } },
-            [
-              {
-                key: 'actions',
-                header: '操作',
-                className: 'w-16 text-right',
-                sticky: 'right',
-                render: (g) => <RowActions group={g} onOpen={setDialog} />,
-              },
-            ],
+            hasRowActions
+              ? [
+                  {
+                    key: 'actions',
+                    header: '操作',
+                    className: 'w-16 text-right',
+                    sticky: 'right' as const,
+                    render: (g: UserGroupDTO) => <RowActions group={g} onOpen={setDialog} />,
+                  },
+                ]
+              : [],
           ),
-    [schema],
+    [schema, hasRowActions],
   )
 
   return (
@@ -678,9 +705,11 @@ export function UserGroupManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的用户组"
           toolbar={
-            <ToolbarIconButton label="新建用户组" onClick={() => setDialog({ kind: 'create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            canCreate ? (
+              <ToolbarIconButton label="新建用户组" onClick={() => setDialog({ kind: 'create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       )}

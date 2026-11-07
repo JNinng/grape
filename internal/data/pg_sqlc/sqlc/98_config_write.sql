@@ -27,7 +27,7 @@
 -- 解析）。
 --
 -- 部署：尾部独立追加（DeployFiles 清单中位于 98_menu_write.sql 之后、
--- 99_perm_seed.sql 之前），只依赖 schema/90_config.sql 的 sys_config
+-- 98_tenant_guard.sql 之前），只依赖 schema/90_config.sql 的 sys_config
 -- 存在；入 sqlc catalog（函数签名），命名查询见 queries/sys_config.sql。
 -- ============================================================
 

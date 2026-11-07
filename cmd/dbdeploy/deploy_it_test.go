@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"grape/internal/data/pg_sqlc/deploy"
+	"grape/internal/data/pg_sqlc/sqlc/seed"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -162,8 +163,10 @@ func TestDeploy_repeated_role_and_seed_apply_on_deployed_database(t *testing.T) 
 	}
 
 	// 种子重放成功且不覆盖已有行（ON CONFLICT DO NOTHING）
-	if err := applyFile(ctx, t, conn, "seed.sql"); err != nil {
-		t.Fatalf("replay seed.sql: %v", err)
+	for _, name := range seed.Files {
+		if err := applyFile(ctx, t, conn, name); err != nil {
+			t.Fatalf("replay %s: %v", name, err)
+		}
 	}
 	var after int
 	if err := conn.QueryRow(ctx, "SELECT count(*) FROM public.sys_tenant").Scan(&after); err != nil {

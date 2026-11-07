@@ -92,8 +92,18 @@ function roleSchema(): ListSchemaDTO {
 
 beforeEach(() => {
   clearToasts()
-  // 全量权限码：SettingsLayout 导航按权限码过滤后仍展示全部模块。
-  mockFetchMyPermissions.mockResolvedValue(['sys:role', 'sys:menu'])
+  // 本页所需权限码（全放行）：导航与角色页的创建/编辑/数据范围/菜单授权/删除。
+  mockFetchMyPermissions.mockResolvedValue([
+    'sys:role',
+    'sys:role:query',
+    'sys:menu',
+    'sys:menu:query',
+    'sys:role:create',
+    'sys:role:update',
+    'sys:role:set-data-scope',
+    'sys:role:set-menus',
+    'sys:role:delete',
+  ])
   mockGetListSchema.mockResolvedValue(roleSchema())
   mockListRoles.mockResolvedValue({
     items: [role(), presetRole()],

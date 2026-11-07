@@ -277,7 +277,7 @@ func TestRoleRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 
 func TestRoleRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 	d := setupTestDB(t)
-	// 角色 101 属 t-super-01（seed.sql 生产默认）；t-test-02 的身份经
+	// 角色 101 属 t-super-01（seed 包生产默认）；t-test-02 的身份经
 	// RLS 不可见，等同不存在。
 	other := roleAuth(roleTenantEmpty)
 
@@ -396,7 +396,7 @@ func TestRoleRepo_delete_missing_maps_not_found(t *testing.T) {
 
 func TestRoleRepo_delete_preset_role_rejected_without_changes(t *testing.T) {
 	d := setupTestDB(t)
-	// 角色 101 为系统预置（role_type=1，seed.sql 生产默认数据）：删除被
+	// 角色 101 为系统预置（role_type=1，seed 包生产默认数据）：删除被
 	// 拒绝且角色仍可见。
 	auth := roleAuth("t-super-01")
 	repo := NewRoleRepo(d)

@@ -16,7 +16,9 @@ import type { ListSchemaDTO } from '@/api/querySchema'
 import { ApiError } from '@/api/toApiError'
 import { getUser } from '@/auth/store'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -670,10 +672,42 @@ function TenantRowActions({
   isSelf: boolean
   onOpen: (state: DialogState) => void
 }) {
+  const { can } = usePermissions()
   const restoring = tenant.status === STATUS_DISABLED
   // 自身租户的禁用动作在菜单文字上直接标注原因（title 在禁用项上不可感知，
   // 仅作补充）；页面另有常驻说明行。
   const selfSuffix = isSelf ? '（当前登录租户）' : ''
+  const actions: RowActionItem[] = []
+  if (can(PERM.TenantUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'edit', tenant }) })
+    actions.push(
+      restoring
+        ? {
+            label: `恢复${selfSuffix}`,
+            disabled: isSelf,
+            title: isSelf ? '不能恢复当前登录租户' : undefined,
+            onSelect: () => onOpen({ kind: 'restore', tenant }),
+          }
+        : {
+            label: `停用${selfSuffix}`,
+            disabled: isSelf,
+            title: isSelf ? '不能停用当前登录租户' : undefined,
+            onSelect: () => onOpen({ kind: 'disable', tenant }),
+          },
+    )
+  }
+  if (can(PERM.TenantDelete)) {
+    actions.push({
+      label: `删除${selfSuffix}`,
+      destructive: true,
+      disabled: isSelf,
+      title: isSelf ? '不能删除当前登录租户' : undefined,
+      onSelect: () => onOpen({ kind: 'delete', tenant }),
+    })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={tenant.name}
@@ -681,29 +715,7 @@ function TenantRowActions({
         { label: '租户编码', value: tenant.code },
         { label: '父级租户', value: tenant.parentId ?? '' },
       ]}
-      actions={[
-        { label: '编辑', onSelect: () => onOpen({ kind: 'edit', tenant }) },
-        restoring
-          ? {
-              label: `恢复${selfSuffix}`,
-              disabled: isSelf,
-              title: isSelf ? '不能恢复当前登录租户' : undefined,
-              onSelect: () => onOpen({ kind: 'restore', tenant }),
-            }
-          : {
-              label: `停用${selfSuffix}`,
-              disabled: isSelf,
-              title: isSelf ? '不能停用当前登录租户' : undefined,
-              onSelect: () => onOpen({ kind: 'disable', tenant }),
-            },
-        {
-          label: `删除${selfSuffix}`,
-          destructive: true,
-          disabled: isSelf,
-          title: isSelf ? '不能删除当前登录租户' : undefined,
-          onSelect: () => onOpen({ kind: 'delete', tenant }),
-        },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -715,7 +727,7 @@ function TenantRowActions({
 // UI manifest 声明为 optional，这里只覆写业务列头与日期展示形态。
 function buildTenantColumns(
   schema: ListSchemaDTO,
-  renderActions: (row: TenantDTO) => ReactNode,
+  renderActions?: (row: TenantDTO) => ReactNode,
 ): DataTableColumn<TenantDTO>[] {
   return schemaColumns<TenantDTO>(
     schema,
@@ -735,15 +747,17 @@ function buildTenantColumns(
         render: (row) => (row.updatedAt === undefined ? '—' : formatTenantDateTime(row.updatedAt)),
       },
     },
-    [
-      {
-        key: 'actions',
-        header: '操作',
-        className: 'w-16 text-right',
-        sticky: 'right',
-        render: renderActions,
-      },
-    ],
+    renderActions === undefined
+      ? []
+      : [
+          {
+            key: 'actions',
+            header: '操作',
+            className: 'w-16 text-right',
+            sticky: 'right' as const,
+            render: renderActions,
+          },
+        ],
   )
 }
 
@@ -757,6 +771,9 @@ export function TenantManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_tenant')
+  const { can } = usePermissions()
+  const canCreate = can(PERM.TenantCreate)
+  const hasRowActions = can(PERM.TenantUpdate) || can(PERM.TenantDelete)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -769,10 +786,13 @@ export function TenantManagePage() {
     () =>
       schema === null
         ? []
-        : buildTenantColumns(schema, (row) => (
-            <TenantRowActions tenant={row} isSelf={row.id === selfTenantId} onOpen={setDialog} />
-          )),
-    [schema, selfTenantId],
+        : buildTenantColumns(
+            schema,
+            hasRowActions
+              ? (row) => <TenantRowActions tenant={row} isSelf={row.id === selfTenantId} onOpen={setDialog} />
+              : undefined,
+          ),
+    [schema, selfTenantId, hasRowActions],
   )
 
   const renderDialog = () => {
@@ -836,9 +856,11 @@ export function TenantManagePage() {
             pageSize={pageSize}
             emptyText="没有符合条件的租户"
             toolbar={
-              <ToolbarIconButton label="新建租户" onClick={() => setDialog({ kind: 'create' })}>
-                <PlusIcon aria-hidden className="size-4" />
-              </ToolbarIconButton>
+              canCreate ? (
+                <ToolbarIconButton label="新建租户" onClick={() => setDialog({ kind: 'create' })}>
+                  <PlusIcon aria-hidden className="size-4" />
+                </ToolbarIconButton>
+              ) : undefined
             }
           />
         </>

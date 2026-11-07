@@ -42,8 +42,16 @@ const mockFetchMyPermissions = vi.mocked(fetchMyPermissions)
 
 beforeEach(() => {
   clearToasts()
-  // 全量权限码：SettingsLayout 导航按权限码过滤后仍展示全部模块。
-  mockFetchMyPermissions.mockResolvedValue(['sys:role', 'sys:menu'])
+  // 本页所需权限码（全放行）：导航与菜单页的行操作/新建按钮。
+  mockFetchMyPermissions.mockResolvedValue([
+    'sys:role',
+    'sys:role:query',
+    'sys:menu',
+    'sys:menu:query',
+    'sys:menu:create',
+    'sys:menu:update',
+    'sys:menu:delete',
+  ])
   mockFetchTree.mockResolvedValue(sampleTree())
 })
 

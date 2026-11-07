@@ -14,7 +14,9 @@ import {
 } from '@/api/dicts'
 import type { DynamicQuery, QueryCondition, QuerySort } from '@/api/query'
 import { DataTable, schemaColumns, ToolbarIconButton, type DataTableColumn } from '@/components/manage/data-table'
-import { RowActionsMenu } from '@/components/manage/row-actions'
+import { RowActionsMenu, type RowActionItem } from '@/components/manage/row-actions'
+import { PERM } from '@/auth/permissionCodes'
+import { usePermissions } from '@/auth/permissions'
 import { QueryFilter, defaultSortFromSchema, filterFieldsFromSchema, useListSchema } from '@/components/manage/query-filter'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -380,6 +382,11 @@ function DictDataManageDialog({
   const [addPending, setAddPending] = useState(false)
 
   const [editing, setEditing] = useState<DictDataDTO | null>(null)
+  const { can } = usePermissions()
+  const canCreate = can(PERM.DictCreate)
+  const canUpdate = can(PERM.DictUpdate)
+  const canDelete = can(PERM.DictDelete)
+  const canOperate = canUpdate || canDelete
 
   // 取数：page 或 reloadKey（增删后的重查信号）变化即拉当前页；requestSeq
   // 使迟到旧响应被丢弃，卸载后不再写状态。
@@ -471,38 +478,40 @@ function DictDataManageDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form className="grid gap-3" onSubmit={(e) => { void submitAdd(e) }} aria-label="添加字典数据">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Field id="data-add-label" label="标签">
-              <Input id="data-add-label" value={label} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
-            </Field>
-            <Field id="data-add-value" label="字典值">
-              <Input id="data-add-value" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" />
-            </Field>
-            <Field id="data-add-value-type" label="值类型">
-              <Select value={valueType} onValueChange={setValueType}>
-                <SelectTrigger id="data-add-value-type" aria-label="值类型">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DICT_VALUE_TYPES.map((vt) => (
-                    <SelectItem key={vt} value={vt}>{vt}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field id="data-add-sort" label="排序号">
-              <Input id="data-add-sort" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} inputMode="numeric" />
-            </Field>
-          </div>
-          <div>
-            <Button type="submit" variant="outline" disabled={addPending}>
-              <PlusIcon aria-hidden className="size-4" />
-              添加数据
-            </Button>
-          </div>
-          <FormError message={addError} />
-        </form>
+        {canCreate && (
+          <form className="grid gap-3" onSubmit={(e) => { void submitAdd(e) }} aria-label="添加字典数据">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <Field id="data-add-label" label="标签">
+                <Input id="data-add-label" value={label} onChange={(e) => setLabel(e.target.value)} autoComplete="off" />
+              </Field>
+              <Field id="data-add-value" label="字典值">
+                <Input id="data-add-value" value={value} onChange={(e) => setValue(e.target.value)} autoComplete="off" />
+              </Field>
+              <Field id="data-add-value-type" label="值类型">
+                <Select value={valueType} onValueChange={setValueType}>
+                  <SelectTrigger id="data-add-value-type" aria-label="值类型">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DICT_VALUE_TYPES.map((vt) => (
+                      <SelectItem key={vt} value={vt}>{vt}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field id="data-add-sort" label="排序号">
+                <Input id="data-add-sort" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} inputMode="numeric" />
+              </Field>
+            </div>
+            <div>
+              <Button type="submit" variant="outline" disabled={addPending}>
+                <PlusIcon aria-hidden className="size-4" />
+                添加数据
+              </Button>
+            </div>
+            <FormError message={addError} />
+          </form>
+        )}
 
         {loadError !== null ? (
           <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-destructive-soft p-3 text-sm text-destructive">
@@ -521,13 +530,13 @@ function DictDataManageDialog({
                   <TableHead>值类型</TableHead>
                   <TableHead className="w-20">排序</TableHead>
                   <TableHead className="w-20">状态</TableHead>
-                  <TableHead className="w-28 text-right">操作</TableHead>
+                  {canOperate && <TableHead className="w-28 text-right">操作</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.length === 0 && !loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                    <TableCell colSpan={canOperate ? 6 : 5} className="h-24 text-center text-muted-foreground">
                       暂无数据项
                     </TableCell>
                   </TableRow>
@@ -547,27 +556,33 @@ function DictDataManageDialog({
                         <TableCell>{data.valueType}</TableCell>
                         <TableCell>{data.sortOrder}</TableCell>
                         <TableCell>{statusBadge(data.status)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`编辑 ${data.label}`}
-                            onClick={() => setEditing(data)}
-                          >
-                            编辑
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`删除 ${data.label}`}
-                            disabled={loading}
-                            onClick={() => { void removeData(data) }}
-                          >
-                            删除
-                          </Button>
-                        </TableCell>
+                        {canOperate && (
+                          <TableCell className="text-right">
+                            {canUpdate && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`编辑 ${data.label}`}
+                                onClick={() => setEditing(data)}
+                              >
+                                编辑
+                              </Button>
+                            )}
+                            {canDelete && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`删除 ${data.label}`}
+                                disabled={loading}
+                                onClick={() => { void removeData(data) }}
+                              >
+                                删除
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
                       </TableRow>
                     ),
                   )
@@ -683,6 +698,25 @@ function TypeRowActions({
   dictType: DictTypeDTO
   onOpen: (state: DialogState) => void
 }) {
+  const { can } = usePermissions()
+  const actions: RowActionItem[] = []
+  if (
+    can(PERM.DictQuery) ||
+    can(PERM.DictCreate) ||
+    can(PERM.DictUpdate) ||
+    can(PERM.DictDelete)
+  ) {
+    actions.push({ label: '数据维护', onSelect: () => onOpen({ kind: 'data-manage', dictType }) })
+  }
+  if (can(PERM.DictUpdate)) {
+    actions.push({ label: '编辑', onSelect: () => onOpen({ kind: 'type-edit', dictType }) })
+  }
+  if (can(PERM.DictDelete)) {
+    actions.push({ label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'type-delete', dictType }) })
+  }
+  if (actions.length === 0) {
+    return null
+  }
   return (
     <RowActionsMenu
       rowLabel={dictType.name}
@@ -690,11 +724,7 @@ function TypeRowActions({
         { label: '类型名', value: dictType.name },
         { label: '类型编码', value: dictType.code },
       ]}
-      actions={[
-        { label: '数据维护', onSelect: () => onOpen({ kind: 'data-manage', dictType }) },
-        { label: '编辑', onSelect: () => onOpen({ kind: 'type-edit', dictType }) },
-        { label: '删除', destructive: true, onSelect: () => onOpen({ kind: 'type-delete', dictType }) },
-      ]}
+      actions={actions}
     />
   )
 }
@@ -709,6 +739,10 @@ export function DictManagePage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const { schema, error: schemaError, loading: schemaLoading, retry: retrySchema } = useListSchema('sys_dict_type')
+  const { can } = usePermissions()
+  const canCreate = can(PERM.DictCreate)
+  const hasRowActions =
+    can(PERM.DictQuery) || can(PERM.DictCreate) || can(PERM.DictUpdate) || can(PERM.DictDelete)
 
   const filterFields = useMemo(() => (schema === null ? [] : filterFieldsFromSchema(schema)), [schema])
   const defaultSort = useMemo<QuerySort[]>(() => (schema === null ? [] : defaultSortFromSchema(schema)), [schema])
@@ -717,7 +751,7 @@ export function DictManagePage() {
   const reload = useCallback(() => setReloadKey((key) => key + 1), [])
 
   // columns 动态响应 schema：页面仅覆写必要附加项（状态徽标）；行操作列
-  // 不对应查询字段，恒追加在末尾。
+  // 不对应查询字段，有操作权限时追加在末尾。
   const columns = useMemo<DataTableColumn<DictTypeDTO>[]>(
     () =>
       schema === null
@@ -725,17 +759,19 @@ export function DictManagePage() {
         : schemaColumns<DictTypeDTO>(
             schema,
             { status: { header: '状态', render: (t) => statusBadge(t.status) } },
-            [
-              {
-                key: 'actions',
-                header: '操作',
-                className: 'w-16 text-right',
-                sticky: 'right',
-                render: (t) => <TypeRowActions dictType={t} onOpen={setDialog} />,
-              },
-            ],
+            hasRowActions
+              ? [
+                  {
+                    key: 'actions',
+                    header: '操作',
+                    className: 'w-16 text-right',
+                    sticky: 'right' as const,
+                    render: (t: DictTypeDTO) => <TypeRowActions dictType={t} onOpen={setDialog} />,
+                  },
+                ]
+              : [],
           ),
-    [schema],
+    [schema, hasRowActions],
   )
 
   return (
@@ -770,9 +806,11 @@ export function DictManagePage() {
           pageSize={pageSize}
           emptyText="没有符合条件的字典类型"
           toolbar={
-            <ToolbarIconButton label="新建字典类型" onClick={() => setDialog({ kind: 'type-create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-            </ToolbarIconButton>
+            canCreate ? (
+              <ToolbarIconButton label="新建字典类型" onClick={() => setDialog({ kind: 'type-create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+              </ToolbarIconButton>
+            ) : undefined
           }
         />
       )}
