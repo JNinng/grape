@@ -16,8 +16,12 @@ type mockAuditLogRepo struct {
 	operGetID   int64
 	operListed  bool
 	getErr      error
+	insertErr   error
 	loginList   *LoginLogList
 	operList    *OperationLogList
+	loginInsert *LoginLogInput
+	operInsert  *OperationLogInput
+	operAuth    Identity
 }
 
 func (m *mockAuditLogRepo) GetLoginLogByID(_ context.Context, _ Identity, id int64) (*LoginLog, error) {
@@ -44,6 +48,17 @@ func (m *mockAuditLogRepo) GetOperationLogByID(_ context.Context, _ Identity, id
 func (m *mockAuditLogRepo) ListOperationLogs(context.Context, Identity, *dynq.Query) (*OperationLogList, error) {
 	m.operListed = true
 	return m.operList, nil
+}
+
+func (m *mockAuditLogRepo) InsertLoginLog(_ context.Context, in *LoginLogInput) error {
+	m.loginInsert = in
+	return m.insertErr
+}
+
+func (m *mockAuditLogRepo) InsertOperationLog(_ context.Context, auth Identity, in *OperationLogInput) error {
+	m.operAuth = auth
+	m.operInsert = in
+	return m.insertErr
 }
 
 func TestAuditLogUsecaseGetLoginLogForwardsPositiveID(t *testing.T) {
@@ -131,6 +146,64 @@ func TestAuditLogUsecaseListOperationLogsForwardsQuery(t *testing.T) {
 	}
 	if !repo.operListed || out == nil {
 		t.Fatal("repo ListOperationLogs must be called and its envelope returned")
+	}
+}
+
+func TestAuditLogUsecaseRecordLoginDefaultsPasswordAndForwards(t *testing.T) {
+	repo := &mockAuditLogRepo{}
+	uc := NewAuditLogUsecase(repo)
+	in := &LoginLogInput{TenantID: "t-1", Username: "admin", IsSuccess: true}
+
+	if err := uc.RecordLogin(context.Background(), in); err != nil {
+		t.Fatalf("record login: %v", err)
+	}
+	if repo.loginInsert != in || in.LoginType != "password" {
+		t.Fatalf("insert = %+v (login type %q), want forwarded with password default", repo.loginInsert, in.LoginType)
+	}
+}
+
+func TestAuditLogUsecaseRecordLoginRejectsMissingTenantOrUsername(t *testing.T) {
+	repo := &mockAuditLogRepo{}
+	uc := NewAuditLogUsecase(repo)
+
+	for _, in := range []*LoginLogInput{
+		{TenantID: "", Username: "admin"},
+		{TenantID: "t-1", Username: ""},
+	} {
+		if err := uc.RecordLogin(context.Background(), in); !errors.Is(err, ErrAuditLogInvalidArgument) {
+			t.Fatalf("err = %v, want ErrAuditLogInvalidArgument for %+v", err, in)
+		}
+	}
+	if repo.loginInsert != nil {
+		t.Fatal("repo must not be called for invalid input")
+	}
+}
+
+func TestAuditLogUsecaseRecordOperationForwardsAuthenticatedIdentity(t *testing.T) {
+	repo := &mockAuditLogRepo{}
+	uc := NewAuditLogUsecase(repo)
+	auth := Identity{TenantID: "t-1", UserID: 7}
+	in := &OperationLogInput{Username: "admin", OperationType: "CREATE"}
+
+	if err := uc.RecordOperation(context.Background(), auth, in); err != nil {
+		t.Fatalf("record operation: %v", err)
+	}
+	if repo.operInsert != in || repo.operAuth != auth {
+		t.Fatalf("forwarded = (%+v, %+v), want (%+v, %+v)", repo.operInsert, repo.operAuth, in, auth)
+	}
+}
+
+func TestAuditLogUsecaseRecordOperationRejectsMissingIdentity(t *testing.T) {
+	repo := &mockAuditLogRepo{}
+	uc := NewAuditLogUsecase(repo)
+
+	for _, auth := range []Identity{{TenantID: "", UserID: 7}, {TenantID: "t-1", UserID: 0}} {
+		if err := uc.RecordOperation(context.Background(), auth, &OperationLogInput{OperationType: "CREATE"}); !errors.Is(err, ErrAuditLogInvalidArgument) {
+			t.Fatalf("err = %v, want ErrAuditLogInvalidArgument for %+v", err, auth)
+		}
+	}
+	if repo.operInsert != nil {
+		t.Fatal("repo must not be called for invalid identity")
 	}
 }
 

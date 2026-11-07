@@ -164,7 +164,7 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 		tele,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

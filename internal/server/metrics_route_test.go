@@ -54,7 +54,7 @@ func TestMetricsRouteBypassesBusinessMiddleware(t *testing.T) {
 		nil,
 		noop,
 		noop,
-		spy,
+		spy, nil,
 		permStubMiddleware(),
 		h,
 		// 租户管理服务本文件用例不触达，传 nil。

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"net"
+	nethttp "net/http"
 	"strings"
 
 	sessionv1 "grape/api/session/v1"
@@ -32,19 +34,68 @@ func NewSessionService(auth *biz.AuthUsecase, sessions *biz.SessionUsecase) *Ses
 	return &SessionService{auth: auth, sessions: sessions}
 }
 
-// Login 校验用户名与口令并签发会话。device_info/ip_address 由客户端声明。
+// Login 校验用户名与口令并签发会话。device_info/ip_address 优先取客户端
+// 声明值；未声明时回落服务端观测到的 User-Agent 与对端地址（登录日志与
+// 会话元数据用）。
 func (s *SessionService) Login(ctx context.Context, req *sessionv1.LoginRequest) (*sessionv1.LoginReply, error) {
+	ipAddress, deviceInfo := loginRequestFacts(ctx, req.IpAddress, req.DeviceInfo)
 	out, err := s.auth.Login(ctx, &biz.LoginInput{
 		TenantID:   strings.TrimSpace(req.GetTenantId()),
 		UserName:   strings.TrimSpace(req.GetUserName()),
 		Password:   req.GetPassword(),
-		DeviceInfo: req.DeviceInfo,
-		IPAddress:  req.IpAddress,
+		DeviceInfo: deviceInfo,
+		IPAddress:  ipAddress,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return toLoginReply(out.Issued, &out.User), nil
+}
+
+// loginRequestFacts 合并客户端声明与服务端观测的登录来源事实：声明值为
+// 空视为未提供；HTTP 取 RemoteAddr 主机与 User-Agent，gRPC 取 user-agent
+// 元数据（无对端地址来源时保留声明值）。
+func loginRequestFacts(ctx context.Context, declaredIP, declaredDevice *string) (*string, *string) {
+	ip, device := nonEmptyFact(declaredIP), nonEmptyFact(declaredDevice)
+	tr, ok := transport.FromServerContext(ctx)
+	if !ok {
+		return ip, device
+	}
+	if htr, ok := tr.(interface{ Request() *nethttp.Request }); ok && htr.Request() != nil {
+		r := htr.Request()
+		if ip == nil {
+			if host := requestHost(r.RemoteAddr); host != "" {
+				ip = &host
+			}
+		}
+		if device == nil {
+			if ua := r.UserAgent(); ua != "" {
+				device = &ua
+			}
+		}
+		return ip, device
+	}
+	if device == nil {
+		if ua := tr.RequestHeader().Get("user-agent"); ua != "" {
+			device = &ua
+		}
+	}
+	return ip, device
+}
+
+func nonEmptyFact(value *string) *string {
+	if value == nil || strings.TrimSpace(*value) == "" {
+		return nil
+	}
+	return value
+}
+
+func requestHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	return host
 }
 
 // Refresh 以刷新令牌轮换一对新令牌。会话行不携带账号名，用户摘要仅

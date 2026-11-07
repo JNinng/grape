@@ -15,11 +15,13 @@ SELECT id, user_id, username, tenant_id, ip_address, user_agent, login_type, is_
 WHERE id = $1
 `
 
-// 审计日志固定点查（sys_login_log / sys_operation_log）。两表 append-only
-// 只读：无写入路径（日志行由业务现场写入）、无更新/删除面，动态查询能力
-// 由 schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层
-// 函数为生成物），本文件只写管理面的按 id 点查。两表是租户内公共资源：
-// 表无 @scope，租户边界由 RLS 承担，行级无范围。
+// 审计日志点查与追加写入（sys_login_log / sys_operation_log）。两表
+// append-only：只有 INSERT 与按 id 点查，无更新/删除面；动态查询能力由
+// schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层函数
+// 为生成物）。两表是租户内公共资源：表无 @scope，租户边界由 RLS 承担，
+// 行级无范围。写入口径：登录日志由登录用例在身份成立前经 TenantTx 写入
+// （审计列显式给 actor），操作日志由入口中间件在身份成立后经 IdentityTx
+// 写入（created_by 取认证身份）。
 // 按 id 读取单条登录日志（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 func (q *Queries) GetSysLoginLogByID(ctx context.Context, id int64) (SysLoginLog, error) {
 	row := q.db.QueryRow(ctx, getSysLoginLogByID, id)
@@ -73,4 +75,97 @@ func (q *Queries) GetSysOperationLogByID(ctx context.Context, id int64) (SysOper
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const insertSysLoginLog = `-- name: InsertSysLoginLog :exec
+INSERT INTO public.sys_login_log
+    (user_id, username, tenant_id, ip_address, user_agent, login_type, is_success, failure_reason, created_by)
+VALUES ($1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9)
+`
+
+type InsertSysLoginLogParams struct {
+	UserID        int64   `db:"user_id" json:"user_id"`
+	Username      string  `db:"username" json:"username"`
+	TenantID      string  `db:"tenant_id" json:"tenant_id"`
+	IpAddress     *string `db:"ip_address" json:"ip_address"`
+	UserAgent     *string `db:"user_agent" json:"user_agent"`
+	LoginType     string  `db:"login_type" json:"login_type"`
+	IsSuccess     bool    `db:"is_success" json:"is_success"`
+	FailureReason *string `db:"failure_reason" json:"failure_reason"`
+	CreatedBy     int64   `db:"created_by" json:"created_by"`
+}
+
+// 追加一条登录日志。user_id/created_by 允许为 0（登录失败且目标用户
+// 不存在/不可定位时无归属）；login_at/created_at 走库默认值。
+func (q *Queries) InsertSysLoginLog(ctx context.Context, arg InsertSysLoginLogParams) error {
+	_, err := q.db.Exec(ctx, insertSysLoginLog,
+		arg.UserID,
+		arg.Username,
+		arg.TenantID,
+		arg.IpAddress,
+		arg.UserAgent,
+		arg.LoginType,
+		arg.IsSuccess,
+		arg.FailureReason,
+		arg.CreatedBy,
+	)
+	return err
+}
+
+const insertSysOperationLog = `-- name: InsertSysOperationLog :exec
+INSERT INTO public.sys_operation_log
+    (user_id, username, tenant_id, operation_type, target_table, target_id, old_value, new_value,
+     ip_address, user_agent, api_path, http_method, duration_ms, result_code, result_msg, request_id, created_by)
+VALUES ($1, $2, $3, $4,
+        $5, $6, $7, $8,
+        $9, $10, $11, $12,
+        $13, $14, $15, $16,
+        $17)
+`
+
+type InsertSysOperationLogParams struct {
+	UserID        int64   `db:"user_id" json:"user_id"`
+	Username      string  `db:"username" json:"username"`
+	TenantID      string  `db:"tenant_id" json:"tenant_id"`
+	OperationType string  `db:"operation_type" json:"operation_type"`
+	TargetTable   *string `db:"target_table" json:"target_table"`
+	TargetID      *string `db:"target_id" json:"target_id"`
+	OldValue      []byte  `db:"old_value" json:"old_value"`
+	NewValue      []byte  `db:"new_value" json:"new_value"`
+	IpAddress     *string `db:"ip_address" json:"ip_address"`
+	UserAgent     *string `db:"user_agent" json:"user_agent"`
+	ApiPath       *string `db:"api_path" json:"api_path"`
+	HttpMethod    *string `db:"http_method" json:"http_method"`
+	DurationMs    *int32  `db:"duration_ms" json:"duration_ms"`
+	ResultCode    *string `db:"result_code" json:"result_code"`
+	ResultMsg     *string `db:"result_msg" json:"result_msg"`
+	RequestID     *string `db:"request_id" json:"request_id"`
+	CreatedBy     int64   `db:"created_by" json:"created_by"`
+}
+
+// 追加一条操作日志。快照列可空（写入方未采集即 NULL）；operated_at/
+// created_at 走库默认值。
+func (q *Queries) InsertSysOperationLog(ctx context.Context, arg InsertSysOperationLogParams) error {
+	_, err := q.db.Exec(ctx, insertSysOperationLog,
+		arg.UserID,
+		arg.Username,
+		arg.TenantID,
+		arg.OperationType,
+		arg.TargetTable,
+		arg.TargetID,
+		arg.OldValue,
+		arg.NewValue,
+		arg.IpAddress,
+		arg.UserAgent,
+		arg.ApiPath,
+		arg.HttpMethod,
+		arg.DurationMs,
+		arg.ResultCode,
+		arg.ResultMsg,
+		arg.RequestID,
+		arg.CreatedBy,
+	)
+	return err
 }

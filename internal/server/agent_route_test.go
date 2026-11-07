@@ -168,7 +168,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

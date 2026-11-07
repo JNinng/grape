@@ -41,7 +41,7 @@ func newAgentRetrievalTestServer(t *testing.T) *kratoshttp.Server {
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

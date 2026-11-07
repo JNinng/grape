@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	nethttp "net/http"
 	"testing"
 
 	sessionv1 "grape/api/session/v1"
@@ -57,6 +58,7 @@ func (f *fakeSessionRepo) Refresh(context.Context, *biz.RefreshSessionInput) (*b
 type fakeTransporter struct {
 	operation string
 	header    transport.Header
+	req       *nethttp.Request
 }
 
 func (f *fakeTransporter) Kind() transport.Kind            { return transport.KindHTTP }
@@ -64,6 +66,7 @@ func (f *fakeTransporter) Endpoint() string                { return "test://" }
 func (f *fakeTransporter) Operation() string               { return f.operation }
 func (f *fakeTransporter) RequestHeader() transport.Header { return f.header }
 func (f *fakeTransporter) ReplyHeader() transport.Header   { return f.header }
+func (f *fakeTransporter) Request() *nethttp.Request       { return f.req }
 
 type fakeHeader map[string]string
 

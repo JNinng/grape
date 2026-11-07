@@ -37,7 +37,97 @@ func (f *fakeAuthUsers) SetPassword(_ context.Context, auth Identity, id int64, 
 func newAuthUsecase(t *testing.T, users *fakeAuthUsers) (*AuthUsecase, *fakeSessionRepo) {
 	t.Helper()
 	sessionsRepo := &fakeSessionRepo{session: &Session{ID: 77, TenantID: "t-1", UserID: 1}}
-	return NewAuthUsecase(users, NewSessionUsecase(sessionsRepo), "t-1"), sessionsRepo
+	return NewAuthUsecase(users, NewSessionUsecase(sessionsRepo), nil, "t-1"), sessionsRepo
+}
+
+// newAuthUsecaseWithAudit 在标准夹具上接入登录日志仓储替身，用于断言
+// 登录成功/失败都可观测。
+func newAuthUsecaseWithAudit(t *testing.T, users *fakeAuthUsers, auditRepo *mockAuditLogRepo) (*AuthUsecase, *fakeSessionRepo) {
+	t.Helper()
+	sessionsRepo := &fakeSessionRepo{session: &Session{ID: 77, TenantID: "t-1", UserID: 1}}
+	return NewAuthUsecase(users, NewSessionUsecase(sessionsRepo), NewAuditLogUsecase(auditRepo), "t-1"), sessionsRepo
+}
+
+func TestAuthLoginRecordsSuccessLoginLog(t *testing.T) {
+	users := &fakeAuthUsers{cred: &UserCredential{
+		UserID: 1, Status: UserStatusEnabled, Name: "admin", PasswordHash: mustHashForTest(t, "pw-plain"),
+	}}
+	auditRepo := &mockAuditLogRepo{}
+	uc, _ := newAuthUsecaseWithAudit(t, users, auditRepo)
+	ip, device := "127.0.0.1", "Windows Chrome"
+
+	if _, err := uc.Login(context.Background(), &LoginInput{
+		TenantID: "t-1", UserName: "admin", Password: "pw-plain", IPAddress: &ip, DeviceInfo: &device,
+	}); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	got := auditRepo.loginInsert
+	if got == nil || !got.IsSuccess || got.UserID != 1 || got.TenantID != "t-1" || got.Username != "admin" {
+		t.Fatalf("login log = %+v, want successful admin in t-1", got)
+	}
+	if got.LoginType != "password" || got.IPAddress == nil || *got.IPAddress != ip || got.UserAgent == nil || *got.UserAgent != device {
+		t.Fatalf("login log request facts = %+v, want password/ip/device", got)
+	}
+	if got.FailureReason != nil {
+		t.Fatalf("failure reason = %+v, want nil on success", got.FailureReason)
+	}
+}
+
+func TestAuthLoginRecordsFailedLoginLog(t *testing.T) {
+	users := &fakeAuthUsers{cred: &UserCredential{
+		UserID: 1, Status: UserStatusEnabled, Name: "admin", PasswordHash: mustHashForTest(t, "pw-plain"),
+	}}
+	auditRepo := &mockAuditLogRepo{}
+	uc, _ := newAuthUsecaseWithAudit(t, users, auditRepo)
+
+	if _, err := uc.Login(context.Background(), &LoginInput{
+		TenantID: "t-1", UserName: "admin", Password: "wrong",
+	}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("err = %v, want ErrInvalidCredentials", err)
+	}
+	got := auditRepo.loginInsert
+	if got == nil || got.IsSuccess || got.UserID != 1 || got.FailureReason == nil || *got.FailureReason != "invalid credentials" {
+		t.Fatalf("login log = %+v, want failed admin with invalid credentials", got)
+	}
+}
+
+func TestAuthLoginRecordsUnknownUserWithZeroID(t *testing.T) {
+	users := &fakeAuthUsers{cred: &UserCredential{UserID: 1, Status: UserStatusEnabled, PasswordHash: mustHashForTest(t, "pw-plain")}}
+	auditRepo := &mockAuditLogRepo{}
+	uc, _ := newAuthUsecaseWithAudit(t, users, auditRepo)
+
+	if _, err := uc.Login(context.Background(), &LoginInput{
+		TenantID: "t-1", UserName: "ghost", Password: "pw-plain",
+	}); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("err = %v, want ErrInvalidCredentials", err)
+	}
+	got := auditRepo.loginInsert
+	if got == nil || got.IsSuccess || got.UserID != 0 || got.Username != "ghost" {
+		t.Fatalf("login log = %+v, want failed ghost with zero user id", got)
+	}
+}
+
+func TestAuthLoginAuditFailureDoesNotBlockLogin(t *testing.T) {
+	users := &fakeAuthUsers{cred: &UserCredential{
+		UserID: 1, Status: UserStatusEnabled, Name: "admin", PasswordHash: mustHashForTest(t, "pw-plain"),
+	}}
+	auditRepo := &mockAuditLogRepo{insertErr: errors.New("audit unavailable")}
+	uc, _ := newAuthUsecaseWithAudit(t, users, auditRepo)
+
+	if _, err := uc.Login(context.Background(), &LoginInput{
+		TenantID: "t-1", UserName: "admin", Password: "pw-plain",
+	}); err != nil {
+		t.Fatalf("login must succeed despite audit failure, got %v", err)
+	}
+}
+
+func mustHashForTest(t *testing.T, password string) string {
+	t.Helper()
+	hash, err := HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	return hash
 }
 
 func TestAuthLoginSuccessAndRehash(t *testing.T) {
@@ -138,7 +228,7 @@ func TestAuthLoginRejects(t *testing.T) {
 	}
 
 	// 无默认租户且请求未指明租户：参数非法
-	noDefault := NewAuthUsecase(users, NewSessionUsecase(&fakeSessionRepo{}), "")
+	noDefault := NewAuthUsecase(users, NewSessionUsecase(&fakeSessionRepo{}), nil, "")
 	if _, err := noDefault.Login(ctx, &LoginInput{UserName: "admin", Password: "pw-plain"}); !errors.Is(err, ErrSessionInvalidArgument) {
 		t.Fatalf("no tenant and no default: want ErrSessionInvalidArgument, got %v", err)
 	}

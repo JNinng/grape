@@ -63,7 +63,7 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

@@ -42,7 +42,7 @@ func newWebTestServer(t *testing.T, dist fs.FS, reserved []string) *kratoshttp.S
 		nil,
 		traceMiddleware,
 		noop,
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

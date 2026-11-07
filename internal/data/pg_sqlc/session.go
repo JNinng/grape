@@ -192,7 +192,9 @@ func (d *Data) TokenTx(ctx context.Context, lookup TokenLookup, fn func(*TokenTx
 
 // TenantTx 是租户维度、操作者尚未成立的事务句柄：只注入
 // app.tenant_id（RLS 限本租户），不携带操作者——Auth() 不可用，仅供
-// 登录等身份成立前的只读点查使用，禁止承载写路径（审计列没有归属）。
+// 登录等身份成立前的只读点查使用。唯一允许的写路径是登录日志的
+// append-only 追加（sys_login_log；审计列由入参显式给出），不得承载
+// 其他业务写。
 type TenantTx struct {
 	txHandle
 }

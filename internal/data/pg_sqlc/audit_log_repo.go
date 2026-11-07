@@ -13,14 +13,15 @@ import (
 )
 
 // auditLogRepo 是 biz.AuditLogRepo 的 PostgreSQL 实现：登录日志与操作日志
-// 两表的只读查询面（append-only，无更新/删除口径）。两表是租户内公共资源：
-// 表无 @scope，行级无范围，租户边界由 IdentityTx 的 RLS 会话变量承担。
+// 两表的追加写与查询面（append-only，无更新/删除口径）。两表是租户内公共
+// 资源：表无 @scope，行级无范围，租户边界由 RLS 会话变量承担。登录日志
+// 在身份成立前经 TenantTx 追加（审计列显式给出），其余读写经 IdentityTx；
 // 读侧租户谓词由 RLS 承担（两表均为基线 RLS 表），不做应用层重复过滤。
 type auditLogRepo struct {
 	data *Data
 }
 
-// NewAuditLogRepo 构造审计日志只读仓储。
+// NewAuditLogRepo 构造审计日志仓储。
 func NewAuditLogRepo(data *Data) biz.AuditLogRepo {
 	return &auditLogRepo{data: data}
 }
@@ -133,6 +134,33 @@ func (r *auditLogRepo) ListLoginLogs(ctx context.Context, auth biz.Identity, q *
 	return out, nil
 }
 
+// InsertLoginLog 追加一条登录日志。登录路径的操作者身份尚未成立，经
+// TenantTx 只注入租户（RLS 允许本租户追加）；user_id/created_by 由入参
+// 显式给出（目标用户不可定位时为 0）。这是 TenantTx 文档化的 append-only
+// 审计写例外，不承载其他业务写路径。
+func (r *auditLogRepo) InsertLoginLog(ctx context.Context, in *biz.LoginLogInput) error {
+	if in == nil || in.TenantID == "" {
+		return biz.ErrAuditLogInvalidArgument
+	}
+	err := r.data.TenantTx(ctx, in.TenantID, func(s *TenantTx) error {
+		return s.Q().InsertSysLoginLog(ctx, gen.InsertSysLoginLogParams{
+			UserID:        in.UserID,
+			Username:      in.Username,
+			TenantID:      in.TenantID,
+			IpAddress:     in.IPAddress,
+			UserAgent:     in.UserAgent,
+			LoginType:     in.LoginType,
+			IsSuccess:     in.IsSuccess,
+			FailureReason: in.FailureReason,
+			CreatedBy:     in.UserID,
+		})
+	})
+	if err != nil {
+		return r.mapErr(err)
+	}
+	return nil
+}
+
 // GetOperationLogByID 按主键读取操作日志。租户边界由 RLS 承担，跨租户等同不存在。
 func (r *auditLogRepo) GetOperationLogByID(ctx context.Context, auth biz.Identity, id int64) (*biz.OperationLog, error) {
 	var out *biz.OperationLog
@@ -187,6 +215,40 @@ func (r *auditLogRepo) ListOperationLogs(ctx context.Context, auth biz.Identity,
 		return nil, r.mapErr(err)
 	}
 	return out, nil
+}
+
+// InsertOperationLog 追加一条操作日志。身份已成立，经 IdentityTx 注入
+// 租户并取认证用户作为操作者；target/snapshot 等未采集字段按 nil 落
+// NULL。
+func (r *auditLogRepo) InsertOperationLog(ctx context.Context, auth biz.Identity, in *biz.OperationLogInput) error {
+	if in == nil {
+		return biz.ErrAuditLogInvalidArgument
+	}
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		return s.Q().InsertSysOperationLog(ctx, gen.InsertSysOperationLogParams{
+			UserID:        auth.UserID,
+			Username:      in.Username,
+			TenantID:      auth.TenantID,
+			OperationType: in.OperationType,
+			TargetTable:   in.TargetTable,
+			TargetID:      in.TargetID,
+			OldValue:      in.OldValue,
+			NewValue:      in.NewValue,
+			IpAddress:     in.IPAddress,
+			UserAgent:     in.UserAgent,
+			ApiPath:       in.APIPath,
+			HttpMethod:    in.HTTPMethod,
+			DurationMs:    in.DurationMs,
+			ResultCode:    in.ResultCode,
+			ResultMsg:     in.ResultMsg,
+			RequestID:     in.RequestID,
+			CreatedBy:     auth.UserID,
+		})
+	})
+	if err != nil {
+		return r.mapErr(err)
+	}
+	return nil
 }
 
 // mapErr 将驱动与协议错误映射为审计日志的领域错误：无行（含跨租户等同

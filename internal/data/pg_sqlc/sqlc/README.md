@@ -27,7 +27,7 @@ RLS 租户隔离、读侧权限过滤、写前判断、权限查询判定、种�
 | 13 | operate.sql | 定义 fn_can_* 写前判断函数与角色判定族（fn_role_visibility_core / fn_can_see_role / fn_visible_role_ids / fn_can_revoke_role / fn_can_set_owner） | 是（只读函数签名） | 9 个判断函数 |
 | 14 | 96_agent_grant.sql | 定义 Agent 工具授权表：agent_tool_grant、未撤销唯一约束（部分唯一表达式索引）、租户 RLS 策略与运行角色授权（策略随域文件走，口径同 expose.sql 的 sys_perm_version） | 是 | 1 张表、1 个部分唯一索引、1 个普通索引、1 条策略、1 条授权 |
 | 15 | schema/97_agent_retrieval_log.sql | 定义 Agent 检索留痕表：agent_retrieval_log（append-only，无动态协议）、租户+时间/会话/来源三类索引与租户 RLS（策略随域文件走，95 同口径；保留期与归档策略、管理面留痕触发点见文件头注释） | 是 | 1 张表、3 个索引、1 条策略 |
-| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、用户分配选择器/角色整组替换、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 17 个文件、144 条命名查询 |
+| 16 | queries/ | 定义写侧判定、basic 操作、权限查询、用户分配选择器/角色整组替换、业务表固定 CRUD（含用户组与成员映射、字典两级、配置族全局/租户/功能开关/翻译、租户树、审计日志追加写与点查、角色与数据范围/菜单授权映射、菜单读与受控写调用）与 Agent 审计/授权/检索留痕读写的命名查询 | 是（queries） | 17 个文件、150 条命名查询 |
 | 17 | 98_menu_write.sql | 定义 sys_menu 受控写面：fn_menu_create/update/move/delete 四个 SECURITY DEFINER 固定口径写函数（建/改/移/软删），租户边界复位、父级校验、防环与软删口径收在函数内；role.sql 对 sys_menu 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions 先例） | 是（只读函数签名） | 4 个受控写函数 |
 | 18 | 98_config_write.sql | 定义 sys_config 受控写面：fn_config_create/update/delete 三个 SECURITY DEFINER 固定口径写函数（建/改/软删），认证事务纪律校验（app.tenant_id 未设置即拒绝）与软删口径收在函数内；config_key/value_type 身份/值语义列不经更新路径；role.sql 对 sys_config 的直写 REVOKE 不动，EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款） | 是（只读函数签名） | 3 个受控写函数 |
 | 19 | 98_tenant_guard.sql | 定义 sys_tenant 删除前置完整性判定（受控读取面）：fn_tenant_active_child_count 一个 SECURITY DEFINER 计数函数——租户树 RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、不返回行数据，不构成跨租户数据读面，函数内校验 app.tenant_id 已设置（空串/未设置即拒绝，fail-closed）且目标对调用方可见（消除结构侧信道）；EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC | 是（只读函数签名） | 1 个受控判定函数 |
@@ -571,18 +571,22 @@ name 等可变列，输入 code 被忽略。
 | SetSysTenantStatus | :one | status/操作者 + id → SysTenant | 置位目标状态（停用 0 / 恢复 1，幂等目标状态写）；updated_at 由触发器刷新 |
 | SoftDeleteSysTenant | :execrows | 操作者 + id → 行数 | 置位 deleted_at 软删除租户；活跃子租户校验由调用方在同一事务内先行完成 |
 
-### sys_audit_log.sql（审计日志固定点查）
+### sys_audit_log.sql（审计日志追加写与固定点查）
 
-登录日志 sys_login_log 与操作日志 sys_operation_log 均 append-only 只读：
-无写入路径（日志行由业务现场写入）、无更新/删除面；动态查询能力由
+登录日志 sys_login_log 与操作日志 sys_operation_log 均 append-only：
+只有 INSERT 与按 id 点查，无更新/删除面；动态查询能力由
 schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层函数为
-生成物），本文件只写管理面的按 id 点查。两表是租户内公共资源：表无
-@scope，租户边界由 RLS 承担，行级无范围。
+生成物）。写入口径：登录日志由登录用例在身份成立前经 TenantTx 追加
+（审计列显式给出），操作日志由入口操作审计中间件在身份成立后经
+IdentityTx 追加。两表是租户内公共资源：表无 @scope，租户边界由 RLS
+承担，行级无范围。
 
 | 查询 | 类型 | 参数 → 返回 | 作用描述 |
 |---|---|---|---|
 | GetSysLoginLogByID | :one | id → SysLoginLog | 按 id 读取单条登录日志（租户边界由 RLS 承担；表无 @scope，租户内全可见） |
+| InsertSysLoginLog | :exec | 用户/用户名/租户/来源/登录方式/结果/失败原因 → — | 追加一条登录日志；user_id/created_by 允许为 0（目标用户不可定位），时间走库默认值 |
 | GetSysOperationLogByID | :one | id → SysOperationLog | 按 id 读取单条操作日志（含操作前后数据快照；租户边界由 RLS 承担） |
+| InsertSysOperationLog | :exec | 用户/用户名/租户/操作类型/目标/快照/请求事实/结果 → — | 追加一条操作日志；未采集的快照与目标 ID 落 NULL，时间走库默认值 |
 
 ### sys_session.sql（会话固定 CRUD）
 

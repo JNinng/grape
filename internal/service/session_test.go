@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	nethttp "net/http"
+	"net/http/httptest"
 	"testing"
 
 	sessionv1 "grape/api/session/v1"
@@ -32,6 +34,7 @@ func (f *fakeSessionRepo) RevokeByAccessTokenHash(_ context.Context, accessToken
 // Kratos HTTP/gRPC 服务端上下文（形态同认证中间件测试）。
 type fakeTransporter struct {
 	header transport.Header
+	req    *nethttp.Request
 }
 
 func (f *fakeTransporter) Kind() transport.Kind            { return transport.KindHTTP }
@@ -39,6 +42,7 @@ func (f *fakeTransporter) Endpoint() string                { return "test://" }
 func (f *fakeTransporter) Operation() string               { return sessionv1.OperationSessionServiceLogout }
 func (f *fakeTransporter) RequestHeader() transport.Header { return f.header }
 func (f *fakeTransporter) ReplyHeader() transport.Header   { return f.header }
+func (f *fakeTransporter) Request() *nethttp.Request       { return f.req }
 
 type fakeHeader map[string]string
 
@@ -104,5 +108,29 @@ func TestSessionServiceLogoutIdempotentWhenSessionGone(t *testing.T) {
 	}
 	if repo.logoutCalls != 2 {
 		t.Fatalf("repo calls = %d, want 2", repo.logoutCalls)
+	}
+}
+
+func TestLoginRequestFactsFallsBackToServerObservedFacts(t *testing.T) {
+	req := httptest.NewRequest(nethttp.MethodPost, "/v1/auth/login", nil)
+	req.RemoteAddr = "10.0.0.7:5555"
+	req.Header.Set("User-Agent", "browser-agent")
+	ctx := transport.NewServerContext(context.Background(), &fakeTransporter{header: fakeHeader{}, req: req})
+
+	ip, device := loginRequestFacts(ctx, nil, nil)
+	if ip == nil || *ip != "10.0.0.7" || device == nil || *device != "browser-agent" {
+		t.Fatalf("facts = (%+v, %+v), want (10.0.0.7, browser-agent)", ip, device)
+	}
+
+	declaredIP, declaredDevice := "203.0.113.9", "declared-device"
+	ip, device = loginRequestFacts(ctx, &declaredIP, &declaredDevice)
+	if ip == nil || *ip != declaredIP || device == nil || *device != declaredDevice {
+		t.Fatalf("declared facts = (%+v, %+v), want declared values", ip, device)
+	}
+
+	empty := ""
+	ip, device = loginRequestFacts(ctx, &empty, &empty)
+	if ip == nil || *ip != "10.0.0.7" || device == nil || *device != "browser-agent" {
+		t.Fatalf("empty declared facts = (%+v, %+v), want server fallback", ip, device)
 	}
 }

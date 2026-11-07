@@ -140,7 +140,7 @@ func Test_new_http_server_rejects_enabled_cors_without_origins(t *testing.T) {
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, nil),
-		nil,
+		nil, nil,
 		nil,
 		ops.NewMetricsHandler(nil, nil),
 		// 租户管理服务本文件用例不触达，传 nil。
@@ -208,7 +208,7 @@ func newCorsTestServer(t *testing.T, confServer *conf.Server) *agentTestServer {
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		// 租户管理服务本文件用例不触达，传 nil。

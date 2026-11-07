@@ -49,6 +49,7 @@ func NewHTTPServer(
 	traceMiddleware entrymw.TraceMiddleware,
 	routeTimeout RouteTimeoutMiddleware,
 	authMiddleware middleware.Middleware,
+	auditMiddleware entrymw.OperationAuditMiddleware,
 	permMiddleware entrymw.PermissionMiddleware,
 	metrics nethttp.Handler,
 	user *service.UserService,
@@ -89,7 +90,13 @@ func NewHTTPServer(
 	if tele.Enabled() {
 		mws = append(mws, tracing.Server())
 	}
-	mws = append(mws, authMiddleware, middleware.Middleware(permMiddleware))
+	// 操作审计在认证之后、权限之前：身份已成立，权限拒绝（403）也入账。
+	// 测试装配可不注入审计中间件（nil 跳过）。
+	mws = append(mws, authMiddleware)
+	if auditMiddleware != nil {
+		mws = append(mws, middleware.Middleware(auditMiddleware))
+	}
+	mws = append(mws, middleware.Middleware(permMiddleware))
 	var opts = []http.ServerOption{
 		http.Middleware(mws...),
 		// 关闭全局尾斜杠规整：kratos 默认 StrictSlash 会把 agent 前缀的

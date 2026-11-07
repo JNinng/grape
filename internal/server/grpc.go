@@ -24,7 +24,7 @@ import (
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
 // 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
 // server span。
-func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, auditMiddleware entrymw.OperationAuditMiddleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),
 		middleware.Middleware(traceMiddleware),
@@ -32,7 +32,13 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	if tele.Enabled() {
 		mws = append(mws, tracing.Server())
 	}
-	mws = append(mws, authMiddleware, middleware.Middleware(permMiddleware))
+	// 操作审计在认证之后、权限之前：身份已成立，权限拒绝（403）也入账。
+	// 测试装配可不注入审计中间件（nil 跳过）。
+	mws = append(mws, authMiddleware)
+	if auditMiddleware != nil {
+		mws = append(mws, middleware.Middleware(auditMiddleware))
+	}
+	mws = append(mws, middleware.Middleware(permMiddleware))
 	var opts = []grpc.ServerOption{
 		grpc.Middleware(mws...),
 	}

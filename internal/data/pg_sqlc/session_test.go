@@ -965,7 +965,7 @@ func TestAuthLogin(t *testing.T) {
 	ctx := context.Background()
 	users := NewUserRepo(d)
 	sessionUC := biz.NewSessionUsecase(NewSessionRepo(d))
-	authUC := biz.NewAuthUsecase(users, sessionUC, "")
+	authUC := biz.NewAuthUsecase(users, sessionUC, nil, "")
 	device, ip := ptrString("it-device"), ptrString("127.0.0.1")
 
 	// 种子事实：t-super-01/admin，口令 123456（scrypt），持全租户角色

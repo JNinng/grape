@@ -60,7 +60,7 @@ func newPermissionTestServer(t *testing.T, repo biz.PermissionRepo, featureFlag 
 		nil,
 		traceMiddleware,
 		noop,
-		authMiddleware,
+		authMiddleware, nil,
 		permMiddleware,
 		ops.NewMetricsHandler(nil, nil),
 		nil,

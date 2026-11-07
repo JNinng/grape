@@ -2,8 +2,10 @@ package pg_sqlc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -349,3 +351,104 @@ func TestSessionAdminListRejectsUnknownField(t *testing.T) {
 
 // strPtrOf 是集成测试的可空字符串辅助。
 func strPtrOf(s string) *string { return &s }
+
+func TestAuditLogRepoInsertLoginLogRoundTrip(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+	ctx := context.Background()
+	const username = "audit-write-login"
+
+	reason := "invalid credentials"
+	err := repo.InsertLoginLog(ctx, &biz.LoginLogInput{
+		TenantID:      auditTenantSeeded,
+		UserID:        99,
+		Username:      username,
+		IPAddress:     strPtrOf("10.0.0.8"),
+		UserAgent:     strPtrOf("test-agent"),
+		LoginType:     "password",
+		IsSuccess:     false,
+		FailureReason: &reason,
+	})
+	if err != nil {
+		t.Fatalf("insert login log: %v", err)
+	}
+
+	out, err := repo.ListLoginLogs(ctx, dictAuth(auditTenantSeeded), auditLogQuery(username))
+	if err != nil {
+		t.Fatalf("list login logs: %v", err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(out.Items))
+	}
+	row := out.Items[0]
+	if row.UserID != 99 || row.Username != username || row.IsSuccess {
+		t.Fatalf("row = (%d, %s, success %v), want (99, %s, false)", row.UserID, row.Username, row.IsSuccess, username)
+	}
+	if row.IPAddress == nil || *row.IPAddress != "10.0.0.8" || row.FailureReason == nil || *row.FailureReason != reason {
+		t.Fatalf("row facts = %+v, want ip/failure reason", row)
+	}
+
+	other, err := repo.ListLoginLogs(ctx, dictAuth("t-test-02"), auditLogQuery(username))
+	if err != nil {
+		t.Fatalf("list across tenant: %v", err)
+	}
+	if len(other.Items) != 0 {
+		t.Fatalf("items across tenant = %+v, want empty", other.Items)
+	}
+}
+
+func TestAuditLogRepoInsertOperationLogRoundTrip(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewAuditLogRepo(d)
+	ctx := context.Background()
+	auth := dictAuth(auditTenantSeeded)
+	const username = "audit-write-operation"
+
+	err := repo.InsertOperationLog(ctx, auth, &biz.OperationLogInput{
+		Username:      username,
+		OperationType: "UPDATE",
+		TargetTable:   strPtrOf("sys_user"),
+		TargetID:      strPtrOf("9"),
+		OldValue:      json.RawMessage(`{"name":"old"}`),
+		NewValue:      json.RawMessage(`{"name":"new"}`),
+		IPAddress:     strPtrOf("10.0.0.9"),
+		UserAgent:     strPtrOf("test-agent"),
+		APIPath:       strPtrOf("/v1/users/9"),
+		HTTPMethod:    strPtrOf("PUT"),
+		DurationMs:    int32Ptr(12),
+		ResultCode:    strPtrOf("200"),
+		RequestID:     strPtrOf("req-audit"),
+	})
+	if err != nil {
+		t.Fatalf("insert operation log: %v", err)
+	}
+
+	out, err := repo.ListOperationLogs(ctx, auth, auditLogQuery(username))
+	if err != nil {
+		t.Fatalf("list operation logs: %v", err)
+	}
+	if len(out.Items) != 1 {
+		t.Fatalf("items = %d, want 1", len(out.Items))
+	}
+	row := out.Items[0]
+	if row.Username != username || row.OperationType != "UPDATE" || row.UserID != auth.UserID || row.CreatedBy != auth.UserID {
+		t.Fatalf("row = %+v, want operator/UPDATE for auth %+v", row, auth)
+	}
+	if row.TargetTable == nil || *row.TargetTable != "sys_user" || row.APIPath == nil || *row.APIPath != "/v1/users/9" {
+		t.Fatalf("row target facts = %+v, want sys_user / /v1/users/9", row)
+	}
+	if row.DurationMs == nil || *row.DurationMs != 12 || row.RequestID == nil || *row.RequestID != "req-audit" {
+		t.Fatalf("row request facts = %+v, want 12ms / req-audit", row)
+	}
+	if !strings.Contains(string(row.OldValue), `"old"`) || !strings.Contains(string(row.NewValue), `"new"`) {
+		t.Fatalf("row snapshots = %s / %s, want old/new JSON", row.OldValue, row.NewValue)
+	}
+
+	other, err := repo.ListOperationLogs(ctx, dictAuth("t-test-02"), auditLogQuery(username))
+	if err != nil {
+		t.Fatalf("list across tenant: %v", err)
+	}
+	if len(other.Items) != 0 {
+		t.Fatalf("items across tenant = %+v, want empty", other.Items)
+	}
+}

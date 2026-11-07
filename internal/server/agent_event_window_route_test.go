@@ -58,7 +58,7 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 		nil,
 		traceMiddleware,
 		NewRouteTimeoutMiddleware(confServer, agentService),
-		authMiddleware,
+		authMiddleware, nil,
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil,

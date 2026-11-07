@@ -166,11 +166,13 @@ type Querier interface {
 	// 按 id 读取未软删的功能开关（租户边界由 RLS 承担；表无 @scope，租户内
 	// 全可见）
 	GetSysFeatureFlagByID(ctx context.Context, id int64) (SysFeatureFlag, error)
-	// 审计日志固定点查（sys_login_log / sys_operation_log）。两表 append-only
-	// 只读：无写入路径（日志行由业务现场写入）、无更新/删除面，动态查询能力
-	// 由 schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层
-	// 函数为生成物），本文件只写管理面的按 id 点查。两表是租户内公共资源：
-	// 表无 @scope，租户边界由 RLS 承担，行级无范围。
+	// 审计日志点查与追加写入（sys_login_log / sys_operation_log）。两表
+	// append-only：只有 INSERT 与按 id 点查，无更新/删除面；动态查询能力由
+	// schema/70_audit.sql 的列注释 DSL 声明（ParseSysLoginLogQuery 等顶层函数
+	// 为生成物）。两表是租户内公共资源：表无 @scope，租户边界由 RLS 承担，
+	// 行级无范围。写入口径：登录日志由登录用例在身份成立前经 TenantTx 写入
+	//（审计列显式给 actor），操作日志由入口中间件在身份成立后经 IdentityTx
+	// 写入（created_by 取认证身份）。
 	// 按 id 读取单条登录日志（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysLoginLogByID(ctx context.Context, id int64) (SysLoginLog, error)
 	// 菜单固定读查询与受控写调用（sys_menu）。sys_menu 是功能权限码链的
@@ -290,10 +292,16 @@ type Querier interface {
 	// 插入功能开关：租户取会话 app.tenant_id（不取请求值）；租户内未删除
 	// 开关间 flag_key 唯一冲突映射 AlreadyExists
 	InsertSysFeatureFlag(ctx context.Context, arg InsertSysFeatureFlagParams) (SysFeatureFlag, error)
+	// 追加一条登录日志。user_id/created_by 允许为 0（登录失败且目标用户
+	// 不存在/不可定位时无归属）；login_at/created_at 走库默认值。
+	InsertSysLoginLog(ctx context.Context, arg InsertSysLoginLogParams) error
 	// 新建菜单：调用受控写函数 fn_menu_create（SECURITY DEFINER 固定口径：
 	// 函数内以 app.tenant_id 复位租户边界并校验父节点）；租户不取请求值，
 	// 由函数内会话变量落值
 	InsertSysMenu(ctx context.Context, arg InsertSysMenuParams) (SysMenu, error)
+	// 追加一条操作日志。快照列可空（写入方未采集即 NULL）；operated_at/
+	// created_at 走库默认值。
+	InsertSysOperationLog(ctx context.Context, arg InsertSysOperationLogParams) error
 	// 插入角色记录；租户取会话 app.tenant_id
 	InsertSysRole(ctx context.Context, arg InsertSysRoleParams) (SysRole, error)
 	// 插入会话记录；租户取会话 app.tenant_id，有效期按 TTL 从数据库时钟起算

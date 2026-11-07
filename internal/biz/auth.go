@@ -59,15 +59,50 @@ type LoginInput struct {
 type AuthUsecase struct {
 	users    UserRepo
 	sessions *SessionUsecase
+	// audit 是登录日志的追加写入点；nil 表示不记录（单元测试或精简装配）。
+	audit *AuditLogUsecase
 	// defaultTenantID 是登录默认租户：请求未指明租户时回落到这里；
 	// 来源是装配层的 auth 配置。
 	defaultTenantID string
 }
 
 // NewAuthUsecase 构造登录用例；defaultTenantID 为缺省租户，
-// 可为空（此时请求必须显式携带租户）。
-func NewAuthUsecase(users UserRepo, sessions *SessionUsecase, defaultTenantID string) *AuthUsecase {
-	return &AuthUsecase{users: users, sessions: sessions, defaultTenantID: defaultTenantID}
+// 可为空（此时请求必须显式携带租户）。audit 可为 nil（不记录登录日志）。
+func NewAuthUsecase(users UserRepo, sessions *SessionUsecase, audit *AuditLogUsecase, defaultTenantID string) *AuthUsecase {
+	return &AuthUsecase{users: users, sessions: sessions, audit: audit, defaultTenantID: defaultTenantID}
+}
+
+// recordLoginAttempt 追加一条登录日志。审计写入是 best-effort：失败只
+// 记日志，不改变登录结果；明文口令不进入日志事实。
+func (uc *AuthUsecase) recordLoginAttempt(
+	ctx context.Context,
+	tenantID, userName string,
+	userID int64,
+	ipAddress, deviceInfo *string,
+	success bool,
+	reason string,
+) {
+	if uc.audit == nil {
+		return
+	}
+	var failureReason *string
+	if reason != "" {
+		failureReason = &reason
+	}
+	in := &LoginLogInput{
+		TenantID:      tenantID,
+		UserID:        userID,
+		Username:      userName,
+		IPAddress:     ipAddress,
+		UserAgent:     deviceInfo,
+		LoginType:     "password",
+		IsSuccess:     success,
+		FailureReason: failureReason,
+	}
+	if err := uc.audit.RecordLogin(ctx, in); err != nil {
+		slog.WarnContext(ctx, "login audit write failed",
+			"tenant_id", tenantID, "user_name", userName, "user_id", userID, "success", success, "err", err)
+	}
 }
 
 // Login 校验用户名与口令，通过后签发会话并返回明文令牌对。
@@ -95,18 +130,23 @@ func (uc *AuthUsecase) Login(ctx context.Context, in *LoginInput) (*LoginResult,
 	if err != nil {
 		// 目标用户不存在（含软删除）与口令不匹配同因，不泄露存在性。
 		if errors.Is(err, ErrUserNotFound) {
+			uc.recordLoginAttempt(ctx, tenantID, in.UserName, 0, in.IPAddress, in.DeviceInfo, false, "invalid credentials")
 			return nil, ErrInvalidCredentials
 		}
+		uc.recordLoginAttempt(ctx, tenantID, in.UserName, 0, in.IPAddress, in.DeviceInfo, false, "credential lookup failed")
 		return nil, err
 	}
 	ok, rehash, err := VerifyPassword(cred.PasswordHash, in.Password)
 	if err != nil {
+		uc.recordLoginAttempt(ctx, tenantID, in.UserName, cred.UserID, in.IPAddress, in.DeviceInfo, false, "password verify failed")
 		return nil, err
 	}
 	if !ok {
+		uc.recordLoginAttempt(ctx, tenantID, in.UserName, cred.UserID, in.IPAddress, in.DeviceInfo, false, "invalid credentials")
 		return nil, ErrInvalidCredentials
 	}
 	if cred.Status != UserStatusEnabled {
+		uc.recordLoginAttempt(ctx, tenantID, in.UserName, cred.UserID, in.IPAddress, in.DeviceInfo, false, "user disabled")
 		return nil, ErrAuthUserDisabled
 	}
 	if rehash {
@@ -122,8 +162,10 @@ func (uc *AuthUsecase) Login(ctx context.Context, in *LoginInput) (*LoginResult,
 	}
 	issued, err := uc.sessions.Issue(ctx, Identity{TenantID: tenantID, UserID: cred.UserID}, in.Opts, in.DeviceInfo, in.IPAddress)
 	if err != nil {
+		uc.recordLoginAttempt(ctx, tenantID, in.UserName, cred.UserID, in.IPAddress, in.DeviceInfo, false, "session issue failed")
 		return nil, err
 	}
+	uc.recordLoginAttempt(ctx, tenantID, in.UserName, cred.UserID, in.IPAddress, in.DeviceInfo, true, "")
 	return &LoginResult{
 		Issued: issued,
 		User: UserSummary{
