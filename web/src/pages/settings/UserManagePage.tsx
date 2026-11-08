@@ -190,6 +190,7 @@ function OwnerTripleSelects({
 function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
+  const [status, setStatus] = useState(STATUS_ENABLED)
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [remark, setRemark] = useState('')
@@ -210,6 +211,7 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
       const input: CreateUserInput = {
         name: name.trim(),
         nickname: nickname.trim(),
+        status,
         email: email.trim() === '' ? undefined : email.trim(),
         phone: phone.trim() === '' ? undefined : phone.trim(),
         remark: remark.trim() === '' ? undefined : remark.trim(),
@@ -240,7 +242,7 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
       <DialogContent>
         <DialogHeader>
           <DialogTitle>新建用户</DialogTitle>
-          <DialogDescription>初始密码服务端哈希后落库；归属未选时归属用户默认为创建人。</DialogDescription>
+          <DialogDescription>初始密码服务端哈希后落库；状态缺省启用；归属未选时归属用户默认为创建人。</DialogDescription>
         </DialogHeader>
         <form className="grid gap-4" onSubmit={(e) => { void submit(e) }}>
           <Field id="create-user-name" label="用户名">
@@ -252,6 +254,14 @@ function UserCreateDialog({ onClose, onCreated }: { onClose: () => void; onCreat
           <Field id="create-user-password" label="初始密码">
             <Input id="create-user-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
           </Field>
+          <div className="flex items-center gap-2">
+            {/* 开关的可访问名保持稳定，状态词另起展示位随开关联动。 */}
+            <Switch id="create-user-status" checked={status === STATUS_ENABLED} onCheckedChange={(checked) => setStatus(checked ? STATUS_ENABLED : STATUS_DISABLED)} />
+            <Label htmlFor="create-user-status">状态</Label>
+            <span aria-live="polite" className="text-sm text-muted-foreground">
+              {status === STATUS_ENABLED ? '启用' : '禁用'}
+            </span>
+          </div>
           <Field id="create-user-email" label="邮箱">
             <Input id="create-user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
           </Field>

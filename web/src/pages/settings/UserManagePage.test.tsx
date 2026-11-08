@@ -305,7 +305,7 @@ describe('UserManagePage create', () => {
 
     await waitFor(() =>
       expect(mockCreateUser).toHaveBeenCalledWith(
-        { name: 'carol', nickname: 'Carol' },
+        { name: 'carol', nickname: 'Carol', status: 1 },
         'secret-1',
       ),
     )
@@ -313,6 +313,29 @@ describe('UserManagePage create', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('用户 carol 已创建')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => expect(mockListUsers).toHaveBeenCalledTimes(2))
+  })
+
+  it('creates_a_disabled_user_when_the_status_switch_is_turned_off', async () => {
+    const user2 = userEvent.setup()
+    mockCreateUser.mockResolvedValue(user({ id: '99', name: 'carol', nickname: 'Carol', status: 0 }))
+    renderPage()
+    await screen.findByText('alice')
+
+    await user2.click(screen.getByRole('button', { name: '新建用户' }))
+    const dialog = screen.getByRole('dialog')
+    await user2.type(within(dialog).getByLabelText('用户名'), 'carol')
+    await user2.type(within(dialog).getByLabelText('昵称'), 'Carol')
+    await user2.type(within(dialog).getByLabelText('初始密码'), 'secret-1')
+    await user2.click(within(dialog).getByRole('switch', { name: '状态' }))
+    expect(within(dialog).getByText('禁用')).toBeInTheDocument()
+    await user2.click(within(dialog).getByRole('button', { name: '创建' }))
+
+    await waitFor(() =>
+      expect(mockCreateUser).toHaveBeenCalledWith(
+        { name: 'carol', nickname: 'Carol', status: 0 },
+        'secret-1',
+      ),
+    )
   })
 
   it('sends_the_selected_ownership_triple_on_create', async () => {
@@ -335,7 +358,7 @@ describe('UserManagePage create', () => {
 
     await waitFor(() =>
       expect(mockCreateUser).toHaveBeenCalledWith(
-        { name: 'carol', nickname: 'Carol', ownerUserId: '9', ownerDeptId: '2' },
+        { name: 'carol', nickname: 'Carol', status: 1, ownerUserId: '9', ownerDeptId: '2' },
         'secret-1',
       ),
     )
