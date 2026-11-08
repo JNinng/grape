@@ -19,6 +19,8 @@ func TestEmbedderSpaceKey_derivation(t *testing.T) {
 		{"bge-m3", "", "bge-m3"},
 		{"bge-m3", "v2", "bge-m3@v2"},
 		{"text-embedding-3-small", "1", "text-embedding-3-small@1"},
+		{"qwen3-embedding:0.6b", "", "qwen3-embedding:0.6b"},
+		{"qwen3-embedding:0.6b", "v1", "qwen3-embedding:0.6b@v1"},
 	}
 	for _, tc := range cases {
 		if got := EmbedderSpaceKey(tc.model, tc.version); got != tc.want {
@@ -51,6 +53,21 @@ func TestVectorSpaces_valid_config_resolves_registry(t *testing.T) {
 	}, "m"))
 	if err != nil || atCap["m"] != VectorMaxDimension {
 		t.Fatalf("VectorSpaces(dimension at cap) = (%v, %v), want accepted at %d", atCap, err, VectorMaxDimension)
+	}
+}
+
+func TestVectorSpaces_accepts_tagged_model_key(t *testing.T) {
+	// Ollama 等本地端点的模型名以冒号带标签，标签属于空间身份的一部分；
+	// 键只按白名单校验字符，不拆分冒号。
+	const key = "qwen3-embedding:0.6b"
+	spaces, def, err := VectorSpaces(spacesConf([]*Vector_Embedding{
+		{Model: key, Dimension: 1024},
+	}, key))
+	if err != nil {
+		t.Fatalf("VectorSpaces(tagged model) = %v, want nil", err)
+	}
+	if def != key || spaces[key] != 1024 {
+		t.Fatalf("spaces = %v, default = %q, want tagged key with dimension 1024", spaces, def)
 	}
 }
 

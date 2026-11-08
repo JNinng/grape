@@ -17,9 +17,10 @@ const (
 )
 
 // vectorSpaceKeyPattern 是空间键白名单：字母或数字开头，仅含字母数字与
-// . _ @ -，128 字符内（与 agent_document.embedder 列宽一致）。键始终走
-// 占位符参数、不拼 SQL 文本，白名单的目的是把配置手误挡在装配期。
-var vectorSpaceKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._@-]{0,127}$`)
+// . _ : @ -，128 字符内（与 agent_document.embedder 列宽一致）。键始终走
+// 占位符参数、不拼 SQL 文本，白名单的目的是把配置手误挡在装配期；冒号
+// 承载 Ollama 标签等模型名分隔符（如 qwen3-embedding:0.6b），不参与键解析。
+var vectorSpaceKeyPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@-]{0,127}$`)
 
 // EmbedderSpaceKey 派生嵌入空间键：version 留空取 model，非空拼
 // model@version。模型与版本是身份的组成部分——同一模型换维度或换端点
