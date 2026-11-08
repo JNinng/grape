@@ -4,6 +4,17 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 内嵌 React 前端与 Agent 运行时适配。文档、注释与提交信息用中文；代码内
 硬编码字符串（错误信息、日志文本、测试名与断言文案等）用英文。
 
+## 仓库结构
+
+- `cmd/server` — 唯一服务入口（Wire 装配）；`cmd/dbdeploy` / `cmd/configinit`
+  分别是数据库部署与配置初始化工具
+- `api/` — proto 契约与生成代码；`internal/` — 业务实现（`service` / `task`
+  入口 → `biz` → `data`，`agent` 为框架适配层）
+- `internal/data/pg_sqlc/` — 存储侧：`sqlc/` 为单一事实源，`gen/` 为生成产物，
+  其余为仓储实现
+- `web/` — Vite + React 前端，构建产物 `web/dist` 经 `go:embed` 收进二进制
+- 根目录 `*.md` 为权威文档，入口见下方「改前必读」
+
 ## 常用命令
 
 - `make api` / `make config` — 从 proto 生成 `api/` 契约代码与根目录
@@ -14,12 +25,34 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 - `make generate`（含 wire + tidy）— 改依赖注入后必须重跑以刷新
   `cmd/server/wire_gen.go`
 - `make all` — 上述全部
+- `make build` — 构建二进制到 `bin/`
+- `make dbdeploy ARGS="--database <库名>"` — 按 [deploy_db.md](deploy_db.md)
+  清单一键部署 PostgreSQL；`make config-init ARGS=...` 生成初始配置
 - `make web` — 构建前端到 `web/dist`（交付前必须执行）
-- `go test ./...` — 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`
-  门控，未设置时自动跳过
+- `go vet ./...` 与 `go test ./...` — 交付前检查；集成测试由
+  `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控，未设置时自动跳过
+- `cd web && npm test` / `npm run lint` — 前端 Vitest / ESLint
+  （`npm run build` = `tsc --noEmit` + `vite build`）
 - 运行（仓库根）：`go run ./cmd/server -conf configs`，DSN 走
   `KRATOS_DATABASE_SOURCE` 环境变量（env source 仅识别 `KRATOS_` 前缀，未
   设置时回落配置占位内的默认 DSN）
+
+## 前端
+
+- `go:embed` 在编译期收录 `web/dist`，构建顺序固定：先 `make web` 再
+  `go build`。只改 Go 不必重跑 npm；只改前端必须重新编译二进制。
+- `web/dist/index.html` 是唯一入库的占位页，npm 构建会覆盖它；提交前用
+  `git checkout -- web/dist/index.html` 恢复，其余构建产物不入库。
+- 开发期 `npm run dev` 由 Vite 把 `/v1`、`/agui` 代理到 `127.0.0.1:8000`。
+- 前端约束（protojson 序列化口径、不可信文本不走 `innerHTML`、旧内核 CSS
+  限制）见 [web/README.md](web/README.md)。
+
+## 测试
+
+测试与被测代码同目录（`*_test.go` / `*.test.ts`），按层隔离：`service` 用假
+仓储隔离传输适配，`biz` mock 仓储接口只验证用例，`data` 以真实 PostgreSQL
+集成测试验证存储边界（自建临时库、按部署清单装载 SQL、以 `grape_u` 运行）。
+覆盖主题见各层 README 的「测试」一节。
 
 ## 生成物禁止手改
 
