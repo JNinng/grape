@@ -16,6 +16,7 @@ type fakeUserRepo struct {
 	gotAuth    biz.Identity
 	callsCount int
 	updated    *biz.User
+	created    *biz.User
 
 	passwordHash    string
 	setPasswordHash string
@@ -25,6 +26,13 @@ func (f *fakeUserRepo) GetByID(_ context.Context, auth biz.Identity, _ int64) (*
 	f.callsCount++
 	f.gotAuth = auth
 	return &biz.User{ID: 5}, nil
+}
+
+func (f *fakeUserRepo) Create(_ context.Context, auth biz.Identity, u *biz.User) (*biz.User, error) {
+	f.callsCount++
+	f.gotAuth = auth
+	f.created = u
+	return u, nil
 }
 
 func (f *fakeUserRepo) GetMyProfile(_ context.Context, auth biz.Identity) (*biz.User, error) {
@@ -120,5 +128,33 @@ func TestUserServiceFailsClosedWithoutIdentity(t *testing.T) {
 	}
 	if repo.callsCount != 0 {
 		t.Fatalf("usecase calls = %d, want 0", repo.callsCount)
+	}
+}
+
+func TestUserServiceCreateUser_when_status_presence_distinguishes_disabled_from_unspecified(t *testing.T) {
+	zero := int32(0)
+	for _, tc := range []struct {
+		name   string
+		status *int32
+		want   int32
+	}{
+		{name: "unspecified defaults enabled", status: nil, want: biz.UserStatusEnabled},
+		{name: "explicit zero disables", status: &zero, want: biz.UserStatusDisabled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeUserRepo{}
+			svc := NewUserService(biz.NewUserUsecase(repo), biz.NewAssignmentUsecase(nil))
+			_, err := svc.CreateUser(biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7}),
+				&userv1.CreateUserRequest{
+					User:     &userv1.User{Name: "bob", Nickname: "Bob", Status: tc.status},
+					Password: "secret-1",
+				})
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if repo.created == nil || repo.created.Status != tc.want {
+				t.Fatalf("created = %+v, want status %d", repo.created, tc.want)
+			}
+		})
 	}
 }

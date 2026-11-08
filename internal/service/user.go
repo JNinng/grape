@@ -44,6 +44,9 @@ func (s *UserService) CreateUser(ctx context.Context, req *userv1.CreateUserRequ
 		return nil, err
 	}
 	in := req.GetUser()
+	if in == nil {
+		return nil, biz.ErrUserInvalidArgument
+	}
 	out, err := s.uc.CreateUser(ctx, auth, &biz.User{
 		Status:           normalizeUserStatus(in.Status),
 		Name:             in.GetName(),
@@ -155,7 +158,7 @@ func (s *UserService) UpdateUser(ctx context.Context, req *userv1.UpdateUserRequ
 		return nil, err
 	}
 	in := req.GetUser()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrUserInvalidArgument
 	}
 	out, err := s.uc.UpdateUser(ctx, auth, &biz.User{
@@ -394,11 +397,11 @@ func tsPBPtr(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
-// normalizeUserStatus 归一化创建入参的状态：nil 落 0，交由用例按缺省启用
-// 处理（创建时显式 0 与未设置同口径）。
+// normalizeUserStatus 归一化创建入参的状态：nil 落未指定哨兵，交由用例
+// 缺省启用；显式 0 表示禁用。
 func normalizeUserStatus(status *int32) int32 {
 	if status == nil {
-		return 0
+		return biz.UserStatusUnspecified
 	}
 	return *status
 }

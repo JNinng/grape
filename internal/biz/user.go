@@ -134,9 +134,16 @@ func (uc *UserUsecase) ListUsers(ctx context.Context, auth Identity, q *dynq.Que
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateUser 创建用户：status 缺省启用、locale 缺省 zh-CN，密码哈希后落库；
-// 请求未指定归属人时缺省为创建人，避免落一条所有非全租户角色都不可见的行。
+// CreateUser 创建用户：status 未指定时缺省启用（显式 0 落禁用）、locale
+// 缺省 zh-CN，密码哈希后落库；请求未指定归属人时缺省为创建人，避免落一条
+// 所有非全租户角色都不可见的行。
 func (uc *UserUsecase) CreateUser(ctx context.Context, auth Identity, u *User) (*User, error) {
+	if u == nil {
+		return nil, ErrUserInvalidArgument
+	}
+	if u.Status == UserStatusUnspecified {
+		u.Status = UserStatusEnabled
+	}
 	if err := validateUserMutable(u); err != nil {
 		return nil, err
 	}
@@ -149,9 +156,6 @@ func (uc *UserUsecase) CreateUser(ctx context.Context, auth Identity, u *User) (
 		return nil, err
 	}
 	u.Password = hashed
-	if u.Status == 0 {
-		u.Status = UserStatusEnabled
-	}
 	if u.Locale == "" {
 		u.Locale = "zh-CN"
 	}
@@ -262,10 +266,12 @@ func (uc *UserUsecase) TransferUserOwner(ctx context.Context, auth Identity, id 
 	return uc.repo.TransferOwner(ctx, auth, id, to)
 }
 
-// UserStatusEnabled / UserStatusDisabled 与存储层 sys_user.status 取值一致。
+// UserStatusUnspecified 仅用于区分「创建时未指定」与「显式禁用」，不落库；
+// Disabled / Enabled 与存储层 sys_user.status 取值一致。
 const (
-	UserStatusDisabled int32 = 0
-	UserStatusEnabled  int32 = 1
+	UserStatusUnspecified int32 = -1
+	UserStatusDisabled    int32 = 0
+	UserStatusEnabled     int32 = 1
 )
 
 // userNicknameMaxRunes 与 sys_user.nickname 列宽（varchar(256)）对齐。

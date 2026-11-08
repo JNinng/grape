@@ -59,7 +59,7 @@ func TestUserUsecaseCreateUserDefaultsOwnerToCreator(t *testing.T) {
 	auth := Identity{TenantID: "t-1", UserID: 7}
 
 	if _, err := uc.CreateUser(context.Background(), auth, &User{
-		Name: "alice", Nickname: "Alice", Password: "plain",
+		Name: "alice", Nickname: "Alice", Password: "plain", Status: UserStatusUnspecified,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestUserUsecaseCreateUserKeepsExplicitOwner(t *testing.T) {
 	group := int64(5)
 
 	if _, err := uc.CreateUser(context.Background(), auth, &User{
-		Name: "alice", Nickname: "Alice", Password: "plain",
+		Name: "alice", Nickname: "Alice", Password: "plain", Status: UserStatusUnspecified,
 		OwnerUserID: &owner, OwnerDeptID: &dept, OwnerUserGroupID: &group,
 	}); err != nil {
 		t.Fatalf("create: %v", err)
@@ -159,5 +159,30 @@ func TestUserUsecaseChangeMyPasswordRejectsEmptyInput(t *testing.T) {
 	}
 	if repo.setPasswordCalls != 0 {
 		t.Fatalf("set password calls = %d, want 0", repo.setPasswordCalls)
+	}
+}
+
+func TestUserUsecaseCreateUserStatusDefaultsEnabledAndKeepsExplicitDisabled(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   int32
+		want int32
+	}{
+		{name: "unspecified defaults enabled", in: UserStatusUnspecified, want: UserStatusEnabled},
+		{name: "explicit disabled preserved", in: UserStatusDisabled, want: UserStatusDisabled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &mockUserRepo{}
+			uc := NewUserUsecase(repo)
+			auth := Identity{TenantID: "t-1", UserID: 7}
+			if _, err := uc.CreateUser(context.Background(), auth, &User{
+				Status: tc.in, Name: "alice", Nickname: "Alice", Password: "plain",
+			}); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if repo.created.Status != tc.want {
+				t.Fatalf("status = %d, want %d", repo.created.Status, tc.want)
+			}
+		})
 	}
 }
