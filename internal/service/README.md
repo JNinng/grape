@@ -1,73 +1,74 @@
 # service
 
-传输层适配器：每个资源一个文件，在边界完成 DTO ↔ DO 转换，把 query.v1 动态查询协议转为 `dynq.Query`，随后委托 [biz](../biz/) 用例；本层不实现业务规则，入参校验在 biz 落地。
+传输层适配器：proto 生成的资源服务与少量手写端点都在此落地。边界上只做
+DTO ↔ DO 转换与 `query.v1` → `dynq.Query` 协议转换，然后委托 [biz](../biz/)
+用例；业务规则、入参校验与权限判定都不在本层，身份只从认证上下文读取。
 
-## 分层角色
+## 关键约束
 
-- 第一类业务入口，与 [task](../task/) 平级；上游是 `api/` 中声明的 HTTP / gRPC 契约，下游是 [biz](../biz/)。
-- 只导入 `api/...` 与 `biz`；手写端点可额外导入 `transport/http` 与 [agent](../agent/)（Agent 框架适配层的挂载物）；`Logout` 因免认证幂等语义自取 `Authorization` 头，额外导入 `transport`（例外仅此一处）。完整 import 方向见 [internal/README.md](../README.md) 的「分层与数据流向」。
-- 服务由 [server](../server/) 按生成代码路由挂载；本层不构建传输层、不装配中间件链。
-- 受保护端点的身份事实只从 context 取（`authOf`），缺失按未认证 fail-closed；令牌校验由中间件完成，不在本层重复实现。
-
-## 数据流向
-
-```
-   client
-     │  proto 请求 / 响应（DTO）
-     ▼
-┌─────────┐
-│ service │  DTO ↔ DO；query.v1.Query → dynq.Query
-└─────────┘
-     │  DO + dynq.Query
-     ▼
-┌─────────┐
-│   biz   │  用例与入参校验；声明仓储接口
-└─────────┘
-     │  DO + dynq.Query
-     ▼   repo IF：biz 声明，data 实现（依赖反转）
-```
-
-边界上的两次转换：
-
-- DTO ↔ DO：请求字段映射为 `biz` 的 DO 或入参结构（如 `biz.LoginInput`、`biz.OwnerTriple`），返回值再渲染为 proto；空串经 `optionalString` 归一为未设置，可空时间戳经 `tsPBPtr` 渲染。
-- 查询协议：`queryv1.Query` 经 `convertQuery` 转为 `dynq.Query`（fields / where / sort / pagination）；枚举过滤值按 `enumAliases` 从线上枚举名归一化为存储取值；`page` 与 `after` 互斥，冲突报 `errPageAfterConflict`。转换失败经 `invalidQueryError` 包装为资源自身的 INVALID_ARGUMENT，响应页码由 `pageOf` 回填。
+- **只转换与委托**：资源服务嵌入 proto 的 `Unimplemented*Server`，方法内
+  映射字段、转换查询、调用用例；不拼 SQL、不判断权限、不实现业务规则。
+- **身份 fail-closed**：受保护端点只认认证中间件注入的身份，缺失按未认证
+  拒绝；令牌校验不在本层重复实现（生成端点经 `authOf` 读取）。
+- **更新即裁剪**：更新端点只映射方法显式列出的可变字段，不可变列（如
+  用户归属三元组、角色 `code`/`role_type`/`data_scope`、租户 `code`）
+  不映射进 DO；必填的 `status` 缺失即 INVALID_ARGUMENT。
+- **状态与可选字段归一**：创建时缺失状态交用例落缺省，显式 0（禁用）原样
+  保留。可选文本的空串经 `optionalString` 折为未设置，唯配置 `value`
+  例外——显式空串与纯空白是有效值。
+- **查询协议**：List 方法复用 `convertQuery`；`page` 与 `after` 互斥，
+  转换错误经 `invalidQueryError` 包装为资源自身的 INVALID_ARGUMENT，
+  响应页码由 `pageOf` 回填。`enumAliases` 是预留的枚举名归一能力，
+  当前没有资源传入别名。
+- **手写端点**：无 proto 契约的 Agent 路由与审计/检索查询端点也在本层
+  注册；归属、`ctx.Middleware` 纪律与中间件链顺序见
+  [internal/README.md](../README.md#手写端点归属)。
 
 ## 关键文件导览
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [permission.go](permission.go) | `PermissionService`：当前认证用户的功能权限码查询——`GetMyPermissions` 返回去重升序的权限码集合（前端导航过滤数据源），目标恒取认证身份、不设权限码，用户无效返回空集合（正常响应非错误）；`NewPermissionService` 见 `provider.go`。 |
-| [provider.go](provider.go) | `ProviderSet` 聚合 `NewUserService` / `NewDeptService` / `NewUserGroupService` / `NewRoleService` / `NewMenuService` / `NewPermissionService` / `NewDictService` / `NewConfigService` / `NewTenantConfigService` / `NewFeatureFlagService` / `NewTranslationService` / `NewTenantService` / `NewAuditService` / `NewSessionAdminService` / `NewSessionService` / `NewQueryService` / `NewAgentService` / `NewAgentSessionsService` / `NewAgentEventWindowService` / `NewAgentAuditService` / `NewAgentRetrievalService`，由 cmd 的 Wire 统一装配。 |
-| [query.go](query.go) | `QueryService`：`GetListSchema` 返回资源动态 List 的能力 schema（前端渲染查询组件的契约，内容 hash 可作 ETag；资源未收录 INVALID_ARGUMENT，认证后即可访问、不设功能权限码）；跨资源查询转换：`convertQuery` 把 `queryv1.Query` 转 `dynq.Query`；`normalizeEnumValue` 归一化枚举过滤值（仅 `eq` / `neq` / `in` / `not_in` 且字段已登记别名时生效）；`invalidQueryError` 包装转换错误；`pageOf` 计算分页信封页码。 |
-| [session.go](session.go) | `SessionService`：`Login` 把请求映射为 `biz.LoginInput` 调用 `AuthUsecase`，`Refresh` 调 `SessionUsecase`；`Logout` 免认证（幂等语义，见认证中间件白名单），自取 `Authorization: Bearer` 头交用例按哈希撤销；`toLoginReply` 渲染响应（Bearer 令牌、过期时间、用户摘要）。 |
-| [user.go](user.go) | `UserService`：用户 CRUD、`ListUsers`（动态查询）、`SetUserPassword`、`DeleteUser`、`AssignRoles`（只增兼容面）、`TransferUserOwner`，个人中心 `GetMyProfile` / `UpdateMyProfile` / `ChangeMyPassword`（目标恒取认证身份、不设权限码），以及用户分配选择器与角色整组替换——`ListAssignableRoles` / `ListUserRoles` / `SetUserRoles` / `ListOwnerUserOptions` / `ListOwnerDeptOptions` / `ListOwnerGroupOptions`（依赖注入 `AssignmentUsecase`；Option.value 由 int64 渲染为十进制字符串）；`authOf` 读取身份、缺失按未认证处理；`toProtoUser` / `toProtoOptionSet` / `toProtoUserRoleSet` / `optionQueryOf` / `optionalString` / `normalizeUserStatus` 等转换辅助。 |
-| [dept.go](dept.go) | `DeptService`：部门 CRUD、`ListDepts`（动态查询平铺分页）、`GetDeptTree`（树形，节点嵌套 `DeptTreeNode`）、`MoveDept`（parent_id 缺省移为根）与 `DeleteDept`（有子部门拒绝）；`UpdateDept` 为 PUT 覆盖语义，透传 parent_id/owner_user_id/owner_user_group_id（parent 缺省移根、owner group 缺省清空）；`toProtoDept` / `toProtoDeptNodes` / `normalizeDeptStatus` 转换辅助。 |
-| [usergroup.go](usergroup.go) | `UserGroupService`：用户组 CRUD、`ListUserGroups`（动态查询平铺分页）与成员管理三端点（`ListUserGroupMembers` 固定 offset 分页、`AddUserGroupMembers` / `RemoveUserGroupMembers` 批量增删，返回实际增删条数）；`code` 与 `owner_user_id` 在 UpdateUserGroup 输入中被忽略（身份/归属列不走更新）；成员分页信封的 `has_more` 由归一化页码×页大小与 total 比较得出；`toProtoUserGroup` / `normalizeUserGroupStatus` / `normalizeMemberPage*` 转换辅助。 |
-| [role.go](role.go) | `RoleService`：角色 CRUD、`ListRoles`（动态查询平铺分页）与随角色读写的配置面——`GetRoleDataScope` / `SetRoleDataScope`（数据范围：data_scope、scope_dept_id、ID 范围明细与分发部门，整组替换）与 `ListRoleMenus` / `SetRoleMenus`（菜单授权集合，整组替换）；`code`/`role_type`/`data_scope`/`scope_dept_id` 在创建与更新输入中被忽略（身份列与配置面维护）；`toProtoRole` / `toProtoRoleDataScope` / `normalizeRoleStatus` 转换辅助。 |
-| [menu.go](menu.go) | `MenuService`：菜单树管理——`GetMenuTree`（树形，节点嵌套 `MenuTreeNode`）与 `GetMenu` 为普通读（租户边界由 RLS 承担），`CreateMenuSuper` / `UpdateMenuSuper` / `MoveMenuSuper` / `DeleteMenuSuper` 为 super 写面（部署面 SECURITY DEFINER 受控写函数，运行角色无直写权限）；`permission_code`/`menu_type`/`parent_id` 在更新输入中被忽略（身份/类型/结构列，结构变更走 MoveMenuSuper）；`toProtoMenu` / `toProtoMenuNodes` / `normalizeMenuStatus` 转换辅助。 |
-| [dict.go](dict.go) | `DictService`：字典类型与数据两级各 CRUD + 动态查询 List（`ListDictTypes` / `ListDictDatas` 平铺分页）；`code`（类型）与 `value`/`value_type`/`dict_type_id`（数据）在更新输入中被忽略（身份/值语义/归属列不走更新）；`toProtoDictType` / `toProtoDictData` / `normalizeDictStatus` 转换辅助。 |
-| [config.go](config.go) | `ConfigService`（全局配置）/ `TenantConfigService`（租户配置）/ `FeatureFlagService`（功能开关）/ `TranslationService`（通用翻译）四个适配器：各 CRUD + 动态查询 List（`ListConfigs` / `ListTenantConfigs` / `ListFeatureFlags` / `ListTranslations` 平铺分页）；全局写端点方法名带 `Super`（部署面受控写函数）且服务端强制平台根租户校验（子租户即使持有权限码也 403），读端点与其余三个租户资源全部端点不带；`config_key`/`value_type` 创建时必填并使用、更新输入中被忽略（身份/值语义列），租户配置的 `tenant_id` 只读、创建与更新输入均被忽略；`value` 仅「未设置」折 nil，显式空串与纯空白原样保留（有效配置值，不做 trim/空白折叠）；功能开关的 `flag_key` 与 `is_enabled`（optional 未设置即 false）、翻译的身份四元组（table_name/row_id/column_name/locale）在更新输入中被忽略；`toProtoConfig` / `toProtoTenantConfig` / `toProtoFeatureFlag` / `toProtoTranslation` / `normalizeConfigStatus`（仅 nil 映射未指定哨兵，显式非 0/1 一律 InvalidArgument）/ `optionalValue` 转换辅助。 |
-| [tenant.go](tenant.go) | `TenantService`：平台级租户实体管理（`CreateTenantSuper` / `GetTenantSuper` / `ListTenantsSuper` / `UpdateTenantSuper` / `DeleteTenantSuper` / `DisableTenantSuper` / `RestoreTenantSuper`）；API 方法名带 `Super` 表达租户实体管理（租户树边界仍由 RLS 承担，不绕过）；`id`/`tenant_id`/审计列/时间戳在创建输入中被忽略，`parent_id` 未设置（nil 或空串）由用例缺省为调用方租户、显式值必须等于调用方租户、创建后在更新输入中被忽略；`code` 是身份列，更新输入在传输层即被丢弃（创建后不可变）；`status` 仅 nil 映射未指定哨兵，显式值只接受 0/1（-1 等拒绝）；`contact_*` 空串折 nil，`expired_at` 未设置落 NULL（更新为覆盖语义），`max_user_count` 指针透传；`toProtoTenant` / `normalizeTenantStatus` / `timePtrOf` 转换辅助。 |
-| [audit.go](audit.go) | `AuditService`：登录/操作日志只读查询（各 List 动态查询 + 按 id 点查）；操作日志的 old/new JSON 快照解码为 `structpb.Struct`（NULL 即未设置、非对象脏数据降级字段不炸行）；`toProtoLoginLog` / `toProtoOperationLog` / `jsonRawToStruct` 转换辅助。 |
-| [session_admin.go](session_admin.go) | `SessionAdminService`：会话治理面——`ListSessions`（动态查询平铺分页）与 `RevokeSession`（幂等，目标不存在/已撤销/已被清理均成功）；DTO 不含令牌哈希与租户 ID（凭据不回显，租户边界由 RLS 承担）；`toProtoSessionAdmin` 转换辅助。 |
-| [agent_http.go](agent_http.go) | `AgentService`：Agent 手写端点（非 proto 生成）。把 [agent](../agent/) Stack 的外层 ServeMux 经 `srv.Route` + `ctx.Middleware` 入 Kratos 链，注册精确路径与前缀通配两条路由，认证后的 ctx 回绑请求交给框架直写 SSE；`BasePath` 供 server 的路由级超时跳过名单使用。 |
-| [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：agent 会话列表手写端点（非 proto 生成）的路由注册面。GET `{agui 前缀}/sessions` 的列表装配与 HTTP 形态收在 [agent](../agent/)（`Stack.SessionsHandler`：按认证身份编码的 userKey 列出会话元数据，`WithListSessionOnlyMeta` + offset 分页，非法参数 400，归属过滤只认服务端身份、跨用户不可见），本类型只负责注册精确路径并入 Kratos 链（先于 agent 前缀通配）。 |
-| [agent_event_window.go](agent_event_window.go) | `AgentEventWindowService`：会话事件窗口手写端点（非 proto 生成，供运维复现视图做压缩占位符原文对照）的路由注册面。GET `{agui 前缀}/event-window` 的窗口装配与 HTTP 形态收在 [agent](../agent/)（`Stack.EventWindowHandler`：按 threadId + eventId 取锚点事件窗口，before/after 各上限 50，参数非法 400、身份缺失 fail-closed 401、跨用户锚点统一 404），本类型只负责注册精确路径并入 Kratos 链（与 agent_sessions.go 同序，先于 agent 前缀通配）。 |
-| [agent_audit.go](agent_audit.go) | `AgentAuditService`：Agent 业务审计查询手写端点（非 proto 生成）。GET `/v1/agent/audit/tool-calls` 与 `/confirmations` 委托 [biz](../biz/) 审计用例，按会话过滤分页（默认 20/上限 200）与按 `tool_call_id` / `confirmation_id` 点查（未命中 404、点查与列表参数混用 400）；依赖只有 biz 用例（无受控例外），租户边界由仓储 IdentityTx 与表 RLS 强制，返回的摘要是落库时已脱敏形态。 |
-| [agent_retrieval.go](agent_retrieval.go) | `AgentRetrievalService`：检索留痕查询手写端点（非 proto 生成，供运维复现视图）。GET `/v1/agent/retrieval-logs` 委托 [biz](../biz/) 留痕用例，按会话/来源（tool|pipeline）过滤分页（默认 20/上限 200）；依赖只有 biz 用例（无受控例外，与审计端点同款纪律），租户边界由仓储 IdentityTx 与表 RLS 强制，返回的查询文本/过滤摘要/命中是落库时已脱敏形态，过滤摘要与命中以落库 JSON 原样透传。 |
-
-
-## 接入要点
-
-新增资源 service：
-
-1. 嵌入 `api/<domain>/<version>` 生成的 `Unimplemented<Resource>ServiceServer`，构造函数接收 `biz` 用例并加入 `service.ProviderSet`；
-2. 在方法内完成 DTO → DO 与 DO → DTO 映射；List 方法用 `convertQuery` 转换查询（存在枚举字段时传入 `enumAliases`），转换错误用 `invalidQueryError` 映射为 INVALID_ARGUMENT；
-3. 受保护端点先用 `authOf` 取身份，再委托用例；
-4. 在 `server` 的 HTTP / gRPC 注册处挂载服务；改依赖后 `make generate` 刷新 wire 装配。
-
-手写端点（非 proto 生成）：归属与中间件链见 [internal/README.md](../README.md) 的「手写端点归属」；实现放 `service/<资源>_http.go`，用 `srv.Route` 注册并在 handler 内调用 `ctx.Middleware`，且必须提供「无令牌 → 401」的测试守住认证链。Agent 手写路由（AG-UI / ack）是现有参照：框架 handler 直写 `ResponseWriter`，本层只负责入链与身份 ctx 回绑，不翻译 SSE 事件。
+| [session.go](session.go) | `SessionService`：登录映射为 `biz.LoginInput`，刷新轮换令牌，登出免认证自取 Bearer 头按哈希撤销（重复登出幂等）；登录来源缺省回落服务端观测的 IP 与 User-Agent。 |
+| [permission.go](permission.go) | `PermissionService`：`GetMyPermissions` 返回认证身份去重升序的权限码集合（前端导航过滤的数据源）；用户无效返回空集（正常响应），端点本身不设权限码。 |
+| [query.go](query.go) | `QueryService` 与查询转换辅助：`GetListSchema` 输出前端查询组件契约（内容 hash 可作 ETag，端点不设功能权限码）；`convertQuery` / `normalizeEnumValue` / `invalidQueryError` / `pageOf` 供各资源 List 复用。 |
+| [user.go](user.go) | `UserService`：用户 CRUD、个人中心（目标恒取认证身份）、归属转移、角色分配与归属候选（Option.value 渲染为十进制字符串）；`authOf` 与 `optionalString` / `tsPBPtr` 等辅助定义在此。 |
+| [dept.go](dept.go) | `DeptService`：部门 CRUD、平铺 List、树查询与移动；`parent_id` 未设置即移根，`owner_user_group_id` 未设置即清空。 |
+| [usergroup.go](usergroup.go) | `UserGroupService`：用户组 CRUD 与成员三端点；成员列表固定 offset 分页，`has_more` 由归一化页码×页大小与 total 比较得出。 |
+| [role.go](role.go) | `RoleService`：角色 CRUD；数据范围与菜单授权是两个随角色读写的整组替换面。 |
+| [menu.go](menu.go) | `MenuService`：菜单树/详情只读，写端点方法名带 `Super`（受控写面）；结构变更独立走 `MoveMenuSuper`。 |
+| [dict.go](dict.go) | `DictService`：字典类型与数据两级 CRUD 与动态 List；更新输入丢弃 `code` 与值语义/归属列。 |
+| [config.go](config.go) | 配置族四个适配器：全局配置（写面带 `Super`，平台根租户限制由用例强制）、租户配置、功能开关、通用翻译；全局/租户配置的 `value` 仅 nil 折叠，显式空串与纯空白原样保留。 |
+| [tenant.go](tenant.go) | `TenantService`：平台级租户实体管理；`Super` 只表达对象粒度（租户树边界仍由 RLS 承担），`parent_id` 省略或等于调用方租户，`code` 创建后不可变，`expired_at` 更新为覆盖语义。 |
+| [audit.go](audit.go) | `AuditService`：登录/操作日志只读查询（两表 append-only，无写端点）；操作日志的 JSON 快照解码为 `structpb.Struct`，非对象脏数据降级为字段未设置而非整行失败。 |
+| [session_admin.go](session_admin.go) | `SessionAdminService`：租户内会话列表与幂等撤销；DTO 不携带令牌哈希与租户 ID。 |
+| [agent_http.go](agent_http.go) | `AgentService`：AG-UI 与 ack 手写路由注册面，把骨架 `ServeMux` 经 `ctx.Middleware` 入链（SSE 由框架直写）；`BasePath` 供 server 的超时跳过名单使用。 |
+| [agent_sessions.go](agent_sessions.go) | `AgentSessionsService`：会话列表手写路由注册面（handler 在 `agent.Stack`），按认证身份 userKey 列本人会话、跨用户不可见；必须先于 agent 前缀通配注册。 |
+| [agent_event_window.go](agent_event_window.go) | `AgentEventWindowService`：会话事件窗口手写路由注册面，按 threadId + eventId 取锚点窗口（before/after 各上限 50）、跨用户 404；与会话列表同序，先于前缀通配。 |
+| [agent_audit.go](agent_audit.go) | `AgentAuditService`：工具调用与授权确认审计查询（列表/点查互斥，默认 20、上限 200；摘要为落库时已脱敏形态）。 |
+| [agent_retrieval.go](agent_retrieval.go) | `AgentRetrievalService`：检索留痕查询（会话/来源过滤，默认 20、上限 200），证据字段按落库形态透传。 |
+| [provider.go](provider.go) | `ProviderSet` 聚合全部服务构造函数，由 cmd 的 Wire 统一装配。 |
 
 ## 测试
 
-现有覆盖：以内存假仓储替换 `biz` 仓储接口，隔离验证 DTO 转换与身份透传（[user_test.go](user_test.go)、[assignment_test.go](assignment_test.go)（六个分配端点的身份 fail-closed、查询转换与 int64→字符串渲染、整组替换入参去重排序转发、归属候选路由）、[dept_test.go](dept_test.go)、[usergroup_test.go](usergroup_test.go)、[role_test.go](role_test.go)、[menu_test.go](menu_test.go)：身份读取与缺失 fail-closed、optional 字段映射（owner/remark 归一）、显式 0 状态保留、Update 必填与忽略列、动态查询分页信封与 page/after 冲突拒绝、成员三端点的分页转发与 has_more 边界、增删条数透传、角色的数据范围与菜单授权端点 DTO 往返及服务端管理列在用例内强制、菜单端点的身份透传/树 DTO/状态归一与 Update 忽略身份列）；配置端点（[config_test.go](config_test.go)：全局/租户配置的身份透传与缺失 fail-closed、optional status 归一、Update 必填与身份/值语义/归属列丢弃、请求体缺失的 INVALID_ARGUMENT 拒绝、value 显式空串与纯空白保留、未设置透传 nil、动态查询分页信封与 page/after 冲突拒绝、tenant_id 只读忽略；功能开关的 is_enabled 未设置落 false/显式 true 与 false 保留、flag_key/tenant_id 丢弃；翻译的字段映射、身份四元组在 Update 丢弃、value 传输层透传（trim 在用例层））；租户端点（[tenant_test.go](tenant_test.go)：身份透传与缺失 fail-closed、DTO 时间戳/可空字段映射、创建缺省 parent/status 与显式 0 保留、显式 -1/2 拒绝、伪造 tenant_id 丢弃、Update 必填 status 与 parent/tenant_id 丢弃、动态查询信封与 page/after 冲突拒绝、nil 请求体不 panic 且不触仓储）；Agent 手写端点的入链语义（无令牌 401、SSE 长流、trace-id）、会话列表端点与事件窗口端点的认证归属边界守卫在 [../server/agent_route_test.go](../server/agent_route_test.go)、[../server/agent_sessions_route_test.go](../server/agent_sessions_route_test.go) 与 [../server/agent_event_window_route_test.go](../server/agent_event_window_route_test.go)，审计查询端点的无令牌 401 与空页信封在 [../server/agent_audit_route_test.go](../server/agent_audit_route_test.go)——挂载物由框架或真实链装配，链上验证不属本层单元测试。审计查询端点的点查/分页/错误映射单测在 [agent_audit_test.go](agent_audit_test.go)；检索留痕查询端点的脱敏行渲染/分页与来源校验/错误映射单测在 [agent_retrieval_test.go](agent_retrieval_test.go)。审计查询端点与检索留痕查询端点的无令牌 401 守卫分别在 [../server/agent_audit_route_test.go](../server/agent_audit_route_test.go) 与 [../server/agent_retrieval_route_test.go](../server/agent_retrieval_route_test.go)。
+- 身份与 fail-closed：各服务从 ctx 取身份，缺失即未认证；个人中心与
+  权限码查询的目标恒取认证身份，归属候选按认证身份推导可见集合。
+- 映射与归一：optional 字段折 nil、可空时间戳/树形节点/int64→字符串
+  渲染、创建状态缺省与显式 0 的区分。
+- 更新输入裁剪：身份/归属/结构列被丢弃，必填 `status` 缺失即
+  INVALID_ARGUMENT。
+- 查询协议与分页：page/after 冲突、分页信封回填与非法查询的错误映射。
+- 手写端点：审计与检索留痕的列表/点查互斥、分页上限与错误状态码映射；
+  Agent 路由的入链与无令牌 401 由 [server 测试](../server/README.md#测试)
+  覆盖。
+
+## 相关文档
+
+- 三层权限模型（租户边界 / 行级数据范围 / 功能权限码）见
+  [permission.md](../../permission.md)。
+- SSE 超时与生产治理口径见
+  [operations.md](../../operations.md#sse-与超时治理)。
+- Agent 审计写入面与关联键语义见
+  [replay.md](../../replay.md#写入机制) 与
+  [replay.md](../../replay.md#关联键与粒度)。
+- 新增资源与手写端点的接入流程见
+  [internal/README.md](../README.md#新增资源速查)。
