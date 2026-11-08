@@ -142,7 +142,7 @@ beforeEach(() => {
     accessToken: 'access-1',
     refreshToken: 'refresh-1',
     expiresAt: '2026-01-01T00:00:00Z',
-    user: { id: 7, tenantId: 't-1', name: 'alice', nickname: 'Alice' },
+    user: { id: '7', tenantId: 't-1', name: 'alice', nickname: 'Alice' },
   })
   // 权限码拉取失败：SettingsLayout 导航回落静态全量展示（显式 mock，
   // 不依赖 jsdom fetch 对相对地址抛错）。

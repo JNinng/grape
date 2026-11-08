@@ -34,7 +34,7 @@ function loginReply(accessToken: string, refreshToken: string): LoginReply {
     accessToken,
     refreshToken,
     expiresAt: '2026-01-01T00:00:00Z',
-    user: { id: 7, tenantId: 't-1', name: 'alice', nickname: 'Alice' },
+    user: { id: '7', tenantId: 't-1', name: 'alice', nickname: 'Alice' },
   }
 }
 

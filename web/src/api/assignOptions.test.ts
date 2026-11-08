@@ -29,7 +29,7 @@ function loginReply(): LoginReply {
     accessToken: 'access-1',
     refreshToken: 'refresh-1',
     expiresAt: '2026-01-01T00:00:00Z',
-    user: { id: 7, tenantId: 't-1', name: 'alice', nickname: 'Alice' },
+    user: { id: '7', tenantId: 't-1', name: 'alice', nickname: 'Alice' },
   }
 }
 

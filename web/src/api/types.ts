@@ -1,7 +1,8 @@
 // 与 api/session/v1 契约对齐的会话 DTO：字段名按 protobuf JSON 映射
 // （protojson）为 camelCase，与后端 jsoncodec 装载后的编解码一致。
 export interface SessionUser {
-  id: number
+  // int64 经 protojson 编为字符串（与后端 jsoncodec 一致）。
+  id: string
   tenantId: string
   name: string
   nickname: string
