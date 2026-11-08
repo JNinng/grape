@@ -80,6 +80,10 @@ func (*agentStubEmbedderResolver) ResolveDefaultEmbedder(context.Context) (strin
 	return "bge-m3@v1", 4, nil
 }
 
+func (*agentStubEmbedderResolver) ResolveEmbeddingSpace(context.Context, string) (biz.EmbeddingSpace, error) {
+	return biz.EmbeddingSpace{Key: "bge-m3@v1", Dimension: 4}, nil
+}
+
 // agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
 // 用例非 nil（业务工具的依赖），但路由用例不触发工具执行，任何方法
 // 被调用都属用例越界，按非法入参失败暴露。
@@ -197,8 +201,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		nil,
 		nil,
-		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))),
-	)
+		nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

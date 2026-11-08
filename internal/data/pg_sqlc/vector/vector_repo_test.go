@@ -30,9 +30,10 @@ func vectorTestConf(enabled bool, dimension int32, table string) *conf.Vector {
 
 func vectorTestStore() *vectorStore {
 	return &vectorStore{
-		table:  vectorDefaultTable,
-		spaces: map[string]int32{"bge-m3@v1": 4},
-		dims:   map[int32]struct{}{4: {}},
+		table:   vectorDefaultTable,
+		spaces:  map[string]int32{"bge-m3@v1": 4},
+		dims:    map[int32]struct{}{4: {}},
+		indexed: map[int32]struct{}{4: {}},
 	}
 }
 
@@ -219,7 +220,7 @@ func TestVectorStore_search_requires_declared_space(t *testing.T) {
 	}{
 		{"nil filter", nil, make([]float32, 4), "filter is required"},
 		{"empty space", &biz.VectorFilter{Dimension: 4}, make([]float32, 4), "must declare an embedder space"},
-		{"unknown space", &biz.VectorFilter{Embedder: "other@v9", Dimension: 4}, make([]float32, 4), "unknown embedder space"},
+		{"unknown space with unindexed dimension", &biz.VectorFilter{Embedder: "other@v9", Dimension: 8}, make([]float32, 8), "unknown embedder space"},
 		{"missing dimension", &biz.VectorFilter{Embedder: "bge-m3@v1"}, make([]float32, 4), "positive dimension"},
 		{"registry dimension mismatch", &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 8}, make([]float32, 8), "registry declares 4"},
 		{"length mismatch", &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 4}, make([]float32, 3), "embedding length 3"},
@@ -243,7 +244,7 @@ func TestVectorStore_check_document_errors(t *testing.T) {
 		{"empty id", &biz.VectorDocument{Embedder: "bge-m3@v1", Dimension: 4, Embedding: make([]float32, 4)}, "id is required"},
 		{"blank id", &biz.VectorDocument{ID: "  ", Embedder: "bge-m3@v1", Dimension: 4, Embedding: make([]float32, 4)}, "id is required"},
 		{"missing space", &biz.VectorDocument{ID: "doc-1", Dimension: 4, Embedding: make([]float32, 4)}, "must declare an embedder space"},
-		{"unknown space", &biz.VectorDocument{ID: "doc-1", Embedder: "other@v9", Dimension: 4, Embedding: make([]float32, 4)}, "unknown embedder space"},
+		{"unknown space with unindexed dimension", &biz.VectorDocument{ID: "doc-1", Embedder: "other@v9", Dimension: 8, Embedding: make([]float32, 8)}, "unknown embedder space"},
 		{"missing dimension", &biz.VectorDocument{ID: "doc-1", Embedder: "bge-m3@v1", Embedding: make([]float32, 4)}, "positive dimension"},
 		{"dimension mismatch", &biz.VectorDocument{ID: "doc-1", Embedder: "bge-m3@v1", Dimension: 8, Embedding: make([]float32, 8)}, "registry declares 4"},
 		{"length mismatch", &biz.VectorDocument{ID: "doc-1", Embedder: "bge-m3@v1", Dimension: 4, Embedding: make([]float32, 3)}, "embedding length 3"},

@@ -1,6 +1,6 @@
 # sqlc — SQL 对象索引
 
-关系存储的声明资产目录：`schema/` 十一个域文件（表结构与注释 DSL）、
+关系存储的声明资产目录：`schema/` 十三个域文件（表结构与注释 DSL）、
 `rls.sql` / `operate.sql` / `expose.sql`、`96_agent_grant.sql`、
 `98_*.sql` 函数声明文件与 `queries/`。本文件是这些对象里函数与命名查询的
 索引：签名、属性与返回值约定。
@@ -28,18 +28,21 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 7 | schema/70_audit.sql | 登录日志与操作日志（append-only） |
 | 8 | schema/80_session.sql | 会话/令牌表（仅存哈希）与过期清理函数 |
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
-| 10 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
-| 11 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
-| 12 | expose.sql | 只读判定函数、范围版本表与 bump 触发器 |
-| 13 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
-| 14 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
-| 15 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
-| 16 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕读写（17 个文件、150 条查询） |
-| 17 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
-| 18 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
-| 19 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
+| 10 | schema/91_knowledge.sql | kb_library 知识库与 kb_document 条目（租户表，RLS 在 rls.sql） |
+| 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
+| 12 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
+| 13 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
+| 14 | expose.sql | 只读判定函数、范围版本表与 bump 触发器 |
+| 15 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
+| 16 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
+| 17 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
+| 18 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/模型读写（20 个文件、179 条查询） |
+| 19 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
+| 20 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
+| 21 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
+| 22 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
 | — | role.sql | grape_u / test_u 角色、schema 使用权、DML 授权与 RLS 会话变量写入权 |
-| — | [seed/](seed/) | 生产默认种子：根租户自举数据，10 个 SQL 文件，顺序由 [seed.go](seed/seed.go) 声明 |
+| — | [seed/](seed/) | 生产默认种子：根租户自举数据，12 个 SQL 文件，顺序由 [seed.go](seed/seed.go) 声明 |
 | — | test_seed.sql | 集成测试种子（`t-test-*` 租户），仅由 `TestDeployFiles` 在生产清单后追加 |
 | — | agent_session.sql | 框架 session/postgres 的六张 `agent_*` 表（不入 catalog） |
 | — | agent_vector.sql | pgvector 扩展与 `agent_document` 多空间向量表（不入 catalog） |
@@ -56,12 +59,12 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/schema.md)
 为准。
 
-`sqlc.yaml` 的 schema 列表 = `schema/` 十一个域文件（10–90 九个域 +
-95_agent_audit + 97_agent_retrieval_log）+ `rls.sql` / `operate.sql` /
-`expose.sql` + `96_agent_grant.sql` + `98_menu_write.sql` +
-`98_config_write.sql` + `98_tenant_guard.sql`；queries 列表 = `queries/`
-十七个文件。函数声明文件只提供 queries 调用所需签名（受控写、删除前置计数、
-权限判定），函数体是否存在由部署顺序保证。
+`sqlc.yaml` 的 schema 列表 = `schema/` 十三个域文件（10–90 九个域 +
+91_knowledge + 92_model + 95_agent_audit + 97_agent_retrieval_log）+ `rls.sql` /
+`operate.sql` / `expose.sql` + `96_agent_grant.sql` + `98_menu_write.sql` +
+`98_config_write.sql` + `98_model_write.sql` + `98_tenant_guard.sql`；queries
+列表 = `queries/` 二十个文件。函数声明文件只提供 queries 调用所需签名
+（受控写、删除前置计数、权限判定），函数体是否存在由部署顺序保证。
 
 - **向量 SQL 不进 catalog**：`agent_document` 的存取 SQL 是手写参数化常量
   （[../vector/vector_repo.go](../vector/vector_repo.go)），pgvector 的类型与
@@ -161,6 +164,19 @@ EXECUTE 沿用默认授权 PUBLIC。config_key（未删除行间唯一）与 val
 | fn_config_create | (id, status, name, config_key, value, value_type, remark, 操作者) → sys_config | 新建；`app.tenant_id` 未设置即拒绝；config_key 唯一由部分唯一索引兜底 |
 | fn_config_update | (id, status, name, value, remark, 操作者) → sys_config | 覆盖 name/status/value/remark；未命中返回 NULL |
 | fn_config_delete | (id, 操作者) → bigint | 软删；返回删除行数（0=未命中） |
+
+### 受控写函数（98_model_write.sql，sys_model 平台行）
+
+sys_model 单表双态：`tenant_id=''` 为平台行（所有租户可读，RLS 写策略只放行
+本租户行），非空为租户行。平台行只能经受控 SECURITY DEFINER 函数写入：函数
+内固定 `tenant_id=''` 并校验 `app.tenant_id` 已设置。`kind`/`model_key` 是
+身份列，创建后不变；`api_key_cipher` 只写不读（动态投影不返回该列）。
+
+| 函数 | 签名 | 作用 |
+| --- | --- | --- |
+| fn_model_platform_create | (id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 新建平台行；`app.tenant_id` 未设置即拒绝 |
+| fn_model_platform_update | (id, status, name, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 覆盖可变字段；仅命中 `tenant_id=''` 未软删行，未命中 NULL |
+| fn_model_platform_delete | (id, 操作者) → bigint | 软删平台行；返回删除行数（0=未命中） |
 
 ### 受控判定函数（98_tenant_guard.sql，sys_tenant 删除前置）
 
@@ -400,6 +416,50 @@ status 校验收在 biz 用例。
 | InsertSysTranslation | :one | 字段 + 操作者 → SysTranslation | 插入；身份四元组唯一冲突映射 AlreadyExists |
 | UpdateSysTranslation | :one | status/value/remark + 操作者 + id → SysTranslation | 更新可变字段 |
 | SoftDeleteSysTranslation | :execrows | 操作者 + id → 行数 | 软删翻译 |
+| GetSysConfigValueByKey | :one | config_key → *string | 读启用的全局配置值（模型/嵌入选键；无行返回 pgx.ErrNoRows） |
+| GetSysTenantConfigValueByKey | :one | config_key → *string | 读启用的租户配置值（租户边界由 RLS 承担） |
+
+### kb_library.sql（知识库固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| GetKbLibraryByID | :one | id → KbLibrary | 读未软删知识库 |
+| LockKbLibraryByID | :one | id → KbLibrary | 锁定知识库（FOR UPDATE） |
+| InsertKbLibrary | :one | 字段 + 操作者 → KbLibrary | 插入；租户取会话，名称冲突映射 AlreadyExists |
+| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段 |
+| CountKbDocumentsByLibrary | :one | library_id → 行数 | 库下未删除条目数（删除前置） |
+| SoftDeleteKbLibrary | :execrows | 操作者 + id → 行数 | 软删知识库 |
+
+### kb_document.sql（知识条目固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| GetKbDocumentByID | :one | id → KbDocument | 读未软删条目 |
+| LockKbDocumentByID | :one | id → KbDocument | 锁定条目（FOR UPDATE） |
+| InsertKbDocument | :one | 字段 + 操作者 → KbDocument | 插入；租户取会话 |
+| UpdateKbDocument | :one | 可变字段 + 操作者 + id → KbDocument | 更新可变字段（library_id/kind 不变） |
+| UpdateKbDocumentStatus | :one | status/valid_from/valid_to + 操作者 + id → KbDocument | 只改状态与有效期（不重嵌） |
+| ListKbDocumentsByLibrary | :many | library_id/limit/offset → 行集 | 库内条目固定分页（updated_at 倒序） |
+| CountKbDocumentsByLibraryList | :one | library_id → 行数 | 与 List 同条件计数 |
+| SoftDeleteKbDocument | :execrows | 操作者 + id → 行数 | 软删条目 |
+| MarkKbDocumentIndexed | :one | indexed_embedder + 操作者 + id → KbDocument | 回写最近一次成功摄取时间与空间键 |
+
+### sys_model.sql（模型目录固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| GetSysModelForTenantByKey | :one | model_key → SysModel | 读本租户行（含停用；由调用方 fail-closed） |
+| GetSysModelPlatformByKey | :one | model_key → SysModel | 读平台行（含停用） |
+| GetSysModelByID | :one | id → SysModel | 读本租户行或平台行 |
+| LockSysModelTenantByID | :one | id → SysModel | 锁定本租户行（平台行不命中） |
+| InsertSysModelTenant | :one | 字段 + 操作者 → SysModel | 插入租户行；租户取会话 |
+| UpdateSysModelTenant | :one | 可变字段 + 操作者 + id → SysModel | 更新租户行（kind/model_key 不变） |
+| SoftDeleteSysModelTenant | :execrows | 操作者 + id → 行数 | 软删租户行 |
+| InsertSysModelPlatform | :one | 字段 + 操作者 → SysModel | 调 `fn_model_platform_create` |
+| UpdateSysModelPlatform | :one | 可变字段 + 操作者 + id → SysModel | 调 `fn_model_platform_update`；未命中空集 |
+| SoftDeleteSysModelPlatform | :one | 操作者 + id → 删除行数 | 调 `fn_model_platform_delete`；0 行即未命中 |
+| ListSysModelAll | :many | 可空 kind → 行集 | 可见模型（本租户行 + 平台行，含停用） |
+| ListSysModelOptions | :many | kind → 行集 | 可见且启用，每 model_key 租户行覆盖平台行 |
 
 ### sys_tenant.sql（租户固定 CRUD）
 
@@ -503,6 +563,11 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 `schema/95_agent_audit.sql`、工具授权在 `96_agent_grant.sql`、检索留痕在
 `schema/97_agent_retrieval_log.sql`）。`sys_tenant` 额外允许命中自身 `id`；
 `sys_config` 无租户列，不设 RLS。
+
+`kb_library` / `kb_document` 为普通租户表（ENABLE + FORCE，单一策略）。
+`sys_model` 是双态表：读策略 `sys_model_read` 放行「平台行（tenant_id=''）+ 本
+租户行」，写策略 `sys_model_write` 只放行本租户行；平台行只能经
+`98_model_write.sql` 的 SECURITY DEFINER 函数（属主绕过 RLS）写入。
 
 `sys_session` 另有三条令牌维度策略（`sys_session_token_read` /
 `sys_session_token_rotate` / `sys_session_token_revoke`），服务会话校验、

@@ -58,16 +58,17 @@ func TestDeploy_fresh_database_deployment_succeeds(t *testing.T) {
 		t.Fatalf("bare grape_u connection saw %d dict rows, want 0 (RLS must deny)", dictRows)
 	}
 
-	// 管理员连接绕过 RLS，核对生产种子只含平台自举数据：演示租户、
-	// 部门树、basic 矩阵与字典都由 test_seed.sql 承载，生产部署不得出现。
+	// 管理员连接绕过 RLS，核对生产种子只含平台自举数据：演示租户、部门树、
+	// basic 矩阵由 test_seed.sql 承载，生产部署不得出现；字典只播种根租户的
+	// 模型类别/provider 枚举（120_sys_dict.sql）。
 	admin := connectAdmin(t, adminDSN, itDatabase)
 	defer admin.Close(context.Background())
 	assertSeedCount(t, admin, "tenant rows", "SELECT count(*) FROM public.sys_tenant", 1)
 	assertSeedCount(t, admin, "user rows", "SELECT count(*) FROM public.sys_user", 1)
 	assertSeedCount(t, admin, "department rows", "SELECT count(*) FROM public.sys_dept", 0)
 	assertSeedCount(t, admin, "basic rows", "SELECT count(*) FROM public.basic", 0)
-	assertSeedCount(t, admin, "dict type rows", "SELECT count(*) FROM public.sys_dict_type", 0)
-	assertSeedCount(t, admin, "dict data rows", "SELECT count(*) FROM public.sys_dict_data", 0)
+	assertSeedCount(t, admin, "dict type rows", "SELECT count(*) FROM public.sys_dict_type", 2)
+	assertSeedCount(t, admin, "dict data rows", "SELECT count(*) FROM public.sys_dict_data", 9)
 	assertSeedCount(t, admin, "test demo tenants",
 		"SELECT count(*) FROM public.sys_tenant WHERE id LIKE 't-test-%' OR id LIKE 't-demo-%' OR id LIKE 't-dev-%' OR id LIKE 't-stg-%'", 0)
 

@@ -374,6 +374,13 @@ func (fixedSpaceResolver) ResolveDefaultEmbedder(context.Context) (string, int, 
 	return vectorTestSpace, int(vectorDimension), nil
 }
 
+func (fixedSpaceResolver) ResolveEmbeddingSpace(_ context.Context, key string) (biz.EmbeddingSpace, error) {
+	if key != vectorTestSpace {
+		return biz.EmbeddingSpace{}, biz.ErrEmbedderUnknown
+	}
+	return biz.EmbeddingSpace{Key: vectorTestSpace, Dimension: int(vectorDimension)}, nil
+}
+
 func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)

@@ -85,11 +85,19 @@ type stackOptions struct {
 	modelOverride model.Model
 	audit         audit.Hook
 	observer      biz.AgentRunObserver
+	catalog       biz.TextModelCatalog
 }
 
 // WithModelOverride 用给定模型替换按配置构造的 LLM provider。
 func WithModelOverride(m model.Model) StackOption {
 	return func(o *stackOptions) { o.modelOverride = m }
+}
+
+// WithTextModelCatalog 注入按租户解析的文本模型目录：每次运行前解析并
+// 以 agent.WithModel 覆盖本次运行。缺省 nil = 沿用静态 conf 模型（测试与
+// 未启用模型目录的装配）。
+func WithTextModelCatalog(catalog biz.TextModelCatalog) StackOption {
+	return func(o *stackOptions) { o.catalog = catalog }
 }
 
 // WithAuditHook 注入审计写入挂点：wire 生产装配传 biz.AuditUsecase（满足
@@ -171,14 +179,19 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	coreRunner := runner.NewRunner(c.GetAppName(), ag, runner.WithSessionService(sessions))
 
 	runTimeout := runTimeoutOf(c)
+	// 每次运行（含恢复路径续跑）都经网关许可策略评估；缺它则分级表
+	// 形同虚设、恢复路径降级为拒绝。catalog 非 nil 时在同一 resolver 上
+	// 追加按租户解析的文本模型（agent.WithModel），许可策略保持原样。
+	runOptionResolver := gateway.RunOptionResolver()
+	if o.catalog != nil {
+		runOptionResolver = catalogRunOptionResolver(o.catalog, newTextModelCache(c.GetLlm()), runOptionResolver)
+	}
 	aguiRunner := aguirunner.New(coreRunner,
 		aguirunner.WithAppName(c.GetAppName()),
 		aguirunner.WithSessionService(sessions),
 		aguirunner.WithUserIDResolver(resolveUserID),
 		aguirunner.WithTimeout(runTimeout),
-		// 每次运行（含恢复路径续跑）都经网关许可策略评估；缺它则分级表
-		// 形同虚设、恢复路径降级为拒绝。
-		aguirunner.WithRunOptionResolver(gateway.RunOptionResolver()),
+		aguirunner.WithRunOptionResolver(runOptionResolver),
 		// /history tail follow：快照响应尾部持续输出新持久化的 track
 		// 事件；agui.New 的同名选项会被下方 runner 工厂丢弃，必须在此同步。
 		aguirunner.WithMessagesSnapshotFollowEnabled(true),

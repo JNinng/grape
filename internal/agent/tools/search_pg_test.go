@@ -74,6 +74,10 @@ func (keywordSpaceResolver) ResolveDefaultEmbedder(context.Context) (string, int
 	return searchSpace, searchDimension, nil
 }
 
+func (keywordSpaceResolver) ResolveEmbeddingSpace(context.Context, string) (biz.EmbeddingSpace, error) {
+	return biz.EmbeddingSpace{Key: searchSpace, Dimension: searchDimension}, nil
+}
+
 func searchIdentityContext(id biz.Identity) context.Context {
 	return biz.WithIdentity(context.Background(), id)
 }
@@ -159,14 +163,25 @@ func searchCallTool(t *testing.T, f *searchFixture, ctx context.Context, args st
 	return out
 }
 
+// activeDocMetadata 是检索工具固定条件（doc_status/有效期）所需的 chunk
+// metadata：摄取测试与知识库条目同口径，保证工具检索能命中。
+func activeDocMetadata() map[string]any {
+	return map[string]any{
+		"doc_status":      1,
+		"valid_from_unix": int64(0),
+		"valid_to_unix":   int64(253402300799),
+	}
+}
+
 func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testing.T) {
 	f := searchNewFixture(t)
 	ctx := searchIdentityContext(searchTenantA)
 
 	result, err := f.pipeline.Ingest(ctx, &biz.Document{
-		ID:      "kb-alpha-1",
-		Name:    "Refund Policy",
-		Content: "alpha refund policy applies to all annual plans without exceptions.",
+		Metadata: activeDocMetadata(),
+		ID:       "kb-alpha-1",
+		Name:     "Refund Policy",
+		Content:  "alpha refund policy applies to all annual plans without exceptions.",
 	})
 	if err != nil {
 		t.Fatalf("ingest: %v", err)
@@ -238,8 +253,9 @@ func TestPGDocumentSearch_cross_tenant_not_recallable_while_rls_disabled(t *test
 	}
 
 	if _, err := f.pipeline.Ingest(ctxA, &biz.Document{
-		ID:      "kb-secret-a",
-		Content: "alpha tenant a private playbook",
+		Metadata: activeDocMetadata(),
+		ID:       "kb-secret-a",
+		Content:  "alpha tenant a private playbook",
 	}); err != nil {
 		t.Fatalf("ingest as tenant a: %v", err)
 	}
@@ -277,7 +293,8 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
 
-	v1, err := pipeline.Ingest(ctx, &biz.Document{ID: "kb-evolve", Content: strings.Repeat("beta", 120)})
+	v1, err := pipeline.Ingest(ctx, &biz.Document{
+		Metadata: activeDocMetadata(), ID: "kb-evolve", Content: strings.Repeat("beta", 120)})
 	if err != nil {
 		t.Fatalf("ingest v1: %v", err)
 	}
@@ -285,7 +302,8 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 		t.Fatalf("v1 chunks = %d, want multiple", v1.Chunks)
 	}
 	// v2：同 ID 重摄（内容变短），旧块必须全部清除（同来源覆盖幂等）。
-	v2, err := pipeline.Ingest(ctx, &biz.Document{ID: "kb-evolve", Content: strings.Repeat("beta", 20)})
+	v2, err := pipeline.Ingest(ctx, &biz.Document{
+		Metadata: activeDocMetadata(), ID: "kb-evolve", Content: strings.Repeat("beta", 20)})
 	if err != nil {
 		t.Fatalf("ingest v2: %v", err)
 	}
@@ -313,7 +331,8 @@ func TestPGDocumentSearch_dimension_drift_rejects_at_ingest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
-	if _, err := pipeline.Ingest(ctx, &biz.Document{ID: "kb-drift", Content: "alpha content"}); err == nil ||
+	if _, err := pipeline.Ingest(ctx, &biz.Document{
+		Metadata: activeDocMetadata(), ID: "kb-drift", Content: "alpha content"}); err == nil ||
 		!strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("Ingest with drifting embedder = %v, want dimension error", err)
 	}
@@ -333,8 +352,9 @@ func TestPGDocumentSearch_oversized_top_k_bounded_by_adapter_cap(t *testing.T) {
 	// 30 块同关键词（同为 e0，全部可召回），top_k 传 1000：适配器上限
 	// 必须把命中收敛到 maxSearchTopK。
 	if _, err := pipeline.Ingest(ctx, &biz.Document{
-		ID:      "kb-many",
-		Content: strings.Repeat("gamma", 150),
+		Metadata: activeDocMetadata(),
+		ID:       "kb-many",
+		Content:  strings.Repeat("gamma", 150),
 	}); err != nil {
 		t.Fatalf("ingest: %v", err)
 	}

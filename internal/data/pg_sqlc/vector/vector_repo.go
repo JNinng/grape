@@ -56,6 +56,12 @@ WHERE tenant_id = $1 AND id = $2`
 	vectorDeleteByFilterSQL = `WITH deleted AS (DELETE FROM %s WHERE tenant_id = $1%s RETURNING 1)
 SELECT count(*) FROM deleted`
 
+	// UpdateMetadata 只合并 metadata（jsonb ||），不触碰正文与向量列。
+	vectorUpdateMetadataSQL = `WITH updated AS (
+    UPDATE %s SET metadata = metadata || $2::jsonb, updated_by = $3, updated_at = CURRENT_TIMESTAMP
+    WHERE tenant_id = $1%s RETURNING 1)
+SELECT count(*) FROM updated`
+
 	vectorCountSQL = `SELECT count(*) FROM %s WHERE tenant_id = $1%s`
 
 	// GetMetadata 的排序键：created_at 是 timestamp(0) 秒级精度，同秒
@@ -81,12 +87,18 @@ WHERE a.attrelid = to_regclass($1) AND a.attname = ANY($2) AND a.attisdropped = 
 // 配置值，白名单在构造期拒绝注入形态。
 var vectorTableNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,62}$`)
 
+// vectorIndexDefDimensionPattern 从 pg_indexes.indexdef 提取表达式索引的
+// 维度：`::vector(N)) vector_cosine_ops` 是表达式部分 HNSW 索引入驻的
+// 固定形态（(列)::vector(N) 的显式 cast）。闭括号锚定数字边界。
+var vectorIndexDefDimensionPattern = regexp.MustCompile(`::vector\((\d+)\)\) vector_cosine_ops`)
+
 // vectorStore 是向量存储的介质实现。
 type vectorStore struct {
 	data   *pgsqlc.Data
 	table  string             // 已过白名单校验的表名（agent schema 内）
 	spaces map[string]int32   // 空间键 → 声明维度（conf.VectorSpaces 单一解析源）
 	dims   map[int32]struct{} // 注册表内去重维度集合（启动探针逐维度核索引）
+	indexed map[int32]struct{} // 启动探针从 pg_indexes 发现的索引维度集合
 }
 
 var _ biz.VectorStore = (*vectorStore)(nil)
@@ -118,7 +130,7 @@ func NewVectorStore(c *conf.Vector, d *pgsqlc.Data) (biz.VectorStore, func(), er
 	for _, dim := range spaces {
 		dims[dim] = struct{}{}
 	}
-	r := &vectorStore{data: d, table: table, spaces: spaces, dims: dims}
+	r := &vectorStore{data: d, table: table, spaces: spaces, dims: dims, indexed: map[int32]struct{}{}}
 	if err := r.probeDeployment(context.Background()); err != nil {
 		return nil, nil, err
 	}
@@ -176,10 +188,12 @@ func (r *vectorStore) probeColumns(ctx context.Context, qualified string) (map[s
 	return columns, nil
 }
 
-// probeIndexes 核对每个声明维度的表达式部分 HNSW 索引：索引定义须同时含
-// `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)`，cast 与谓词是检索
-// SQL 命中索引的前提，缺失即装配期拒绝。索引表达式细节见 internal/data/README.md
-// 「向量介质」。
+// probeIndexes 核对每个声明维度的表达式部分 HNSW 索引，并从 pg_indexes
+// 发现已建索引的维度集合（供 resolveSpace 校验动态模型目录产生的空间）。
+// 索引定义须同时含 `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)`，
+// cast 与谓词是检索 SQL 命中索引的前提，缺失即装配期拒绝。conf 声明的
+// 每个维度仍必须有索引（保持 fail-fast）；索引集合是后续运行期维度校验
+// 的唯一依据。索引表达式细节见 internal/data/README.md「向量介质」。
 func (r *vectorStore) probeIndexes(ctx context.Context, qualified string) error {
 	parts := strings.SplitN(qualified, ".", 2)
 	rows, err := r.data.Pool().Query(ctx, vectorIndexesProbeSQL, parts[0], parts[1])
@@ -198,6 +212,7 @@ func (r *vectorStore) probeIndexes(ctx context.Context, qualified string) error 
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("pg_sqlc: probe vector table %s indexes: %w", qualified, err)
 	}
+	r.indexed = discoverIndexedDimensions(defs)
 	for dim := range r.dims {
 		expr := fmt.Sprintf("::vector(%d)) vector_cosine_ops", dim)
 		predicate := fmt.Sprintf("embed_dim = %d)", dim)
@@ -207,6 +222,26 @@ func (r *vectorStore) probeIndexes(ctx context.Context, qualified string) error 
 		}
 	}
 	return nil
+}
+
+// discoverIndexedDimensions 从索引定义集合提取「cast 维度与 embed_dim 谓词
+// 一致」的维度：同一索引定义里 `::vector(N)) vector_cosine_ops` 与
+// `embed_dim = N)` 必须成对出现，否则不计入（避免部分/错配索引被误认为
+// 可检索维度）。
+func discoverIndexedDimensions(defs []string) map[int32]struct{} {
+	out := make(map[int32]struct{})
+	for _, def := range defs {
+		for _, match := range vectorIndexDefDimensionPattern.FindAllStringSubmatch(def, -1) {
+			dim, err := strconv.Atoi(match[1])
+			if err != nil || dim <= 0 {
+				continue
+			}
+			if strings.Contains(def, fmt.Sprintf("embed_dim = %d)", dim)) {
+				out[int32(dim)] = struct{}{}
+			}
+		}
+	}
+	return out
 }
 
 // containsAny 判断 defs 中存在同时含两段片段的定义。
@@ -255,28 +290,32 @@ func marshalVectorMetadata(metadata map[string]any) ([]byte, error) {
 	return raw, nil
 }
 
-// resolveSpace 对账嵌入空间声明：键必填且已声明、维度必填且等于注册
-// 表声明、向量长度等于维度——三方一致返回注册表维度（int32，落库
-// embed_dim 列）。检索侧复用（查询向量长度即 length）。
+// resolveSpace 对账嵌入空间声明：键必填、维度必填且向量长度等于维度。
+// 空间键若在 conf 注册表中声明，维度必须与声明一致；未在 conf 声明但
+// 维度存在表达式部分 HNSW 索引时放行——动态模型目录（sys_model）产生的
+// 空间键在装配期未知，运行期以索引维度集合为唯一校验依据（空间是否
+// 存在与端点是否可用由 EmbedderResolver / Embedder 在更上层 fail-closed）。
+// 维度无对应索引即拒绝（检索会退化为顺序扫描，且不能落库）。返回落库
+// embed_dim 列的维度值。
 func (r *vectorStore) resolveSpace(embedder string, dimension, length int, subject string) (int32, error) {
 	if embedder == "" {
 		return 0, fmt.Errorf("pg_sqlc: %s must declare an embedder space", subject)
 	}
-	declared, ok := r.spaces[embedder]
-	if !ok {
-		return 0, fmt.Errorf("%w: %q is not declared in conf.vector.embedders", biz.ErrEmbedderUnknown, embedder)
-	}
 	if dimension <= 0 {
 		return 0, fmt.Errorf("pg_sqlc: %s must declare a positive dimension", subject)
 	}
-	if dimension != int(declared) {
+	if declared, ok := r.spaces[embedder]; ok && dimension != int(declared) {
 		return 0, fmt.Errorf("pg_sqlc: %s declares dimension %d for space %s, registry declares %d", subject, dimension, embedder, declared)
 	}
 	if length != dimension {
 		return 0, fmt.Errorf("pg_sqlc: %s embedding length %d does not match declared dimension %d for space %s",
 			subject, length, dimension, embedder)
 	}
-	return declared, nil
+	if _, ok := r.indexed[int32(dimension)]; !ok {
+		return 0, fmt.Errorf("%w: space %s declares dimension %d with no expression hnsw index (add it to agent_vector.sql)",
+			biz.ErrEmbedderUnknown, embedder, dimension)
+	}
+	return int32(dimension), nil
 }
 
 // Add 写入文档与向量。身份取认证 ctx，空间声明过注册表对账；重复 ID
@@ -470,6 +509,43 @@ func (r *vectorStore) DeleteByFilter(ctx context.Context, filter *biz.VectorFilt
 	return deleted, nil
 }
 
+// UpdateMetadata 按 IDs/Embedder/Metadata/Conditions 交集把 patch 合并进
+// 命中行的 metadata（jsonb ||），返回更新行数；只改 metadata 列。所有
+// 条件均空时拒绝执行（租户级全量改写不设普通入口）。目录状态/有效期
+// 变更依赖本方法同步 chunk metadata，失败必须让上层事务回滚。
+func (r *vectorStore) UpdateMetadata(ctx context.Context, filter *biz.VectorFilter, patch map[string]any) (int64, error) {
+	auth, err := vectorIdentity(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if len(patch) == 0 {
+		return 0, errors.New("pg_sqlc: vector metadata patch is empty")
+	}
+	plan, err := planVectorFilter(4, filter)
+	if err != nil {
+		return 0, err
+	}
+	if len(plan.clauses) == 0 {
+		return 0, errors.New("pg_sqlc: unfiltered vector metadata update is refused; tenant-wide rewrite belongs to the super management path")
+	}
+	raw, err := json.Marshal(patch)
+	if err != nil {
+		return 0, fmt.Errorf("pg_sqlc: marshal vector metadata patch: %w", err)
+	}
+	args := []any{auth.TenantID, raw, auth.UserID}
+	args = append(args, plan.args...)
+	var updated int64
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
+		return s.Tx().QueryRow(ctx,
+			fmt.Sprintf(vectorUpdateMetadataSQL, r.qualifiedTable(), plan.where()),
+			args...).Scan(&updated)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return updated, nil
+}
+
 // Count 统计租户内满足过滤条件的文档数；条件为空即租户全量，Embedder
 // 非空则限该空间。
 func (r *vectorStore) Count(ctx context.Context, filter *biz.VectorFilter) (int64, error) {
@@ -655,7 +731,156 @@ func planVectorFilter(startArg int, filter *biz.VectorFilter) (*vectorFilterPlan
 		plan.clauses = append(plan.clauses, fmt.Sprintf("metadata @> $%d::jsonb", startArg+len(plan.args)))
 		plan.args = append(plan.args, raw)
 	}
+	for i, cond := range filter.Conditions {
+		clause, args, err := planMetadataCondition(startArg+len(plan.args), cond)
+		if err != nil {
+			return nil, fmt.Errorf("pg_sqlc: metadata condition %d: %w", i, err)
+		}
+		plan.clauses = append(plan.clauses, clause)
+		plan.args = append(plan.args, args...)
+	}
 	return plan, nil
+}
+
+// planMetadataCondition 把单条 metadata 条件翻译为参数化 SQL 片段：键名
+// 与比较值都走占位符，操作符只从封闭集合选择（键与值都不拼进 SQL 文本）。
+// eq/ne/in 按文本比较（metadata->> 的返回值即 JSON 标量的文本形态）；
+// lt/lte/gt/gte 显式 ::bigint 后做数值比较。
+func planMetadataCondition(startArg int, cond biz.MetadataCondition) (string, []any, error) {
+	key := strings.TrimSpace(cond.Key)
+	if key == "" {
+		return "", nil, errors.New("metadata condition key is required")
+	}
+	if len(cond.Values) == 0 {
+		return "", nil, fmt.Errorf("metadata condition %s requires a value", cond.Op)
+	}
+	keyArg := startArg
+	valueArg := startArg + 1
+	valueRef := fmt.Sprintf("$%d", valueArg)
+	keyRef := fmt.Sprintf("$%d", keyArg)
+	switch cond.Op {
+	case biz.VectorMetadataEq:
+		text, err := metadataTextValue(cond.Values[0])
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("metadata->>%s = %s", keyRef, valueRef), []any{key, text}, nil
+	case biz.VectorMetadataNe:
+		text, err := metadataTextValue(cond.Values[0])
+		if err != nil {
+			return "", nil, err
+		}
+		return fmt.Sprintf("metadata->>%s <> %s", keyRef, valueRef), []any{key, text}, nil
+	case biz.VectorMetadataIn:
+		texts := make([]string, 0, len(cond.Values))
+		for _, v := range cond.Values {
+			text, err := metadataTextValue(v)
+			if err != nil {
+				return "", nil, err
+			}
+			texts = append(texts, text)
+		}
+		return fmt.Sprintf("metadata->>%s = ANY(%s)", keyRef, valueRef), []any{key, texts}, nil
+	case biz.VectorMetadataLt, biz.VectorMetadataLte, biz.VectorMetadataGt, biz.VectorMetadataGte:
+		num, err := metadataIntValue(cond.Values[0])
+		if err != nil {
+			return "", nil, err
+		}
+		op := map[biz.VectorMetadataOp]string{
+			biz.VectorMetadataLt: "<", biz.VectorMetadataLte: "<=",
+			biz.VectorMetadataGt: ">", biz.VectorMetadataGte: ">=",
+		}[cond.Op]
+		return fmt.Sprintf("(metadata->>%s)::bigint %s %s::bigint", keyRef, op, valueRef), []any{key, num}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported metadata condition op %q", cond.Op)
+	}
+}
+
+// metadataTextValue 把条件值转为文本比较值（metadata->> 的返回形态）：
+// 字符串原样，整数与布尔按其十进制/字面文本，浮点仅接受整数值。
+func metadataTextValue(v any) (string, error) {
+	switch value := v.(type) {
+	case string:
+		return value, nil
+	case bool:
+		return strconv.FormatBool(value), nil
+	case int:
+		return strconv.Itoa(value), nil
+	case int8:
+		return strconv.FormatInt(int64(value), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(value), 10), nil
+	case int32:
+		return strconv.FormatInt(int64(value), 10), nil
+	case int64:
+		return strconv.FormatInt(value, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(value), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(value), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(value), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(value), 10), nil
+	case uint64:
+		return strconv.FormatUint(value, 10), nil
+	case float32:
+		return metadataTextValueFloat(float64(value))
+	case float64:
+		return metadataTextValueFloat(value)
+	default:
+		return "", fmt.Errorf("unsupported metadata condition value type %T", v)
+	}
+}
+
+func metadataTextValueFloat(v float64) (string, error) {
+	if v != float64(int64(v)) {
+		return "", fmt.Errorf("metadata text comparison requires an integral value, got %v", v)
+	}
+	return strconv.FormatInt(int64(v), 10), nil
+}
+
+// metadataIntValue 把条件值转为 bigint 比较值：整数类型直转，浮点仅接受
+// 整数值。
+func metadataIntValue(v any) (int64, error) {
+	switch value := v.(type) {
+	case int:
+		return int64(value), nil
+	case int8:
+		return int64(value), nil
+	case int16:
+		return int64(value), nil
+	case int32:
+		return int64(value), nil
+	case int64:
+		return value, nil
+	case uint:
+		return int64(value), nil
+	case uint8:
+		return int64(value), nil
+	case uint16:
+		return int64(value), nil
+	case uint32:
+		return int64(value), nil
+	case uint64:
+		if value > uint64(^uint64(0)>>1) {
+			return 0, fmt.Errorf("metadata numeric value %d overflows int64", value)
+		}
+		return int64(value), nil
+	case float32:
+		return metadataIntValueFloat(float64(value))
+	case float64:
+		return metadataIntValueFloat(value)
+	default:
+		return 0, fmt.Errorf("metadata numeric comparison requires an integer, got %T", v)
+	}
+}
+
+func metadataIntValueFloat(v float64) (int64, error) {
+	if v != float64(int64(v)) {
+		return 0, fmt.Errorf("metadata numeric comparison requires an integer, got %v", v)
+	}
+	return int64(v), nil
 }
 
 func (p *vectorFilterPlan) where() string {
@@ -706,6 +931,10 @@ func (*disabledVectorStore) Search(context.Context, []float32, *biz.VectorFilter
 }
 
 func (*disabledVectorStore) DeleteByFilter(context.Context, *biz.VectorFilter) (int64, error) {
+	return 0, biz.ErrVectorStoreDisabled
+}
+
+func (*disabledVectorStore) UpdateMetadata(context.Context, *biz.VectorFilter, map[string]any) (int64, error) {
 	return 0, biz.ErrVectorStoreDisabled
 }
 

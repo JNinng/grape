@@ -20,6 +20,8 @@
 | [080_sys_tenant_config.sql](080_sys_tenant_config.sql) | sys_tenant_config | 树根租户配置 |
 | [090_sys_feature_flag.sql](090_sys_feature_flag.sql) | sys_feature_flag | 树根租户功能开关 |
 | [100_sys_translation.sql](100_sys_translation.sql) | sys_translation | 菜单与配置名称的 en-US 翻译 |
+| [110_sys_model.sql](110_sys_model.sql) | sys_model | 平台模型默认行（本地 Ollama 端点，生产前替换） |
+| [120_sys_dict.sql](120_sys_dict.sql) | sys_dict_type / sys_dict_data | 根租户模型类别与 provider 枚举字典 |
 
 ## 执行约束
 
@@ -29,9 +31,11 @@
 - RLS 已启用，必须以**超级用户/表 owner** 连接执行（超级用户绕过 RLS）。
 - 所有语句带 `ON CONFLICT DO NOTHING`：可重复执行，且不覆盖已有行。
   种子行修正不能靠重放，需手工 UPDATE 或重建库。
-- 字典不播种：数据状态、数据范围、角色类型等系统级枚举由 `sqlc.yaml`
-  的 `codegen.options.ui` 静态字典声明，字典表只承载租户运营的分类数据；
-  测试用演示字典在 [../test_seed.sql](../test_seed.sql)。
+- 字典只播种根租户的模型类别/provider 枚举（`model_kind` / `model_provider`，
+  `120_sys_dict.sql`）；数据状态、数据范围、角色类型等系统级枚举仍由
+  `sqlc.yaml` 的 `codegen.options.ui` 静态字典声明。模型清单本身在
+  `sys_model`（平台/租户两级），不以字典承载；测试用演示字典在
+  [../test_seed.sql](../test_seed.sql)。
 - 只含生产自举数据。集成测试的 `t-test-*` 租户与演示数据在
   [../test_seed.sql](../test_seed.sql)，生产部署（dbdeploy）不执行。
 - 新增表级种子时在 `Files` 对应位置插入文件，并同步仓库根部署文档与

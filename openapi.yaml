@@ -774,6 +774,272 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/knowledge/documents/create:
+        post:
+            tags:
+                - DocumentService
+            description: CreateDocument 创建文本条目并摄取到向量存储。
+            operationId: DocumentService_CreateDocument
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/knowledge.v1.CreateDocumentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Document'
+    /v1/knowledge/documents/list:
+        post:
+            tags:
+                - DocumentService
+            description: ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+            operationId: DocumentService_ListDocuments
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.DocumentSet'
+    /v1/knowledge/documents/update:
+        put:
+            tags:
+                - DocumentService
+            description: |-
+                UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
+                 有效期限）；正文变更时重新摄取。
+            operationId: DocumentService_UpdateDocument
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/knowledge.v1.Document'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Document'
+    /v1/knowledge/documents/{id}:
+        get:
+            tags:
+                - DocumentService
+            description: GetDocument 按 id 查询条目（含正文）。
+            operationId: DocumentService_GetDocument
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Document'
+        delete:
+            tags:
+                - DocumentService
+            description: DeleteDocument 软删除条目并清理其 chunk。
+            operationId: DocumentService_DeleteDocument
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/knowledge/documents/{id}/reindex:
+        post:
+            tags:
+                - DocumentService
+            description: ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
+            operationId: DocumentService_ReindexDocument
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/knowledge.v1.ReindexDocumentRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Document'
+    /v1/knowledge/libraries/create:
+        post:
+            tags:
+                - LibraryService
+            description: CreateLibrary 创建知识库。
+            operationId: LibraryService_CreateLibrary
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/knowledge.v1.CreateLibraryRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Library'
+    /v1/knowledge/libraries/list:
+        post:
+            tags:
+                - LibraryService
+            description: ListLibraries 按动态查询协议返回一页知识库。
+            operationId: LibraryService_ListLibraries
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.LibrarySet'
+    /v1/knowledge/libraries/update:
+        put:
+            tags:
+                - LibraryService
+            description: |-
+                UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
+                 chunk_size/chunk_overlap/有效期限）。
+            operationId: LibraryService_UpdateLibrary
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/knowledge.v1.Library'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Library'
+    /v1/knowledge/libraries/{id}:
+        get:
+            tags:
+                - LibraryService
+            description: GetLibrary 按 id 查询知识库。
+            operationId: LibraryService_GetLibrary
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.Library'
+        delete:
+            tags:
+                - LibraryService
+            description: DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+            operationId: LibraryService_DeleteLibrary
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/knowledge/libraries/{id}/documents:
+        get:
+            tags:
+                - DocumentService
+            description: |-
+                ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
+                 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+            operationId: DocumentService_ListLibraryDocuments
+            parameters:
+                - name: id
+                  in: path
+                  description: 宿主知识库的标识。
+                  required: true
+                  schema:
+                    type: string
+                - name: page
+                  in: query
+                  description: 页码，缺省 1。
+                  schema:
+                    type: integer
+                    format: int32
+                - name: pageSize
+                  in: query
+                  description: 每页条数，缺省 20，上限 200。
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.DocumentSet'
+    /v1/knowledge/model-options:
+        get:
+            tags:
+                - LibraryService
+            description: |-
+                ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
+                 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
+            operationId: LibraryService_ListModelOptions
+            parameters:
+                - name: kind
+                  in: query
+                  description: 模型类别：text / embedding；空值返回全部。
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.ModelOptionSet'
     /v1/menus/create:
         post:
             tags:
@@ -890,6 +1156,151 @@ paths:
                 - name: id
                   in: path
                   description: 目标菜单的服务端标识。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/models:
+        get:
+            tags:
+                - ModelService
+            description: ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
+            operationId: ModelService_ListModels
+            parameters:
+                - name: kind
+                  in: query
+                  description: 按类别过滤（text/embedding）；空值返回全部。
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.ModelSet'
+    /v1/models/create:
+        post:
+            tags:
+                - ModelService
+            description: CreateModel 创建本租户模型行。
+            operationId: ModelService_CreateModel
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/model.v1.CreateModelRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.Model'
+    /v1/models/platform/create:
+        post:
+            tags:
+                - ModelService
+            description: CreateModelSuper 创建平台模型行（super 写面）。
+            operationId: ModelService_CreateModelSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/model.v1.CreateModelSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.Model'
+    /v1/models/platform/update:
+        put:
+            tags:
+                - ModelService
+            description: UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+            operationId: ModelService_UpdateModelSuper
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/model.v1.UpdateModelSuperRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.Model'
+    /v1/models/platform/{id}:
+        delete:
+            tags:
+                - ModelService
+            description: DeleteModelSuper 软删除平台模型行（super 写面）。
+            operationId: ModelService_DeleteModelSuper
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content: {}
+    /v1/models/update:
+        put:
+            tags:
+                - ModelService
+            description: UpdateModel 覆盖本租户模型行的可变字段。
+            operationId: ModelService_UpdateModel
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/model.v1.UpdateModelRequest'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.Model'
+    /v1/models/{id}:
+        get:
+            tags:
+                - ModelService
+            description: GetModel 按 id 查询模型（本租户行或平台行）。
+            operationId: ModelService_GetModel
+            parameters:
+                - name: id
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/model.v1.Model'
+        delete:
+            tags:
+                - ModelService
+            description: DeleteModel 软删除本租户模型行。
+            operationId: ModelService_DeleteModel
+            parameters:
+                - name: id
+                  in: path
                   required: true
                   schema:
                     type: string
@@ -2826,6 +3237,314 @@ components:
             description: DictTypeSet 是 ListDictTypes 返回的分页集合。
         google.protobuf.Value:
             description: Represents a dynamically typed value which can be either null, a number, a string, a boolean, a recursive struct value, or a list of values.
+        knowledge.v1.CreateDocumentRequest:
+            required:
+                - document
+            type: object
+            properties:
+                document:
+                    $ref: '#/components/schemas/knowledge.v1.Document'
+            description: CreateDocumentRequest 是 DocumentService.CreateDocument 的输入。
+        knowledge.v1.CreateLibraryRequest:
+            required:
+                - library
+            type: object
+            properties:
+                library:
+                    $ref: '#/components/schemas/knowledge.v1.Library'
+            description: CreateLibraryRequest 是 LibraryService.CreateLibrary 的输入。
+        knowledge.v1.Document:
+            type: object
+            properties:
+                id:
+                    type: string
+                libraryId:
+                    type: string
+                    description: 所属知识库 ID。创建后不可变。
+                kind:
+                    type: string
+                    description: 条目类型：text（本期）/file（预留，创建接口拒绝）。
+                title:
+                    type: string
+                    description: 条目标题。
+                content:
+                    type: string
+                    description: 条目正文（text 必填非空白；列表响应中省略）。
+                sourceName:
+                    type: string
+                    description: 来源名，缺省取标题。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建可省略（缺省启用）；更新必填。
+                    format: int32
+                validFrom:
+                    type: string
+                    description: 生效时间，空表示立即生效。
+                    format: date-time
+                validTo:
+                    type: string
+                    description: 失效时间，空表示长期有效。
+                    format: date-time
+                indexedAt:
+                    type: string
+                    description: 最近一次成功摄取时间。只读。
+                    format: date-time
+                indexedEmbedder:
+                    type: string
+                    description: 最近一次成功摄取的空间键。只读。
+                createdBy:
+                    type: string
+                updatedBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+                deletedAt:
+                    type: string
+                    format: date-time
+            description: Document 是知识条目的规范表示。列表响应不填充 content。
+        knowledge.v1.DocumentSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/knowledge.v1.Document'
+                total:
+                    type: string
+                hasMore:
+                    type: boolean
+                nextCursor:
+                    type: string
+                page:
+                    type: integer
+                    format: int32
+            description: DocumentSet 是条目列表的分页集合。
+        knowledge.v1.Library:
+            type: object
+            properties:
+                id:
+                    type: string
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建可省略（缺省启用）；更新必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 知识库名（租户内未删除行间唯一）。
+                remark:
+                    type: string
+                    description: 备注。
+                embeddingModelKey:
+                    type: string
+                    description: 嵌入模型键；为空跟随租户/全局默认。
+                chunkSize:
+                    type: integer
+                    description: 切分单块 rune 上限，缺省 800。
+                    format: int32
+                chunkOverlap:
+                    type: integer
+                    description: 相邻块重叠 rune 数，缺省 100。
+                    format: int32
+                validFrom:
+                    type: string
+                    description: 生效时间，空表示立即生效。
+                    format: date-time
+                validTo:
+                    type: string
+                    description: 失效时间，空表示长期有效。
+                    format: date-time
+                createdBy:
+                    type: string
+                updatedBy:
+                    type: string
+                createdAt:
+                    type: string
+                    format: date-time
+                updatedAt:
+                    type: string
+                    format: date-time
+                deletedAt:
+                    type: string
+                    format: date-time
+            description: Library 是知识库的规范表示。审计列与时间戳只读。
+        knowledge.v1.LibrarySet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/knowledge.v1.Library'
+                total:
+                    type: string
+                hasMore:
+                    type: boolean
+                nextCursor:
+                    type: string
+                page:
+                    type: integer
+                    format: int32
+            description: LibrarySet 是 ListLibraries 的分页集合。
+        knowledge.v1.ModelOption:
+            type: object
+            properties:
+                modelKey:
+                    type: string
+                name:
+                    type: string
+                kind:
+                    type: string
+                dimension:
+                    type: integer
+                    format: int32
+                platform:
+                    type: boolean
+            description: ModelOption 是模型下拉选项（只含展示与维度事实，不含密钥）。
+        knowledge.v1.ModelOptionSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/knowledge.v1.ModelOption'
+            description: ModelOptionSet 是模型选项集合。
+        knowledge.v1.ReindexDocumentRequest:
+            required:
+                - id
+            type: object
+            properties:
+                id:
+                    type: string
+            description: ReindexDocumentRequest 是 DocumentService.ReindexDocument 的输入。
+        model.v1.CreateModelRequest:
+            required:
+                - model
+            type: object
+            properties:
+                model:
+                    allOf:
+                        - $ref: '#/components/schemas/model.v1.Model'
+                    description: 要创建的租户模型行。id/平台标记/审计列在输入中被忽略。
+                apiKey:
+                    type: string
+                    description: API key 明文（只写不读）；为空表示不配置。
+            description: CreateModelRequest 是 ModelService.CreateModel 的输入。
+        model.v1.CreateModelSuperRequest:
+            required:
+                - model
+            type: object
+            properties:
+                model:
+                    $ref: '#/components/schemas/model.v1.Model'
+                apiKey:
+                    type: string
+            description: CreateModelSuperRequest 是 ModelService.CreateModelSuper 的输入。
+        model.v1.Model:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 服务端生成的标识。只读。
+                platform:
+                    type: boolean
+                    description: 是否为平台行（tenant_id=''）。只读。
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+                    format: int32
+                kind:
+                    type: string
+                    description: 模型类别：text / embedding。创建后不可变。
+                name:
+                    type: string
+                    description: 模型展示名。
+                modelKey:
+                    type: string
+                    description: 选择键与向量空间键，租户/平台内未删除行间唯一；创建后不可变。
+                provider:
+                    type: string
+                    description: provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等）。
+                baseUrl:
+                    type: string
+                    description: OpenAI 兼容端点根地址。
+                model:
+                    type: string
+                    description: 发给 provider 的模型名。
+                dimension:
+                    type: integer
+                    description: 嵌入维度；kind=embedding 时本期必须为 1024。
+                    format: int32
+                timeoutMs:
+                    type: integer
+                    description: 单次调用超时（毫秒）。
+                    format: int32
+                hasApiKey:
+                    type: boolean
+                    description: 是否已配置密钥（密文或环境变量名）。只读。
+                apiKeyEnv:
+                    type: string
+                    description: 密钥环境变量名。
+                remark:
+                    type: string
+                    description: 备注。
+                createdBy:
+                    type: string
+                    description: 创建人。只读。
+                updatedBy:
+                    type: string
+                    description: 更新人。只读。
+                createdAt:
+                    type: string
+                    description: 创建时间。只读。
+                    format: date-time
+                updatedAt:
+                    type: string
+                    description: 最近修改时间。只读。
+                    format: date-time
+                deletedAt:
+                    type: string
+                    description: 软删除标记时间。只读。
+                    format: date-time
+            description: Model 是模型目录行的规范表示。审计列与时间戳只读；密钥不返回。
+        model.v1.ModelSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/model.v1.Model'
+            description: ModelSet 是 ListModels 的固定集合（不分页）。
+        model.v1.UpdateModelRequest:
+            required:
+                - model
+            type: object
+            properties:
+                model:
+                    allOf:
+                        - $ref: '#/components/schemas/model.v1.Model'
+                    description: 携带新字段值的租户模型行。id 必填；kind/model_key 在输入中被忽略。
+                apiKey:
+                    type: string
+                    description: 新 API key 明文；省略表示保持原密文不变。
+                clearApiKey:
+                    type: boolean
+                    description: 清除已存的密钥密文。
+            description: UpdateModelRequest 是 ModelService.UpdateModel 的输入。
+        model.v1.UpdateModelSuperRequest:
+            required:
+                - model
+            type: object
+            properties:
+                model:
+                    $ref: '#/components/schemas/model.v1.Model'
+                apiKey:
+                    type: string
+                clearApiKey:
+                    type: boolean
+            description: UpdateModelSuperRequest 是 ModelService.UpdateModelSuper 的输入。
         org.v1.AddUserGroupMembersReply:
             type: object
             properties:
@@ -4215,6 +4934,11 @@ tags:
          中被忽略；字典数据的宿主归属 dict_type_id 创建后不可变。字典类型删除
          为软删除，存在未删除字典数据时拒绝（先清空该类型下的数据）；删除数据
          不联动宿主，数据删除为软删除。
+    - name: DocumentService
+      description: |-
+        DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
+         进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
+         自动删除。
     - name: FeatureFlagService
       description: |-
         FeatureFlagService 提供功能开关（sys_feature_flag）的管理。功能开关是
@@ -4229,6 +4953,12 @@ tags:
          落值。status 只允许 0/1，创建缺省启用；is_enabled 是功能开关的业务
          取值，创建时 optional 未设置即 false，显式设置按值落库。软删除后
          flag_key 可复用；跨租户目标由 RLS 天然不可见，等同不存在（NOT_FOUND）。
+    - name: LibraryService
+      description: |-
+        LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
+         租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
+         全局默认嵌入模型；chunk_size/chunk_overlap 决定条目切分参数。
+         列表走动态查询协议。
     - name: MenuService
       description: |-
         MenuService 提供菜单/权限点树的管理。sys_menu 承载功能权限码链的
@@ -4247,6 +4977,16 @@ tags:
          菜单间唯一，软删后可复用；已软删/停用菜单不再产生功能权限
          （fn_has_permission 活跃联结过滤），角色-菜单映射行物理残留、
          由 RoleService.SetMenus 的存在性判定排除。
+    - name: ModelService
+      description: |-
+        ModelService 管理模型目录（sys_model 单表双态）：tenant_id='' 为平台行
+         （所有租户可见、只读），非空为租户行并覆盖同 model_key 的平台行。
+         租户行经普通端点维护；平台行只能经 super 端点维护（受控 SECURITY
+         DEFINER 函数写入，入口层另以 sys:model:platform:* 权限码把守）。
+
+         密钥纪律：apiKey 只写不读——接口响应只返回 hasApiKey，不返回密文或明文；
+         更新时省略 apiKey 表示不变，clearApiKey=true 表示清除。嵌入模型本期
+         只允许 1024 维。
     - name: PermissionService
       description: |-
         PermissionService 提供当前认证用户的功能权限码查询（前端导航过滤的

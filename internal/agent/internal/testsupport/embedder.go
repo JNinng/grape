@@ -50,3 +50,10 @@ func (r *SearchTestResolver) ResolveDefaultEmbedder(context.Context) (string, in
 	}
 	return SearchTestSpace, r.Dims, nil
 }
+
+func (r *SearchTestResolver) ResolveEmbeddingSpace(context.Context, string) (biz.EmbeddingSpace, error) {
+	if r.Err != nil {
+		return biz.EmbeddingSpace{}, r.Err
+	}
+	return biz.EmbeddingSpace{Key: SearchTestSpace, Dimension: r.Dims}, nil
+}

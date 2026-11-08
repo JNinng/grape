@@ -507,6 +507,32 @@ CREATE POLICY sys_translation_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
+-- kb_library / kb_document
+CREATE POLICY kb_library_tenant_isolation
+    ON public.kb_library
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+CREATE POLICY kb_document_tenant_isolation
+    ON public.kb_document
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- sys_model 双态：平台行（tenant_id='')所有租户可读，租户行仅本租户可读；
+-- 写入只允许本租户行。平台行的写入只能经 98_model_write.sql 的受控
+-- SECURITY DEFINER 函数（属主绕过 RLS）。两条策略同为 PERMISSIVE，读面
+-- 取并集：本租户行 + 平台行。
+CREATE POLICY sys_model_read
+    ON public.sys_model
+    FOR SELECT
+    USING (tenant_id = '' OR tenant_id = current_setting('app.tenant_id', true));
+
+CREATE POLICY sys_model_write
+    ON public.sys_model
+    FOR ALL
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
 ALTER TABLE public.basic
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.basic
@@ -590,4 +616,16 @@ ALTER TABLE public.sys_feature_flag
 ALTER TABLE public.sys_translation
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_translation
+    FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_library
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_library
+    FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_document
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_document
+    FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_model
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sys_model
     FORCE ROW LEVEL SECURITY;

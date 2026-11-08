@@ -2,8 +2,10 @@ import { createContext, useContext, type ComponentType } from 'react'
 import { Link, Navigate, NavLink, Outlet } from 'react-router'
 import {
   ArrowLeftIcon,
+  BookOpenIcon,
   BuildingIcon,
   ClipboardListIcon,
+  CpuIcon,
   FileCogIcon,
   FolderTreeIcon,
   KeyIcon,
@@ -123,6 +125,20 @@ const SETTINGS_MODULES: SettingsModule[] = [
     icon: BuildingIcon,
     requirement: { required: [PERM.TenantPage, PERM.TenantQuery] },
     path: '/settings/tenants',
+  },
+  {
+    key: 'knowledge',
+    label: '知识库',
+    icon: BookOpenIcon,
+    requirement: { required: [PERM.KnowledgePage, PERM.KnowledgeQuery] },
+    path: '/settings/knowledge',
+  },
+  {
+    key: 'models',
+    label: '模型',
+    icon: CpuIcon,
+    requirement: { required: [PERM.ModelPage, PERM.ModelQuery] },
+    path: '/settings/models',
   },
 ]
 

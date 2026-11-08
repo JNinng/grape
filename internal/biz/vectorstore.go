@@ -35,22 +35,52 @@ type VectorDocument struct {
 	UpdatedAt time.Time
 }
 
-// VectorFilter 是向量读面共用的过滤与分页参数。IDs 与 Metadata 叠加时
-// 取交集；均空表示不过滤（Count/GetMetadata 视为租户全量，DeleteByFilter
-// 拒绝执行，见各方法注释）。Embedder 为可空过滤：Search 必填（与
-// Dimension 成对声明检索空间并三方对账），Count/DeleteByFilter/
-// GetMetadata 非空时收敛到该空间、空即跨空间操作；Dimension 与 MinScore
-// 仅 Search 消费。Limit 在 Search 为 0 时由实现取默认页大小、在
-// GetMetadata 非正为不限量（此时 Offset 必须为 0）；Offset 仅 GetMetadata
-// 消费（分页枚举）。
+// VectorMetadataOp 是 metadata 条件比较操作符的封闭集合：翻译层只接受
+// 这里的取值，操作符不来自请求侧输入（列名与操作符都不进 SQL 文本，
+// 仅作为翻译决策）。
+type VectorMetadataOp string
+
+const (
+	// VectorMetadataEq 文本等值：metadata->>key = value。
+	VectorMetadataEq VectorMetadataOp = "eq"
+	// VectorMetadataNe 文本不等：metadata->>key <> value。
+	VectorMetadataNe VectorMetadataOp = "ne"
+	// VectorMetadataIn 文本集合成员：metadata->>key = ANY(values)。
+	VectorMetadataIn VectorMetadataOp = "in"
+	// VectorMetadataLt / Lte / Gt / Gte 数值比较：metadata->>key 显式
+	// ::bigint 后与 value::bigint 比较。
+	VectorMetadataLt  VectorMetadataOp = "lt"
+	VectorMetadataLte VectorMetadataOp = "lte"
+	VectorMetadataGt  VectorMetadataOp = "gt"
+	VectorMetadataGte VectorMetadataOp = "gte"
+)
+
+// MetadataCondition 是 metadata 的单条比较条件。Key 与 Value 都经占位符
+// 下发（键名与值都不拼进 SQL 文本）；Op 只接受 VectorMetadataOp 常量集。
+// Eq/Ne/Lt/Lte/Gt/Gte 取 Values[0]；In 取全部 Values。
+type MetadataCondition struct {
+	Key    string
+	Op     VectorMetadataOp
+	Values []any
+}
+
+// VectorFilter 是向量读面共用的过滤与分页参数。IDs、Metadata 与
+// Conditions 叠加时取交集；均空表示不过滤（Count/GetMetadata 视为租户
+// 全量，DeleteByFilter 与 UpdateMetadata 拒绝执行，见各方法注释）。
+// Embedder 为可空过滤：Search 必填（与 Dimension 成对声明检索空间并三方
+// 对账），Count/DeleteByFilter/GetMetadata/UpdateMetadata 非空时收敛到该
+// 空间、空即跨空间操作；Dimension 与 MinScore 仅 Search 消费。Limit 在
+// Search 为 0 时由实现取默认页大小、在 GetMetadata 非正为不限量（此时
+// Offset 必须为 0）；Offset 仅 GetMetadata 消费（分页枚举）。
 type VectorFilter struct {
-	IDs       []string
-	Embedder  string
-	Dimension int
-	Metadata  map[string]any
-	MinScore  float64
-	Limit     int
-	Offset    int
+	IDs        []string
+	Embedder   string
+	Dimension  int
+	Metadata   map[string]any
+	Conditions []MetadataCondition
+	MinScore   float64
+	Limit      int
+	Offset     int
 }
 
 // ScoredVectorDocument 是检索命中：Score 为归一化相似度（[0,1]，越大越
@@ -58,6 +88,30 @@ type VectorFilter struct {
 type ScoredVectorDocument struct {
 	Document *VectorDocument
 	Score    float64
+}
+
+// RetrievalFilter 是检索路径在 ctx 上携带的附加条件：框架的 SearchQuery
+// 类型不携带条件 DSL，检索工具在执行现场组装 §3.4 的固定条件（状态/有效期/
+// 可选知识库），由框架适配器读取并并入 VectorFilter。缺失时适配器不加条件
+// （摄取/清理路径不消费本载体）。
+type RetrievalFilter struct {
+	Conditions []MetadataCondition
+}
+
+type retrievalFilterKey struct{}
+
+// WithRetrievalFilter 注入本次检索的附加 metadata 条件。
+func WithRetrievalFilter(ctx context.Context, filter RetrievalFilter) context.Context {
+	if len(filter.Conditions) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, retrievalFilterKey{}, filter)
+}
+
+// RetrievalFilterFromContext 读取检索附加条件；缺失返回零值与 false。
+func RetrievalFilterFromContext(ctx context.Context) (RetrievalFilter, bool) {
+	f, ok := ctx.Value(retrievalFilterKey{}).(RetrievalFilter)
+	return f, ok
 }
 
 // VectorStore 是向量检索设施的框架无关契约，也是租户隔离的强制点：
@@ -85,9 +139,14 @@ type VectorStore interface {
 	// MinScore 过滤归一化分数。Embedder/Dimension 必填且与查询向量
 	// 长度、注册表三方对账，任一不符拒绝。
 	Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error)
-	// DeleteByFilter 按 IDs/Embedder/Metadata 交集删除，返回删除行数；
-	// 所有条件均空时拒绝执行——租户级全量清理不设普通入口。
+	// DeleteByFilter 按 IDs/Embedder/Metadata/Conditions 交集删除，返回
+	// 删除行数；所有条件均空时拒绝执行——租户级全量清理不设普通入口。
 	DeleteByFilter(ctx context.Context, filter *VectorFilter) (int64, error)
+	// UpdateMetadata 按 IDs/Embedder/Metadata/Conditions 交集把 patch 合并
+	// 进命中行的 metadata（jsonb ||），返回更新行数；只改 metadata 列，
+	// 不动正文与向量。所有条件均空时拒绝执行。知识库目录的状态/有效期
+	// 变更加载在 chunk metadata 上，失败必须让上层事务回滚。
+	UpdateMetadata(ctx context.Context, filter *VectorFilter, patch map[string]any) (int64, error)
 	// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量，
 	// Embedder 非空则限该空间。
 	Count(ctx context.Context, filter *VectorFilter) (int64, error)

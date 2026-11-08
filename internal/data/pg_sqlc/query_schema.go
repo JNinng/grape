@@ -28,6 +28,9 @@ var querySchemaRegistry = map[string]querySchemaFunc{
 	"sys_translation":   gen.SysTranslationQuerySchema,
 	"sys_user":          gen.SysUserQuerySchema,
 	"sys_user_group":    gen.SysUserGroupQuerySchema,
+	"sys_model":         gen.SysModelQuerySchema,
+	"kb_library":        gen.KbLibraryQuerySchema,
+	"kb_document":       gen.KbDocumentQuerySchema,
 }
 
 // querySchemaRepo 是 biz.QuerySchemaProvider 的实现：转发到生成代码出口。

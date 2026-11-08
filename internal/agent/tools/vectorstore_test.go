@@ -75,6 +75,10 @@ func (f *fakeVectorStore) DeleteByFilter(_ context.Context, filter *biz.VectorFi
 	return f.deleted, nil
 }
 
+func (f *fakeVectorStore) UpdateMetadata(_ context.Context, _ *biz.VectorFilter, _ map[string]any) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeVectorStore) Count(_ context.Context, filter *biz.VectorFilter) (int64, error) {
 	f.countF = filter
 	return f.count, nil

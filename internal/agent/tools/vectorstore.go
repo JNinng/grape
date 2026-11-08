@@ -180,6 +180,11 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 		filter.IDs = query.Filter.IDs
 		filter.Metadata = query.Filter.Metadata
 	}
+	// 检索固定条件（状态/有效期/可选知识库）由检索工具经中性 ctx 载体
+	// 传入；框架 SearchQuery 不携带条件 DSL。
+	if rf, ok := biz.RetrievalFilterFromContext(ctx); ok {
+		filter.Conditions = rf.Conditions
+	}
 	hits, err := store.Search(ctx, toFloat32(query.Vector), filter)
 	if err != nil {
 		return nil, err

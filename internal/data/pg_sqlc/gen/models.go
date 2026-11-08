@@ -164,6 +164,80 @@ type Basic struct {
 	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
+// 知识条目表：正文经切分、向量化后落 agent.agent_document；状态与有效期同步进 chunk metadata 供检索过滤 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
+type KbDocument struct {
+	// 条目 ID [@dynamic: exact, membership]
+	ID int64 `db:"id" json:"id"`
+	// 所属知识库 ID（库存在且同租户由用例校验） [@dynamic: exact, membership]
+	LibraryID int64 `db:"library_id" json:"library_id"`
+	// 条目类型：text（本期可用）/file（预留，创建接口拒绝） [@dynamic: exact]
+	Kind string `db:"kind" json:"kind"`
+	// 条目标题 [@dynamic: fuzzy, exact, sort @updatable: set]
+	Title string `db:"title" json:"title"`
+	// 条目正文（text 类型必填非空白；向量化来源）
+	Content *string `db:"content" json:"content"`
+	// 来源名，缺省取标题 [@dynamic: fuzzy, exact @updatable: set]
+	SourceName *string `db:"source_name" json:"source_name"`
+	// 正文摘要（变更检测与重嵌判断，不参与检索） [@internal]
+	ContentHash *string `db:"content_hash" json:"content_hash"`
+	// 数据状态，0：禁用、1：启用；与所属库状态取与参与检索 [@dynamic: exact, membership, sort @updatable: set]
+	Status int16 `db:"status" json:"status"`
+	// 生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]
+	ValidFrom pgtype.Timestamp `db:"valid_from" json:"valid_from"`
+	// 失效时间，NULL 表示长期有效 [@dynamic: exact, range, sort @updatable: set]
+	ValidTo pgtype.Timestamp `db:"valid_to" json:"valid_to"`
+	// 最近一次成功摄取时间（管理页展示与重嵌判断） [@dynamic: exact, range, sort]
+	IndexedAt pgtype.Timestamp `db:"indexed_at" json:"indexed_at"`
+	// 最近一次成功摄取的空间键 [@dynamic: exact]
+	IndexedEmbedder *string `db:"indexed_embedder" json:"indexed_embedder"`
+	// 创建人 [@dynamic: exact, membership]
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 创建时间 [@dynamic: exact, membership, range, sort]
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 更新人 [@dynamic: exact, membership]
+	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
+	// 更新时间 [@dynamic: exact, membership, range, sort]
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+	// 删除时间 [@internal]
+	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
+	// 租户 ID [@internal]
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+}
+
+// 知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
+type KbLibrary struct {
+	// 知识库 ID [@dynamic: exact, membership]
+	ID int64 `db:"id" json:"id"`
+	// 数据状态，0：禁用、1：启用 [@dynamic: exact, membership, sort @updatable: set]
+	Status int16 `db:"status" json:"status"`
+	// 知识库名（租户内未删除行间唯一） [@dynamic: fuzzy, exact, sort @updatable: set]
+	Name string `db:"name" json:"name"`
+	// 备注 [@dynamic: fuzzy @updatable: set]
+	Remark *string `db:"remark" json:"remark"`
+	// 嵌入模型键；为空表示跟随租户/全局默认解析，非空必须是可见的 embedding 模型 model_key [@dynamic: exact @updatable: set]
+	EmbeddingModelKey *string `db:"embedding_model_key" json:"embedding_model_key"`
+	// 切分单块 rune 上限，缺省 800 [@dynamic: exact, range @updatable: set]
+	ChunkSize int32 `db:"chunk_size" json:"chunk_size"`
+	// 相邻块重叠 rune 数，缺省 100，须小于 chunk_size [@dynamic: exact, range @updatable: set]
+	ChunkOverlap int32 `db:"chunk_overlap" json:"chunk_overlap"`
+	// 生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]
+	ValidFrom pgtype.Timestamp `db:"valid_from" json:"valid_from"`
+	// 失效时间，NULL 表示长期有效 [@dynamic: exact, range, sort @updatable: set]
+	ValidTo pgtype.Timestamp `db:"valid_to" json:"valid_to"`
+	// 创建人 [@dynamic: exact, membership]
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 创建时间 [@dynamic: exact, membership, range, sort]
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 更新人 [@dynamic: exact, membership]
+	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
+	// 更新时间 [@dynamic: exact, membership, range]
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+	// 删除时间 [@internal]
+	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
+	// 租户 ID [@internal]
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+}
+
 // 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
 type SysConfig struct {
 	// 配置 ID [@dynamic: exact, membership]
@@ -386,6 +460,48 @@ type SysMenu struct {
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
+}
+
+// 模型目录表：tenant_id=” 为平台行（所有租户可见），非空为租户行并覆盖同 model_key 平台行；密钥只存密文/环境变量名，接口只返回是否已配置 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
+type SysModel struct {
+	// 模型 ID [@dynamic: exact, membership]
+	ID int64 `db:"id" json:"id"`
+	// 租户 ID，空串为平台行 [@internal]
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 数据状态，0：禁用、1：启用；停用不参与解析（fail-closed） [@dynamic: exact, membership, sort @updatable: set]
+	Status int16 `db:"status" json:"status"`
+	// 模型类别：text / embedding [@dynamic: exact, membership]
+	Kind string `db:"kind" json:"kind"`
+	// 模型展示名 [@dynamic: fuzzy, exact, sort @updatable: set]
+	Name string `db:"name" json:"name"`
+	// 选择键与向量空间键（租户内未删除行间唯一），字符白名单同 vectorSpaceKeyPattern [@dynamic: exact, prefix]
+	ModelKey string `db:"model_key" json:"model_key"`
+	// provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等） [@dynamic: exact @updatable: set]
+	Provider string `db:"provider" json:"provider"`
+	// OpenAI 兼容端点根地址 [@dynamic: exact @updatable: set]
+	BaseUrl *string `db:"base_url" json:"base_url"`
+	// 发给 provider 的模型名，可与 model_key 不同 [@dynamic: exact @updatable: set]
+	Model string `db:"model" json:"model"`
+	// 嵌入维度；kind=embedding 时本期强制 1024 [@dynamic: exact, range @updatable: set]
+	Dimension *int32 `db:"dimension" json:"dimension"`
+	// 单次调用超时（毫秒），空值回落 conf 默认 [@dynamic: exact, range @updatable: set]
+	TimeoutMs *int32 `db:"timeout_ms" json:"timeout_ms"`
+	// API key 密文（v1:base64(nonce||ciphertext)），只写不读 [@internal]
+	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
+	// API key 环境变量名（密文缺失时回退） [@dynamic: exact @updatable: set]
+	ApiKeyEnv *string `db:"api_key_env" json:"api_key_env"`
+	// 备注 [@dynamic: fuzzy @updatable: set]
+	Remark *string `db:"remark" json:"remark"`
+	// 创建人 [@dynamic: exact, membership]
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 创建时间 [@dynamic: exact, membership, range, sort]
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 更新人 [@dynamic: exact, membership]
+	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
+	// 更新时间 [@dynamic: exact, membership, range]
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+	// 删除时间 [@internal]
+	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 }
 
 // 操作日志表，记录用户对系统数据的操作行为，追加写入不可变更 [@default_sort: operated_at DESC @pk: id]

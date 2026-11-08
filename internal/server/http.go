@@ -6,6 +6,8 @@ import (
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
+	knowledgev1 "grape/api/knowledge/v1"
+	modelv1 "grape/api/model/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	queryv1 "grape/api/query/v1"
@@ -56,6 +58,8 @@ func NewHTTPServer(
 	agentEventWindow *service.AgentEventWindowService,
 	agentAudit *service.AgentAuditService,
 	agentRetrieval *service.AgentRetrievalService,
+	knowledge *service.KnowledgeService,
+	model *service.ModelService,
 	web WebHandler,
 ) (*http.Server, error) {
 	cors, err := entrymw.NewCORS(c)
@@ -120,6 +124,9 @@ func NewHTTPServer(
 	permv1.RegisterPermissionServiceHTTPServer(srv, perm)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
 	queryv1.RegisterQueryServiceHTTPServer(srv, query)
+	knowledgev1.RegisterLibraryServiceHTTPServer(srv, knowledge)
+	knowledgev1.RegisterDocumentServiceHTTPServer(srv, knowledge)
+	modelv1.RegisterModelServiceHTTPServer(srv, model)
 	// agentSessions 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
 	// 必须先于 agent 注册：gorilla/mux 按注册顺序匹配，精确路径
 	// /agui/sessions 只有排在 agent 前缀通配之前才不被吞并。

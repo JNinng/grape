@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package knowledge.v1;
+
+option go_package = "grape/api/knowledge/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.knowledge.v1";
+option objc_class_prefix = "APIKnowledgeV1";
+
+// ErrorReason 是知识库域的错误原因枚举。
+enum ErrorReason {
+  // 缺省值，不使用。
+  KNOWLEDGE_UNSPECIFIED = 0;
+  // 目标知识库不存在（含跨租户不可见）。
+  LIBRARY_NOT_FOUND = 1;
+  // 知识库请求参数非法（名称/切分参数/有效期等）。
+  LIBRARY_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户内未删除库间名称被占用）。
+  LIBRARY_ALREADY_EXISTS = 3;
+  // 知识库仍有未删除条目，禁止删除。
+  LIBRARY_HAS_DOCUMENTS = 4;
+  // 目标条目不存在（含跨租户不可见）。
+  DOCUMENT_NOT_FOUND = 5;
+  // 条目请求参数非法（标题/正文/有效期等）。
+  DOCUMENT_INVALID_ARGUMENT = 6;
+  // 本期只支持文本条目，file 类型被拒绝。
+  DOCUMENT_KIND_UNSUPPORTED = 7;
+  // 摄取/重建索引失败（嵌入端点或向量存储错误）。
+  DOCUMENT_INDEX_FAILED = 8;
+  // 模型选项查询参数非法（kind 未知）。
+  MODEL_OPTION_INVALID_ARGUMENT = 9;
+}

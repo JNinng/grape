@@ -1,9 +1,24 @@
 package pg_sqlc
 
-import "github.com/google/wire"
+import (
+	"grape/internal/biz"
+
+	"github.com/google/wire"
+)
 
 // ProviderSet 是 pg_sqlc 能力（关系存储）的 Wire 依赖注入集合。向量存储
 // 在 vector 子包，其 ProviderSet 与本集合并列聚合；本包提供它依赖的
-// *Data、检索留痕仓储与默认嵌入空间解析器。NewSystemData 当前无消费方，
-// 留在集合里供将来系统库消费方按用途注入 SystemData。
-var ProviderSet = wire.NewSet(NewData, NewSystemData, NewUserRepo, NewAssignmentOptionRepo, NewDeptRepo, NewUserGroupRepo, NewRoleRepo, NewMenuRepo, NewDictRepo, NewConfigRepo, NewTenantConfigRepo, NewFeatureFlagRepo, NewTranslationRepo, NewTenantRepo, NewPlatformTenantGuard, NewSessionRepo, NewAuditLogRepo, NewRetrievalLogRepo, NewAuditRepo, NewGrantRepo, NewPermissionRepo, NewQuerySchemaRepo, NewDiagnostics, NewSessionMaintenance, NewEmbedderResolver)
+// *Data、检索留痕仓储、模型目录（文本模型 + 嵌入空间解析）与模型密钥
+// 加解密设施。NewSystemData 当前无消费方，留在集合里供将来系统库消费方
+// 按用途注入 SystemData。
+var ProviderSet = wire.NewSet(
+	NewData, NewSystemData, NewUserRepo, NewAssignmentOptionRepo, NewDeptRepo,
+	NewUserGroupRepo, NewRoleRepo, NewMenuRepo, NewDictRepo, NewConfigRepo,
+	NewTenantConfigRepo, NewFeatureFlagRepo, NewTranslationRepo, NewTenantRepo,
+	NewPlatformTenantGuard, NewSessionRepo, NewAuditLogRepo, NewRetrievalLogRepo,
+	NewAuditRepo, NewGrantRepo, NewPermissionRepo, NewQuerySchemaRepo,
+	NewDiagnostics, NewSessionMaintenance, NewModelCatalog, NewSecretCipher,
+	NewKnowledgeRepo, NewModelRepo,
+	wire.Bind(new(biz.TextModelCatalog), new(*modelResolver)),
+	wire.Bind(new(biz.EmbedderResolver), new(*modelResolver)),
+)

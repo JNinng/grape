@@ -159,6 +159,12 @@ func operationTargetTable(service, method string) string {
 		return "sys_tenant"
 	case strings.Contains(service, "SessionAdminService"):
 		return "sys_session"
+	case strings.Contains(service, "LibraryService"):
+		return "kb_library"
+	case strings.Contains(service, "DocumentService"):
+		return "kb_document"
+	case strings.Contains(service, "ModelService"):
+		return "sys_model"
 	default:
 		return ""
 	}
@@ -306,6 +312,7 @@ func newAuditKeyFilter(redactValue bool) redact.Redactor {
 	hashKeys := []string{
 		"token", "tokenhash", "refreshtokenhash", "accesstokenhash",
 		"secret", "clientsecret", "privatekey",
+		"apikey", "api_key", "apikeycipher", "api_key_cipher",
 	}
 	if redactValue {
 		hashKeys = append(hashKeys, "value")

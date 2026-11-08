@@ -127,6 +127,11 @@ func (s *loggedVectorStore) Count(ctx context.Context, filter *biz.VectorFilter)
 	return s.inner.Count(ctx, filter)
 }
 
+// UpdateMetadata 转发 metadata 合并更新，不留痕（目录状态同步非检索证据）。
+func (s *loggedVectorStore) UpdateMetadata(ctx context.Context, filter *biz.VectorFilter, patch map[string]any) (int64, error) {
+	return s.inner.UpdateMetadata(ctx, filter, patch)
+}
+
 // GetMetadata 转发枚举，不留痕（枚举统计非证据面）。
 func (s *loggedVectorStore) GetMetadata(ctx context.Context, filter *biz.VectorFilter) (map[string]map[string]any, error) {
 	return s.inner.GetMetadata(ctx, filter)

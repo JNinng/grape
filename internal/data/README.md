@@ -31,14 +31,17 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/data.go](pg_sqlc/data.go) | 双槽位（master/system）装配期校验；`Pool()` 只供无身份装配期探针，业务读写必须经事务门面 |
 | [pg_sqlc/session.go](pg_sqlc/session.go) | 三类事务门面与 RLS 会话变量注入；Scope 只从这里进入查询 |
 | [pg_sqlc/query_schema.go](pg_sqlc/query_schema.go) | 资源名→生成代码 schema 出口的纯函数注册表，只收录已暴露动态 List 的资源 |
-| [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 默认嵌入空间解析：租户 `vector.embedder` 优先，全局 conf 兜底，无缓存 |
+| [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 模型目录解析：文本模型与嵌入空间选键（租户配置 > 全局配置 > conf），按租户行 > 平台行 > conf 找端点 |
+| [pg_sqlc/model_manage.go](pg_sqlc/model_manage.go) | 模型目录仓储：租户行普通 DML、平台行经受控函数、密钥密文落库 |
+| [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | AES-256-GCM 密钥加解密（`GRAPE_MODEL_SECRET_KEY`，`v1:` 前缀） |
+| [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页） |
 | [pg_sqlc/session_repo.go](pg_sqlc/session_repo.go) | 会话仓储兼介质维护：过期清理与 token_hash 索引 REINDEX 判定 |
 | [pg_sqlc/tenant_admin.go](pg_sqlc/tenant_admin.go) | 租户树管理、平台租户判定与删除前置受控计数 |
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
-| [pg_sqlc/vector/vector_repo.go](pg_sqlc/vector/vector_repo.go) | 多嵌入空间向量介质的装配探针与手写参数化 SQL |
+| [pg_sqlc/vector/vector_repo.go](pg_sqlc/vector/vector_repo.go) | 多嵌入空间向量介质的装配探针、metadata 条件翻译与手写参数化 SQL |
 | [pg_sqlc/vector/retrieval_log.go](pg_sqlc/vector/retrieval_log.go) | 检索留痕装饰器与 wire 供给包装 `VectorStoreSupply` |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
-| [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 空间键路由、每次响应维度复核与禁用占位 |
+| [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位 |
 
 ## 事务门面
 
@@ -78,10 +81,18 @@ RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原�
 `NewPlatformTenantGuard` 判定：`parent_id IS NULL` 即根租户，租户不存在
 或已软删按非平台处理（fail-closed）。
 
-[config_repo.go](pg_sqlc/config_repo.go) 的默认嵌入空间解析器与管理面
-写路径并存：它读租户配置的 `vector.embedder` 键，解析顺序在仓储内是
-「租户配置 > 全局 conf 兜底」；租户值指向未声明空间按
-`ErrEmbedderUnknown` 严格拒绝，不静默回落。
+[config_repo.go](pg_sqlc/config_repo.go) 的模型目录解析器同时实现
+`biz.TextModelCatalog` 与 `biz.EmbedderResolver`：
+
+- 选键：租户配置（`ai.text.model` / `ai.embedding.model`，兼容旧键
+  `vector.embedder`）> 全局 `sys_config` 同名键 > conf（`agent.llm.model` /
+  `vector.default_embedder`）。
+- 找端点：`sys_model` 当前租户行 > 平台行 > conf 对应条目；停用、软删与
+  未知键一律 fail-closed，不静默回落。
+- 密钥：`api_key_cipher` 优先经 [secret_cipher.go](pg_sqlc/secret_cipher.go)
+  解密，缺失时读 `api_key_env`；主密钥缺失或密文损坏按
+  `ErrModelSecretUnavailable` 拒绝。
+- 嵌入维度本期固定 1024；平台行只能经 `98_model_write.sql` 受控函数写入。
 
 ## 检索留痕装饰器
 
@@ -108,15 +119,24 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
   检索 SQL 的 `vector(N)` cast 必须与索引表达式逐字一致。
 - 表无 RLS，租户隔离由应用层强制：每条 SQL 带 tenant_id，缺认证身份
   拒绝；写入侧身份同时冗余进 metadata，请求侧伪造不生效。
-- 装配期探针校验部署表为多空间形状，且每个 conf 声明维度都有匹配
-  索引；缺索引或形状不符启动即失败。
+- 装配期探针校验部署表为多空间形状，从 `pg_indexes` 发现带
+  `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)` 的维度集合；conf
+  声明的每个维度仍必须有索引（fail-fast），运行期空间校验以发现集合为准
+  （动态模型目录产生的空间键在装配期未知）。
+- `VectorFilter.Conditions` 支持 eq/ne/in/lt/lte/gt/gte 六类 metadata
+  比较：键与值都走占位符，数值比较显式 `::bigint`；`UpdateMetadata` 以
+  `metadata || patch` 合并，空过滤拒绝（用于知识库状态/有效期同步）。
+- 检索工具在 ctx 上携带固定条件（`doc_status` / `valid_from_unix` /
+  `valid_to_unix` / 可选 `kb_id`），适配器并入 VectorFilter。
 
 ## 文本向量化设施
 
-[openaiembedder](openaiembedder/) 与向量介质共享 `conf.VectorSpaces` 空间
-注册表（键为 model 或 model@version，键→端点/维度随空间持有）；启用时
-逐空间要求 base_url，`vector.enabled=false` 返回禁用占位；每次 Embed
-响应按所属空间声明维度复核，未知空间按 `ErrEmbedderUnknown` 拒绝。
+[openaiembedder](openaiembedder/) 不再在装配期固化空间端点：每次 Embed 经
+`biz.EmbedderResolver.ResolveEmbeddingSpace` 按空间键动态解析（模型目录
+租户/平台行优先，conf.VectorSpaces 兼容条目兜底），HTTP 客户端按
+`base_url + timeout` 缓存；启用时仍逐空间要求 conf 条目 base_url 存在，
+`vector.enabled=false` 返回禁用占位；每次 Embed 响应按解析出的空间维度
+复核，未知空间按 `ErrEmbedderUnknown` 拒绝。
 
 ## 会话介质维护
 

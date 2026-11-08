@@ -180,6 +180,13 @@ Agent 设施面（`agent` schema，如向量表 `agent.agent_document`）不走 
 工具授权手写端点用 `agent:grant:query` / `agent:grant:revoke`；本人授权
 列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`。
 
+知识库与条目共用 `sys:knowledge:query/create/update/delete`（重建索引并入
+`:update`；模型选项端点 `ListModelOptions` 也用 `:query`，避免知识库管理员
+被迫持有 `sys:model:query`）。模型目录租户行用 `sys:model:query/create/
+update/delete`；平台行写面另设 `sys:model:platform:create/update/delete`，
+只应由平台管理员持有。`sys_model` 的平台行读面对所有租户开放（RLS 读策略
+`tenant_id='' OR 本租户`），平台写只能经受控 SECURITY DEFINER 函数。
+
 - 与行无关，可缓存；失效用 `sys_perm_version`（租户级 + 用户级版本）。
 - 平台信任边界：`sys:config:global:*` 写码只应由平台根租户持有，且写路径
   强制校验调用方租户为根租户（`parent_id IS NULL`）——子租户即使自造或

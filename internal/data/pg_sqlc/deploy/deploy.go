@@ -36,6 +36,8 @@ func deployFiles() []string {
 		"schema/70_audit.sql",
 		"schema/80_session.sql",
 		"schema/90_config.sql",
+		"schema/91_knowledge.sql",
+		"schema/92_model.sql",
 		"role.sql",
 		"rls.sql",
 		"expose.sql",
@@ -70,6 +72,10 @@ func deployFiles() []string {
 		// 认证事务纪律与软删口径收在 SECURITY DEFINER 函数内；
 		// 入 sqlc catalog，只依赖 schema/90_config.sql。
 		"98_config_write.sql",
+		// 模型目录平台行受控写面：sys_model 平台行（tenant_id=''）的建/改/
+		// 软删，函数内固定空串租户并校验认证事务纪律；入 sqlc catalog，
+		// 只依赖 schema/92_model.sql。
+		"98_model_write.sql",
 		// 租户删除前置计数：SECURITY DEFINER 函数只返回未删除直接子租户
 		// 数（不返回行数据，不构成跨租户读面）；入 sqlc catalog，
 		// 只依赖 schema/20_tenant.sql。

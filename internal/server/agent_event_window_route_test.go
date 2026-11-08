@@ -84,8 +84,7 @@ func newAgentEventWindowTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.
 		// 审计与检索留痕查询端点本文件用例不触达，传 nil。
 		nil,
 		nil,
-		WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))),
-	)
+		nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

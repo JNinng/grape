@@ -101,23 +101,24 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	querySchemaProvider := pg_sqlc.NewQuerySchemaRepo()
 	queryUsecase := biz.NewQueryUsecase(querySchemaProvider)
 	queryService := service.NewQueryService(queryUsecase)
-	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService)
-	service2, cleanup3, err := agent.NewSessionService(confAgent, confData)
+	knowledgeRepo := pg_sqlc.NewKnowledgeRepo(pg_sqlcData)
+	modelRepo := pg_sqlc.NewModelRepo(pg_sqlcData)
+	vectorStoreSupply, cleanup3, err := vector.NewVectorStoreSupply(confVector, pg_sqlcData)
 	if err != nil {
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	vectorStoreSupply, cleanup4, err := vector.NewVectorStoreSupply(confVector, pg_sqlcData)
-	if err != nil {
-		cleanup3()
 		cleanup2()
 		cleanup()
 		return nil, nil, err
 	}
 	retrievalLogRepo := pg_sqlc.NewRetrievalLogRepo(pg_sqlcData)
 	registry := biz.NewRedactRegistry()
-	vectorStore, cleanup5, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
+	vectorStore, cleanup4, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
+	if err != nil {
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	secretCipher, cleanup5, err := pg_sqlc.NewSecretCipher()
 	if err != nil {
 		cleanup4()
 		cleanup3()
@@ -125,10 +126,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
-	grantRepo := pg_sqlc.NewGrantRepo(pg_sqlcData)
-	grantUsecase := biz.NewGrantUsecase(grantRepo)
-	embedder, cleanup6, err := openaiembedder.New(confVector)
+	modelResolver, cleanup6, err := pg_sqlc.NewModelCatalog(confAgent, confVector, pg_sqlcData, secretCipher)
 	if err != nil {
 		cleanup5()
 		cleanup4()
@@ -137,7 +135,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	embedderResolver, cleanup7, err := pg_sqlc.NewEmbedderResolver(confVector, pg_sqlcData)
+	embedder, cleanup7, err := openaiembedder.New(modelResolver, confVector)
 	if err != nil {
 		cleanup6()
 		cleanup5()
@@ -147,11 +145,42 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
+	documentUsecase, err := biz.NewDocumentUsecaseDefault(vectorStore, embedder, modelResolver)
+	if err != nil {
+		cleanup7()
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	knowledgeUsecase := biz.NewKnowledgeUsecase(knowledgeRepo, modelRepo, vectorStore, documentUsecase)
+	knowledgeService := service.NewKnowledgeService(knowledgeUsecase)
+	modelUsecase := biz.NewModelUsecase(modelRepo, secretCipher)
+	modelService := service.NewModelService(modelUsecase)
+	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, knowledgeService, modelService)
+	service2, cleanup8, err := agent.NewSessionService(confAgent, confData)
+	if err != nil {
+		cleanup7()
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	vectorstoreVectorStore := agent.NewVectorStore(vectorStore)
+	grantRepo := pg_sqlc.NewGrantRepo(pg_sqlcData)
+	grantUsecase := biz.NewGrantUsecase(grantRepo)
 	runtimeMetrics := ops.NewRuntimeMetrics()
 	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
 	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
-	stack, cleanup8, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, embedderResolver, runtimeMetrics, auditUsecase)
+	stack, cleanup9, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, modelResolver, modelResolver, runtimeMetrics, auditUsecase)
 	if err != nil {
+		cleanup8()
 		cleanup7()
 		cleanup6()
 		cleanup5()
@@ -172,8 +201,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, knowledgeService, modelService, webHandler)
 	if err != nil {
+		cleanup9()
 		cleanup8()
 		cleanup7()
 		cleanup6()
@@ -189,6 +219,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup9()
 		cleanup8()
 		cleanup7()
 		cleanup6()

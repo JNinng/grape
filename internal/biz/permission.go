@@ -114,6 +114,27 @@ const (
 	PermTenantCreate = "sys:tenant:create"
 	PermTenantUpdate = "sys:tenant:update"
 	PermTenantDelete = "sys:tenant:delete"
+
+	// 知识库（kb_library / kb_document，种子菜单 274 子树：操作级权限点
+	// 275-278 由 seed 包预铺）。库与条目共用同一组操作码（同一管理页内的
+	// 两级维护）；重建索引并入 sys:knowledge:update。模型选项端点
+	// （ListModelOptions）也走 sys:knowledge:query，避免知识库管理员被迫
+	// 持有 sys:model:query。
+	PermKnowledgeQuery  = "sys:knowledge:query"
+	PermKnowledgeCreate = "sys:knowledge:create"
+	PermKnowledgeUpdate = "sys:knowledge:update"
+	PermKnowledgeDelete = "sys:knowledge:delete"
+
+	// 模型目录（sys_model，种子菜单 279 子树：操作级权限点 280-286 由
+	// seed 包预铺）。租户行 CRUD 与平台行 super 写分码：平台行对所有租户
+	// 可见，写面只应由平台管理员持有。
+	PermModelQuery          = "sys:model:query"
+	PermModelCreate         = "sys:model:create"
+	PermModelUpdate         = "sys:model:update"
+	PermModelDelete         = "sys:model:delete"
+	PermModelPlatformCreate = "sys:model:platform:create"
+	PermModelPlatformUpdate = "sys:model:platform:update"
+	PermModelPlatformDelete = "sys:model:platform:delete"
 )
 
 // PermissionRepo 是功能权限码仓储接口：fn_has_permission / GetPermissionCodes

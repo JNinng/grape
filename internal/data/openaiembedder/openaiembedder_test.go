@@ -33,6 +33,52 @@ func embeddingConf(baseURL string) *conf.Vector {
 	}
 }
 
+// confSpaceResolver 是测试用空间解析器：把 conf.vector.embedders 映射为
+// biz.EmbeddingSpace，未知键返回 ErrEmbedderUnknown（与生产解析器同语义）。
+type confSpaceResolver struct {
+	spaces     map[string]biz.EmbeddingSpace
+	defaultKey string
+}
+
+func resolverFromConf(c *conf.Vector) *confSpaceResolver {
+	r := &confSpaceResolver{spaces: map[string]biz.EmbeddingSpace{}, defaultKey: c.GetDefaultEmbedder()}
+	for _, e := range c.GetEmbedders() {
+		key := conf.EmbedderSpaceKey(e.GetModel(), e.GetVersion())
+		r.spaces[key] = biz.EmbeddingSpace{
+			Key:       key,
+			Provider:  e.GetProvider(),
+			BaseURL:   e.GetBaseUrl(),
+			Model:     e.GetModel(),
+			APIKey:    e.GetApiKey(),
+			Dimension: int(e.GetDimension()),
+			Timeout:   e.GetTimeout().AsDuration(),
+		}
+	}
+	return r
+}
+
+func (r *confSpaceResolver) ResolveDefaultEmbedder(context.Context) (string, int, error) {
+	s, ok := r.spaces[r.defaultKey]
+	if !ok {
+		return "", 0, biz.ErrEmbedderUnknown
+	}
+	return s.Key, s.Dimension, nil
+}
+
+func (r *confSpaceResolver) ResolveEmbeddingSpace(_ context.Context, key string) (biz.EmbeddingSpace, error) {
+	s, ok := r.spaces[key]
+	if !ok {
+		return biz.EmbeddingSpace{}, biz.ErrEmbedderUnknown
+	}
+	return s, nil
+}
+
+// newEmbedder 按配置构造 embedder（生产由模型目录解析空间，测试用 conf
+// 替身）。
+func newEmbedder(c *conf.Vector) (biz.Embedder, func(), error) {
+	return New(resolverFromConf(c), c)
+}
+
 // stubEndpoint 起一个记录请求的替身 embeddings 端点，按 vector 返回
 // 固定向量；断言请求形态（路径/方法/model/input/鉴权头）后由用例消费。
 func stubEndpoint(t *testing.T, vector []float64, status int) (*httptest.Server, *[]byte) {
@@ -52,7 +98,7 @@ func stubEndpoint(t *testing.T, vector []float64, status int) (*httptest.Server,
 }
 
 func TestEmbedder_when_facility_disabled_returns_placeholder(t *testing.T) {
-	e, cleanup, err := New(&conf.Vector{Enabled: false})
+	e, cleanup, err := New(nil, &conf.Vector{Enabled: false})
 	if err != nil {
 		t.Fatalf("New(disabled) = %v, want disabled placeholder", err)
 	}
@@ -79,7 +125,7 @@ func TestEmbedder_when_enabled_config_incomplete_fails_fast(t *testing.T) {
 		"duplicate keys": {Enabled: true, DefaultEmbedder: "m", Embedders: []*conf.Vector_Embedding{ok, {
 			BaseUrl: "http://localhost", Model: "m", Dimension: 8}}},
 	} {
-		_, _, err := New(c)
+		_, _, err := newEmbedder(c)
 		if err == nil {
 			t.Fatalf("New(%s) = nil error, want rejection", name)
 		}
@@ -88,7 +134,7 @@ func TestEmbedder_when_enabled_config_incomplete_fails_fast(t *testing.T) {
 
 func TestEmbedder_when_embed_posts_openai_compatible_request(t *testing.T) {
 	srv, captured := stubEndpoint(t, []float64{0.25, 0.5, 0.25, 0.5}, http.StatusOK)
-	e, cleanup, err := New(embeddingConf(srv.URL))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -101,6 +147,10 @@ func TestEmbedder_when_embed_posts_openai_compatible_request(t *testing.T) {
 	// 向量按响应回填且转 float32。
 	if len(got) != 4 || got[0] != 0.25 || got[1] != 0.5 {
 		t.Fatalf("embedding = %v, want [0.25 0.5 0.25 0.5]", got)
+	}
+	// 解析后 Dimension 可离线回读。
+	if dim, err := e.Dimension("test-embedding-model"); err != nil || dim != 4 {
+		t.Fatalf("Dimension after Embed = %d/%v, want 4/nil", dim, err)
 	}
 	var req map[string]any
 	if err := json.Unmarshal(*captured, &req); err != nil {
@@ -121,7 +171,7 @@ func TestEmbedder_when_request_carries_bearer_key_and_embeddings_path(t *testing
 		})
 	}))
 	defer srv.Close()
-	e, cleanup, err := New(embeddingConf(srv.URL + "/"))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL + "/"))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -140,7 +190,7 @@ func TestEmbedder_when_request_carries_bearer_key_and_embeddings_path(t *testing
 func TestEmbedder_when_response_dimension_drifts_rejected(t *testing.T) {
 	// 端点返回 3 维向量而空间声明 4 维：调用点显式报错，绝不产出零值向量。
 	srv, _ := stubEndpoint(t, []float64{0.1, 0.2, 0.3}, http.StatusOK)
-	e, cleanup, err := New(embeddingConf(srv.URL))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -153,7 +203,7 @@ func TestEmbedder_when_response_dimension_drifts_rejected(t *testing.T) {
 
 func TestEmbedder_when_unknown_space_rejected(t *testing.T) {
 	srv, _ := stubEndpoint(t, make([]float64, 4), http.StatusOK)
-	e, cleanup, err := New(embeddingConf(srv.URL))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -167,21 +217,17 @@ func TestEmbedder_when_unknown_space_rejected(t *testing.T) {
 }
 
 func TestEmbedder_when_version_suffix_derives_space_key(t *testing.T) {
-	// version 非空：空间键 = model@version；Dimension 按派生键解析。
+	// version 非空：空间键 = model@version；解析按派生键进行。
 	c := embeddingConf("http://localhost")
 	c.Embedders[0].Version = "v2"
 	c.DefaultEmbedder = "test-embedding-model@v2"
-	e, cleanup, err := New(c)
+	e, cleanup, err := newEmbedder(c)
 	if err != nil {
 		t.Fatalf("New(versioned): %v", err)
 	}
 	defer cleanup()
-	dim, err := e.Dimension("test-embedding-model@v2")
-	if err != nil || dim != 4 {
-		t.Fatalf("Dimension(versioned key) = %d/%v, want 4/nil", dim, err)
-	}
-	if _, err := e.Dimension("test-embedding-model"); !errors.Is(err, biz.ErrEmbedderUnknown) {
-		t.Fatalf("Dimension(bare model key) = %v, want ErrEmbedderUnknown (versioned conf derives versioned key)", err)
+	if _, err := e.Embed(context.Background(), "test-embedding-model", "text"); !errors.Is(err, biz.ErrEmbedderUnknown) {
+		t.Fatalf("Embed(bare model key) = %v, want ErrEmbedderUnknown (versioned conf derives versioned key)", err)
 	}
 }
 
@@ -200,14 +246,15 @@ func TestEmbedder_when_multi_space_routes_to_own_endpoint(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": make([]float64, 8)}}})
 	}))
 	defer srvB.Close()
-	e, cleanup, err := New(&conf.Vector{
+	c := &conf.Vector{
 		Enabled:         true,
 		DefaultEmbedder: "model-a",
 		Embedders: []*conf.Vector_Embedding{
 			{Model: "model-a", BaseUrl: srvA.URL, Dimension: 4},
 			{Model: "model-b", Version: "v2", BaseUrl: srvB.URL, Dimension: 8},
 		},
-	})
+	}
+	e, cleanup, err := newEmbedder(c)
 	if err != nil {
 		t.Fatalf("New(multi-space): %v", err)
 	}
@@ -239,14 +286,15 @@ func TestEmbedder_when_space_timeout_expires_request_fails(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{{"embedding": make([]float64, 4)}}})
 	}))
 	defer fast.Close()
-	e, cleanup, err := New(&conf.Vector{
+	c := &conf.Vector{
 		Enabled:         true,
 		DefaultEmbedder: "slow-model",
 		Embedders: []*conf.Vector_Embedding{
 			{Model: "slow-model", BaseUrl: slow.URL, Dimension: 4, Timeout: durationpb.New(50 * time.Millisecond)},
 			{Model: "fast-model", BaseUrl: fast.URL, Dimension: 4, Timeout: durationpb.New(2 * time.Second)},
 		},
-	})
+	}
+	e, cleanup, err := newEmbedder(c)
 	if err != nil {
 		t.Fatalf("New(multi-space with timeouts): %v", err)
 	}
@@ -263,7 +311,7 @@ func TestEmbedder_when_space_timeout_expires_request_fails(t *testing.T) {
 
 func TestEmbedder_when_endpoint_errors_mapped(t *testing.T) {
 	srv, _ := stubEndpoint(t, nil, http.StatusUnauthorized)
-	e, cleanup, err := New(embeddingConf(srv.URL))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -276,7 +324,7 @@ func TestEmbedder_when_endpoint_errors_mapped(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []any{}})
 	}))
 	defer empty.Close()
-	e2, cleanup2, err := New(embeddingConf(empty.URL))
+	e2, cleanup2, err := newEmbedder(embeddingConf(empty.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -288,7 +336,7 @@ func TestEmbedder_when_endpoint_errors_mapped(t *testing.T) {
 
 func TestEmbedder_when_text_blank_rejected(t *testing.T) {
 	srv, _ := stubEndpoint(t, make([]float64, 4), http.StatusOK)
-	e, cleanup, err := New(embeddingConf(srv.URL))
+	e, cleanup, err := newEmbedder(embeddingConf(srv.URL))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -299,15 +347,16 @@ func TestEmbedder_when_text_blank_rejected(t *testing.T) {
 }
 
 func TestEmbedder_when_timeout_unset_constructs_with_default(t *testing.T) {
-	// 缺省超时落位由构造成功表达；具体传输行为由 http.Client 语义保证。
-	c := embeddingConf("http://127.0.0.1:1")
+	// 缺省超时落位由调用成功表达（httptest 本地端点即时返回）。
+	srv, _ := stubEndpoint(t, make([]float64, 4), http.StatusOK)
+	c := embeddingConf(srv.URL)
 	c.Embedders[0].Timeout = nil
-	e, cleanup, err := New(c)
+	e, cleanup, err := newEmbedder(c)
 	if err != nil {
 		t.Fatalf("New without timeout = %v, want default fallback", err)
 	}
 	defer cleanup()
-	if _, err := e.Dimension("test-embedding-model"); err != nil {
-		t.Fatalf("Dimension after construction = %v, want nil", err)
+	if _, err := e.Embed(context.Background(), "test-embedding-model", "text"); err != nil {
+		t.Fatalf("Embed without timeout = %v, want nil", err)
 	}
 }

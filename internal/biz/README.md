@@ -70,7 +70,10 @@
 | [retrieval_log.go](retrieval_log.go) | 检索留痕查询用例与 ctx 事实载体；写入由 data 层装饰器直写、不经用例。 |
 | [embedder.go](embedder.go) | 文本向量化与默认空间解析契约；嵌入空间经 ctx 载体传给框架适配器。 |
 | [document.go](document.go) | 摄取管线：rune 窗口切分、逐块 embed、按来源覆盖写入；重摄即迁移路径。 |
-| [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间）。 |
+| [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件与批量更新）。 |
+| [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验、切分参数与嵌入模型选择、chunk metadata 同步、删除清理与重建索引。 |
+| [model.go](model.go) | 文本模型目录与密钥加解密契约；嵌入空间形状与模型类别/维度常量。 |
+| [model_manage.go](model_manage.go) | 模型目录用例：租户/平台行 CRUD、密钥只写不读、embedding 维度 1024 与 model_key 白名单校验。 |
 | [maintenance.go](maintenance.go) | 设施无关的诊断/维护契约；ops 与 task 只认契约。 |
 | [metrics.go](metrics.go) | Agent 运行观测契约（运行数/限流拒绝/工具终态），由 ops 实现。 |
 | [query.go](query.go) | 动态查询能力出口：资源 List schema 转发，不触库、无租户边界。 |

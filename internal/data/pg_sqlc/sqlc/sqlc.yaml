@@ -29,6 +29,8 @@ sql:
       - "schema/70_audit.sql"
       - "schema/80_session.sql"
       - "schema/90_config.sql"
+      - "schema/91_knowledge.sql"
+      - "schema/92_model.sql"
       - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"
@@ -37,6 +39,7 @@ sql:
       - "schema/97_agent_retrieval_log.sql"
       - "98_menu_write.sql"
       - "98_config_write.sql"
+      - "98_model_write.sql"
       - "98_tenant_guard.sql"
     queries:
       - "queries/operate.sql"
@@ -56,6 +59,9 @@ sql:
       - "queries/agent_retrieval_log.sql"
       - "queries/sys_config.sql"
       - "queries/sys_tenant.sql"
+      - "queries/kb_library.sql"
+      - "queries/kb_document.sql"
+      - "queries/sys_model.sql"
     gen:
       go:
         package: "gen"
@@ -77,6 +83,8 @@ sql:
       - "schema/70_audit.sql"
       - "schema/80_session.sql"
       - "schema/90_config.sql"
+      - "schema/91_knowledge.sql"
+      - "schema/92_model.sql"
       - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"
@@ -85,6 +93,7 @@ sql:
       - "schema/97_agent_retrieval_log.sql"
       - "98_menu_write.sql"
       - "98_config_write.sql"
+      - "98_model_write.sql"
       - "98_tenant_guard.sql"
     queries:
       - "queries/operate.sql"
@@ -104,6 +113,9 @@ sql:
       - "queries/agent_retrieval_log.sql"
       - "queries/sys_config.sql"
       - "queries/sys_tenant.sql"
+      - "queries/kb_library.sql"
+      - "queries/kb_document.sql"
+      - "queries/sys_model.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"
         out: "../gen"
@@ -126,6 +138,9 @@ sql:
               sys_dept: {default: 20, max: 400}
               sys_dict_type: {default: 20, max: 400}
               sys_dict_data: {default: 20, max: 400}
+              kb_library: {default: 20, max: 400}
+              kb_document: {default: 20, max: 400}
+              sys_model: {default: 20, max: 400}
           ui:
             basic:
               id:
@@ -614,6 +629,167 @@ sql:
               sort_order:
                 label: "排序号"
                 visibility: "hidden"
+              remark:
+                label: "备注"
+                visibility: "optional"
+              created_by:
+                label: "创建人"
+                visibility: "hidden"
+              created_at:
+                label: "创建时间"
+                visibility: "optional"
+              updated_by:
+                label: "更新人"
+                visibility: "hidden"
+              updated_at:
+                label: "更新时间"
+                visibility: "optional"
+            kb_library:
+              id:
+                label: "知识库 ID"
+                visibility: "optional"
+              status:
+                label: "状态"
+                options:
+                  - value: 0
+                    label: "禁用"
+                  - value: 1
+                    label: "启用"
+                visibility: "optional"
+              name:
+                label: "知识库名"
+                visibility: "optional"
+              remark:
+                label: "备注"
+                visibility: "optional"
+              embedding_model_key:
+                label: "嵌入模型键"
+                desc: "为空跟随租户/全局默认；非空必须是可见的 embedding 模型"
+                visibility: "optional"
+              chunk_size:
+                label: "切分大小（rune）"
+                visibility: "optional"
+              chunk_overlap:
+                label: "切分重叠（rune）"
+                visibility: "optional"
+              valid_from:
+                label: "生效时间"
+                visibility: "optional"
+              valid_to:
+                label: "失效时间"
+                visibility: "optional"
+              created_by:
+                label: "创建人"
+                visibility: "hidden"
+              created_at:
+                label: "创建时间"
+                visibility: "optional"
+              updated_by:
+                label: "更新人"
+                visibility: "hidden"
+              updated_at:
+                label: "更新时间"
+                visibility: "optional"
+            kb_document:
+              id:
+                label: "条目 ID"
+                visibility: "optional"
+              library_id:
+                label: "所属知识库 ID"
+                visibility: "optional"
+              kind:
+                label: "条目类型"
+                options:
+                  - value: "text"
+                    label: "文本"
+                  - value: "file"
+                    label: "文件（预留）"
+                visibility: "optional"
+              title:
+                label: "标题"
+                visibility: "optional"
+              content:
+                label: "正文"
+                visibility: "hidden"
+              source_name:
+                label: "来源名"
+                visibility: "optional"
+              status:
+                label: "状态"
+                options:
+                  - value: 0
+                    label: "禁用"
+                  - value: 1
+                    label: "启用"
+                visibility: "optional"
+              valid_from:
+                label: "生效时间"
+                visibility: "optional"
+              valid_to:
+                label: "失效时间"
+                visibility: "optional"
+              indexed_at:
+                label: "最近摄取时间"
+                visibility: "optional"
+              indexed_embedder:
+                label: "摄取嵌入空间"
+                visibility: "optional"
+              created_by:
+                label: "创建人"
+                visibility: "hidden"
+              created_at:
+                label: "创建时间"
+                visibility: "optional"
+              updated_by:
+                label: "更新人"
+                visibility: "hidden"
+              updated_at:
+                label: "更新时间"
+                visibility: "optional"
+            sys_model:
+              id:
+                label: "模型 ID"
+                visibility: "optional"
+              status:
+                label: "状态"
+                options:
+                  - value: 0
+                    label: "禁用"
+                  - value: 1
+                    label: "启用"
+                visibility: "optional"
+              kind:
+                label: "模型类别"
+                options:
+                  - value: "text"
+                    label: "文本模型"
+                  - value: "embedding"
+                    label: "嵌入模型"
+                visibility: "optional"
+              name:
+                label: "模型名"
+                visibility: "optional"
+              model_key:
+                label: "模型键（选择键与向量空间键）"
+                visibility: "optional"
+              provider:
+                label: "Provider"
+                visibility: "optional"
+              base_url:
+                label: "端点根地址"
+                visibility: "optional"
+              model:
+                label: "Provider 模型名"
+                visibility: "optional"
+              dimension:
+                label: "嵌入维度"
+                visibility: "optional"
+              timeout_ms:
+                label: "调用超时（毫秒）"
+                visibility: "optional"
+              api_key_env:
+                label: "密钥环境变量名"
+                visibility: "optional"
               remark:
                 label: "备注"
                 visibility: "optional"

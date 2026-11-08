@@ -30,19 +30,27 @@ const (
 // Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部网页
 // 抓取等不可信来源开放前，须先补来源校验与脱敏切面（对齐 pkg/redact）。
 // ID 由调用方生成且租户内唯一。
+//
+// Embedder 非空时指定摄取空间（知识库级 embedding_model_key）；空值走
+// 默认空间解析。ChunkSize/ChunkOverlap 非零时覆盖管线缺省（知识库级切分
+// 参数），零值取构造期缺省。
 type Document struct {
-	ID       string
-	Name     string
-	Content  string
-	Metadata map[string]any
+	ID           string
+	Name         string
+	Content      string
+	Metadata     map[string]any
+	Embedder     string
+	ChunkSize    int
+	ChunkOverlap int
 }
 
 // IngestResult 是摄取结果：Chunks 为本次写入的切片数，Replaced 为覆盖
-// 语义下先行删除的旧切片数（首次摄取为 0）。
+// 语义下先行删除的旧切片数（首次摄取为 0）；Embedder 是本次落库的空间键。
 type IngestResult struct {
 	DocumentID string
 	Chunks     int
 	Replaced   int64
+	Embedder   string
 }
 
 // chunk 是切分产物：content 为切片正文，anchor 为原文中的 rune 区间
@@ -135,17 +143,29 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 	if strings.TrimSpace(content) == "" {
 		return nil, errors.New("biz: document content is required")
 	}
-	chunks := chunkText(content, u.chunkSize, u.chunkOverlap)
+	chunkSize, chunkOverlap := docChunking(u.chunkSize, u.chunkOverlap, doc.ChunkSize, doc.ChunkOverlap)
+	chunks := chunkText(content, chunkSize, chunkOverlap)
 	if len(chunks) == 0 {
 		return nil, errors.New("biz: document content chunks to nothing")
 	}
 
-	// 摄取空间在删除旧行之前解析：本次切片落在解析出的默认空间，旧
-	// 切片（可能属于其他空间）由覆盖语义跨空间清除，重摄取即换空间
+	// 摄取空间在删除旧行之前解析：库级指定空间优先，未指定走默认空间。
+	// 旧切片（可能属于其他空间）由覆盖语义跨空间清除，重摄取即换空间
 	// 迁移路径。
-	space, dimension, err := u.resolver.ResolveDefaultEmbedder(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("biz: resolve default embedder for document %s: %w", sourceID, err)
+	var space string
+	var dimension int
+	if strings.TrimSpace(doc.Embedder) != "" {
+		spaceInfo, err := u.resolver.ResolveEmbeddingSpace(ctx, doc.Embedder)
+		if err != nil {
+			return nil, fmt.Errorf("biz: resolve embedding space %s for document %s: %w", doc.Embedder, sourceID, err)
+		}
+		space, dimension = spaceInfo.Key, spaceInfo.Dimension
+	} else {
+		var err error
+		space, dimension, err = u.resolver.ResolveDefaultEmbedder(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("biz: resolve default embedder for document %s: %w", sourceID, err)
+		}
 	}
 
 	// 逐块向量化在删除旧行之前完成：embed 失败（端点故障、维度漂移）
@@ -181,7 +201,17 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 			return nil, fmt.Errorf("biz: add chunk %s: %w", d.ID, err)
 		}
 	}
-	return &IngestResult{DocumentID: sourceID, Chunks: len(docs), Replaced: replaced}, nil
+	return &IngestResult{DocumentID: sourceID, Chunks: len(docs), Replaced: replaced, Embedder: space}, nil
+}
+
+// docChunking 合并管线缺省与文档级切分参数：文档值为 0 时取缺省；非法
+// 覆盖值（负重叠、重叠不小于块大小）同样回落缺省，由构造期校验过的缺省
+// 兜底，保证切分窗口始终有效。
+func docChunking(defSize, defOverlap, size, overlap int) (int, int) {
+	if size <= 0 || overlap < 0 || overlap >= size {
+		return defSize, defOverlap
+	}
+	return size, overlap
 }
 
 // chunkID 派生切片 ID："<sourceID>#<index>"，确定性保证重摄的覆盖语义；

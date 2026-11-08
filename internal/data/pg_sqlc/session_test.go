@@ -217,14 +217,16 @@ func TestSessionDiscipline(t *testing.T) {
 		}
 	})
 
-	t.Run("platform tenant sees no seeded dict data", func(t *testing.T) {
+	t.Run("platform tenant sees only the seeded model dictionary", func(t *testing.T) {
 		err := d.IdentityTx(ctx, Identity{TenantID: "t-super-01", UserID: 1}, func(s *IdentityTx) error {
 			var n int
 			if err := s.Tx().QueryRow(ctx, "SELECT count(*) FROM public.sys_dict_data").Scan(&n); err != nil {
 				return err
 			}
-			if n != 0 {
-				t.Fatalf("t-super-01 saw %d dict rows, want 0", n)
+			// 生产种子 120_sys_dict.sql 为根租户播种模型类别/provider 枚举
+			// （9 条字典数据），不再是空集。
+			if n != 9 {
+				t.Fatalf("t-super-01 saw %d dict rows, want 9", n)
 			}
 			return nil
 		})

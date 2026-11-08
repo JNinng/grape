@@ -6,6 +6,8 @@ import (
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
+	knowledgev1 "grape/api/knowledge/v1"
+	modelv1 "grape/api/model/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	tenantv1 "grape/api/tenant/v1"
@@ -122,6 +124,29 @@ var operationPermissionCodes = map[string]string{
 	auditv1.OperationAuditServiceGetOperationLog:      biz.PermAuditOperationLog,
 	auditv1.OperationSessionAdminServiceListSessions:  biz.PermSessionQuery,
 	auditv1.OperationSessionAdminServiceRevokeSession: biz.PermSessionRevoke,
+	// 知识库与条目（库与条目共用同一组操作码；模型选项走 knowledge:query）
+	knowledgev1.OperationLibraryServiceGetLibrary:         biz.PermKnowledgeQuery,
+	knowledgev1.OperationLibraryServiceListLibraries:      biz.PermKnowledgeQuery,
+	knowledgev1.OperationLibraryServiceListModelOptions:   biz.PermKnowledgeQuery,
+	knowledgev1.OperationLibraryServiceCreateLibrary:      biz.PermKnowledgeCreate,
+	knowledgev1.OperationLibraryServiceUpdateLibrary:      biz.PermKnowledgeUpdate,
+	knowledgev1.OperationLibraryServiceDeleteLibrary:      biz.PermKnowledgeDelete,
+	knowledgev1.OperationDocumentServiceGetDocument:       biz.PermKnowledgeQuery,
+	knowledgev1.OperationDocumentServiceListDocuments:     biz.PermKnowledgeQuery,
+	knowledgev1.OperationDocumentServiceListLibraryDocuments: biz.PermKnowledgeQuery,
+	knowledgev1.OperationDocumentServiceCreateDocument:    biz.PermKnowledgeCreate,
+	knowledgev1.OperationDocumentServiceUpdateDocument:    biz.PermKnowledgeUpdate,
+	knowledgev1.OperationDocumentServiceDeleteDocument:    biz.PermKnowledgeDelete,
+	knowledgev1.OperationDocumentServiceReindexDocument:   biz.PermKnowledgeUpdate,
+	// 模型目录（租户行与平台 super 写分码）
+	modelv1.OperationModelServiceGetModel:           biz.PermModelQuery,
+	modelv1.OperationModelServiceListModels:         biz.PermModelQuery,
+	modelv1.OperationModelServiceCreateModel:        biz.PermModelCreate,
+	modelv1.OperationModelServiceUpdateModel:        biz.PermModelUpdate,
+	modelv1.OperationModelServiceDeleteModel:        biz.PermModelDelete,
+	modelv1.OperationModelServiceCreateModelSuper:   biz.PermModelPlatformCreate,
+	modelv1.OperationModelServiceUpdateModelSuper:   biz.PermModelPlatformUpdate,
+	modelv1.OperationModelServiceDeleteModelSuper:   biz.PermModelPlatformDelete,
 }
 
 // PermissionMiddleware 是功能权限码判定中间件的注入类型。它与认证、链路

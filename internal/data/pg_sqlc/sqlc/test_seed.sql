@@ -31,14 +31,13 @@
 -- ======================================================================
 
 -- 历史库守卫：test_seed 复用固定主键，仅适用于全新建库。检测到旧演示/
--- 测试租户、平台租户旧字典或已播种日志时显式失败，避免
--- ON CONFLICT DO NOTHING 静默产生残缺行或跨租户孤儿数据。
+-- 测试租户或已播种测试日志时显式失败，避免 ON CONFLICT DO NOTHING 静默
+-- 产生残缺行或跨租户孤儿数据。生产种子 120_sys_dict.sql 会为根租户
+-- t-super-01 播种模型字典，属合法基线，不再作为历史库判据。
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM public.sys_tenant
                WHERE id IN ('t-test-01', 't-test-02', 't-demo-01', 't-dev-01', 't-stg-01'))
-       OR EXISTS (SELECT 1 FROM public.sys_dict_type WHERE tenant_id = 't-super-01')
-       OR EXISTS (SELECT 1 FROM public.sys_dict_data WHERE tenant_id = 't-super-01')
        OR EXISTS (SELECT 1 FROM public.sys_login_log WHERE tenant_id = 't-test-01') THEN
         RAISE EXCEPTION 'test_seed.sql requires a fresh database; rebuild it before applying test seed';
     END IF;

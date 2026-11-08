@@ -166,8 +166,7 @@ func Test_new_http_server_rejects_enabled_cors_without_origins(t *testing.T) {
 		nil,
 		nil,
 		// 租户管理服务本文件用例不触达，传 nil。
-		nil,
-	)
+		nil, nil, nil, )
 	if err == nil || !strings.Contains(err.Error(), "allowed_origins") {
 		t.Fatalf("enabled cors without origins must fail with origins error, got %v", err)
 	}
@@ -234,8 +233,7 @@ func newCorsTestServer(t *testing.T, confServer *conf.Server) *agentTestServer {
 		nil,
 		nil,
 		// 租户管理服务本文件用例不触达，传 nil。
-		nil,
-	)
+		nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

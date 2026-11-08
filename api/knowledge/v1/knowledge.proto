@@ -1,0 +1,286 @@
+syntax = "proto3";
+
+package knowledge.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/knowledge/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.knowledge.v1";
+option java_outer_classname = "KnowledgeProto";
+
+// LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
+// 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
+// 全局默认嵌入模型；chunk_size/chunk_overlap 决定条目切分参数。
+// 列表走动态查询协议。
+service LibraryService {
+  // CreateLibrary 创建知识库。
+  rpc CreateLibrary (CreateLibraryRequest) returns (Library) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/libraries/create"
+      body: "*"
+    };
+  }
+
+  // GetLibrary 按 id 查询知识库。
+  rpc GetLibrary (GetLibraryRequest) returns (Library) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/libraries/{id}"
+    };
+  }
+
+  // ListLibraries 按动态查询协议返回一页知识库。
+  rpc ListLibraries (ListLibrariesRequest) returns (LibrarySet) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/libraries/list"
+      body: "query"
+    };
+  }
+
+  // UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
+  // chunk_size/chunk_overlap/有效期限）。
+  rpc UpdateLibrary (UpdateLibraryRequest) returns (Library) {
+    option (google.api.http) = {
+      put: "/v1/knowledge/libraries/update"
+      body: "library"
+    };
+  }
+
+  // DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+  rpc DeleteLibrary (DeleteLibraryRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/knowledge/libraries/{id}"
+    };
+  }
+
+  // ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
+  // 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
+  rpc ListModelOptions (ListModelOptionsRequest) returns (ModelOptionSet) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/model-options"
+    };
+  }
+}
+
+// DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
+// 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
+// 自动删除。
+service DocumentService {
+  // CreateDocument 创建文本条目并摄取到向量存储。
+  rpc CreateDocument (CreateDocumentRequest) returns (Document) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/create"
+      body: "*"
+    };
+  }
+
+  // GetDocument 按 id 查询条目（含正文）。
+  rpc GetDocument (GetDocumentRequest) returns (Document) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{id}"
+    };
+  }
+
+  // ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+  rpc ListDocuments (ListDocumentsRequest) returns (DocumentSet) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/list"
+      body: "query"
+    };
+  }
+
+  // ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
+  // 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+  rpc ListLibraryDocuments (ListLibraryDocumentsRequest) returns (DocumentSet) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/libraries/{id}/documents"
+    };
+  }
+
+  // UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
+  // 有效期限）；正文变更时重新摄取。
+  rpc UpdateDocument (UpdateDocumentRequest) returns (Document) {
+    option (google.api.http) = {
+      put: "/v1/knowledge/documents/update"
+      body: "document"
+    };
+  }
+
+  // DeleteDocument 软删除条目并清理其 chunk。
+  rpc DeleteDocument (DeleteDocumentRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/knowledge/documents/{id}"
+    };
+  }
+
+  // ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
+  rpc ReindexDocument (ReindexDocumentRequest) returns (Document) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/{id}/reindex"
+      body: "*"
+    };
+  }
+}
+
+// Library 是知识库的规范表示。审计列与时间戳只读。
+message Library {
+  int64 id = 1;
+  // 数据状态：0 禁用、1 启用。创建可省略（缺省启用）；更新必填。
+  optional int32 status = 2;
+  // 知识库名（租户内未删除行间唯一）。
+  string name = 3;
+  // 备注。
+  optional string remark = 4;
+  // 嵌入模型键；为空跟随租户/全局默认。
+  optional string embedding_model_key = 5;
+  // 切分单块 rune 上限，缺省 800。
+  int32 chunk_size = 6;
+  // 相邻块重叠 rune 数，缺省 100。
+  int32 chunk_overlap = 7;
+  // 生效时间，空表示立即生效。
+  google.protobuf.Timestamp valid_from = 8;
+  // 失效时间，空表示长期有效。
+  google.protobuf.Timestamp valid_to = 9;
+  int64 created_by = 10;
+  int64 updated_by = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+  google.protobuf.Timestamp deleted_at = 14;
+}
+
+// LibrarySet 是 ListLibraries 的分页集合。
+message LibrarySet {
+  repeated Library items = 1;
+  optional int64 total = 2;
+  bool has_more = 3;
+  string next_cursor = 4;
+  int32 page = 5;
+}
+
+// Document 是知识条目的规范表示。列表响应不填充 content。
+message Document {
+  int64 id = 1;
+  // 所属知识库 ID。创建后不可变。
+  int64 library_id = 2;
+  // 条目类型：text（本期）/file（预留，创建接口拒绝）。
+  string kind = 3;
+  // 条目标题。
+  string title = 4;
+  // 条目正文（text 必填非空白；列表响应中省略）。
+  optional string content = 5;
+  // 来源名，缺省取标题。
+  optional string source_name = 6;
+  // 数据状态：0 禁用、1 启用。创建可省略（缺省启用）；更新必填。
+  optional int32 status = 7;
+  // 生效时间，空表示立即生效。
+  google.protobuf.Timestamp valid_from = 8;
+  // 失效时间，空表示长期有效。
+  google.protobuf.Timestamp valid_to = 9;
+  // 最近一次成功摄取时间。只读。
+  google.protobuf.Timestamp indexed_at = 10;
+  // 最近一次成功摄取的空间键。只读。
+  optional string indexed_embedder = 11;
+  int64 created_by = 12;
+  int64 updated_by = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+  google.protobuf.Timestamp deleted_at = 16;
+}
+
+// DocumentSet 是条目列表的分页集合。
+message DocumentSet {
+  repeated Document items = 1;
+  optional int64 total = 2;
+  bool has_more = 3;
+  string next_cursor = 4;
+  int32 page = 5;
+}
+
+// ModelOption 是模型下拉选项（只含展示与维度事实，不含密钥）。
+message ModelOption {
+  string model_key = 1;
+  string name = 2;
+  string kind = 3;
+  int32 dimension = 4;
+  bool platform = 5;
+}
+
+// ModelOptionSet 是模型选项集合。
+message ModelOptionSet {
+  repeated ModelOption items = 1;
+}
+
+// CreateLibraryRequest 是 LibraryService.CreateLibrary 的输入。
+message CreateLibraryRequest {
+  Library library = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetLibraryRequest 是 LibraryService.GetLibrary 的输入。
+message GetLibraryRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListLibrariesRequest 是 LibraryService.ListLibraries 的输入。
+message ListLibrariesRequest {
+  query.v1.Query query = 1;
+}
+
+// UpdateLibraryRequest 是 LibraryService.UpdateLibrary 的输入。
+message UpdateLibraryRequest {
+  Library library = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteLibraryRequest 是 LibraryService.DeleteLibrary 的输入。
+message DeleteLibraryRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListModelOptionsRequest 是 LibraryService.ListModelOptions 的输入。
+message ListModelOptionsRequest {
+  // 模型类别：text / embedding；空值返回全部。
+  optional string kind = 1;
+}
+
+// CreateDocumentRequest 是 DocumentService.CreateDocument 的输入。
+message CreateDocumentRequest {
+  Document document = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// GetDocumentRequest 是 DocumentService.GetDocument 的输入。
+message GetDocumentRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListDocumentsRequest 是 DocumentService.ListDocuments 的输入。
+message ListDocumentsRequest {
+  query.v1.Query query = 1;
+}
+
+// ListLibraryDocumentsRequest 是 ListLibraryDocuments 的输入。
+message ListLibraryDocumentsRequest {
+  // 宿主知识库的标识。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 页码，缺省 1。
+  int32 page = 2;
+  // 每页条数，缺省 20，上限 200。
+  int32 page_size = 3;
+}
+
+// UpdateDocumentRequest 是 DocumentService.UpdateDocument 的输入。
+message UpdateDocumentRequest {
+  Document document = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DeleteDocumentRequest 是 DocumentService.DeleteDocument 的输入。
+message DeleteDocumentRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ReindexDocumentRequest 是 DocumentService.ReindexDocument 的输入。
+message ReindexDocumentRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

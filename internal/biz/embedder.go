@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 )
 
 // embedding 设施的错误语义：
@@ -35,15 +36,32 @@ type Embedder interface {
 	Dimension(embedder string) (int, error)
 }
 
-// EmbedderResolver 解析默认嵌入空间：租户配置优先，未配置回落全局 conf；
-// 请求侧显式指定由调用方在解析之上叠加。默认空间决定摄取与默认检索落点，
-// 切换默认不迁移存量，重摄取（source_id 幂等覆盖）即迁移路径。
-// 实现在 data 层；未启用返回 ErrEmbedderDisabled，租户配置指向未声明
-// 空间返回 ErrEmbedderUnknown（不静默回落）。
+// EmbeddingSpace 是解析后的嵌入空间端点事实：模型目录（sys_model）的
+// 租户/平台行或 conf.vector.embedders 的兼容条目都可解析为同一形状。
+// Dimension 必须等于该空间实际产出维度（本期固定 1024），APIKey 已解密。
+type EmbeddingSpace struct {
+	Key       string
+	Provider  string
+	BaseURL   string
+	Model     string
+	APIKey    string
+	Dimension int
+	Timeout   time.Duration
+}
+
+// EmbedderResolver 解析嵌入空间：默认空间（租户配置优先，未配置回落
+// 全局配置/conf）与按空间键解析端点。请求侧显式指定由调用方在解析之上
+// 叠加。默认空间决定摄取与默认检索落点，切换默认不迁移存量，重摄取
+// （source_id 幂等覆盖）即迁移路径。
+// 实现在 data 层；未启用返回 ErrEmbedderDisabled，未知或停用的空间返回
+// ErrEmbedderUnknown（不静默回落——静默换空间会让摄取与检索悄悄失配）。
 type EmbedderResolver interface {
 	// ResolveDefaultEmbedder 返回当前身份的默认空间键与维度，身份与
 	// 维度成对出现；身份缺失 fail-closed（实现从认证 ctx 提取）。
 	ResolveDefaultEmbedder(ctx context.Context) (embedder string, dimension int, err error)
+	// ResolveEmbeddingSpace 按空间键解析端点与维度。既有租户行/平台行，
+	// 也有 conf.vector.embedders 兼容条目；停用、软删与未知键一律报错。
+	ResolveEmbeddingSpace(ctx context.Context, key string) (EmbeddingSpace, error)
 }
 
 // 嵌入空间的 ctx 事实载体：检索工具在执行现场解析出默认空间后经 ctx

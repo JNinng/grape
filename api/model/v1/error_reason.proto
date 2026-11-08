@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package model.v1;
+
+option go_package = "grape/api/model/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.model.v1";
+option objc_class_prefix = "APIModelV1";
+
+// ErrorReason 是模型目录域的错误原因枚举。
+enum ErrorReason {
+  // 缺省值，不使用。
+  MODEL_UNSPECIFIED = 0;
+  // 目标模型不存在（含跨租户不可见与平台行对租户不可写）。
+  MODEL_NOT_FOUND = 1;
+  // 模型请求参数非法（类别未知、键不合法、嵌入维度非 1024 等）。
+  MODEL_INVALID_ARGUMENT = 2;
+  // 唯一约束冲突（租户/平台内未删除行间 model_key 已被占用）。
+  MODEL_ALREADY_EXISTS = 3;
+  // 模型密钥不可用（主密钥缺失或密文损坏）。
+  MODEL_SECRET_UNAVAILABLE = 4;
+}

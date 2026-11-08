@@ -77,6 +77,21 @@ export const PERM = {
   TenantCreate: 'sys:tenant:create',
   TenantUpdate: 'sys:tenant:update',
   TenantDelete: 'sys:tenant:delete',
+
+  KnowledgePage: 'sys:knowledge',
+  KnowledgeQuery: 'sys:knowledge:query',
+  KnowledgeCreate: 'sys:knowledge:create',
+  KnowledgeUpdate: 'sys:knowledge:update',
+  KnowledgeDelete: 'sys:knowledge:delete',
+
+  ModelPage: 'sys:model',
+  ModelQuery: 'sys:model:query',
+  ModelCreate: 'sys:model:create',
+  ModelUpdate: 'sys:model:update',
+  ModelDelete: 'sys:model:delete',
+  ModelPlatformCreate: 'sys:model:platform:create',
+  ModelPlatformUpdate: 'sys:model:platform:update',
+  ModelPlatformDelete: 'sys:model:platform:delete',
 } as const
 
 export type PermissionCode = (typeof PERM)[keyof typeof PERM]

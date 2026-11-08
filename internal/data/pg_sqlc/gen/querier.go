@@ -55,6 +55,10 @@ type Querier interface {
 	CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRetrievalLogsParams) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
 	CountAgentToolCallLogs(ctx context.Context, sessionID *string) (int64, error)
+	// 统计库下未删除条目数（库删除前置校验：>0 拒绝软删）
+	CountKbDocumentsByLibrary(ctx context.Context, libraryID int64) (int64, error)
+	// 与 ListKbDocumentsByLibrary 同条件计数
+	CountKbDocumentsByLibraryList(ctx context.Context, libraryID int64) (int64, error)
 	// 统计给定角色中携带指定权限码的有效角色数（角色/菜单均活跃未删，与
 	// fn_has_permission 的活跃联结同口径）；供自锁保护判定最终集合是否仍
 	// 至少保留一个能授予分配权限的角色
@@ -118,6 +122,17 @@ type Querier interface {
 	GetAgentToolGrantByID(ctx context.Context, arg GetAgentToolGrantByIDParams) (AgentToolGrant, error)
 	// 按 id 锁定并读取一行 basic（FOR UPDATE）
 	GetBasicForUpdate(ctx context.Context, id int64) (Basic, error)
+	// 知识条目固定 CRUD（kb_document）。条目是租户内资源：表无 @scope，
+	// 租户边界由 RLS 承担；动态查询能力由 schema/91_knowledge.sql 的列注释
+	// DSL 声明。库内条目列表走固定 offset 分页（宿主 id 在路径参数，规避
+	// 动态协议整型过滤值的 JSON number 精度限制）。
+	// 按 id 读取未软删条目（租户边界由 RLS 承担）
+	GetKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
+	// 知识库固定 CRUD（kb_library）。知识库是租户内资源：表无 @scope，
+	// 租户边界由 RLS 承担；动态查询能力由 schema/91_knowledge.sql 的列注释
+	// DSL 声明（ParseKbLibraryQuery 等为生成物）。本文件只写固定命名查询。
+	// 按 id 读取未软删知识库（租户边界由 RLS 承担）
+	GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error)
 	// 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验）
 	GetMyPasswordHash(ctx context.Context, id int64) (string, error)
 	// 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
@@ -143,6 +158,9 @@ type Querier interface {
 	// 按 id 读取未软删的全局配置（sys_config 不设 RLS：全局表，读取本身即
 	// 全局口径）
 	GetSysConfigByID(ctx context.Context, id int64) (SysConfig, error)
+	// 按配置键读取启用的全局配置值（模型解析与默认空间解析用；sys_config
+	// 无租户列、无 RLS，键未删除行间唯一）
+	GetSysConfigValueByKey(ctx context.Context, configKey string) (*string, error)
 	// 按 id 读取未软删的部门（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysDeptByID(ctx context.Context, id int64) (SysDept, error)
 	// 按 id 读取未软删的字典数据（租户边界由 RLS 承担；表无 @scope，租户内全可见）
@@ -186,6 +204,19 @@ type Querier interface {
 	// 生成物），树查询走本文件的专用列表（菜单树全量装配，不做分页）。
 	// 按 id 读取未软删的菜单（租户边界由 RLS 承担；表无 @scope，租户内全可见）
 	GetSysMenuByID(ctx context.Context, id int64) (SysMenu, error)
+	// 按 id 读取未软删模型（本租户行或平台行；详情/内部回读用）
+	GetSysModelByID(ctx context.Context, id int64) (SysModel, error)
+	// 模型目录固定 CRUD（sys_model）。单表双态：tenant_id='' 为平台行（所有
+	// 租户可读），非空为租户行并覆盖同 model_key 平台行。读面走 RLS
+	// 「本租户行 + 平台行」；租户行走普通 DML，平台行经受控 SECURITY DEFINER
+	// 函数（98_model_write.sql）写入。api_key_cipher 只写不读：固定查询返回
+	// 整行仅供解析与内部回读，动态投影与服务响应不暴露该列。
+	// 按 model_key 读取本租户模型行（解析顺序第一级；状态由调用方判定，
+	// 停用行命中后 fail-closed，不回落到平台行）
+	GetSysModelForTenantByKey(ctx context.Context, modelKey string) (SysModel, error)
+	// 按 model_key 读取平台模型行（解析顺序第二级；RLS 读策略放行平台行；
+	// 状态由调用方判定，停用行命中后 fail-closed）
+	GetSysModelPlatformByKey(ctx context.Context, modelKey string) (SysModel, error)
 	// 按 id 读取单条操作日志（含操作前后数据快照；租户边界由 RLS 承担）
 	GetSysOperationLogByID(ctx context.Context, id int64) (SysOperationLog, error)
 	// 角色固定 CRUD（sys_role）与数据范围明细、分发部门、角色-菜单映射的
@@ -227,6 +258,8 @@ type Querier interface {
 	// 按 id 读取未软删的租户配置（租户边界由 RLS 承担；表无 @scope，租户内
 	// 全可见）
 	GetSysTenantConfigByID(ctx context.Context, id int64) (SysTenantConfig, error)
+	// 按配置键读取启用的租户配置值（租户覆盖优先；租户边界由 RLS 承担）
+	GetSysTenantConfigValueByKey(ctx context.Context, configKey string) (*string, error)
 	// 按 id 读取未软删的翻译（租户边界由 RLS 承担；表无 @scope，租户内全
 	// 可见）
 	GetSysTranslationByID(ctx context.Context, id int64) (SysTranslation, error)
@@ -275,6 +308,11 @@ type Querier interface {
 	// 许可已存在时幂等跳过（部分唯一索引 agent_tool_grant_active_un，
 	// ON CONFLICT 不带目标以覆盖表达式部分索引），返回实际写入行数
 	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
+	// 插入知识条目；租户取会话 app.tenant_id
+	InsertKbDocument(ctx context.Context, arg InsertKbDocumentParams) (KbDocument, error)
+	// 插入知识库记录；租户取会话 app.tenant_id，租户内未删除库间 name 唯一
+	// 冲突映射 AlreadyExists
+	InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams) (KbLibrary, error)
 	// 新建全局配置：调用受控写函数 fn_config_create（SECURITY DEFINER 固定
 	// 口径：函数内校验认证事务纪律并落审计列）；运行角色无 sys_config 直写
 	// 权限，本调用是唯一写路径
@@ -299,6 +337,12 @@ type Querier interface {
 	// 函数内以 app.tenant_id 复位租户边界并校验父节点）；租户不取请求值，
 	// 由函数内会话变量落值
 	InsertSysMenu(ctx context.Context, arg InsertSysMenuParams) (SysMenu, error)
+	// 新建平台模型行：调用受控写函数 fn_model_platform_create（tenant_id 固定
+	// 空串，函数内校验认证事务纪律）
+	InsertSysModelPlatform(ctx context.Context, arg InsertSysModelPlatformParams) (SysModel, error)
+	// 插入租户模型行；租户取会话 app.tenant_id，租户内未删除行间 model_key
+	// 唯一冲突映射 AlreadyExists
+	InsertSysModelTenant(ctx context.Context, arg InsertSysModelTenantParams) (SysModel, error)
 	// 追加一条操作日志。快照列可空（写入方未采集即 NULL）；operated_at/
 	// created_at 走库默认值。
 	InsertSysOperationLog(ctx context.Context, arg InsertSysOperationLogParams) error
@@ -347,6 +391,9 @@ type Querier interface {
 	// page_size+1 以判定 has_more。「尚未拥有」只按活跃映射排除，已撤销的
 	// 软删历史行不排除（重复授予由部分唯一索引与 ON CONFLICT 兜底）
 	ListAssignableRoleOptions(ctx context.Context, arg ListAssignableRoleOptionsParams) ([]ListAssignableRoleOptionsRow, error)
+	// 分页列出指定库下的未删除条目（管理面子列表：固定 offset 分页，
+	// updated_at 倒序、同秒 id 倒序稳定排序）
+	ListKbDocumentsByLibrary(ctx context.Context, arg ListKbDocumentsByLibraryParams) ([]KbDocument, error)
 	// 归属部门候选：fn_accessible_dept_ids 三态过滤，只返回活跃且未删除的
 	// 部门；关键字匹配 name，label 取 name
 	ListOwnerDeptOptions(ctx context.Context, arg ListOwnerDeptOptionsParams) ([]ListOwnerDeptOptionsRow, error)
@@ -364,6 +411,11 @@ type Querier interface {
 	// 读取租户内全部未软删菜单（菜单树装配与环检测的专用列表，租户规模内
 	// 全量返回；sort_order ASC、id ASC 稳定排序，与表注释 @default_sort 一致）
 	ListSysMenuAll(ctx context.Context) ([]SysMenu, error)
+	// 列出可见模型（本租户行 + 平台行，含停用/各类别；管理面固定列表，
+	// 按类别、model_key、平台行在后稳定排序）
+	ListSysModelAll(ctx context.Context, kind *string) ([]SysModel, error)
+	// 列出可见且启用的模型选项（同 model_key 租户行覆盖平台行，每键至多一行）
+	ListSysModelOptions(ctx context.Context, kind string) ([]SysModel, error)
 	// 读取角色的分发部门集合（仅活跃行，升序稳定排序）
 	ListSysRoleAllowedDepts(ctx context.Context, roleID int64) ([]int64, error)
 	// 读取角色的数据范围明细（type/data_id 对，仅活跃行，升序稳定排序）
@@ -381,6 +433,10 @@ type Querier interface {
 	// 读取用户的全部活跃角色映射（含停用/软删角色的残留映射；已撤销的
 	// 软删行排除），升序稳定排序；供当前集合与 locked 差集计算
 	ListUserRoleIDs(ctx context.Context, userID int64) ([]int64, error)
+	// 按 id 锁定未软删条目（更新/删除/重摄取路径先锁后写）
+	LockKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
+	// 按 id 锁定未软删知识库（更新/删除路径先锁后写）
+	LockKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error)
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
@@ -388,6 +444,8 @@ type Querier interface {
 	LockSysDictDataByID(ctx context.Context, id int64) (SysDictDatum, error)
 	// 按 id 锁定未软删的字典类型（FOR UPDATE，类型写路径与数据创建路径先锁后写）
 	LockSysDictTypeByID(ctx context.Context, id int64) (SysDictType, error)
+	// 按 id 锁定本租户模型行（租户写路径先锁后写；平台行不命中）
+	LockSysModelTenantByID(ctx context.Context, id int64) (SysModel, error)
 	// 按 id 锁定未软删的角色（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysRoleByID(ctx context.Context, id int64) (SysRole, error)
@@ -402,6 +460,9 @@ type Querier interface {
 	LockSysUserGroupByID(ctx context.Context, id int64) (SysUserGroup, error)
 	// 按 id 锁定数据范围内可操作的用户；permission_code 非空时同时校验功能权限，NULL 表示不校验
 	LockSysUserPermitted(ctx context.Context, arg LockSysUserPermittedParams) (SysUser, error)
+	// 记录最近一次成功摄取的时间与空间键（摄取完成后回写；不触发触发器之外的
+	// 副作用）
+	MarkKbDocumentIndexed(ctx context.Context, arg MarkKbDocumentIndexedParams) (KbDocument, error)
 	// 移动部门到新父级；parent_id 为 NULL 表示移为根部门。闭包路径由
 	// trg_maintain_dept_closure 在同事务内重写（父级合法性/防环由触发器
 	// 校验兜底，调用方已在用例层预检）
@@ -438,6 +499,10 @@ type Querier interface {
 	SetSysTenantStatus(ctx context.Context, arg SetSysTenantStatusParams) (SysTenant, error)
 	// 替换口令哈希
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
+	// 置位 deleted_at 软删除条目（chunk 清理由用例经向量存储完成）
+	SoftDeleteKbDocument(ctx context.Context, arg SoftDeleteKbDocumentParams) (int64, error)
+	// 置位 deleted_at 软删除知识库；活跃条目校验由调用方在同一事务内先行完成
+	SoftDeleteKbLibrary(ctx context.Context, arg SoftDeleteKbLibraryParams) (int64, error)
 	// 置位 deleted_at 软删除全局配置：调用受控写函数 fn_config_delete；
 	// 返回删除行数，0 即目标未命中（映射 NotFound）
 	SoftDeleteSysConfig(ctx context.Context, arg SoftDeleteSysConfigParams) (int64, error)
@@ -453,6 +518,11 @@ type Querier interface {
 	// 置位 deleted_at 软删除菜单：调用受控写函数 fn_menu_delete（存在未软删
 	// 直接子菜单时函数内拒绝）；返回删除行数，0 即目标未命中（映射 NotFound）
 	SoftDeleteSysMenu(ctx context.Context, arg SoftDeleteSysMenuParams) (int64, error)
+	// 软删除平台模型行：调用受控写函数 fn_model_platform_delete；返回删除行数，
+	// 0 即目标未命中（映射 NotFound）
+	SoftDeleteSysModelPlatform(ctx context.Context, arg SoftDeleteSysModelPlatformParams) (int64, error)
+	// 置位 deleted_at 软删除本租户模型行（平台行不命中）
+	SoftDeleteSysModelTenant(ctx context.Context, arg SoftDeleteSysModelTenantParams) (int64, error)
 	// 置位 deleted_at 软删除角色（明细/映射行物理残留，消费侧活跃过滤排除）；
 	// code/name 唯一约束限定未删除行间，软删后可复用
 	SoftDeleteSysRole(ctx context.Context, arg SoftDeleteSysRoleParams) (int64, error)
@@ -469,6 +539,15 @@ type Querier interface {
 	// 更新 basic 行的归属；归属参数为 NULL 表示清空该归属，
 	// updated_at 由触发器刷新
 	UpdateBasicOwner(ctx context.Context, arg UpdateBasicOwnerParams) error
+	// 更新可变字段（title/content/source_name/content_hash/status/valid_from/
+	// valid_to/indexed_at/indexed_embedder）；library_id 与 kind 创建后不变，
+	// updated_at 由触发器刷新
+	UpdateKbDocument(ctx context.Context, arg UpdateKbDocumentParams) (KbDocument, error)
+	// 更新条目的状态与有效期（不重嵌，只影响检索过滤与 chunk metadata 同步）
+	UpdateKbDocumentStatus(ctx context.Context, arg UpdateKbDocumentStatusParams) (KbDocument, error)
+	// 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
+	// chunk_overlap/valid_from/valid_to）；updated_at 由触发器刷新
+	UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error)
 	// 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
 	// 目标恒取 auth.UserID，不判行级归属
 	UpdateMyProfile(ctx context.Context, arg UpdateMyProfileParams) (SysUser, error)
@@ -497,6 +576,11 @@ type Querier interface {
 	// 返回 NULL 复合行，以 id IS NOT NULL 过滤成空集（映射 NotFound）；
 	// updated_at 由触发器刷新
 	UpdateSysMenu(ctx context.Context, arg UpdateSysMenuParams) (SysMenu, error)
+	// 覆盖平台模型行可变字段：调用受控写函数 fn_model_platform_update；目标
+	// 未命中函数返回 NULL 复合行，以 id IS NOT NULL 过滤成空集（映射 NotFound）
+	UpdateSysModelPlatform(ctx context.Context, arg UpdateSysModelPlatformParams) (SysModel, error)
+	// 更新租户模型行可变字段（kind/model_key 是身份列，创建后不变）
+	UpdateSysModelTenant(ctx context.Context, arg UpdateSysModelTenantParams) (SysModel, error)
 	// 更新可变字段（name/status/remark；不含 code/role_type——身份列，与
 	// data_scope/scope_dept_id——数据范围配置走专项口径）；updated_at 由
 	// 触发器刷新

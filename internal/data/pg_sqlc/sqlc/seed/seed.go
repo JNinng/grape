@@ -23,4 +23,6 @@ var Files = []string{
 	"seed/080_sys_tenant_config.sql",
 	"seed/090_sys_feature_flag.sql",
 	"seed/100_sys_translation.sql",
+	"seed/110_sys_model.sql",
+	"seed/120_sys_dict.sql",
 }

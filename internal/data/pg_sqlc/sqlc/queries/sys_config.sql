@@ -160,3 +160,18 @@ UPDATE public.sys_translation
 SET deleted_at = CURRENT_TIMESTAMP, updated_by = sqlc.arg('updated_by')
 WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL;
+
+-- 按配置键读取启用的全局配置值（模型解析与默认空间解析用；sys_config
+-- 无租户列、无 RLS，键未删除行间唯一）
+-- name: GetSysConfigValueByKey :one
+SELECT value FROM public.sys_config
+WHERE config_key = sqlc.arg('config_key')
+  AND status = 1
+  AND deleted_at IS NULL;
+
+-- 按配置键读取启用的租户配置值（租户覆盖优先；租户边界由 RLS 承担）
+-- name: GetSysTenantConfigValueByKey :one
+SELECT value FROM public.sys_tenant_config
+WHERE config_key = sqlc.arg('config_key')
+  AND status = 1
+  AND deleted_at IS NULL;

@@ -181,8 +181,8 @@ func TestMenuRepo_list_all_scopes_to_current_tenant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list menus in t-super-01: %v", err)
 	}
-	if len(seeded) != 71 {
-		t.Fatalf("t-super-01 rows = %d, want 71 (seed menus 201-249, 252-273)", len(seeded))
+	if len(seeded) != 84 {
+		t.Fatalf("t-super-01 rows = %d, want 84 (seed menus 201-249, 252-286)", len(seeded))
 	}
 }
 

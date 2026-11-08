@@ -53,6 +53,13 @@ func (r *stubResolver) ResolveDefaultEmbedder(context.Context) (string, int, err
 	return r.space, r.dim, nil
 }
 
+func (r *stubResolver) ResolveEmbeddingSpace(context.Context, string) (EmbeddingSpace, error) {
+	if r.err != nil {
+		return EmbeddingSpace{}, r.err
+	}
+	return EmbeddingSpace{Key: r.space, Dimension: r.dim}, nil
+}
+
 // mockVectorStore 是管线单测的向量存储替身：记录调用序列与入参，行为
 // 可编程。
 type mockVectorStore struct {
@@ -88,6 +95,9 @@ func (*mockVectorStore) Search(context.Context, []float32, *VectorFilter) ([]*Sc
 	return nil, nil
 }
 func (*mockVectorStore) Count(context.Context, *VectorFilter) (int64, error) {
+	return 0, nil
+}
+func (*mockVectorStore) UpdateMetadata(context.Context, *VectorFilter, map[string]any) (int64, error) {
 	return 0, nil
 }
 func (*mockVectorStore) GetMetadata(context.Context, *VectorFilter) (map[string]map[string]any, error) {

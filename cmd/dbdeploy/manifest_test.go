@@ -75,7 +75,7 @@ func TestValidateDeployFiles_rejects_create_database_statement(t *testing.T) {
 	}
 }
 
-func TestDeployFiles_schema_order_numbers_are_consecutive(t *testing.T) {
+func TestDeployFiles_schema_order_numbers_are_ascending(t *testing.T) {
 	prev := 0
 	for _, name := range deploy.DeployFiles {
 		if !strings.HasPrefix(name, "schema/") {
@@ -87,8 +87,10 @@ func TestDeployFiles_schema_order_numbers_are_consecutive(t *testing.T) {
 		if err != nil {
 			t.Fatalf("schema file %s has no numeric order prefix", name)
 		}
-		if num != prev+10 {
-			t.Fatalf("schema order broke at %s: got %d, want %d", name, num, prev+10)
+		// 域文件按序号升序装载即可（10/20/.../90 为主序列，91/92 为后续
+		// 追加的知识库与模型域，95/97 为 agent 域）。
+		if num <= prev {
+			t.Fatalf("schema order broke at %s: got %d after %d", name, num, prev)
 		}
 		prev = num
 	}

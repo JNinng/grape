@@ -448,3 +448,83 @@ INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, men
                              created_at, updated_by, updated_at, deleted_at, tenant_id)
 VALUES (273, 1, '翻译删除', 'sys:config:translation:delete', 257, 3, 4, 1, '2026-11-04 10:00:00.000', 1,
         '2026-11-04 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 一级页面：知识库（id 274，路由 /settings/knowledge）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
+                             sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (274, 1, '知识库', 'sys:knowledge', NULL, 2, 'knowledge', '/settings/knowledge',
+        'pages/settings/KnowledgeManagePage.tsx', 6, 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL,
+        't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：知识库-查询（id 275，父 274）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (275, 1, '知识库查询', 'sys:knowledge:query', 274, 3, 1, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：知识库-创建（id 276，父 274）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (276, 1, '知识库创建', 'sys:knowledge:create', 274, 3, 2, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：知识库-更新（id 277，父 274；含条目编辑与重建索引）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (277, 1, '知识库更新', 'sys:knowledge:update', 274, 3, 3, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：知识库-删除（id 278，父 274）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (278, 1, '知识库删除', 'sys:knowledge:delete', 274, 3, 4, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 一级页面：模型管理（id 279，路由 /settings/models）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
+                             sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (279, 1, '模型管理', 'sys:model', NULL, 2, 'model', '/settings/models',
+        'pages/settings/ModelManagePage.tsx', 7, 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL,
+        't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-查询（id 280，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (280, 1, '模型查询', 'sys:model:query', 279, 3, 1, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-创建租户模型（id 281，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (281, 1, '模型创建', 'sys:model:create', 279, 3, 2, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-更新租户模型（id 282，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (282, 1, '模型更新', 'sys:model:update', 279, 3, 3, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-删除租户模型（id 283，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (283, 1, '模型删除', 'sys:model:delete', 279, 3, 4, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-平台模型创建（id 284，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (284, 1, '平台模型创建', 'sys:model:platform:create', 279, 3, 5, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-平台模型更新（id 285，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (285, 1, '平台模型更新', 'sys:model:platform:update', 279, 3, 6, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型管理-平台模型删除（id 286，父 279）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (286, 1, '平台模型删除', 'sys:model:platform:delete', 279, 3, 7, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;

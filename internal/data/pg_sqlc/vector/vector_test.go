@@ -431,8 +431,10 @@ func TestVectorStore_search_rejects_undeclared_space(t *testing.T) {
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
-	undeclared := &biz.VectorFilter{Embedder: "ghost-model@v1", Dimension: int(vectorDimension)}
-	if _, err := store.Search(ctx, unitVector(int(vectorDimension), 0), undeclared); err == nil ||
+	// 动态模型目录允许运行期出现 conf 之外的键，但维度必须已有表达式
+	// 索引；999 维没有索引，仍按未知空间拒绝。
+	undeclared := &biz.VectorFilter{Embedder: "ghost-model@v1", Dimension: 999}
+	if _, err := store.Search(ctx, unitVector(999, 0), undeclared); err == nil ||
 		!errors.Is(err, biz.ErrEmbedderUnknown) {
 		t.Fatalf("Search(undeclared space) = %v, want ErrEmbedderUnknown", err)
 	}

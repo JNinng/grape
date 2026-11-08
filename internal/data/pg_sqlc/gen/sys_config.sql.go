@@ -48,6 +48,22 @@ func (q *Queries) GetSysConfigByID(ctx context.Context, id int64) (SysConfig, er
 	return i, err
 }
 
+const getSysConfigValueByKey = `-- name: GetSysConfigValueByKey :one
+SELECT value FROM public.sys_config
+WHERE config_key = $1
+  AND status = 1
+  AND deleted_at IS NULL
+`
+
+// 按配置键读取启用的全局配置值（模型解析与默认空间解析用；sys_config
+// 无租户列、无 RLS，键未删除行间唯一）
+func (q *Queries) GetSysConfigValueByKey(ctx context.Context, configKey string) (*string, error) {
+	row := q.db.QueryRow(ctx, getSysConfigValueByKey, configKey)
+	var value *string
+	err := row.Scan(&value)
+	return value, err
+}
+
 const getSysFeatureFlagByID = `-- name: GetSysFeatureFlagByID :one
 
 SELECT id, status, name, flag_key, description, is_enabled, remark, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.sys_feature_flag
@@ -111,6 +127,21 @@ func (q *Queries) GetSysTenantConfigByID(ctx context.Context, id int64) (SysTena
 		&i.TenantID,
 	)
 	return i, err
+}
+
+const getSysTenantConfigValueByKey = `-- name: GetSysTenantConfigValueByKey :one
+SELECT value FROM public.sys_tenant_config
+WHERE config_key = $1
+  AND status = 1
+  AND deleted_at IS NULL
+`
+
+// 按配置键读取启用的租户配置值（租户覆盖优先；租户边界由 RLS 承担）
+func (q *Queries) GetSysTenantConfigValueByKey(ctx context.Context, configKey string) (*string, error) {
+	row := q.db.QueryRow(ctx, getSysTenantConfigValueByKey, configKey)
+	var value *string
+	err := row.Scan(&value)
+	return value, err
 }
 
 const getSysTranslationByID = `-- name: GetSysTranslationByID :one

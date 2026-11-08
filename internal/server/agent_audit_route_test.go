@@ -88,8 +88,7 @@ func newAgentAuditTestServer(t *testing.T) *kratoshttp.Server {
 		auditService,
 		// 检索留痕查询端点与静态托管本文件用例不触达，传 nil。
 		nil,
-		nil,
-	)
+		nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

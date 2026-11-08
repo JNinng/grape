@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package model.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "grape/api/model/v1;v1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.model.v1";
+option java_outer_classname = "ModelProto";
+
+// ModelService 管理模型目录（sys_model 单表双态）：tenant_id='' 为平台行
+// （所有租户可见、只读），非空为租户行并覆盖同 model_key 的平台行。
+// 租户行经普通端点维护；平台行只能经 super 端点维护（受控 SECURITY
+// DEFINER 函数写入，入口层另以 sys:model:platform:* 权限码把守）。
+//
+// 密钥纪律：apiKey 只写不读——接口响应只返回 hasApiKey，不返回密文或明文；
+// 更新时省略 apiKey 表示不变，clearApiKey=true 表示清除。嵌入模型本期
+// 只允许 1024 维。
+service ModelService {
+  // CreateModel 创建本租户模型行。
+  rpc CreateModel (CreateModelRequest) returns (Model) {
+    option (google.api.http) = {
+      post: "/v1/models/create"
+      body: "*"
+    };
+  }
+
+  // GetModel 按 id 查询模型（本租户行或平台行）。
+  rpc GetModel (GetModelRequest) returns (Model) {
+    option (google.api.http) = {
+      get: "/v1/models/{id}"
+    };
+  }
+
+  // ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
+  rpc ListModels (ListModelsRequest) returns (ModelSet) {
+    option (google.api.http) = {
+      get: "/v1/models"
+    };
+  }
+
+  // UpdateModel 覆盖本租户模型行的可变字段。
+  rpc UpdateModel (UpdateModelRequest) returns (Model) {
+    option (google.api.http) = {
+      put: "/v1/models/update"
+      body: "*"
+    };
+  }
+
+  // DeleteModel 软删除本租户模型行。
+  rpc DeleteModel (DeleteModelRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/models/{id}"
+    };
+  }
+
+  // CreateModelSuper 创建平台模型行（super 写面）。
+  rpc CreateModelSuper (CreateModelSuperRequest) returns (Model) {
+    option (google.api.http) = {
+      post: "/v1/models/platform/create"
+      body: "*"
+    };
+  }
+
+  // UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+  rpc UpdateModelSuper (UpdateModelSuperRequest) returns (Model) {
+    option (google.api.http) = {
+      put: "/v1/models/platform/update"
+      body: "*"
+    };
+  }
+
+  // DeleteModelSuper 软删除平台模型行（super 写面）。
+  rpc DeleteModelSuper (DeleteModelSuperRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/v1/models/platform/{id}"
+    };
+  }
+}
+
+// Model 是模型目录行的规范表示。审计列与时间戳只读；密钥不返回。
+message Model {
+  // 服务端生成的标识。只读。
+  int64 id = 1;
+  // 是否为平台行（tenant_id=''）。只读。
+  bool platform = 2;
+  // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
+  optional int32 status = 3;
+  // 模型类别：text / embedding。创建后不可变。
+  string kind = 4;
+  // 模型展示名。
+  string name = 5;
+  // 选择键与向量空间键，租户/平台内未删除行间唯一；创建后不可变。
+  string model_key = 6;
+  // provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等）。
+  string provider = 7;
+  // OpenAI 兼容端点根地址。
+  optional string base_url = 8;
+  // 发给 provider 的模型名。
+  string model = 9;
+  // 嵌入维度；kind=embedding 时本期必须为 1024。
+  optional int32 dimension = 10;
+  // 单次调用超时（毫秒）。
+  optional int32 timeout_ms = 11;
+  // 是否已配置密钥（密文或环境变量名）。只读。
+  bool has_api_key = 12;
+  // 密钥环境变量名。
+  optional string api_key_env = 13;
+  // 备注。
+  optional string remark = 14;
+  // 创建人。只读。
+  int64 created_by = 15;
+  // 更新人。只读。
+  int64 updated_by = 16;
+  // 创建时间。只读。
+  google.protobuf.Timestamp created_at = 17;
+  // 最近修改时间。只读。
+  google.protobuf.Timestamp updated_at = 18;
+  // 软删除标记时间。只读。
+  google.protobuf.Timestamp deleted_at = 19;
+}
+
+// ModelSet 是 ListModels 的固定集合（不分页）。
+message ModelSet {
+  repeated Model items = 1;
+}
+
+// CreateModelRequest 是 ModelService.CreateModel 的输入。
+message CreateModelRequest {
+  // 要创建的租户模型行。id/平台标记/审计列在输入中被忽略。
+  Model model = 1 [(google.api.field_behavior) = REQUIRED];
+  // API key 明文（只写不读）；为空表示不配置。
+  optional string api_key = 2;
+}
+
+// GetModelRequest 是 ModelService.GetModel 的输入。
+message GetModelRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListModelsRequest 是 ModelService.ListModels 的输入。
+message ListModelsRequest {
+  // 按类别过滤（text/embedding）；空值返回全部。
+  optional string kind = 1;
+}
+
+// UpdateModelRequest 是 ModelService.UpdateModel 的输入。
+message UpdateModelRequest {
+  // 携带新字段值的租户模型行。id 必填；kind/model_key 在输入中被忽略。
+  Model model = 1 [(google.api.field_behavior) = REQUIRED];
+  // 新 API key 明文；省略表示保持原密文不变。
+  optional string api_key = 2;
+  // 清除已存的密钥密文。
+  bool clear_api_key = 3;
+}
+
+// DeleteModelRequest 是 ModelService.DeleteModel 的输入。
+message DeleteModelRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// CreateModelSuperRequest 是 ModelService.CreateModelSuper 的输入。
+message CreateModelSuperRequest {
+  Model model = 1 [(google.api.field_behavior) = REQUIRED];
+  optional string api_key = 2;
+}
+
+// UpdateModelSuperRequest 是 ModelService.UpdateModelSuper 的输入。
+message UpdateModelSuperRequest {
+  Model model = 1 [(google.api.field_behavior) = REQUIRED];
+  optional string api_key = 2;
+  bool clear_api_key = 3;
+}
+
+// DeleteModelSuperRequest 是 ModelService.DeleteModelSuper 的输入。
+message DeleteModelSuperRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}

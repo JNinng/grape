@@ -35,10 +35,11 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | [stack.go](stack.go) | 骨架装配链（模型 → 工具 → ack 网关 → LLMAgent → runner → AG-UI → ServeMux）与 `Stack` 访问器；`Close` 只释放 runner。 |
 | [gateway.go](gateway.go) | ack 网关构造：静态分级表、模型面拒绝文案、userKey 取值与许可源接线。 |
 | [llm.go](llm.go) | 模型链构造：OpenAI 兼容候选，failover / hedge / logging 包装与日志脱敏。 |
+| [textmodel.go](textmodel.go) | 按租户解析的文本模型：每次运行前经模型目录取 spec、按可变字段缓存整条链并以 `agent.WithModel` 覆盖本次运行。 |
 | [concurrency.go](concurrency.go) | 按 userKey 的 chat 在途运行门控（超限 429），并向观测推送起止与拒绝。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：骨架、框架会话存储（预建表、TTL 翻译）、向量适配器。 |
 | [identity/](identity/) | userKey 编解码、`UserKeyFromContext`、`ErrMissingIdentity`；身份的单一代码点。 |
-| [tools/](tools/) | 业务工具（echo / 用户 / 检索）、检索 ctx 事实接线、biz 向量契约的框架适配器（top_k 20 硬上限）。 |
+| [tools/](tools/) | 业务工具（echo / 用户 / 检索）、检索 ctx 事实接线（嵌入空间 + 固定检索条件）、biz 向量契约的框架适配器（top_k 20 硬上限）。 |
 | [audit/](audit/) | 审计挂点 `Hook`、工具终态 wrapper、恢复路径代执行归集器、自动授权终态转写器、共用写入纪律 `WriteAudit`。 |
 | [httpapi/](httpapi/) | 会话列表、事件窗口、授权管理、许可源适配器，以及 ack 归属守卫与决定审计拦截器。 |
 | [internal/testsupport/](internal/testsupport/) | 各包共享的替身与夹具；只允许 `_test.go` 导入，且不 import agent 树的生产包（否则成环）。 |
@@ -100,6 +101,12 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   主模型）；各段 `enabled=false` 时不包装，全关即裸 provider。
 - 全部候选失败以框架聚合错误上抛。框架 model 层无内建重试，跨 provider
   的 failover 即本层重试维度，不另造重试包装。
+- 运行期租户覆盖：[textmodel.go](textmodel.go) 包装 ack 的
+  `RunOptionResolver`，保留许可策略后按 `biz.TextModelCatalog` 解析本次
+  运行的文本模型并追加 `agent.WithModel`。模型实例缓存键包含
+  provider/base_url/model/api_key/timeout；租户只换模型，failover/hedge/
+  logging 仍从全局 conf 克隆。身份缺失、模型停用/未知、密钥不可用一律
+  拒绝本次运行（fail-closed），不回落静态默认模型。
 
 ### 审计与观测
 
@@ -120,7 +127,11 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | `get_current_user` | allow | `UserUsecase.GetUser` | 无入参 |
 | `find_users_by_name` | allow | `UserUsecase.ListUsers`（contains 模糊 + 分页） | name ≤64；limit 1–20（缺省 10） |
 | `update_my_nickname` | confirm | `UserUsecase.UpdateNickname`（只改自己） | nickname ≤256 |
-| `search_internal_docs` | 未列入表（默认 allow） | resolver → embedder → 向量适配器 Search | query ≤512；top_k 缺省 5，上限 20 由适配器钳制 |
+| `search_internal_docs` | 未列入表（默认 allow） | resolver → embedder → 向量适配器 Search | query ≤512；top_k 缺省 5，上限 20 由适配器钳制；library_id 可选（0=全部库） |
+
+检索固定追加 `doc_status=1`、`valid_from_unix <= now`、`valid_to_unix > now`
+与可选 `kb_id` 条件（经 ctx 中性载体传给适配器，见
+[tools/tool_search.go](tools/tool_search.go)）。
 
 分级表静态声明在 [gateway.go](gateway.go)，未做 conf 化。未列入分级表的
 工具走 ack 默认 allow；新增写路径必须显式进 confirm，工具落 tools 包与

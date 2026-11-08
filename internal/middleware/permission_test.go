@@ -9,6 +9,8 @@ import (
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
+	knowledgev1 "grape/api/knowledge/v1"
+	modelv1 "grape/api/model/v1"
 	orgv1 "grape/api/org/v1"
 	permv1 "grape/api/perm/v1"
 	tenantv1 "grape/api/tenant/v1"
@@ -366,6 +368,29 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		auditv1.OperationAuditServiceGetOperationLog:      {},
 		auditv1.OperationSessionAdminServiceListSessions:  {},
 		auditv1.OperationSessionAdminServiceRevokeSession: {},
+		// 知识库与条目
+		knowledgev1.OperationLibraryServiceGetLibrary:            {},
+		knowledgev1.OperationLibraryServiceListLibraries:         {},
+		knowledgev1.OperationLibraryServiceListModelOptions:      {},
+		knowledgev1.OperationLibraryServiceCreateLibrary:         {},
+		knowledgev1.OperationLibraryServiceUpdateLibrary:         {},
+		knowledgev1.OperationLibraryServiceDeleteLibrary:         {},
+		knowledgev1.OperationDocumentServiceGetDocument:          {},
+		knowledgev1.OperationDocumentServiceListDocuments:        {},
+		knowledgev1.OperationDocumentServiceListLibraryDocuments: {},
+		knowledgev1.OperationDocumentServiceCreateDocument:       {},
+		knowledgev1.OperationDocumentServiceUpdateDocument:       {},
+		knowledgev1.OperationDocumentServiceDeleteDocument:       {},
+		knowledgev1.OperationDocumentServiceReindexDocument:      {},
+		// 模型目录
+		modelv1.OperationModelServiceGetModel:         {},
+		modelv1.OperationModelServiceListModels:       {},
+		modelv1.OperationModelServiceCreateModel:      {},
+		modelv1.OperationModelServiceUpdateModel:      {},
+		modelv1.OperationModelServiceDeleteModel:      {},
+		modelv1.OperationModelServiceCreateModelSuper: {},
+		modelv1.OperationModelServiceUpdateModelSuper: {},
+		modelv1.OperationModelServiceDeleteModelSuper: {},
 	}
 	for op := range covered {
 		code, ok := operationPermissionCodes[op]

@@ -161,6 +161,9 @@ func TestQuerySchemaRegistryIncludesAllDynamicListResources(t *testing.T) {
 		"sys_translation",
 		"sys_user",
 		"sys_user_group",
+		"sys_model",
+		"kb_library",
+		"kb_document",
 	}
 	for _, resource := range want {
 		if _, ok := querySchemaRegistry[resource]; !ok {

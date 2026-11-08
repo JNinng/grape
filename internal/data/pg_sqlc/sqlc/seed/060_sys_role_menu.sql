@@ -149,3 +149,31 @@ INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (101, 272, 't-super-01', 1) ON CONFLICT DO NOTHING;
 INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (101, 273, 't-super-01', 1) ON CONFLICT DO NOTHING;
+
+-- 知识库（274-278）与模型管理（279-286）：超级管理员授予全部页面与按钮权限点。
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 274, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 275, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 276, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 277, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 278, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 279, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 280, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 281, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 282, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 283, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 284, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 285, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 286, 't-super-01', 1) ON CONFLICT DO NOTHING;

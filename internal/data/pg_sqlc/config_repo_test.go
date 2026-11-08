@@ -28,6 +28,10 @@ func resolverTestConf() *conf.Vector {
 	}
 }
 
+// seededGlobalEmbedder 是生产种子 070_sys_config.sql 的 ai.embedding.model
+// 值（平台 sys_model 行同名键）：租户未配置时的全局配置默认。
+const seededGlobalEmbedder = "qwen3-embedding:0.6b"
+
 // seedTenantEmbedder 写入（或清除）租户的 vector.embedder 配置行：经
 // IdentityTx 落库（RLS FORCE 下与生产写入同路径）。
 func seedTenantEmbedder(t *testing.T, d *Data, tenantID, value string) {
@@ -65,8 +69,8 @@ func TestEmbedderResolver_tenant_config_overrides_global_default(t *testing.T) {
 
 	// 未配置：回落全局默认。
 	space, dim, err := resolver.ResolveDefaultEmbedder(ctx)
-	if err != nil || space != "bge-m3@v1" || dim != 1024 {
-		t.Fatalf("resolve without tenant config = (%s, %d, %v), want (bge-m3@v1, 1024, nil)", space, dim, err)
+	if err != nil || space != seededGlobalEmbedder || dim != 1024 {
+		t.Fatalf("resolve without tenant config = (%s, %d, %v), want (%s, 1024, nil)", space, dim, err, seededGlobalEmbedder)
 	}
 
 	// 租户配置声明 v2：覆盖全局默认，身份与维度成对返回。
@@ -79,8 +83,8 @@ func TestEmbedderResolver_tenant_config_overrides_global_default(t *testing.T) {
 	// 其他租户不受该租户配置影响（RLS 隔离）。
 	other := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-reslv-b", UserID: 2})
 	space, _, err = resolver.ResolveDefaultEmbedder(other)
-	if err != nil || space != "bge-m3@v1" {
-		t.Fatalf("resolve for other tenant = (%s, %v), want global default", space, err)
+	if err != nil || space != seededGlobalEmbedder {
+		t.Fatalf("resolve for other tenant = (%s, %v), want global default %s", space, err, seededGlobalEmbedder)
 	}
 }
 
@@ -103,8 +107,8 @@ func TestEmbedderResolver_unknown_tenant_value_rejected_without_fallback(t *test
 	// 清除配置后恢复全局默认（空白值与缺失行同口径：未配置）。
 	seedTenantEmbedder(t, d, "t-reslv-c", "")
 	space, _, err := resolver.ResolveDefaultEmbedder(ctx)
-	if err != nil || space != "bge-m3@v1" {
-		t.Fatalf("resolve after clearing config = (%s, %v), want global default", space, err)
+	if err != nil || space != seededGlobalEmbedder {
+		t.Fatalf("resolve after clearing config = (%s, %v), want global default %s", space, err, seededGlobalEmbedder)
 	}
 }
 
@@ -172,14 +176,14 @@ func TestEmbedderResolver_disabled_or_deleted_config_rows_fall_back_to_global(t 
 
 	seedRawTenantEmbedder(t, d, "t-reslv-d", "bge-m3@v2", 0, false)
 	space, _, err := resolver.ResolveDefaultEmbedder(ctx)
-	if err != nil || space != "bge-m3@v1" {
-		t.Fatalf("resolve with disabled config row = (%s, %v), want global default", space, err)
+	if err != nil || space != seededGlobalEmbedder {
+		t.Fatalf("resolve with disabled config row = (%s, %v), want global default %s", space, err, seededGlobalEmbedder)
 	}
 
 	seedRawTenantEmbedder(t, d, "t-reslv-d", "bge-m3@v2", 1, true)
 	space, _, err = resolver.ResolveDefaultEmbedder(ctx)
-	if err != nil || space != "bge-m3@v1" {
-		t.Fatalf("resolve with soft-deleted config row = (%s, %v), want global default", space, err)
+	if err != nil || space != seededGlobalEmbedder {
+		t.Fatalf("resolve with soft-deleted config row = (%s, %v), want global default %s", space, err, seededGlobalEmbedder)
 	}
 }
 
@@ -209,7 +213,7 @@ func TestEmbedderResolver_tenant_config_update_via_repo_takes_effect(t *testing.
 	v2 := "bge-m3@v2"
 	created, err := repo.Create(context.Background(), auth, &biz.TenantConfig{
 		Status: biz.ConfigStatusEnabled, Name: "default embedder",
-		ConfigKey: embedderConfigKey, Value: &v2, ValueType: "string",
+		ConfigKey: biz.ConfigKeyEmbedderLegacy, Value: &v2, ValueType: "string",
 	})
 	if err != nil {
 		t.Fatalf("create embedder tenant config via repo: %v", err)

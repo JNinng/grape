@@ -271,7 +271,7 @@ const defaultRetrievalKeep = 512
 // 密钥类参数名。业务工具面扩张时由装配方按需替换（Register 覆盖）。
 var defaultToolParamKeys = []string{
 	"password", "passwd", "secret", "token", "access_token",
-	"refresh_token", "api_key", "apikey", "authorization",
+	"refresh_token", "api_key", "apikey", "api_key_cipher", "apikeycipher", "authorization",
 }
 
 // NewStandardRegistry 构造含四类骨架默认值的注册表：password/token 为
