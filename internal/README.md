@@ -135,8 +135,10 @@ Kratos 的服务中间件只在 handler 调用 `ctx.Middleware` 时套上：`srv
 
 诊断面是仓储之外的另一条依赖反转接缝（[biz/maintenance.go](biz/maintenance.go)）：
 biz 声明设施无关的 `FacilityDiagnostics` / `FacilityMaintenance`，data 各
-能力实现，ops 经 `/metrics` 出口、server 直挂，task 只消费契约。运行观测
-同型（[biz/metrics.go](biz/metrics.go)）：biz 声明 `AgentRunObserver`，agent
+能力实现，ops 经 `/metrics` 出口、server 直挂，task 只消费契约；PostgreSQL
+采集范围、指标清单与可见性边界见
+[diagnostics.md](data/pg_sqlc/diagnostics.md)。运行观测同型
+（[biz/metrics.go](biz/metrics.go)）：biz 声明 `AgentRunObserver`，agent
 推送事实，ops 的 `RuntimeMetrics` 实现并注册进同一出口。
 
 修改依赖关系后需重新运行 `make generate`（wire + tidy）刷新
