@@ -62,6 +62,9 @@ func (s *MenuService) CreateMenuSuper(ctx context.Context, req *permv1.CreateMen
 		return nil, err
 	}
 	in := req.GetMenu()
+	if in == nil {
+		return nil, biz.ErrMenuInvalidArgument
+	}
 	out, err := s.uc.CreateMenuSuper(ctx, auth, &biz.Menu{
 		Status:         normalizeMenuStatus(in.Status),
 		Name:           in.GetName(),
@@ -91,7 +94,7 @@ func (s *MenuService) UpdateMenuSuper(ctx context.Context, req *permv1.UpdateMen
 		return nil, err
 	}
 	in := req.GetMenu()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrMenuInvalidArgument
 	}
 	out, err := s.uc.UpdateMenuSuper(ctx, auth, &biz.Menu{

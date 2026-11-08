@@ -46,6 +46,9 @@ func (s *DeptService) CreateDept(ctx context.Context, req *orgv1.CreateDeptReque
 		return nil, err
 	}
 	in := req.GetDept()
+	if in == nil {
+		return nil, biz.ErrDeptInvalidArgument
+	}
 	out, err := s.uc.CreateDept(ctx, auth, &biz.Dept{
 		Status:           normalizeDeptStatus(in.Status),
 		Name:             in.GetName(),
@@ -108,7 +111,7 @@ func (s *DeptService) UpdateDept(ctx context.Context, req *orgv1.UpdateDeptReque
 		return nil, err
 	}
 	in := req.GetDept()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrDeptInvalidArgument
 	}
 	out, err := s.uc.UpdateDept(ctx, auth, &biz.Dept{

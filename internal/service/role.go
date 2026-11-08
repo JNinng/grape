@@ -32,6 +32,9 @@ func (s *RoleService) CreateRole(ctx context.Context, req *permv1.CreateRoleRequ
 		return nil, err
 	}
 	in := req.GetRole()
+	if in == nil {
+		return nil, biz.ErrRoleInvalidArgument
+	}
 	out, err := s.uc.CreateRole(ctx, auth, &biz.Role{
 		Status: normalizeRoleStatus(in.Status),
 		Name:   in.GetName(),
@@ -92,7 +95,7 @@ func (s *RoleService) UpdateRole(ctx context.Context, req *permv1.UpdateRoleRequ
 		return nil, err
 	}
 	in := req.GetRole()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrRoleInvalidArgument
 	}
 	out, err := s.uc.UpdateRole(ctx, auth, &biz.Role{

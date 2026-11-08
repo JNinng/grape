@@ -30,6 +30,9 @@ func (s *UserGroupService) CreateUserGroup(ctx context.Context, req *orgv1.Creat
 		return nil, err
 	}
 	in := req.GetGroup()
+	if in == nil {
+		return nil, biz.ErrUserGroupInvalidArgument
+	}
 	out, err := s.uc.CreateUserGroup(ctx, auth, &biz.UserGroup{
 		Status:      normalizeUserGroupStatus(in.Status),
 		Name:        in.GetName(),
@@ -92,7 +95,7 @@ func (s *UserGroupService) UpdateUserGroup(ctx context.Context, req *orgv1.Updat
 		return nil, err
 	}
 	in := req.GetGroup()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrUserGroupInvalidArgument
 	}
 	out, err := s.uc.UpdateUserGroup(ctx, auth, &biz.UserGroup{

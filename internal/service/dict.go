@@ -30,6 +30,9 @@ func (s *DictService) CreateDictType(ctx context.Context, req *dictv1.CreateDict
 		return nil, err
 	}
 	in := req.GetDictType()
+	if in == nil {
+		return nil, biz.ErrDictTypeInvalidArgument
+	}
 	out, err := s.uc.CreateDictType(ctx, auth, &biz.DictType{
 		Status: normalizeDictStatus(in.Status),
 		Name:   in.GetName(),
@@ -91,7 +94,7 @@ func (s *DictService) UpdateDictType(ctx context.Context, req *dictv1.UpdateDict
 		return nil, err
 	}
 	in := req.GetDictType()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrDictTypeInvalidArgument
 	}
 	out, err := s.uc.UpdateDictType(ctx, auth, &biz.DictType{
@@ -125,6 +128,9 @@ func (s *DictService) CreateDictData(ctx context.Context, req *dictv1.CreateDict
 		return nil, err
 	}
 	in := req.GetDictData()
+	if in == nil {
+		return nil, biz.ErrDictDataInvalidArgument
+	}
 	out, err := s.uc.CreateDictData(ctx, auth, &biz.DictData{
 		Status:     normalizeDictStatus(in.Status),
 		DictTypeID: in.GetDictTypeId(),
@@ -190,7 +196,7 @@ func (s *DictService) UpdateDictData(ctx context.Context, req *dictv1.UpdateDict
 		return nil, err
 	}
 	in := req.GetDictData()
-	if in.Status == nil {
+	if in == nil || in.Status == nil {
 		return nil, biz.ErrDictDataInvalidArgument
 	}
 	out, err := s.uc.UpdateDictData(ctx, auth, &biz.DictData{
