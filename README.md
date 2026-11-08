@@ -1,40 +1,49 @@
 # Grape
 
-Go 后端项目。
+单二进制的多租户后台：Go 后端（Kratos v3 + Wire + sqlc/pgx + buf）承载
+RBAC 数据权限体系与 Agent 运行时适配（trpc-agent-go / ack），前端
+（Vite + React）构建产物经 `go:embed` 内嵌。文档、注释与提交信息用中文；
+代码内硬编码字符串（错误信息、日志文本、测试名与断言文案）用英文。
 
-## 存储体系
+## 快速开始
 
-关系存储（pg_sqlc）承载多租户 RBAC 数据权限体系（schema 按业务域拆分声明、
-RLS 租户隔离、@scope 数据范围守卫、写前判断函数、权限查询判定函数、种子
-数据）。权限约束的落点（租户边界 / 行级数据范围 / 功能权限码）、读写形态
-与错误语义见 [permission.md](permission.md)；SQL 对象索引与三层权限模型见
-[internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)，
-部署执行顺序见 [deploy_db.md](deploy_db.md)；生产部署与运维口径（多实例
-粘性、SSE 超时、优雅停机、保留期归档、框架升级检查单）见
-[operations.md](operations.md)。
+- `make api` / `make config` — 从 proto 生成 `api/` 契约、`openapi.yaml` 与
+  `internal/conf/conf.pb.go`
+- `make sqlc` — 生成存储代码（改了 `schema/`、`rls/operate/expose`、
+  `96_agent_grant.sql`、`98_*` 函数声明文件或 `queries/` 后必须执行并提交）
+- `make generate` — wire + tidy，刷新 `cmd/server/wire_gen.go`
+- `make all` — 上述全部
+- `make web` — 构建前端到 `web/dist`（交付前必须执行）
+- `go test ./...` — 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN`
+  门控，未设置时自动跳过
+- 运行：`go run ./cmd/server -conf configs`；DSN 走
+  `KRATOS_DATABASE_SOURCE`（env source 仅识别 `KRATOS_` 前缀）
 
-查询代码由 sqlc 依据 `internal/data/pg_sqlc/sqlc/`（schema/ 十一个文件 +
-rls/operate/expose + 96_agent_grant.sql + queries/）生成，该目录是单一事实
-源；`internal/data/pg_sqlc/gen/`
-下的生成文件禁止手改。
+## 文档地图
 
-```powershell
+| 主题 | 权威文档 |
+| --- | --- |
+| 分层规则、依赖方向、手写端点归属、新增资源速查 | [internal/README.md](internal/README.md) |
+| 权限体系：租户边界 / 行级数据范围 / 功能权限码、读写形态、错误语义 | [permission.md](permission.md) |
+| SQL 对象索引与 schema 注释 DSL | [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) |
+| 数据库部署执行顺序与升级 | [deploy_db.md](deploy_db.md) |
+| 生产运维：SSE/超时、粘性、优雅停机、保留期、升级检查单 | [operations.md](operations.md) |
+| Agent 审计证据面、关联键与复现流程 | [replay.md](replay.md) |
+| 各层实现说明 | `internal/<层>/README.md`（见 [目录职责](internal/README.md#目录职责)） |
+| 前端构建、令牌策略与管理页 | [web/README.md](web/README.md) |
+| 设施诊断指标 | [internal/data/pg_sqlc/diagnostics.md](internal/data/pg_sqlc/diagnostics.md) |
+| 编码与 AI 助手约束 | [AGENTS.md](AGENTS.md) |
+
+## 生成物
+
+`api/**/*.pb.go`、`internal/conf/conf.pb.go`、
+`internal/data/pg_sqlc/gen/`、`cmd/server/wire_gen.go`、`openapi.yaml` 一律经
+make 目标再生成，禁止手改。`internal/data/pg_sqlc/sqlc/` 是存储侧单一事实
+源：schema 十一个文件 + `rls/operate/expose` + `96_agent_grant.sql` + `98_*`
+函数声明文件 + `queries/`，动态查询能力由列注释 DSL（`@dynamic` / `@scope`
+等）声明。
+
+```bash
 # 在 internal/data/pg_sqlc/sqlc 目录执行（或项目根 make sqlc）
 sqlc generate -f sqlc.yaml
 ```
-
-## 生成内容
-
-| 产物                                                                                 | 来源块              | 说明                                                                                  |
-| ------------------------------------------------------------------------------------ | ------------------- | -------------------------------------------------------------------------------------- |
-| `gen/models.go` `gen/db.go` `gen/querier.go` `gen/<查询文件>.sql.go`（如 `operate`/`basic`/`perm`/`sys_user`/`sys_session`） | sqlc-gen-go（块 1） | PO 模型与固定形态查询（权限判断、角色映射写入、锁行读取、权限查询接口、资源 CRUD 等命名查询），按查询文件逐一产出 |
-| `gen/<表名>_dynamic_gen.go`（按表生成，入选表需声明 `@pk` / `@dynamic` / set-capable `@updatable`，如 `basic`/`sys_user`） | sqlc_gen_dynamic 插件（块 2） | 动态 List/Count 与动态更新面：Parse / List / Count / UpdateXxx / UpdateXxxReturning；能力由 schema 列注释 DSL 与 sqlc.yaml 的 `options.ui` / `options.page` 声明，@scope 守卫 fail-closed |
-
-修改 sqlc 输入（`schema/`、`rls/operate/expose`、`96_agent_grant.sql`、`queries/`）后必须重新执行
-`sqlc generate -f sqlc.yaml` 并提交生成物；`seed/` 种子包不参与生成，改动按部署流程执行。
-
-## Agent 运维复现
-
-会话事件、工具调用审计、授权确认审计与检索留痕构成复现的四联证据面；
-证据粒度、关联键、写入机制、查询面边界与标准取证流程见
-[replay.md](replay.md)。
