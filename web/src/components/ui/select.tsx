@@ -3,9 +3,7 @@ import { cn } from 'cn'
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
 import { Select as SelectPrimitive } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 select，按 hex 兼容规则改写：触发器的
-// ring-ring/50 与 aria-invalid alpha 环 → ring-ring / ring-destructive-soft；
-// dark:bg-input/30、dark:hover:bg-input/50 等 alpha 分支删除。
+// 本地改写：聚焦/校验环与 dark 分支换实色 token（ring-* / bg-input）。
 function Select({
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {

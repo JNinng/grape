@@ -11,12 +11,9 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// typed Update 面（@updatable 声明生成的动态更新）集成测试：以真实
-// PostgreSQL 验证 SET 白名单、@pk 定位、@filter 不变量与守卫语义。
-// 断言基于 sqlc/test_seed.sql 的种子事实（用户 2-4/6-11 属 t-test-01，
-// 用户 5 属 t-test-02，basic 行 1-10 属 t-test-01）与 sqlc/seed/ 的
-// 生产默认事实（功能开关 1-4 属 t-super-01）。环境变量未设置时跳过
-// （同 session_test.go）。
+// typed Update 面（@updatable 动态更新）集成测试：以真实 PostgreSQL 验证
+// SET 白名单、@pk 定位、@filter 不变量与守卫语义。断言基于 test_seed.sql
+// 与 seed 包的种子事实；环境变量未设置时跳过。
 func TestDynamicUpdate(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
@@ -158,10 +155,8 @@ func TestDynamicUpdate(t *testing.T) {
 	})
 
 	t.Run("unset_columns_keep_original_values", func(t *testing.T) {
-		// 部分更新语义：SET 白名单外的列不被触碰。updated_at 不参与
-		// 断言：trg_touch_updated_at 对任何 UPDATE 兜底刷新（与静态
-		// 更新一致），属库级行为而非动态更新面语义。
-		// 用户 8 不被其他子测试改动。
+		// 部分更新语义：SET 白名单外的列不被触碰。updated_at 不参与断言
+		//（trg_touch_updated_at 对任何 UPDATE 兜底刷新，属库级行为）。
 		before := getSysUser(t, 8)
 		n, err := updateSysUser(t,
 			gen.SysUserUpdate.SetRemark(dynq.Ptr("only remark moves")),

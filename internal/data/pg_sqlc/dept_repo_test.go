@@ -12,12 +12,9 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 部门仓储集成测试：以真实 PostgreSQL 验证 sys_dept 固定 CRUD、动态查询
-// 协议、RLS 租户边界与闭包表触发器（trg_maintain_dept_closure）的建立/
-// 移动重写/软删清理纪律。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/test_seed.sql：t-test-01 有部门树 1..8，t-test-02 无部门）。
-// 各用例经 setupTestDB 重建数据库实现隔离；新建部门用 newID() 发号，
-// 不与种子主键冲突。
+// 部门仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_dept 的 CRUD、动态查询、RLS 租户边界与闭包表触发器的建立/移动重写/
+// 软删清理纪律。setupTestDB 每次重建数据库。
 
 const (
 	// testTenantSeeded 是种子部门树所在的租户（1=总公司、2=技术部、

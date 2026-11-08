@@ -9,13 +9,9 @@ import (
 	"grape/internal/biz"
 )
 
-// 用户分配选择器与角色整组替换的存储边界集成测试：以真实 PostgreSQL
-// 验证 fn_can_assign_role（可见性 + 目标范围 + 分配权限码）的候选过滤、
-// locked 角色保留、版本冲突、自锁保护、fn_can_revoke_role 撤销与归属
-// 候选的 fn_accessible_* 三态。种子事实见 sqlc/test_seed.sql：
-// t-test-01 用户 2-11（11 为 data_scope=7 测试管理员，4 为角色 102 的
-// 部门管理员），角色 102-110（105 属 t-test-02，scope_dept_id=2 且分发
-// 部门 {2,5}），部门 1-8，用户组 1-2。
+// 用户分配选择器与角色整组替换的存储边界集成测试（真实 PostgreSQL，未设
+// GRAPE_TEST_* DSN 时跳过）：覆盖 fn_can_assign_role 候选过滤、locked 保留、
+// 版本冲突、自锁保护、fn_can_revoke_role 撤销与 fn_accessible_* 三态。
 
 const (
 	assignmentTenant = "t-test-01"

@@ -57,7 +57,7 @@ func Test_template_when_loaded_by_server_path_yields_required_sections(t *testin
 	if got := bc.GetServer().GetHttp().GetAddr(); got != "0.0.0.0:8000" {
 		t.Errorf("server.http.addr = %q, want %q", got, "0.0.0.0:8000")
 	}
-	// SSE 治理后全局传输超时归零，普通路由限时由 request_timeout 恢复。
+	// 全局传输超时保持 0（SSE 长连接），普通路由限时由 request_timeout 承担。
 	if got := bc.GetServer().GetHttp().GetTimeout().AsDuration(); got != 0 {
 		t.Errorf("server.http.timeout = %v, want 0s (SSE governance)", got)
 	}
@@ -212,8 +212,8 @@ func Test_dir_path_colliding_with_existing_file_when_run_fails(t *testing.T) {
 }
 
 func Test_template_when_configs_body_changes_fails_loudly(t *testing.T) {
-	// 模板正文必须与 configs/config.yaml 逐字节一致（模板仅多出头部说明注释）；
-	// 该测试把「conf 变更时同批更新两份文件」的同步义务变成机械强制。
+	// 模板正文必须与 configs/config.yaml 逐字节一致（模板仅多出头部说明注释），
+	// conf 变更时同批更新两份文件。
 	content, err := os.ReadFile(filepath.Join("..", "..", "configs", "config.yaml"))
 	if err != nil {
 		t.Fatalf("read configs/config.yaml: %v", err)

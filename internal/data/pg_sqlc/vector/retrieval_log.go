@@ -14,39 +14,10 @@ import (
 	"grape/pkg/redact"
 )
 
-// biz.VectorStore 的检索留痕装饰器与它的 wire 供给
-// 类型。装配位置：向量仓储（vector_repo.go 的 pgvector 实现）之上、框架
-// 适配器（internal/agent/tools/vectorstore.go）之下——检索工具与摄取管线两条
-// 链路都经契约访问向量，装饰器因此同时覆盖两侧：
-//
-//	检索：工具 → 框架适配器（top_k 钳制）→ 本装饰器（Search 留痕）→ 仓储
-//	摄取：DocumentUsecase → 本装饰器（Add/Update/DeleteByFilter 留痕）→ 仓储
-//
-// 留痕点（一次操作一行，失败行同样留痕——尝试即证据）：
-//   - Search：query（ctx 事实）、top_k（请求值/生效值）、过滤摘要、命中
-//     （document_id/score/anchor）、耗时、来源 tool；
-//   - Add / Update：作用文档、耗时、来源 pipeline（摄取侧）；
-//   - DeleteByFilter：条件摘要、耗时、来源 pipeline（摄取的覆盖清除）；
-//   - Get / Delete / Count / GetMetadata 不留痕：点读与枚举统计既不是
-//     召回证据也不是摄取证据（引用反查经 Get 读原文，留痕反而噪声）。
-//
-// 语义约束（对齐 AuditHook 的旁路观察面纪律）：留痕失败只记日志、不
-// 中断检索——审计面不得反噬业务主流程。留痕写入走独立的 IdentityTx
-// （每行一事务），与被装饰操作不同事务：检索失败可留失败行、留痕失败
-// 不回滚检索，两条路径互不牵连。
-//
-// 脱敏与长度兜底（写入前义务，落库形态即最终形态）：查询文本经
-// pkg/redact 的 retrieval 类别（标准注册表 512 rune 截断）后再做 4096
-// rune 兜底（对齐 biz.AuditSummaryMaxRunes 口径，防未按标准装配的注册
-// 表送入超长原文）；过滤摘要序列化后经同一类别脱敏，截断破坏 JSON 结构
-// 时降级为截断声明形态；命中条数上限 50（检索上限 20 之下为防御直连
-// 契约的超大 Limit 而设）。类别未登记时放行原值但保留截断兜底——因
-// 脱敏语义未声明而丢弃证据，比落一条已截断的原文危害更大。
-//
-// top_k 两值的口径：本装饰器在框架适配器之下，记录的是存储契约收到的
-// 请求值（适配器的 20 硬上限钳制发生在上游，模型原始入参可对账
-// agent_tool_call_log 的参数摘要）与仓储实际生效的 LIMIT（未指定时默认
-// 页大小 10）。
+// 检索留痕装饰器：位于向量仓储之上、框架适配器之下，检索与摄取两条链路
+// 都经它留痕（一次操作一行，失败行同样留痕）。留痕点、独立 IdentityTx、
+// 脱敏与长度兜底、top_k 口径见 internal/data/README.md 的
+// 「迁移暂存（阶段 2 并入）」。
 const (
 	// retrievalQueryMaxRunes 是查询文本的兜底截断上限（rune 计）。
 	retrievalQueryMaxRunes = 4096

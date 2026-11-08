@@ -2,10 +2,8 @@ import * as React from 'react'
 import { cn } from 'cn'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 dialog，按 hex 兼容规则改写（对齐本项目
-// alert-dialog）：遮罩 bg-black/50 → bg-overlay（rgba token，见 index.css）；
-// 居中用 fixed 全屏 grid 容器而非「50% 定位 + translate」——Tailwind v4
-// 的 translate 工具类在旧内核整条丢弃会使弹框偏移，grid 居中全内核可用。
+// 本地改写：遮罩用 bg-overlay；居中用 fixed 全屏 grid 容器（旧内核不支持
+// translate 工具类，整条声明会被丢弃）。
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {

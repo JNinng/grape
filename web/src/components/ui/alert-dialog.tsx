@@ -4,9 +4,7 @@ import { AlertDialog as AlertDialogPrimitive } from 'radix-ui'
 
 import { Button } from '@/components/ui/button'
 
-// 源自 shadcn/ui new-york-v4 alert-dialog，按 hex 兼容规则改写：
-// 遮罩 bg-black/50 → bg-overlay（rgba token，见 index.css）；Button 导入
-// 指向本项目组件。
+// 本地改写：遮罩用 bg-overlay（rgba token）；Button 指向本项目组件。
 function AlertDialog({
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {

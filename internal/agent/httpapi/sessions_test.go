@@ -1,8 +1,7 @@
 package httpapi
 
-// SessionList 直测：会话列表是自建端点面，分页边界、身份 fail-closed 与
-// userKey 归属过滤必须显式覆盖，不依赖挂载链上的间接断言（注册顺序与
-// 认证链语义由 internal/server 的守卫测试锁定）。
+// SessionList 直测：分页边界、身份 fail-closed 与 userKey 归属过滤；注册
+// 顺序与认证链语义由 internal/server 的守卫测试覆盖。
 
 import (
 	"context"
@@ -119,8 +118,8 @@ func sessionListIDs(t *testing.T, body string) []string {
 }
 
 // TestSessionList_when_pagination_invalid_returns_400 验证分页参数校验：
-// 负 offset、非正 limit、超上限、非数字一律 400（fail-closed，不静默
-// 截断）；超上限的文案单独断言，锁定「拒绝而非裁剪」语义。
+// 负 offset、非正 limit、超上限、非数字一律 400（fail-closed，不裁剪）；
+// 超上限文案单独断言以区分「拒绝」而非「裁剪」。
 func TestSessionList_when_pagination_invalid_returns_400(t *testing.T) {
 	h, _ := newSessionListFixture(t)
 	for _, query := range []string{"?offset=-1", "?limit=0", "?limit=-2", "?limit=101", "?offset=abc"} {

@@ -44,10 +44,9 @@ const (
 
 // Menu 是菜单/权限点领域模型。功能权限码链的宿主树是租户内资源：读面
 // 租户边界由存储层 RLS 承担，表无 @scope（租户内全可见），故读方法不
-// 携带 Scope；写面经部署面 SECURITY DEFINER 固定口径写函数（D2 结论），
-// 运行角色无直写权限，写方法按 permission.md 口径带 Super。permission_code
-// 与 menu_type 是身份/类型列（创建后不变），parent_id 是结构列（变更走
-// Move 专项口径）。
+// 携带 Scope；写面经部署面 SECURITY DEFINER 固定口径写函数写入，运行
+// 角色无直写权限，写方法带 Super。permission_code 与 menu_type 是身份/
+// 类型列（创建后不变），parent_id 是结构列（变更走 Move 专项口径）。
 type Menu struct {
 	ID             int64
 	Status         int32 // 0 禁用、1 启用

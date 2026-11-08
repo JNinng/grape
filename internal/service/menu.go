@@ -95,14 +95,12 @@ func (s *MenuService) UpdateMenuSuper(ctx context.Context, req *permv1.UpdateMen
 		return nil, biz.ErrMenuInvalidArgument
 	}
 	out, err := s.uc.UpdateMenuSuper(ctx, auth, &biz.Menu{
-		ID:        in.GetId(),
-		Status:    *in.Status,
-		Name:      in.GetName(),
-		Icon:      in.Icon,
-		RoutePath: in.RoutePath,
-		Component: in.Component,
-		// permission_code/menu_type/parent_id 是身份/类型/结构列，不在
-		// 更新输入中生效；permission_expr/sort_order/remark 随可变面覆盖。
+		ID:             in.GetId(),
+		Status:         *in.Status,
+		Name:           in.GetName(),
+		Icon:           in.Icon,
+		RoutePath:      in.RoutePath,
+		Component:      in.Component,
 		PermissionExpr: in.PermissionExpr,
 		SortOrder:      in.GetSortOrder(),
 		Remark:         in.Remark,

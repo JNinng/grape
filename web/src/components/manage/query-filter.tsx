@@ -80,8 +80,8 @@ const DEFAULT_OPS: Record<FilterValueType, QueryOp[]> = {
   date: ['between', 'gte', 'lte', 'eq'],
 }
 
-// opNeedsValue 区分无值操作符：is_null/not_null 无需值。二者按渲染契约
-// （dynq desc.md §10.2）为 API-only——操作符下拉不渲染，故仅在协议层保留。
+// opNeedsValue 区分无值操作符：is_null/not_null 无需值。二者为
+// API-only——操作符下拉不渲染，故仅在协议层保留。
 function opNeedsValue(op: QueryOp): boolean {
   return op !== 'is_null' && op !== 'not_null'
 }
@@ -92,8 +92,8 @@ function opRenderable(op: QueryOp): boolean {
   return opNeedsValue(op)
 }
 
-// isMultiValueOp 标记多值操作符：值控件形态由 op 决定（渲染契约 §10.2），
-// in/not_in 渲染多值输入，between 渲染双控件，其余单值。
+// isMultiValueOp 标记多值操作符：in/not_in 渲染多值输入，between 渲染
+// 双控件，其余单值。
 function isMultiValueOp(op: QueryOp): boolean {
   return op === 'in' || op === 'not_in'
 }
@@ -271,10 +271,8 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
   const [text, setText] = useState('')
   const [lowerText, setLowerText] = useState('')
   const [upperText, setUpperText] = useState('')
-  // multiText 是 in/not_in 的多值输入（逗号/空白分隔）；selectedEnum 是
-  // select 多选的勾选集（字符串键，提交时按 options 还原原始类型）、
-  // selectedSingle 是 select 单选的当前值（二者供编辑态回填，编辑器打开
-  // 即回显原条件值）。
+  // multiText 是 in/not_in 的多值输入（逗号/空白分隔）；selectedEnum /
+  // selectedSingle 是 select 多选/单选的编辑态回填值。
   const [multiText, setMultiText] = useState('')
   const [selectedEnum, setSelectedEnum] = useState<string[]>([])
   const [selectedSingle, setSelectedSingle] = useState<string>()
@@ -665,8 +663,7 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* 渲染契约（dynq desc.md §10.2）：操作符下拉 = ops 去除
-                   * is_null/not_null（API-only 不渲染）。 */}
+                  {/* 操作符下拉 = ops 去除 is_null/not_null（API-only 不渲染）。 */}
                   {draft.field.ops.filter((op) => opRenderable(op)).map((op) => (
                     <SelectItem key={op} value={op}>
                       {OP_LABELS[op]}

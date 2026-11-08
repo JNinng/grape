@@ -268,10 +268,9 @@ func auditInt32Ptr(v int32) *int32 {
 	return &v
 }
 
-// operationAuditSnapshot 是请求/响应 proto 的审计快照：target_id 取响应或
-// 请求里的标识字段，new_value 取响应实体（失败或无响应时回落请求载荷）；
-// old_value 不在通用层采集，保持 NULL。敏感键（口令/令牌/密钥）落库前
-// 统一做不可逆哈希（sha256: 前缀 + 截断），不保存明文。
+// operationAuditData 是请求/响应 proto 的审计快照：target_id 取标识字段，
+// new_value 取响应实体（失败或无响应时回落请求载荷）；old_value 不在通用
+// 层采集，保持 NULL。敏感键落库前统一脱敏（口令固定掩码、其余无盐哈希）。
 type operationAuditData struct {
 	TargetID string
 	NewValue json.RawMessage

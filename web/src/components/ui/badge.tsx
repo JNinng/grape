@@ -3,9 +3,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from 'cn'
 import { Slot } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 badge，按 hex 兼容规则改写：聚焦/校验环与
-// 悬停的 alpha 修饰符 → ring-ring / ring-destructive-soft / bg-primary-hover；
-// secondary 与 destructive 作为链接时的悬停变化去除（本项目徽标均为静态芯片）。
+// 本地改写：聚焦/校验环与悬停用实色 token；徽标均为静态芯片，secondary /
+// destructive 的链接悬停态去除。
 const badgeVariants = cva(
   'inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring aria-invalid:border-destructive aria-invalid:ring-destructive-soft [&>svg]:pointer-events-none [&>svg]:size-3',
   {

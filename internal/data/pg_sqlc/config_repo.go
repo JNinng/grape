@@ -12,18 +12,10 @@ import (
 )
 
 // sys_tenant_config 的读路径与默认嵌入空间解析（biz.EmbedderResolver 的
-// PostgreSQL 实现）。本仓储是该配置表的首个 Go 消费方：租户级默认嵌入
-// 空间落 sys_tenant_config（键 vector.embedder，值是 conf.vector.embedders
-// 已声明的空间键），读取经身份事务门面 IdentityTx（每事务 set_config），
-// 租户边界由 RLS 承担（查询不再显式带租户谓词）。解析顺序
-// 「请求显式 > 租户配置 > 全局 conf 兜底」中，本仓储承担后两级——显式
-// 指定在调用方（检索工具/摄取管线的入参面）。
-//
-// 严格性口径：租户配置指向未声明空间按 ErrEmbedderUnknown 显式拒绝，
-// 不静默回落全局——静默回落会让摄取/检索在配置手误时悄悄换空间，破
-// 坏「一空间一语义」；未配置（无行或空白值）才回落全局默认。无缓存：
-// 解析发生在每次摄取与检索的现场，配置行是唯一索引点读，暂不为单行
-// 读引入缓存失效面。
+// PostgreSQL 实现）：读取 vector.embedder 键，经 IdentityTx 执行，租户边界
+// 由 RLS 承担。解析顺序「请求显式 > 租户配置 > 全局 conf 兜底」中本仓储
+// 承担后两级；租户值指向未声明空间按 ErrEmbedderUnknown 严格拒绝，不静默
+// 回落；无缓存（唯一索引点读，每次摄取/检索现场解析）。
 const (
 	// embedderConfigKey 是租户级默认嵌入空间的配置键（sys_tenant_config.config_key）。
 	embedderConfigKey = "vector.embedder"

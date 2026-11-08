@@ -1,9 +1,7 @@
 package main
 
-// 集成测试运行约束：本套件与 internal/data/pg_sqlc 的集成套件都会在
-// 目标集群上创建 grape_u / test_u 角色。角色是集群级共享对象，两个
-// 套件在干净集群上并发运行时会在 CREATE USER 上相互踩踏，因此二者
-// 不应并行（go test 默认按包串行；显式指定 -p 1 或分次运行）。
+// 本套件与 internal/data/pg_sqlc 集成套件都在目标集群创建 grape_u / test_u
+// 角色（集群级共享对象），二者不得并行运行（-p 1 或分次运行）。
 
 import (
 	"context"
@@ -20,17 +18,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// 存储边界集成测试：以真实 PostgreSQL 验证 dbdeploy 全量部署。使用
-// pg_sqlc 套件专用库之外的独立库名，互不干扰。设置以下环境变量后
-// 运行，未设置时跳过：
+// 存储边界集成测试：以真实 PostgreSQL 验证 dbdeploy 全量部署，使用独立
+// 库名 grape_dbdeploy_test，互不干扰。设置 GRAPE_TEST_ADMIN_DSN 后运行，
+// 未设置时跳过：
 //
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./cmd/dbdeploy -count=1 -v
+//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres go test ./cmd/dbdeploy -count=1 -v
 //
-// 局限说明：本机 pg_hba.conf 配置为 trust 认证，口令等值不经过服务端
-// 校验，「grape_u 以部署口令可连接」在本环境属于弱断言；口令未被改写
-// 的验证以 pg_authid.rolpassword 哈希前后的等值断言兜底（见
-// TestDeploy_repeated_role_and_seed_apply_on_deployed_database）。
+// 本机 pg_hba 为 trust 认证，「grape_u 以部署口令可连接」属弱断言；口令
+// 未被改写以 pg_authid.rolpassword 哈希前后等值断言兜底。
 
 const itDatabase = "grape_dbdeploy_test"
 

@@ -58,10 +58,9 @@ type RetrievalHit struct {
 }
 
 // RetrievalLogRecord 是一条留痕的写入侧领域模型：身份与租户不是入参——
-// 仓储经 IdentityTx 从认证 ctx 提取（与 VectorStore / AuditRepo 同一
-// 纪律），trace_id/session_id/query_text 也在装饰器侧从 ctx 事实提取，
-// 调用方无法伪造归属。QueryText 与 FilterSummary 收「已脱敏成型」的
-// 最终形态（脱敏与截断是装饰器的落库前义务，见 pg_sqlc 装饰器注释）。
+// 仓储经 IdentityTx 从认证 ctx 提取，trace_id/session_id/query_text 也在
+// 装饰器侧从 ctx 事实提取，调用方无法伪造归属。QueryText 与 FilterSummary
+// 收「已脱敏成型」的最终形态（脱敏与截断是装饰器的落库前义务）。
 type RetrievalLogRecord struct {
 	// TraceID 是链路 ID（ctx SpanContext）；无链路事实为空，
 	// 落库为 NULL——链路缺失如实留空，不伪造。
@@ -71,11 +70,8 @@ type RetrievalLogRecord struct {
 	SessionID string
 	// Source 是检索来源（RetrievalSource* 常量）。
 	Source string
-	// Embedder 是本次向量操作的嵌入空间键（模型@版本）：按操作现场的
-	// 声明原样留痕——检索行取过滤声明、摄取行取文档归属，声明为空落
-	// NULL。留痕面只记录事实、不做注册表对账：带未声明键的调用（含
-	// 失败尝试的原始声明）原样落库留证，失败行正是排查换空间事故的
-	// 证据面。
+	// Embedder 是本次向量操作的嵌入空间键，按操作现场声明原样留痕；
+	// 不做注册表对账——失败尝试的原始声明正是排查换空间事故的证据。
 	Embedder string
 	// QueryText 是已脱敏的查询文本；无查询事实（摄取侧）为空，落库 NULL。
 	QueryText string

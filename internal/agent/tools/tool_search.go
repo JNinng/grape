@@ -65,14 +65,10 @@ type searchDocsOutput struct {
 	Notice string          `json:"notice"`
 }
 
-// NewSearchTool 构造检索工具（只读，Tier=allow——分级表未列入的
-// 工具走 ack 默认 allow，与首批只读工具同规）。向量访问只经框架适配
-// 器（NewVectorStoreAdapter 产出、随根包骨架注入的 vectorstore.VectorStore）：
-// 租户过滤由契约实现从认证 ctx 强制，top_k 上限由适配器钳制，本工具
-// 不感知也不得绕过。embedder 供查询向量化，resolver 解析默认嵌入空间
-// （租户配置 > 全局兜底，见 biz.EmbedderResolver）——检索固定落在解析
-// 出的空间内，跨空间混排不存在；向量设施未启用时两者均为禁用占位
-// 实现，调用按设施缺失报错而非系统故障。
+// NewSearchTool 构造检索工具（只读，Tier=allow——分级表未列入的工具走
+// ack 默认 allow）。向量访问只经框架适配器：租户过滤由契约实现从认证
+// ctx 强制，top_k 上限由适配器钳制，本工具不感知也不得绕过。检索固定
+// 落在 resolver 解析出的嵌入空间；向量设施未启用时按设施缺失报错。
 func NewSearchTool(embedder biz.Embedder, resolver biz.EmbedderResolver, vectors vectorstore.VectorStore) tool.Tool {
 	return function.NewFunctionTool(searchInternalDocs(embedder, resolver, vectors),
 		function.WithName(SearchToolName),
@@ -116,10 +112,8 @@ func searchInternalDocs(embedder biz.Embedder, resolver biz.EmbedderResolver, ve
 		if err != nil {
 			return searchDocsOutput{}, fmt.Errorf("embed query: %w", err)
 		}
-		// 留痕挂点：会话 ID（框架执行 ctx 携带）、查询文本与嵌入空间
-		// 事实放进 biz 中性载体，供 data 层留痕装饰器与契约适配器消费
-		// ——biz/data 不导入框架包，事实必须由能读到它们的本层放入 ctx
-		// （见 retrieval_context.go）。
+		// 留痕挂点：会话 ID（框架 ctx）、查询文本与嵌入空间事实放进 biz
+		// 中性载体，供 data 层装饰器与契约适配器消费（biz/data 不导入框架包）。
 		ctx = withRetrievalLogFacts(ctx, query)
 		ctx = biz.WithEmbedderSpace(ctx, space, dimension)
 		result, err := vectors.Search(ctx, &vectorstore.SearchQuery{

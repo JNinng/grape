@@ -1,16 +1,11 @@
 // Package redact 提供按类别登记的确定性脱敏器注册表，是日志、审计表与
-// 复现视图共用的脱敏单一代码点。本包不依赖
-// internal/ 与任何第三方库；消费方按类别登记与取用，不感知具体算法。
+// 复现视图共用的脱敏单一代码点。本包不依赖 internal/ 与第三方库，消费方
+// 按类别登记与取用，不感知具体算法。
 //
-// 确定性契约：同一 Redactor 对同一输入恒产生同一输出——固定掩码与截断
-// 天然满足，哈希形态以注入的盐做 keyed 哈希（同盐同输出，跨进程可复算），
-// 键名过滤只做结构改写不改值语义。禁止在本包引入随机、时间等不确定源。
-//
-// 消费面（只留接口，不在此实现）：业务审计表的参数/结果摘要落库前按
-// tool_param / retrieval 类别脱敏（biz 审计用例）；检索留痕的查询文本与
-// 过滤摘要按 retrieval 类别脱敏（data 层留痕装饰器）；复现视图回放同一
-// 摘要，不二次脱敏。internal/data/pg_sqlc 的 debug SQL tracer 以同
-// 默认值的自建实例脱敏 token/password，不共用装配实例。
+// 确定性契约：同一 Redactor 对同一输入恒产生同一输出——固定掩码与截断天然
+// 满足，哈希形态以注入的盐做 keyed 哈希（同盐同输出，跨进程可复算）；本包
+// 禁止引入随机、时间等不确定源。审计摘要与检索留痕按 tool_param /
+// retrieval 脱敏；调试 SQL tracer 以同默认值的独立实例脱敏 token/password。
 package redact
 
 import (
@@ -128,15 +123,11 @@ func (t truncateRedactor) Redact(value string) string {
 	return cut + t.suffix
 }
 
-// NewKeyFilter 返回按键名匹配的 JSON 值脱敏器：输入为 JSON object/array
-// 文本时深序遍历，命中键名（大小写不敏感）的值以 inner.Redact(原值 JSON
-// 文本) 替换；命中对象/数组时整段子树作为一个值脱敏。非 JSON 文本与标量
-// JSON 原样返回——没有键结构就无从按键匹配，不做整体猜测；非法 JSON
-// 同样原样返回（展示路径 fail-open，绝不因脱敏丢内容或 panic）。
-//
-// 形态说明：命中值统一落为 JSON 字符串（数字/布尔原是标量），键顺序经
-// 重编码后为字典序——输出保持确定性，但与输入不逐字节保形。
-// 工具调用参数（CategoryToolParam）的默认形态。
+// NewKeyFilter 返回按键名（大小写不敏感）匹配的 JSON 值脱敏器：object/array
+// 深序遍历，命中键的值（含整段子树）交给 inner.Redact(紧凑 JSON) 替换；非
+// JSON、标量 JSON 与非法 JSON 原样返回（fail-open，不因脱敏丢内容或 panic）。
+// 命中值统一落为 JSON 字符串、键顺序经重编码为字典序——输出确定但不逐字节
+// 保形。工具调用参数（CategoryToolParam）的默认形态。
 func NewKeyFilter(keys []string, inner Redactor) (Redactor, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("redact: key list is empty")
@@ -186,9 +177,9 @@ func (f keyFilter) Redact(value string) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// walk 深序遍历解码后的 JSON 值，返回脱敏后的新值；map/array 原地构造
-// 副本，标量原样。matched 为 true 表示本节点被键名命中，由调用方整体
-// 替换，不再下钻。
+// walk 深序遍历解码后的 JSON 值，返回脱敏副本：map/array 构造新容器，标量
+// 原样；命中键的子树由上层整段交给 inner.Redact，不在此下钻。超过深度上限
+// 的子树原样保留。
 func (f keyFilter) walk(node any, depth int) any {
 	if depth > maxKeyFilterDepth {
 		return node
@@ -273,8 +264,7 @@ func (r *Registry) Redact(category, value string) (string, bool) {
 	return red.Redact(value), true
 }
 
-// 标准注册表的骨架默认值：tool_param 键名清单是起步集合（可 Register
-// 整体替换），retrieval 保留 512 rune。
+// defaultRetrievalKeep 是 retrieval 类别的默认保留 rune 数。
 const defaultRetrievalKeep = 512
 
 // defaultToolParamKeys 是工具参数敏感键的起步清单：覆盖常见口令/令牌/

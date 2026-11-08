@@ -130,16 +130,10 @@ func (t *queryTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx
 
 func (t *queryTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
-// redactArgs 对 debug 日志的语句参数做脱敏，两类面：
-//
-//   - set_config 注入的会话令牌哈希：app.session_* 的名字/值成对出现在
-//     前两个参数，值按 token 类别脱敏；租户注入 set_config('app.tenant_id',
-//     ...) 的名字在 SQL 文本里，租户 ID 非凭据，保留可见。
-//   - 凭据哈希语句（SQL 文本涉及 password_hash / token_hash 列）中的字符串
-//     参数按值形态判定：sha256 十六进制（64 位）是令牌哈希，argon2/bcrypt
-//     前缀是口令哈希，分别按 token / password 类别脱敏。按形态而非参数
-//     位序判定，避免解析 SQL；误伤面收敛于「凭据哈希才会长成的样子」，
-//     租户 ID（t-*）与数值参数不受影响。未脱敏的参数原样透传。
+// redactArgs 对 debug 日志的语句参数做脱敏：set_config 注入的 app.session_*
+// 令牌哈希按 token 类别脱敏；凭据哈希语句中的字符串参数按值形态判定
+// （sha256 十六进制 → token，argon2/bcrypt → password）。租户 ID 等非凭据
+// 参数原样透传。
 func redactArgs(r *redact.Registry, sql string, args []any) []any {
 	if len(args) >= 2 && strings.Contains(sql, "set_config") {
 		if name, ok := args[0].(string); ok && strings.HasPrefix(name, "app.session_") {

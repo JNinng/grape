@@ -20,21 +20,10 @@ import (
 // 全量事件。0 值窗口（只取锚点事件）是占位符原文对照的最小用法。
 const eventWindowSpanMax = 50
 
-// EventWindow 是会话事件窗口端点的装配物：
-// 消费骨架既有的框架 session.Service（与 AG-UI / ack 同一实例、同一 app
-// 名、同一 userKey 编码）经 WindowService 取锚点事件窗口。窗口以认证
-// 身份编码的 userKey 定位会话——跨用户会话在存储层不可见，锚点查找
-// 失败返回框架 ErrEventWindowAnchorNotFound，端点映射 404（不区分不
-// 存在与非你所有，与 AckOwnerGuard 的口径一致）。装配期随 Stack 构造
-// （NewStackWithOptions），HTTP 形态经 Stack.EventWindowHandler 交
-// service 注册进 Kratos 链。
-//
-// 压缩对照口径：压缩只作用于请求投影副本，session 事件流
-// 保留全部原文（会话存储保证）；压缩占位符携带 event_id / tool_call_id /
-// tool_name / reason 恢复引用。运维复现视图对响应文本中出现占位符形状
-// 的片段以本端点按 event_id 取回原文对照。本端点返回的是会话事件原文
-// （非脱敏产物）——它与对话回放同源同权（/history 快照同样承载原文），
-// 只对当前认证用户开放其名下会话，租户边界由 userKey 定位强制。
+// EventWindow 是会话事件窗口端点的装配物：经同一 session.Service 的
+// WindowService 按 userKey 定位会话、取锚点事件窗口，跨用户不可见、锚点
+// 不存在即 404。压缩只改请求投影，事件流保留全文，占位符按 event_id 经
+// 本端点取回原文；端点只对当前认证用户名下会话开放。
 type EventWindow struct {
 	windows session.WindowService
 	appName string

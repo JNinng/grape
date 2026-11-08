@@ -189,10 +189,9 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		// 租户管理服务本文件用例不触达，传 nil。
 		nil,
 		agentService,
-		// 会话列表端点与静态托管一并挂载：nil 会话列表仅表示本文件用例
-		// 不触达该路由；挂载顺序守卫分属两处——sessions 先于 agent 前缀
-		// 通配在 agent_sessions_route_test.go，agent 先于静态兜底在
-		// web_route_test.go。
+		// 会话列表端点与静态托管一并挂载，但本文件用例不触达：nil 会话
+		// 列表仅表示不覆盖该路由；注册顺序守卫分属
+		// agent_sessions_route_test.go 与 web_route_test.go。
 		nil,
 		// 事件窗口、审计与检索留痕查询端点本文件用例不触达，传 nil。
 		nil,

@@ -1,11 +1,7 @@
 package agent
 
-// live 确认流集成测试：进程内会话存储 + 脚本化模型 + 内存用户仓储 +
-// 完整 Stack handler，覆盖 ack 直通路径（live）的完整 HTTP 契约——写工具
-// 触发 tool_confirmation、同意后运行继续且工具真实执行、拒绝后以 denied
-// 结算且模型不重试、跨用户决定被归属守卫拒绝、工具迭代上限终止死循环。
-// 确认流推进助手（背景 chat / 待确认轮询 / 决定提交）在 testsupport，
-// 与子包及外部测试包的集成测试共用。
+// live 确认流集成测试：完整 Stack 上的同意/拒绝、跨用户拒绝与工具迭代
+// 上限终止契约；确认流推进助手在 testsupport。
 
 import (
 	"fmt"
@@ -199,11 +195,9 @@ func TestConfirmLive_when_other_user_decides_confirmation_rejected(t *testing.T)
 }
 
 // TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected
-// 防回归（已知绕过形态）：守卫的 threadId 取值源与 ackhttp 严格
-// 对齐——POST 决定只认 body。攻击者用「查询参数=自己名下会话（可通过
-// 归属校验的合法值）+ body=他人会话（真正要决定的目标）」必须在守卫处
-// 404：原确认不受影响、工具零执行；归属者后续合法决定仍走 live 路径
-// （排除 pending 指针被污染后误路由恢复路径的次生现象）。
+// 验证守卫只认请求体的 threadId：查询参数指向自己名下会话、body 指向他人
+// 会话时必须 404——原确认不受影响、工具零执行，归属者后续合法决定仍走
+// live 路径。
 func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *testing.T) {
 	const (
 		ownerThread    = "thread-mismatch-owner"
@@ -218,8 +212,8 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	chat := testsupport.StartChat(s.h, ownerThread, ownerRun, "rename me")
 	items := testsupport.WaitForPending(t, s.h, ownerThread, 1)
 
-	// 他人先在自己名下建档：让「查询参数指向自己名下会话」合法成立，
-	// 该值若被守卫误采信即放行（对老实现本用例失败）。
+	// 他人先在自己名下建档，使「查询参数指向自己名下会话」合法成立：该
+	// 值若被守卫误采信即放行。
 	stranger := s.asUser(testsupport.StrangerID)
 	strangerChat := testsupport.StartChat(stranger, strangerThread, "run-mismatch-stranger", "rename me too")
 	testsupport.WaitForPending(t, stranger, strangerThread, 1)
@@ -253,11 +247,10 @@ func TestConfirmLive_when_decide_query_and_body_threadId_mismatch_rejected(t *te
 	_ = strangerChat
 }
 
-// TestConfirmLive_when_decide_body_trailing_data_rejected 防回归（已知
-// 的解码分歧形态）：body 为「合法 JSON + 尾随数据」时 ackhttp 的
-// json.Decoder 能正常解码并照常决定，守卫必须以完全同一的解码方式取值
-// ——若退化为 json.Unmarshal 会误判形状非法而放行，跨用户决定直达
-// ackhttp。该形态不依赖查询参数（旧取值源缺陷与解码分歧两条路都封死）。
+// TestConfirmLive_when_decide_body_trailing_data_rejected 验证守卫与
+// ackhttp 使用同一解码方式（Decode 容忍尾随数据）：body 为「合法 JSON +
+// 尾随数据」时归属判定照常生效——若退化为 Unmarshal 会误判形状非法而放
+// 行，跨用户决定直达 ackhttp。
 func TestConfirmLive_when_decide_body_trailing_data_rejected(t *testing.T) {
 	const (
 		ownerThread = "thread-trailing-owner"

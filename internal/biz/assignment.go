@@ -80,8 +80,8 @@ type AssignmentRepo interface {
 	// 目标不存在/软删返回 ErrUserNotFound（分配读面不要求目标可见）。
 	ListUserRoles(ctx context.Context, auth Identity, userID int64) (*UserRoleSet, error)
 	// SetUserRoles 在单个事务内按「管理范围内整组替换」写入角色集合：
-	// locked 原样保留、请求触及 locked/不可分配/不可撤销/版本不一致/
-	// 自锁一律整体拒绝（错误语义见 permission.md）。
+	// locked 原样保留，请求触及 locked/不可分配/不可撤销/版本不一致/
+	// 自锁一律整体拒绝。
 	SetUserRoles(ctx context.Context, auth Identity, in SetUserRolesInput) (*UserRoleSet, error)
 	// ListOwnerUserOptions 返回操作者可见范围内的活跃用户候选。
 	ListOwnerUserOptions(ctx context.Context, auth Identity, q OptionQuery) (*OptionSet, error)

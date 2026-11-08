@@ -394,10 +394,8 @@ function ConfigEditDialog({
   // optional 字段，前端以 undefined 表示 NULL，与空串 "" 语义不同。
   const valueWasUnset = config.value === undefined
   const [value, setValue] = useState(config.value ?? '')
-  // valueTouched 记录用户是否动过配置值输入框。提交口径：
-  // - 原值 NULL 且未改动 → 不上送 value（保持 NULL，避免被写成空串）；
-  // - 原值 "" 且未改动 → 上送 ""（保持空串，既有行为不变）；
-  // - 用户改动过（含显式清空后再输入）→ 按输入原样上送，空串也照发。
+  // valueTouched 记录用户是否动过值输入框：原值 NULL 且未改动时不上送
+  // value（保持 NULL）；其余情况原样上送输入值（含空串）。
   const [valueTouched, setValueTouched] = useState(false)
   const [remark, setRemark] = useState(config.remark ?? '')
   const [status, setStatus] = useState(config.status === STATUS_DISABLED ? STATUS_DISABLED : STATUS_ENABLED)
@@ -414,10 +412,8 @@ function ConfigEditDialog({
     }
     setPending(true)
     try {
-      // 更新只覆盖 name/value/remark/status：config_key 与 value_type 不可变。
-      // value 是原样透传的可空字符串：原值 NULL 且用户未改动时省略该字段
-      // （保持 NULL）；其余情况原样上送输入值（含空串），空输入不得清洗为
-      // undefined，否则会把空串覆盖成 NULL。
+      // 更新只覆盖 name/value/remark/status（config_key 与 value_type 不可
+      // 变）；value 原样透传：NULL 未改动省略，其余含空串照发。
       const input = {
         id: config.id,
         status,

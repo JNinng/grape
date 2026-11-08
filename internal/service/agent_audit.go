@@ -15,28 +15,17 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// 审计查询端点（供运维复现视图）的默认与上限分页
-// 参数：口径与 biz 审计用例一致（默认 20、单页上限 200）。
+// 审计查询端点的分页缺省值与上限，口径与 biz 审计用例一致。
 const (
 	agentAuditDefaultLimit = 20
 	agentAuditMaxLimit     = 200
 )
 
-// AgentAuditService 承载 Agent 业务审计查询的手写端点（非 proto 生成）：
-//
-//	GET /v1/agent/audit/tool-calls                 工具调用审计列表
-//	GET /v1/agent/audit/tool-calls?tool_call_id=…  按工具调用 ID 点查
-//	GET /v1/agent/audit/confirmations              授权确认审计列表
-//	GET /v1/agent/audit/confirmations?confirmation_id=…  按确认 ID 点查
-//
-// 点查走查询参数而非路径模板：手写端点取原始 *http.Request 形态（见
-// routeHandler），不引入路径变量绑定机制，ID 经查询串传入语义等价且
-// 少一个绑定面。
-//
-// 依赖只有 biz 审计用例——不含 internal/agent 与框架包，不复制
-// agent_sessions.go 的受控例外。租户边界由仓储 IdentityTx 与表 RLS
-// 强制（跨租户不可见等同不存在，404）；返回的摘要是落库时已脱敏的
-// 形态（写入侧经 pkg/redact 注册表），本端点不二次脱敏也不回传原文。
+// AgentAuditService 承接 Agent 业务审计查询的手写 HTTP 端点，未纳入 proto
+// 契约：工具调用与授权确认各自支持列表分页与按 ID 点查，点查经查询参数
+// 传入，不与列表参数混用。依赖只有 biz 审计用例；租户边界由仓储 IdentityTx
+// 与表 RLS 强制，跨租户不可见等同不存在；摘要为落库时已脱敏形态，本层不
+// 二次脱敏、不回传原文。
 type AgentAuditService struct {
 	uc *biz.AuditUsecase
 }

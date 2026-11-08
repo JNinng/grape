@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { cn } from 'cn'
 
-// 源自 shadcn/ui new-york-v4 textarea，按 hex 兼容规则改写：ring-ring/50 与
-// aria-invalid 的 alpha 环 → ring-ring / ring-destructive-soft；dark:bg-input/30 删除。
+// 本地改写：聚焦/校验环与 dark 分支换实色 token（ring-* / bg-input）。
 function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (
     <textarea

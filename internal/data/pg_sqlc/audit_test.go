@@ -19,19 +19,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// 审计仓储集成测试：以真实 PostgreSQL 验证租户 RLS、
-// 写入-查询往返（含脱敏后内容）、组合批量与分页边界。测试自建专属库
-// grape_audit_test 并重建（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单全量
-// 装载，含 schema/95_agent_audit.sql），不触碰其他数据库。设置以下环境
-// 变量后运行，未设置时跳过：
-//
-//	GRAPE_AUDIT_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_AUDIT_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_audit_test \
-//	go test ./internal/data/pg_sqlc -run TestAuditRepo -count=1 -v
-//
-// 隔离口径：两表启用租户 RLS（部署默认），租户边界由 RLS 强制、读侧
-// WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见
-//（对齐「隔离正确性不押在 RLS 是否存在上」验收口径）。
+// 审计仓储集成测试（真实 PostgreSQL，未设 GRAPE_AUDIT_TEST_ADMIN_DSN /
+// GRAPE_AUDIT_TEST_DSN 时跳过）：覆盖租户 RLS、写入-查询往返（含脱敏内容）、
+// 批量写入与分页边界。测试自建专属库并按部署清单全量装载。
 
 const auditTestDatabase = "grape_audit_test"
 

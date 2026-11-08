@@ -265,6 +265,8 @@ func TestOperationPermissionCodes_match_assignment_codes(t *testing.T) {
 	}
 }
 
+// TestOperationPermissionCodes_cover_gated_endpoints 守卫码表与受控端点
+// 集合完全一致：无漏项、无未声明条目。
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 	covered := map[string]struct{}{
 		// 用户管理

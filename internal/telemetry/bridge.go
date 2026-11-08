@@ -16,26 +16,10 @@ import (
 // 后端侧按 scope 聚合的视图不因桥接变形。
 const frameworkInstrumentName = "trpc.agent.go"
 
-// bridgeFrameworkLog 把 trpc-agent-go 的日志门面（package log）桥接到
-// grape logger，覆盖 LLMAgent / runner / AG-UI / model 等全部框架日志面。
-//
-// 两类形态分别处理：
-//   - 无 ctx 形态（log.Infof 等 → Default / ContextDefault）：替换为适配
-//     器实现框架 log.Logger 接口，转发到 grape logger。门面 API 不收
-//     ctx，这类日志不带 trace_id——框架在无 ctx 调用点的既成事实，如实
-//     保留局限，不伪造链路字段。
-//   - ctx 形态（log.InfofContext 等：package 级函数变量）：覆盖为转发
-//     ctx 的实现。grape logger 由 kratos log.NewLogger(WithExtractor(
-//     tracing.TraceAttrs)) 构造，ctx 中的 SpanContext 在落盘时自动展开
-//     为 trace_id / span_id 字段，桥接层不重复拼装。
-//
-// 已知局限（随桥接如实声明）：
-//   - 框架 log.SetLevel 治理的是框架自带 zap logger，桥接后不再影响
-//     任何输出——级别归 grape 日志配置；
-//   - log.Tracef / TracefContext 的开关语义保留（IsTraceEnabled 门控），
-//     输出级别落 grape debug；
-//   - Fatal 保持 zap 语义：记 error 后 os.Exit(1)。当前依赖面（llmagent
-//     / agui / runner / session / model）无 Fatal 调用点，纯语义保真。
+// bridgeFrameworkLog 把 trpc-agent-go 日志门面桥接到 grape logger：无 ctx
+// 形态经适配器转发（不带 trace_id，框架既成事实），ctx 形态转发 ctx 由
+// grape logger 的提取器自动补链路字段。级别归 grape 日志配置，Fatal 保持
+// 记 error 后退出；完整局限见 README。
 func bridgeFrameworkLog(logger *slog.Logger) {
 	adapter := &frameworkLogger{logger: logger}
 	frameworklog.Default = adapter
@@ -130,14 +114,10 @@ func (l *frameworkLogger) Fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
-// bridgeFrameworkTracer 把框架的 Tracer 全局变量桥到 grape 注入的全局
-// TracerProvider：LLM / 工具 / agent 的框架 span（经框架 trpc-agent-go
-// internal/trace 的 StartSpan 读该变量）随之真实产生并导出。OTel 关闭时框架变量保持其
-// 自带 no-op 默认值，本函数不被调用。
-//
-// 框架在自身 telemetry/trace.Start 里也会重设该变量（其自有 SDK 接入
-// 路径，grape 未使用）；grape 侧装配先于 AG-UI 请求服务，正常生命周期
-// 内不会被覆盖。
+// bridgeFrameworkTracer 把框架 Tracer 全局变量桥到 grape 注入的全局
+// TracerProvider，使框架经 internal/trace.StartSpan 产生的 span 真实导出。
+// OTel 关闭时保持框架自带 no-op 默认值，本函数不被调用；grape 装配先于
+// 框架自身 telemetry/trace.Start 的重设，生命周期内不被覆盖。
 func bridgeFrameworkTracer() {
 	agenttelemetry.Tracer = otel.GetTracerProvider().Tracer(frameworkInstrumentName)
 }

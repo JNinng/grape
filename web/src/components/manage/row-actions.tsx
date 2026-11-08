@@ -26,12 +26,10 @@ export interface RowActionItem {
   title?: string
 }
 
-// RowActionsMenu 是行内操作按钮：悬停即弹出、移出按钮与弹框片刻后收起
-// （150ms 容忍间隙，点击/键盘开合不受影响）；顶部按 info 配置展示行摘要
-// 字段（如用户名/昵称）。modal={false}：悬停菜单不能用 modal 模式——modal
-// 打开时把触发钮置为 pointer-events:none，指针停在按钮上会触发 mouseleave，
-// 收起后又 mouseenter，反复显隐。弹框经 portal 渲染，sticky 操作列上不被
-// 裁剪。
+// RowActionsMenu 是行内操作按钮：悬停即弹出、移出按钮与弹框 150ms 后
+// 收起（点击/键盘开合不受影响），顶部按 info 展示行摘要。modal={false}：
+// modal 打开时触发钮 pointer-events:none，指针停留会反复触发 mouseleave /
+// mouseenter 造成显隐抖动。弹框经 portal 渲染，不被 sticky 操作列裁剪。
 export function RowActionsMenu({ rowLabel, info, actions }: {
   rowLabel: string
   info?: RowActionInfo[]

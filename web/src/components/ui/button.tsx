@@ -3,10 +3,8 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from 'cn'
 import { Slot } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 button，按 hex 兼容规则改写：
-// hover:bg-primary/90 → hover:bg-primary-hover；ring-ring/50 → ring-ring；
-// destructive 的 alpha 悬停/聚焦 → --destructive-hover / --destructive-soft；
-// outline 的 dark:bg-input/30 等 alpha 分支删除，统一 bg-background。
+// 本地改写：alpha 悬停/聚焦/描边统一换语义 token（--primary-hover /
+// --destructive-* / ring-ring）。
 const buttonVariants = cva(
   "inline-flex cursor-pointer shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive-soft [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {

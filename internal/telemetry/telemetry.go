@@ -1,13 +1,10 @@
 // Package telemetry 是观测装配层：OTel TracerProvider 的生命周期（开关、
-// 导出、采样、Shutdown）与框架观测面桥接（trpc-agent-go 日志门面与
-// Tracer 全局变量）只在这里落子。装配经 Wire 以 *Setup 为依赖锚点——
-// server / agent 等消费方持有它即可保证 OTel 全局注入先于一切 span 产生。
+// 导出、采样、Shutdown）与 trpc-agent-go 的日志门面、Tracer 全局桥接只在
+// 这里落子。Wire 以 *Setup 为依赖锚点，保证全局注入先于一切 span 产生。
 //
-// 开关语义：enabled=false 完全 noop——不构造 exporter、不发起
-// 连接、不改写任何全局变量，全链路 span 保持 no-op；enabled=true 注入
-// 全局 TracerProvider，Kratos otel 中间件与框架 span 随之真实导出。
-// x-trace-id 响应头与日志 trace_id 字段来自 ctx 中的 SpanContext（由
-// internal/middleware 链路中间件注入），与开关无关、恒可用。
+// enabled=false 完全 noop：不构造 exporter、不建连接、不改写任何全局，
+// span 保持 no-op；enabled=true 注入全局 provider 后真实导出。x-trace-id
+// 与日志 trace_id 来自 ctx 中的 SpanContext，与开关无关、恒可用。
 package telemetry
 
 import (

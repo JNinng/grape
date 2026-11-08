@@ -5,12 +5,11 @@ import { toApiError } from './toApiError'
 // 动态 List 能力 schema 是确定性纯函数产出，前端据此驱动查询组件与
 // 表格默认排序/页大小。序列化口径与 protojson 一致：字段小驼峰。
 
-// ListSchemaFieldDTO 对齐 query.v1.ListSchemaField：ops 为该字段可用的
-// 过滤操作符全集（服务端按列校验；空集合时 protojson 省略键，按空数组处理）；
-// enum 的 json_name 即 "enum"，是枚举字段的合法线上枚举名；options 是静态
-// 字典选项（UI manifest），value 按字段 dataType 定型为 number 或 string，
-// 渲染下拉/多选值控件，与 api（远程选项源）互斥；visibility 是前端列表
-// 初始显隐（always / optional / hidden），服务端恒下发，缺省按 optional 处理。
+// ListSchemaFieldDTO 对齐 query.v1.ListSchemaField：ops 是该字段可用的
+// 过滤操作符全集（空集省略，按空数组处理）；enum 的合法枚举名即选项；
+// options 是 UI manifest 静态字典（value 按 dataType 定型 number/string，
+// 与远程 api 选项源互斥）；visibility 为初始显隐（always/optional/hidden，
+// 缺省 optional）。其余为字段能力位（sortable/nullable/desc）。
 export interface ListSchemaFieldDTO {
   field: string
   label: string

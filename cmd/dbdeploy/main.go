@@ -1,20 +1,9 @@
-// dbdeploy 命令：grape 关系存储的全量部署。
+// dbdeploy 是对 grape 关系存储执行全量部署的命令：以超级用户 DSN 幂等建库，
+// 单事务内按 internal/data/pg_sqlc/deploy 的生产清单执行 sqlc/ 下全部 SQL，
+// 并补齐 CONNECT 授权（集成测试经 TestDeployFiles 追加测试种子）。
 //
-// 以超级用户 DSN 连接 PostgreSQL，幂等创建目标库后，在单事务内按
-// DeployFiles 清单（internal/data/pg_sqlc/deploy/deploy.go；仅生产部署，
-// 集成测试另经 TestDeployFiles 追加测试种子）
-// 顺序执行 sqlc/ 下全部部署文件，并动态补齐 CONNECT 授权。幂等边界与
-// 手工序列说明见仓库根 deploy_db.md。
-//
-// 用法：
-//
-//	go run ./cmd/dbdeploy \
-//	  --admin-dsn postgres://user:pass@127.0.0.1:5432/postgres \
-//	  --database grape
-//
-// 必填参数也可经环境变量提供（推荐，避免口令进 shell 历史）：
-//
-//	GRAPE_DEPLOY_ADMIN_DSN / GRAPE_DEPLOY_GRAPE_U_PASSWORD / GRAPE_DEPLOY_TEST_U_PASSWORD
+// 敏感口令建议经 GRAPE_DEPLOY_* 环境变量提供，避免进入 shell 历史；参数
+// 解析见 ParseOptions，部署顺序、幂等边界与升级步骤见仓库根 deploy_db.md。
 package main
 
 import (

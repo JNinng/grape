@@ -157,7 +157,7 @@ describe('QueryFilter progressive flow', () => {
     const user2 = userEvent.setup()
     render(<Harness />)
 
-    // 渲染契约 §10.2：is_null/not_null 为 API-only，操作符下拉不渲染。
+    // is_null/not_null 为 API-only，操作符下拉不渲染。
     await openField(user2, '最后登录')
     await user2.click(screen.getByRole('combobox', { name: '操作符' }))
     expect(await screen.findByRole('option', { name: '介于' })).toBeInTheDocument()

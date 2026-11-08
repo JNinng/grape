@@ -15,21 +15,9 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-// 工具执行终态审计：自建 wrapper tool 包住
-// 装配层工具清单，在 Call 返回（终态：成功或失败）后记一条工具调用审计。
-//
-// 挂点选型：框架的 AfterTool 回调虽是运行内执行的终态点，但恢复路径的
-// 网关代执行（ack materializeToolResult 直调 tool.Call）不经过框架执行
-// 处理器，回调看不到该次执行；且回调不携带耗时，需再配一对 BeforeTool
-// 往 ctx 塞起始时刻。wrapper 对两条执行路径（运行内执行与恢复路径代执行）
-// 是同一挂点、自带计时，只在装配点包一层（工具构造函数零改动），是最小
-// 侵入的单一覆盖面。局限：wrapper 转发 CallableTool 形状，若将来引入
-// StreamableTool 形状的工具需同步转发流式面（当前工具集全部是 function
-// 工具，不存在该形状）。
-//
-// 摘要纪律：参数/结果摘要收未脱敏原文，脱敏与截断由 biz.AuditUsecase 在
-// 落库前完成（注册表的 tool_param / retrieval 两类别，与日志、复现
-// 视图共用）。
+// 工具执行终态审计：wrapper 在装配点包一层工具清单，对运行内执行与恢复
+// 路径代执行是同一挂点并自带计时；目前只转发 CallableTool 形状。摘要收
+// 未脱敏原文，脱敏与截断由 biz.AuditUsecase 落库前完成。
 
 // AuditedTools 给工具清单包上审计/观测 wrapper：仅包装 CallableTool 形状
 // 的工具（当前全量），其余形状原样透传。hook 与 observer 都可为 nil

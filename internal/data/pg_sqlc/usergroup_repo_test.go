@@ -10,14 +10,9 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 用户组仓储集成测试：以真实 PostgreSQL 验证 sys_user_group 固定 CRUD、
-// 动态查询协议、成员映射（sys_user_group_mapping）的增删语义与 RLS 租户
-// 边界（跨租户组不可见、跨租户用户不可入组）。复用根包套件的 setupTestDB
-//（deploy 全清单装载，种子数据见 sqlc/test_seed.sql：t-test-01 有用户组
-// 1（core_dev，成员用户 2）与 2（product_design，成员用户 3/4），用户
-// 2-4、6-11 属 t-test-01；t-test-02 无用户组、仅用户 5）。各用例经
-// setupTestDB 重建数据库实现隔离；新建组用 newID() 发号，不与种子主键
-// 冲突。
+// 用户组仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_user_group 的 CRUD、动态查询、成员映射增删语义与 RLS 租户边界。
+// setupTestDB 每次重建数据库；种子用户组属 t-test-01。
 
 const (
 	// groupTenantSeeded 是种子用户组所在的租户。

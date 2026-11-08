@@ -1,8 +1,7 @@
 package httpapi
 
-// EventWindow 直测：事件窗口端点是自建端点面，参数边界、身份 fail-closed、
-// userKey 归属与原文投影必须显式覆盖，不依赖挂载链上的间接断言（注册顺
-// 序与认证链语义由 internal/server 的守卫测试锁定）。
+// EventWindow 直测：参数边界、身份 fail-closed、userKey 归属与原文投影；
+// 注册顺序与认证链语义由 internal/server 的守卫测试覆盖。
 
 import (
 	"context"
@@ -209,12 +208,10 @@ func TestEventWindow_when_anchor_foreign_returns_404(t *testing.T) {
 }
 
 // TestEventWindow_when_window_requested_returns_raw_projection 验证窗口
-// 语义与原文投影：缺省 span 只回锚点一条；before=2 回窗口（追加序）；
-// 事件原文完整（压缩只作用于请求投影副本，事件流保留原文），工具结果
-// 事件带 role/toolCallId/toolName。注意框架窗口语义：事件窗口只收载
-// 「有意义文本」事件（用户/助手文本、工具结果），助手工具调用载体事件
-// 不可作锚点也不入窗（框架 ExtractEventText 排除），投影的工具调用展开
-// 对 eventWindowEventOf 直测覆盖。
+// 语义与原文投影：缺省 span 只回锚点一条，before=2 按追加序回窗口；事件
+// 原文完整，工具结果事件带 role/toolCallId/toolName。框架只把「有意义
+// 文本」事件计入窗口，工具调用载体事件不可作锚点；其投影由
+// eventWindowEventOf 直测覆盖。
 func TestEventWindow_when_window_requested_returns_raw_projection(t *testing.T) {
 	h, memory := newEventWindowFixture(t)
 	userKey, err := identity.EncodeUserKey("t-1", 7)

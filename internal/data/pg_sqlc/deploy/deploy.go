@@ -17,16 +17,10 @@ import (
 	"grape/internal/data/pg_sqlc/sqlc/seed"
 )
 
-// DeployFiles 是生产数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录。
-// dbdeploy 命令执行本清单；集成测试经 TestDeployFiles() 在本清单之后追加
-// test_seed.sql。顺序与仓库根 deploy_db.md 的「执行顺序」表互为镜像，
-// 两处禁止另行维护副本；各步骤的依赖关系、执行者身份与幂等边界以该表为准
-// （要点：role.sql 先于 rls/operate/expose——函数授权依赖角色先行；
-// rls.sql → expose.sql → operate.sql：LANGUAGE sql 函数体创建期解析，
-// operate 的 fn_can_* 引用 rls 的 fn_accessible_* 与 expose 的
-// fn_has_permission，引用必须后于定义；
-// seed 包在 RLS 启用后以超级用户/表 owner 执行，文件顺序由 seed.Files
-// 声明；agent 域尾部追加，只依赖 role.sql 的角色存在）。
+// DeployFiles 是生产数据库部署清单：按序执行的 SQL 文件，相对 sqlc/ 目录，
+// 是部署顺序的单一事实源；dbdeploy 执行本清单，集成测试经 TestDeployFiles
+// 在其后追加测试种子。仓库根 deploy_db.md 的「执行顺序」表是本清单的镜像，
+// 两处禁止另行维护副本。
 var DeployFiles = deployFiles()
 
 // deployFiles 按序拼装清单：schema → 权限函数与角色 → 生产种子包 →
@@ -56,57 +50,37 @@ func deployFiles() []string {
 		// 向量设施：pgvector 扩展 + agent.agent_document
 		// 与 HNSW 索引 + 收窄到该表的授权；超级用户执行面，不入 sqlc catalog。
 		"agent_vector.sql",
-		// Agent 业务审计：public.agent_tool_call_log 与
-		// public.agent_confirmation_log 两表、索引与租户 RLS；sqlc catalog
-		// 输入（命名查询见 queries/agent_audit.sql），尾部独立追加不改
-		// 既有顺序，grape_u 的 DML 授权由 role.sql 默认权限覆盖。
+		// Agent 业务审计：两表、索引与租户 RLS；入 sqlc catalog
+		// （queries/agent_audit.sql），grape_u 的 DML 授权由 role.sql
+		// 默认权限覆盖。
 		"schema/95_agent_audit.sql",
-		// Agent 工具授权：public.agent_tool_grant 表 + 租户
-		// RLS 策略 + 运行角色授权；入 sqlc catalog（命名查询见
-		// queries/agent_grant.sql），策略随域文件走（口径同 expose.sql 的
-		// sys_perm_version），只依赖 role.sql 的角色存在。
+		// Agent 工具授权：表 + 租户 RLS + 运行角色授权；入 sqlc catalog
+		// （queries/agent_grant.sql），策略随域文件走，只依赖 role.sql
+		// 的角色存在。
 		"96_agent_grant.sql",
-		// Agent 检索留痕：public.agent_retrieval_log 表 +
-		// 租户 RLS 策略；入 sqlc catalog（命名查询见
-		// queries/agent_retrieval_log.sql），策略随域文件走（95 同口径），
-		// 只依赖 role.sql 的角色存在，grape_u 的 DML 授权由 role.sql 默认
-		// 权限覆盖（文件内不含授权语句）。
+		// Agent 检索留痕：表 + 租户 RLS；入 sqlc catalog
+		// （queries/agent_retrieval_log.sql），策略随域文件走，
+		// grape_u 的 DML 授权由 role.sql 默认权限覆盖。
 		"schema/97_agent_retrieval_log.sql",
-		// 菜单受控写面（D2）：sys_menu 的 SECURITY
-		// DEFINER 固定口径写函数（fn_menu_create/update/move/delete——建/
-		// 改/移/软删，租户边界复位、父级校验、防环与软删口径收在函数内）；
-		// 入 sqlc catalog（函数签名，命名查询见 queries/menu.sql），尾部
-		// 独立追加不改既有顺序，只依赖 schema/40_rbac.sql 的 sys_menu 存在。
-		// grape_u 对 sys_menu 的直写 REVOKE 在 role.sql，本文件不动授权：
-		// EXECUTE 沿用 PostgreSQL 默认授权 PUBLIC（fn_cleanup_expired_sessions
-		// 同款）。
+		// 菜单受控写面：sys_menu 的写函数（建/改/移/软删），租户复位、
+		// 父级校验、防环与软删口径收在 SECURITY DEFINER 函数内；
+		// 入 sqlc catalog，只依赖 schema/40_rbac.sql。
 		"98_menu_write.sql",
-		// 全局配置受控写面（D2）：sys_config 的 SECURITY DEFINER
-		// 固定口径写函数（fn_config_create/update/delete——建/改/软删，
-		// 认证事务纪律校验与软删口径收在函数内）；入 sqlc catalog（函数
-		// 签名，命名查询见 queries/sys_config.sql），尾部独立追加不改既有
-		// 顺序，只依赖 schema/90_config.sql 的 sys_config 存在。grape_u 对
-		// sys_config 的直写 REVOKE 在 role.sql，本文件不动授权：EXECUTE
-		// 沿用 PostgreSQL 默认授权 PUBLIC（fn_menu_* 同款）。
+		// 全局配置受控写面：sys_config 的写函数（建/改/软删），
+		// 认证事务纪律与软删口径收在 SECURITY DEFINER 函数内；
+		// 入 sqlc catalog，只依赖 schema/90_config.sql。
 		"98_config_write.sql",
-		// 租户删除前置完整性判定（受控读取面）：sys_tenant 的
-		// SECURITY DEFINER 计数函数 fn_tenant_active_child_count——租户树
-		// RLS 下祖父看不到孙行，删除前置校验需要全局事实；函数只返回计数、
-		// 不返回行数据（不构成跨租户数据读面），函数内校验 app.tenant_id
-		// 已设置（未设置即拒绝）。入 sqlc catalog（函数签名，命名查询见
-		// queries/sys_tenant.sql），尾部独立追加不改既有顺序，只依赖
-		// schema/20_tenant.sql 的 sys_tenant 存在；EXECUTE 沿用 PostgreSQL
-		// 默认授权 PUBLIC（fn_menu_* / fn_cleanup_expired_sessions 同款）。
+		// 租户删除前置计数：SECURITY DEFINER 函数只返回未删除直接子租户
+		// 数（不返回行数据，不构成跨租户读面）；入 sqlc catalog，
+		// 只依赖 schema/20_tenant.sql。
 		"98_tenant_guard.sql",
 	)
 }
 
 // TestSeedFiles 是测试专用种子清单：在 DeployFiles 全清单之后追加执行，
-// 仅由集成测试装载（setupTestDB 与 testsupport 套件部署，经 TestDeployFiles），
-// dbdeploy 生产部署不包含。文件依赖 seed 包（010_sys_tenant.sql）的树根
-// 租户 t-super-01 存在；
-// 除平台租户用户 12（superplain）外，内容属测试租户（t-test-*），与生产
-// 默认数据分离。
+// 仅由集成测试装载（经 TestDeployFiles），dbdeploy 生产部署不包含。文件
+// 依赖 seed 包的树根租户 t-super-01 存在；内容属测试租户，与生产默认
+// 数据分离。
 var TestSeedFiles = []string{
 	"test_seed.sql",
 }
@@ -153,10 +127,8 @@ func HasResidualPlaceholder(sql string) bool {
 }
 
 // AcquireDeployLock 串行化跨包、跨进程的清单部署：role.sql 的角色与参数
-// 授权是集群级目录操作，多个测试包（pg_sqlc / dbdeploy / agent 会话面）
-// 或多个 dbdeploy 进程并发执行时会在共享目录上触发 tuple concurrently
-// updated（SQLSTATE XX000）。锁文件落在系统临时目录；持锁超过 staleLimit
-// 视为持有者已崩溃，允许接管，避免测试崩溃残留死锁。
+// 授权是集群级目录操作，并发执行会触发 tuple concurrently updated。锁文件
+// 落在系统临时目录；持锁超过 staleLimit 视为持有者已崩溃，允许接管。
 func AcquireDeployLock(ctx context.Context) (func(), error) {
 	const staleLimit = 10 * time.Minute
 	path := filepath.Join(os.TempDir(), "grape-sqlc-deploy.lock")

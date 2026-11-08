@@ -134,11 +134,9 @@ export function ChatPage() {
     }
   }, [])
 
-  // convergeHistoryAfterDecision 在一次决定（含 404 已失效收敛）后重拉
-  // 历史快照：按先密后疏的节奏整表替换 items，相邻两轮一致（服务端快
-  // 照已稳定）或达轮次上限即停。会话切走即停；运行进行中跳过该轮（流
-  // 事件负责实时折叠），余下轮次照常。单轮失败静默，不因快照回写延迟
-  // 打扰对话。
+  // convergeHistoryAfterDecision 在一次决定（含 404 失效）后按先密后疏
+  // 重拉历史快照：相邻两轮一致或达上限即停；会话切走停止、运行中跳过、
+  // 单轮失败静默。
   const convergeHistoryAfterDecision = useCallback(
     (tid: string) => {
       clearHistoryPoll()

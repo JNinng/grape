@@ -9,14 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// menuRepo 是 biz.MenuRepo 的 PostgreSQL 实现。sys_menu 是功能权限码链
-// 的宿主树：读面为租户内普通读（表无 @scope，租户边界由 IdentityTx 的
-// RLS 会话变量承担）；写面运行角色无直写权限（role.sql 对 sys_menu
-// REVOKE 写授权），全部写入经 98_menu_write.sql 的 SECURITY DEFINER
-// 固定口径写函数——super 命名指有意绕过直写禁令的受控写路径，事务
-// 纪律与普通写一致：仍经 IdentityTx 每事务设 app.tenant_id，受控函数
-// 在 DEFINER 上下文内读取该变量复位租户边界（DEFINER 绕过 RLS 是机械
-// 事实，函数内 fail-closed 兜底），父级校验/防环/软删口径收在函数内。
+// menuRepo 是 biz.MenuRepo 的 PostgreSQL 实现。sys_menu 是功能权限码链的
+// 宿主树：读面为租户内普通读（表无 @scope，RLS 承担边界）；写面运行角色
+// 无直写权限，全部写入经 98_menu_write.sql 的 SECURITY DEFINER 写函数——
+// super 命名只表示走受控写路径，仍经 IdentityTx 设 app.tenant_id。
 type menuRepo struct {
 	data *Data
 }

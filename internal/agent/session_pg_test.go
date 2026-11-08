@@ -1,21 +1,7 @@
 package agent
 
-// Agent 会话存储集成测试：以真实 PostgreSQL 验证框架 session/postgres 接入
-// 的存储边界与 AG-UI 会话能力。使用本套件专属库 grape_agent_session_test，
-// 不触碰其他套件的测试库。设置以下环境变量后运行，未设置时跳过：
-//
-//	GRAPE_SESSION_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent -run TestPGSession -count=1 -v
-//
-// 装载取舍：按 TestDeployFiles 全清单部署（清单已尾随 agent_session.sql），
-// 不裁剪最小子集。理由：role.sql 的授权/回收语句引用 public 业务表
-// （sys_menu、sys_config 等），任何「最小子集」都随 role.sql 的授权
-// 面漂移而脆断；agent schema 虽与 public 域零耦合，grape_u 角色却
-// 依赖完整公域先行存在，全清单是唯一稳态，且回归面与 dbdeploy 一致。
-//
-// 分层说明：本测试文件引用 grape/internal/data/pg_sqlc 仅为复用部署
-// 目录定位与口令占位符替换（部署清单的单一事实源），属测试夹具依赖，
-// 不改变 agent 层的运行期 import 方向。
+// Agent 会话存储 PG 集成测试：持久、userKey 隔离、TTL、压缩投影、/history
+// 与 cancel。套件、环境变量、装载口径与测试夹具依赖说明见 README「测试」。
 
 import (
 	"context"
@@ -519,12 +505,10 @@ func sessionWaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains
 }
 
 // TestPGSession_when_compaction_enabled_projection_placeholders_and_events_raw
-// 验证压缩投影与事件原文的分野：同一会话连续三次运行，第三次运行的
-// 模型请求中，首次运行的工具结果（超出阈值且落在保护窗口外）被替换为
-// 携带 event_id 的占位符；压缩只作用于请求投影副本，session 事件流与
-// 库内事件表保留全部原文；按 event_id 经 GetEventWindow 可取回原文。
-// 注意压缩单元按运行（请求）归属，单次运行内的历史属于当前单元受
-// 保护，故必须跨运行构造历史。
+// 验证压缩投影与事件原文的分野：第三次运行的模型请求里，首次运行的工具
+// 结果（超阈值且在保护窗口外）被替换为携带 event_id 的占位符；事件流保留
+// 全文，按 event_id 经 GetEventWindow 可取回原文。压缩单元按运行归属，故
+// 必须跨运行构造历史。
 func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_raw(t *testing.T) {
 	dsn := sessionSetupDatabase(t)
 	ctx := context.Background()
@@ -610,10 +594,8 @@ func TestPGSession_when_compaction_enabled_projection_placeholders_and_events_ra
 		t.Fatalf("session owner user_id = %q, want t-1:7", userID)
 	}
 
-	// 投影观察：run-3 的模型请求（历史含前两次运行的工具结果）中，
-	// run-1 的工具结果（请求单元落在保护窗口外）被占位符替换，原文不再
-	// 出现；run-2 的工具结果（最近完成请求，受 keep_recent_requests=1
-	// 保护）保持原样。
+	// run-3 的请求中 run-1 的工具结果（在保护窗口外）被占位符替换，
+	// run-2（最近完成请求，受 keep_recent_requests=1 保护）保持原文。
 	requests := llm.snapshot()
 	if len(requests) < 5 {
 		t.Fatalf("model saw %d requests, want >= 5", len(requests))

@@ -1,18 +1,8 @@
 package tools
 
-// 摄取管线与检索工具集成测试：以真实 PostgreSQL（本套件专属库
-// grape_search_test）验证 摄取 → 检索 闭环、RLS 关闭时的跨租户隔离、
-// 引用可追溯、幂等覆盖与 top_k 上限。embedding 一律用确定性替身（关键词
-// → 正交基向量），不发起真实网络请求；向量访问走真实 VectorStore 契约
-// 实现与框架适配器（生产装配路径）。
-//
-// 环境变量门控（未设置时跳过）：
-//
-//	GRAPE_SEARCH_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent/tools -run TestPGDocumentSearch -count=1 -v
-//
-// 装载取舍与会话/确认集成测试一致：TestDeployFiles 全清单部署 + 跨包部署
-// 锁互斥，绝不触碰其他套件的测试库。
+// 摄取管线与检索工具 PG 集成测试：摄取 → 检索闭环、RLS 关闭时跨租户
+// 隔离、引用可追溯、幂等覆盖与 top_k 上限。embedding 用确定性替身，不
+// 发起真实网络请求；套件与环境变量见 README「测试」。
 
 import (
 	"context"

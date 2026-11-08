@@ -61,12 +61,9 @@ func snapshotFrameworkLogGlobals() frameworkLogGlobals {
 	}
 }
 
-// restoreTelemetryGlobals 保存并注册恢复本包遥测测试改写的进程级全局：
-// otel 全局 TracerProvider、agenttelemetry.Tracer 与框架日志门面。本测试
-// 经 NewSetupWithExporter 实际只污染前两者（日志门面桥接仅 NewSetup 路径
-// 安装），门面快照为防御性——装配改走 NewSetup 即被覆盖；otel 全局无读
-// 回原 provider 的通道，按 telemetry 包同构口径恢复为 noop（与进程初始
-// 语义等价）。
+// restoreTelemetryGlobals 保存并恢复本包遥测测试改写的进程级全局：otel
+// 全局 TracerProvider、agenttelemetry.Tracer 与框架日志门面。otel 全局
+// 无读回原 provider 的通道，按 telemetry 包同口径恢复为 noop。
 func restoreTelemetryGlobals(t *testing.T) {
 	t.Helper()
 	oldLogGlobals := snapshotFrameworkLogGlobals()

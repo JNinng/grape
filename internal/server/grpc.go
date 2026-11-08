@@ -22,8 +22,8 @@ import (
 )
 
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
-// 的入链语义与 HTTP 同（见 http.go）：enabled 时在链路中间件之内产生
-// server span。
+// 在 telemetry.enabled 时入链，位置同 HTTP：链路中间件之内产生 server
+// span，不可信 traceparent 已被链路中间件剥除。
 func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, auditMiddleware entrymw.OperationAuditMiddleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),

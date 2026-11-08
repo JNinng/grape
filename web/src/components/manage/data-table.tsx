@@ -39,10 +39,8 @@ import {
 export interface DataTableColumn<T> {
   key: string
   header: string
-  // field 是该列对应的查询字段名（小驼峰）：声明后受 schema 约束——
-  // 仅 schema 声明 sortable 的字段可点表头排序，列头显隐由 schema 的
-  // visibility（always / optional / hidden）驱动；未声明 field（或 schema
-  // 未下发）的列恒可见。
+  // field 是该列对应的查询字段名（小驼峰）：排序门控与列显隐均以 schema
+  // 声明为准；未声明 field（或 schema 未下发）的列恒可见。
   field?: string
   // sortable 填该列对应的查询字段名（小驼峰）时表头可点击排序；最终以
   // schema 的 sortable 声明为准（两者同时声明且 schema 允许才生效）。
@@ -116,12 +114,10 @@ function renderSchemaValue<T>(field: ListSchemaDTO['fields'][number], item: T): 
   return String(raw)
 }
 
-// schemaColumns 由 ListSchema 生成列定义，使表格列集/顺序/表头/排序/
-// 显隐全部动态响应 schema：非 @internal 字段逐列输出（schema 顺序即列序，
-// 含 op 集为空的纯投影列），列头取 schema label，sortable 字段带排序声明
-// （DataTable 仍按 schema 门控）。页面经 overrides 覆写展示细节，
-// extraColumns（如行操作列）恒追加在末尾且不参与显隐。列初始显隐由
-// visibility 在 DataTable 内统一处理，不在此处过滤。
+// schemaColumns 由 ListSchema 生成列定义：列集/顺序/表头/排序/显隐全部
+// 响应 schema（sortable 字段带排序声明，列头取 label）。页面经 overrides
+// 覆写展示细节；extraColumns（如行操作列）恒追加末尾且不参与显隐（列初始
+// 显隐由 visibility 在 DataTable 内统一处理）。
 export function schemaColumns<T>(
   schema: ListSchemaDTO,
   overrides: Record<string, SchemaColumnOverride<T>> = {},
@@ -384,8 +380,8 @@ export function DataTable<T>({
               )}
               {toggleableColumns.length > 0 && (
                 <DropdownMenu>
-                  {/* 官方嵌套：Tooltip 在外、两个 trigger 以 asChild 链式
-                   * 合并到按钮，保证 DropdownMenuTrigger 的 ref 与事件不丢。 */}
+                  {/* Tooltip 在外、两个 trigger 以 asChild 链式合并到按钮，
+                   * 保证 DropdownMenuTrigger 的 ref 与事件不丢。 */}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <DropdownMenuTrigger asChild>

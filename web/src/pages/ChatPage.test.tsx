@@ -271,10 +271,8 @@ describe('ChatPage logout confirmation', () => {
 })
 
 describe('ChatPage history convergence after decision', () => {
-  // 说明：本组用例在假定时器下运行，交互用 fireEvent（同步派发）而非
-  // userEvent——后者经 RTL asyncWrapper 包裹，其收尾的微任务冲刷依赖
-  // jest 专属 API（jest.advanceTimersByTime），vitest 环境下会永久挂起。
-  // 所有异步链（挂载拉取、决定提交、轮询）一律用假时间推进显式冲刷。
+  // 本组用例在假定时器下运行：交互用 fireEvent（userEvent 收尾的微任务
+  // 冲刷依赖 jest 专属 API，vitest 下会挂起），异步链一律以假时间推进冲刷。
 
   function pendingConfirmation(): ToolConfirmationPayload {
     return {

@@ -27,9 +27,9 @@ const (
 	defaultChunkOverlap = 100
 )
 
-// Document 是摄取管线的领域文档来源。文档来源先限内部（运维导入、
-// 后续受权端点等可信生产方），ID 由调用方生成且租户内唯一；对外部
-// 网页抓取等不可信来源开放前，需先补来源校验与脱敏切面（对齐 pkg/redact 注册表）。
+// Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部网页
+// 抓取等不可信来源开放前，须先补来源校验与脱敏切面（对齐 pkg/redact）。
+// ID 由调用方生成且租户内唯一。
 type Document struct {
 	ID       string
 	Name     string
@@ -67,12 +67,10 @@ func WithChunking(size, overlap int) DocumentOption {
 	return func(o *documentOptions) { o.chunkSize, o.chunkOverlap = size, overlap }
 }
 
-// DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约
-// 落库。租户过滤由 VectorStore 实现强制，管线不接触身份以外
-// 的存储细节、绝不直连 SQL；身份从认证 ctx 提取（管线由受权入口驱动，
-// 身份缺失 fail-closed）。摄取空间在每次 Ingest 现场解析（默认空间，
-// 见 EmbedderResolver）：换默认不迁移存量——旧切片留在原空间，重摄取
-// 经 source_id 锚点跨空间清除后以新空间重写，即迁移路径。
+// DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约落库。
+// 租户过滤由 VectorStore 实现强制，管线不接触存储细节、不直连 SQL；身份
+// 从认证 ctx 提取（管线由受权入口驱动），缺失 fail-closed。嵌入空间在
+// 每次 Ingest 现场解析，默认空间切换即迁移路径（见 README「迁移暂存」）。
 type DocumentUsecase struct {
 	store        VectorStore
 	embedder     Embedder
@@ -114,12 +112,9 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 	}, nil
 }
 
-// Ingest 摄取一篇内部文档：切分 → 逐块 embed → 写入向量存储。幂等语义
-// 为「同来源覆盖」（决策声明）：切片 ID 由来源 ID 确定性派生
-// （"<sourceID>#<index>"），摄取前先按 metadata 的 source_id 锚点删除
-// 旧行再整批写入，同 ID 重复摄取等价于整体替换——文档更新后重摄不会
-// 留下旧版本的残块。三步不在同一事务（契约无跨文档批写），中途失败
-// 存在短暂缺文档窗口，内部来源的重摄可重入补偿，可接受。
+// Ingest 摄取一篇内部文档：切分 → 逐块 embed → 写入向量存储。幂等语义为
+// 同来源覆盖：切片 ID 确定性派生，摄取前按 source_id 跨空间清旧行再整批
+// 写入。三步不在同一事务，中途失败存在短暂缺文档窗口，重摄可补偿。
 func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestResult, error) {
 	if _, ok := IdentityFromContext(ctx); !ok {
 		return nil, errors.New("biz: document ingest requires an authenticated identity")

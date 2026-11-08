@@ -26,15 +26,13 @@ var (
 	//（需自叶向根逐层删）。
 	ErrTenantHasChildren = kratoserrors.Conflict(v1.ErrorReason_TENANT_HAS_CHILDREN.String(), "tenant has active children")
 	// ErrTenantSelfStatusChange 表示更新路径试图改变调用方自身租户的
-	// status：自身租户的停用/恢复必须走 Disable/Restore（用例层有明确
-	// 守卫），不能借通用更新绕过。与 ErrTenantInvalidArgument 同
-	// code/reason（errors.Is 可互判），文案单独说明。
+	// status：自身停用/恢复须走 Disable/Restore，不能借通用更新绕过。
+	// 与 ErrTenantInvalidArgument 同 code/reason，errors.Is 可互判。
 	ErrTenantSelfStatusChange = kratoserrors.BadRequest(v1.ErrorReason_TENANT_INVALID_ARGUMENT.String(),
 		"cannot change own tenant status; use disable or restore")
 	// ErrTenantCallerMissing 表示调用方租户行不存在或已软删：创建子租户
-	// 前在同一事务内锁定调用方（同时也是结构父级）行，未命中按入参错误
-	// 拒绝且不写入。与 ErrTenantInvalidArgument 同 code/reason，文案
-	// 单独说明。
+	// 前同事务锁定调用方行，未命中按入参错误拒绝且不写入；与
+	// ErrTenantInvalidArgument 同 code/reason。
 	ErrTenantCallerMissing = kratoserrors.BadRequest(v1.ErrorReason_TENANT_INVALID_ARGUMENT.String(),
 		"caller tenant not found or deleted")
 )
@@ -89,14 +87,10 @@ type TenantList struct {
 }
 
 // TenantRepo 是租户仓储接口。租户边界由存储层 RLS 承担：sys_tenant 的
-// 策略允许命中 tenant_id = app.tenant_id 或 id = app.tenant_id 的行，
-// 每个租户因此可读写自己名下的直接子租户与自身，树外行等同不存在。
-// 命名口径：写/状态方法（CreateSuper/UpdateSuper/DeleteSuper/DisableSuper/
-// RestoreSuper）带 Super，表达「管理一整个租户实体」而非本租户业务数据；
-// 读方法（List/Get）不带。Super 不表示绕过 RLS——除删除前置的受控只读
-// 计数函数（fn_tenant_active_child_count，只返回计数，见
-// 98_tenant_guard.sql）外，本接口不提供 RLS 绕过机制，写路径是普通 DML。
-// List 消费 dynq 动态查询协议。
+// 策略允许命中 tenant_id = app.tenant_id 或 id = app.tenant_id 的行，每个
+// 租户可读写自己名下的直接子租户与自身，树外行等同不存在。
+// 写/状态方法名带 Super 表达「管理一整个租户实体」，不表示绕过 RLS；
+// 唯一例外是删除前置的只读计数函数（见 README「迁移暂存」）。
 type TenantRepo interface {
 	// List 按动态查询协议返回分页集合（调用方租户树可见部分）。
 	List(ctx context.Context, auth Identity, q *dynq.Query) (*TenantList, error)
@@ -150,12 +144,9 @@ func (uc *TenantUsecase) ListTenantsSuper(ctx context.Context, auth Identity, q 
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateTenantSuper 创建租户实体：status 未指定（哨兵）缺省启用、显式 0
-// 原样落库为禁用；parent_id 省略（nil）缺省为调用方租户，提供时必须等于
-// 调用方租户——结构父级与行归属（tenant_id = 会话 app.tenant_id）必须
-// 一致，指向其它租户一律 ErrTenantInvalidArgument。code/name 落库前去除
-// 首尾空白（与列宽校验口径一致），default_locale 空则缺省 zh-CN。id 由
-// 仓储发号，tenant_id 取会话 app.tenant_id。
+// CreateTenantSuper 创建租户实体：status 未指定缺省启用、显式 0 禁用；
+// parent_id 省略缺省为调用方租户，提供时必须等于调用方租户（结构父级与
+// 行归属必须一致）。code/name 去首尾空白，default_locale 空则 zh-CN。
 func (uc *TenantUsecase) CreateTenantSuper(ctx context.Context, auth Identity, t *Tenant) (*Tenant, error) {
 	if err := validateTenant(t, false); err != nil {
 		return nil, err
@@ -183,13 +174,9 @@ func (uc *TenantUsecase) CreateTenantSuper(ctx context.Context, auth Identity, t
 }
 
 // UpdateTenantSuper 覆盖可变字段（status、name、contact_name、
-// contact_phone、expired_at、max_user_count、default_locale）。id 与
-// tenant_id 只读；code 是身份列、parent_id 是结构列，创建后不可变，均在
-// 输入中被清除（更新尝试不会生效、也不参与唯一冲突）。name 落库前去除
-// 首尾空白（口径同创建），default_locale 空则缺省 zh-CN。调用方自身租户
-// 的 status 变更（与当前值不同）被拒绝：自身停用/恢复须走 Disable/
-// Restore 的专有守卫，不能借通用更新绕过；同值更新（如只改 name）放行。
-// 仓储在同一事务内锁行后按锁定状态复核同一规则（原子）。
+// contact_phone、expired_at、max_user_count、default_locale）。code/
+// parent_id/tenant_id 创建后不可变并在输入中被清除；name 去首尾空白、
+// default_locale 空则 zh-CN。自身租户的 status 变更（同值除外）拒绝。
 func (uc *TenantUsecase) UpdateTenantSuper(ctx context.Context, auth Identity, t *Tenant) (*Tenant, error) {
 	if t == nil || strings.TrimSpace(t.ID) == "" {
 		return nil, ErrTenantInvalidArgument
@@ -274,11 +261,8 @@ const (
 var tenantLocalePattern = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$`)
 
 // validateTenant 校验租户入参：name 必填且不超列宽、联系人列不超列宽、
-// default_locale 非空时匹配 BCP-47 基本形态且不超列宽、max_user_count
-// 提供时必须 >0、status 合法（创建路径额外接受未指定哨兵，缺省由用例
-// 落启用；更新路径必填，只认 0/1）。code 是身份列：仅创建路径必填且不超
-// 列宽（更新输入不携带、不参与校验，仓储不写该列）；parent_id/tenant_id
-// 是结构/归属列，创建后的变更不经本路径（更新输入在用例层被清除）。
+// default_locale 非空时匹配 BCP-47 且不超列宽、max_user_count 提供时 >0、
+// status 合法（创建接受未指定哨兵，更新只认 0/1）。code 仅创建路径必填。
 func validateTenant(t *Tenant, update bool) error {
 	if t == nil ||
 		strings.TrimSpace(t.Name) == "" ||

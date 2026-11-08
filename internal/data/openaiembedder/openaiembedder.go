@@ -30,13 +30,10 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-// New 构造 biz.Embedder。conf.vector.enabled=false 时返回禁用占位实现
-// （所有调用按设施缺失拒绝，不发网络请求）；启用时经 conf.VectorSpaces
-// 校验空间清单（键唯一、维度合法、default_embedder 引用已声明键）并
-// fail-fast，逐空间要求 base_url 必填。embedding 模型的真实产出维度
-// 无法离线探知，维度对账的执行点在每次 Embed 响应复核 + 存储层按注册
-// 表对账（biz 契约声明三方一致才落库），与 DDL 探针共同构成空间纪律
-// 的校验链。
+// New 构造 biz.Embedder。conf.vector.enabled=false 时返回禁用占位实现（不发
+// 网络请求）；启用时经 conf.VectorSpaces 校验空间清单并 fail-fast，逐空间
+// 要求 base_url 必填。模型真实产出维度无法离线探知，维度对账在每次 Embed
+// 响应复核与存储层注册表对账。
 func New(c *conf.Vector) (biz.Embedder, func(), error) {
 	if !c.GetEnabled() {
 		return disabledEmbedder{}, func() {}, nil

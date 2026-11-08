@@ -213,8 +213,6 @@ describe('trace evidence assembly', () => {
     ).toEqual(new Set(['call-search', 'call-update']))
   })
 
-  // 对话回放本身不带 trace_id（框架 track 事件无链路事实）：它经
-  // relatedToolCallIds 的 toolCallId 桥接（上行断言）与 relatedChatItemIds
-  // 的分段邻近归属关联到回放 items；过滤函数只作用于三证据面（上行断
-  // 言），结构上不存在「过滤改写回放」的可测行为。
+  // 对话回放不带 trace_id，经 toolCallId 桥接与分段邻近归属关联回放
+  // items；过滤只作用于三证据面（上行断言）。
 })

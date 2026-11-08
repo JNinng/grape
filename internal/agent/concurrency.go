@@ -9,21 +9,9 @@ import (
 	"grape/internal/biz"
 )
 
-// AG-UI 运行入口的并发治理：对 chat 运行请求按租户/用户
-// （userKey）限制同时在途的运行数，超限以 429 拒绝——单个失控客户端不
-// 能占满框架运行面与 LLM 配额。身份解析失败 fail-closed 401（与 sessions
-// / ack 守卫同一口径）。
-//
-// 取舍声明：限流只做「并发上限」单一维度，不做请求
-// 速率（token bucket 之类）——运行请求的破坏面集中在长驻 SSE 流的并发
-// 占用，速率突刺由运行超时（agent.agui.timeout）与 MaxToolIterations 收
-// 敛；速率窗口的误拒复杂度在当前暴露面下不成比例，运维有实测需要再加。
-//
-// 计数为进程内内存态：多实例部署时上限是「每实例」上限而非全局上限，
-// 全局并发的准确治理需外部协调面（如网关信号量），见部署文档。
-//
-// maxConcurrentRuns ≤ 0（conf 默认）时门控整体关闭：wrap 直接透传原
-// handler（零包装零开销，行为与无本面完全一致，既有测试语义不变）。
+// 运行入口并发治理：按 userKey 限制在途 chat 运行数，超限 429，身份
+// 缺失 401。计数为进程内内存态（每实例上限）；上限 ≤ 0 时门控整体关闭，
+// wrap 原样透传 handler。维度取舍与部署口径见 operations.md「运行并发限流」。
 
 // runLimitExceededMsg 是超限拒绝的固定文案：不回显 userKey 等内部细节。
 const runLimitExceededMsg = "concurrent run limit exceeded"

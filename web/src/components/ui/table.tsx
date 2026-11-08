@@ -1,8 +1,7 @@
 import * as React from 'react'
 import { cn } from 'cn'
 
-// 源自 shadcn/ui new-york-v4 table，按 hex 兼容规则改写：
-// 行悬停 / 展开行 / 表脚的 bg-muted/50 → 实色弱化面 bg-soft。
+// 本地改写：行悬停 / 展开行 / 表脚用实色弱化面 bg-soft。
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
     <div

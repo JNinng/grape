@@ -10,13 +10,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// ConfigService 是全局配置（sys_config）的传输层适配器：DTO ↔ DO 转换、
-// 动态查询协议转换，委托给 biz 用例，不实现业务规则。sys_config 是
-// 平台级全局表（无 tenant_id、无 RLS），读端点不设 super；写端点是受控
-// 写面（部署面 SECURITY DEFINER 固定口径写函数，运行角色无直写权限），
-// 方法名按 permission.md 口径带 Super。写路径另经用例层的平台信任边界：
-// 仅平台（根）租户可写，子租户即使持有权限码也由 biz 返回
-// CONFIG_PLATFORM_REQUIRED（403）。
+// ConfigService 是全局配置（sys_config）的传输层适配器：DTO ↔ DO 与动态
+// 查询协议转换，委托 biz 用例。sys_config 是平台级全局表（无 tenant_id、
+// 无 RLS），读端点不设 super；写端点是部署面 SECURITY DEFINER 受控写函数，
+// 方法名按 permission.md 带 Super，且仅平台根租户可写（子租户 403
+// CONFIG_PLATFORM_REQUIRED）。
 type ConfigService struct {
 	configv1.UnimplementedConfigServiceServer
 	uc *biz.ConfigUsecase

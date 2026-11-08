@@ -1,13 +1,8 @@
 package agent
 
-// 审计接线（audit.Hook）的装配级测试：进程内会话存储 + 脚本化模型 +
-// 内存用户仓储 + 内存审计挂点替身，覆盖工具执行终态与 ack 决定两个
-// 写入点的全链路——live 同意（工具行直写 + 确认行）、live 拒绝（deny+
-// remember 归一为空、无工具行）、同意携带 remember（作用域原样入参）、
-// 恢复路径同意（代执行工具行与确认行组合批量）、恢复路径拒绝（单边
-// 批量）、挂点失败不中断运行、echo 循环的执行行与逐次评估的 auto 授权
-// 行一一对应。wrapper 与决定审计拦截器的单元面分别在 audit 包
-// （tool_audit_test.go）与 httpapi 包（ack_audit_test.go）。
+// 审计接线的装配级测试：进程内会话存储 + 脚本化模型 + 审计挂点替身，
+// 覆盖 live/recovery 两路径的工具行与确认行、失败不中断运行与 echo 循环
+// 的全量留痕；wrapper 与拦截器单测分别在 audit 包与 httpapi 包。
 
 import (
 	"errors"
@@ -358,12 +353,10 @@ func TestAuditWire_when_hook_fails_run_and_decide_still_succeed(t *testing.T) {
 	}
 }
 
-// TestAuditWire_when_echo_loop_executions_match_audit_rows 验证全量留痕
-// 与计数一致：allow 层级的 echo 工具被循环调用至上限，每次执行都有
-// 一条成功工具审计行（调用 ID 来自框架 ctx、会话 ID 来自 Invocation），
-// 且每次评估各落一条 auto 授权行（观察挂点转写，confirmation_id 即
-// tool_call_id、path 恒 auto、属主 userKey 为 decided_by）——工具执行
-// 行与授权行一一对应。
+// TestAuditWire_when_echo_loop_executions_match_audit_rows 验证全量留痕与
+// 计数一致：allow 层级的 echo 每次执行一条成功工具行，且每次评估各落一
+// 条 auto 授权行（confirmation_id 即 tool_call_id、path 恒 auto、属主
+// userKey 为 decided_by）。
 func TestAuditWire_when_echo_loop_executions_match_audit_rows(t *testing.T) {
 	const threadID = "thread-audit-echo-loop"
 	loop := acktest.NewScriptedModel("audit-loop-model",

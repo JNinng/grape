@@ -10,15 +10,10 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// 菜单仓储集成测试：以真实 PostgreSQL 验证 sys_menu 读面（RLS 租户边界、
-// 树列表）与受控写面——grape_u 对 sys_menu 无直写权限（role.sql REVOKE），
-// 全部写入经 98_menu_write.sql 的 SECURITY DEFINER 固定口径写函数
-//（fn_menu_create/update/move/delete：租户边界复位、父级校验、防环、软删
-// 口径收在函数内）。复用根包套件的 setupTestDB（deploy 全清单装载，
-// 种子数据见 sqlc/seed/ 与 sqlc/test_seed.sql：
-// t-super-01 有菜单树 201-249、252-273 共 71 行，t-test-02 有菜单树
-// 1201-1237 共 9 行）。各用例经 setupTestDB 重建数据库实现隔离；新建菜单
-// 用 newID() 发号 + 独立权限码，不与种子冲突。
+// 菜单仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_menu 读面（RLS 租户边界、树列表）与受控写面（写入经受控函数，租户
+// 复位、父级校验、防环与软删口径收在函数内）。种子见 sqlc/seed/ 与
+// test_seed.sql，每次重建数据库。
 
 const (
 	// menuTenantSeeded 是种子菜单树 201-249、252-273 所在租户。

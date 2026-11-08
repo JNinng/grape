@@ -3,8 +3,7 @@ import { Command as CommandPrimitive } from 'cmdk'
 import { cn } from 'cn'
 import { SearchIcon } from 'lucide-react'
 
-// 源自 shadcn/ui new-york-v4 command，去除依赖 Dialog 的 CommandDialog
-// （本项目无命令面板场景），其余保持原样。
+// 本地改写：移除依赖 Dialog 的 CommandDialog（无命令面板场景）。
 function Command({
   className,
   ...props

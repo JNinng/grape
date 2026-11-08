@@ -37,12 +37,9 @@ func SafeBody(body []byte) string {
 	return SafeString(string(body))
 }
 
-// MaskString 掩饰字符串中段：保留前 front 个与后 back 个 rune，中段以 mask 填充。
-// 按 rune 计数与切分，Unicode 安全；front 或 back 为负时按 0 处理。
-// 边界契约（n 为 s 的 rune 数）：
-//   - n < front+back：两端无法同时保全，整体掩码，返回 mask；
-//   - n == front+back：前后保留恰好覆盖全串、无中段可掩，原样返回；
-//   - 其余：前 front 个 rune + mask + 后 back 个 rune。
+// MaskString 掩饰字符串中段：按 rune 保留前 front 个与后 back 个，中段以
+// mask 填充；front/back 为负按 0。rune 数 n < front+back 整体返回 mask，
+// n == front+back 原样返回，其余为 前段 + mask + 后段。
 func MaskString(s string, front, back int, mask string) string {
 	if front < 0 {
 		front = 0

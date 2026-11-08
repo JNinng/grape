@@ -1,8 +1,7 @@
-// vector_spaces.go 是向量设施嵌入空间的解析与校验（conf.proto 的 Vector
-// 段之上的普通 Go 辅助，非生成物）：空间键派生、键→维度注册表、全局默认
-// 键校验。openaiembedder（键→端点配置）与 pg_sqlc 向量仓储（键→维度、
-// 启动探针、调用方声明对账）共用本文件，保证键派生与维度纪律只有一处
-// 解析源，两处消费不会漂移。
+// Package conf 承载启动配置的生成结构与手写辅助。vector_spaces.go 解析
+// 并校验向量嵌入空间（conf.proto 的 Vector 段之上）：键派生、键→维度
+// 注册表与全局默认键校验。openaiembedder 与 pg_sqlc 向量仓储共用本文件，
+// 保证键派生与维度纪律只有一处解析源。
 package conf
 
 import (
@@ -32,13 +31,10 @@ func EmbedderSpaceKey(model, version string) string {
 	return model + "@" + version
 }
 
-// VectorSpaces 解析并校验向量设施的空间注册表：返回空间键→维度映射与
-// 全局默认键。启用向量设施后调用；校验失败返回明确错误（装配期
-// fail-fast，不带病启动）：
-//   - embedders 至少一条，model 非空；
-//   - 空间键命中白名单且唯一；
-//   - dimension ∈ (0, VectorMaxDimension]；
-//   - default_embedder 必填且引用已声明键（租户配置缺失时的兜底）。
+// VectorSpaces 解析并校验向量空间注册表，返回键→维度映射与全局默认键。
+// 校验：embedders 至少一条且 model 非空、键命中白名单且唯一、
+// dimension ∈ (0, VectorMaxDimension]、default_embedder 引用已声明键。
+// 失败即返回错误（装配期 fail-fast），调用方不得带病启动。
 func VectorSpaces(v *Vector) (map[string]int32, string, error) {
 	if len(v.GetEmbedders()) == 0 {
 		return nil, "", fmt.Errorf("conf: vector.embedders must declare at least one embedding space")

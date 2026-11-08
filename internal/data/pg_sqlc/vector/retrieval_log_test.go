@@ -310,10 +310,8 @@ func TestLoggedVectorStore_add_failure_records_error_row_and_propagates(t *testi
 }
 
 func TestLoggedVectorStore_embedder_recorded_from_operation_declaration(t *testing.T) {
-	// 留痕行 embedder 按操作现场的声明原样记录：检索行取过滤声明、摄取
-	// 行取文档归属、清除行取过滤声明；未声明落空（NULL 口径，roundtrip
-	// 由集成测试背书）。留痕面不做注册表对账——带未声明键的失败尝试
-	// 原样留证。
+	// 留痕行 embedder 按操作现场声明原样记录（检索/清除取过滤声明、摄取
+	// 取文档归属），未声明落空；留痕面不做注册表对账。
 	repo := &fakeRetrievalRepo{}
 	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
 

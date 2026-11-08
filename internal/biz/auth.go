@@ -106,15 +106,9 @@ func (uc *AuthUsecase) recordLoginAttempt(
 }
 
 // Login 校验用户名与口令，通过后签发会话并返回明文令牌对。
-//
-// 纪律：
-//   - 用户不存在与口令不匹配同因返回 ErrInvalidCredentials，防枚举；
-//     禁用账号在口令校验通过后才拒绝（ErrAuthUserDisabled），未通过
-//     口令校验的调用方无从得知账号状态；
-//   - 口令按库内哈希的算法标识分发校验（VerifyPassword）；校验成功且
-//     非当前首选算法时透明重哈希（种子 scrypt → argon2id 的迁移路径），
-//     重哈希失败不阻断登录，仅记日志，下一次成功登录自动重试；
-//   - 明文口令只在本次调用内存中存在，日志与错误信息不携带。
+// 用户不存在与口令不匹配同因返回 ErrInvalidCredentials（防枚举），禁用
+// 账号在口令通过后才拒绝；校验成功且算法非首选时透明重哈希，失败不阻断
+// 登录。明文口令只在本次调用内存中存在，日志与错误不携带。
 func (uc *AuthUsecase) Login(ctx context.Context, in *LoginInput) (*LoginResult, error) {
 	if in == nil {
 		return nil, ErrSessionInvalidArgument

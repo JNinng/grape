@@ -8,16 +8,9 @@ import (
 	"grape/internal/biz"
 )
 
-// 功能权限码仓储集成测试：以真实 PostgreSQL 验证 fn_has_permission 判定
-// 链路与 GetPermissionCodes 枚举（入口层判定中间件与权限码查询端点的
-// 存储底座）。种子事实（sqlc/seed/ 与 sqlc/test_seed.sql）：
-//   - 用户 1（admin，t-super-01）持角色 101，角色 101 授予全部菜单；
-//   - 用户 3（lisi，t-test-01）持角色 103，菜单副本 3201/3202/3203/3236/3237；
-//   - 用户 2（zhangsan，t-test-01）持角色 103+108，角色 108 无菜单授权；
-//   - 用户 5（zhaoliu，t-test-02）持角色 105，菜单为 12xx 副本。
-// 各用例经 setupTestDB 重建数据库实现隔离；sys_role_menu 的种子外授权
-// 变更用直接 SQL 写入（grape_u 对该表有 DML 授权，RoleService.SetMenus
-// 的仓储原语同型），trg_bump_perm_version_tenant 随之 bump 租户级版本。
+// 功能权限码仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：
+// 覆盖 fn_has_permission 判定链路与 GetPermissionCodes 枚举。断言基于种子
+// 角色-菜单授权；setupTestDB 每次重建数据库。
 
 // permAuth 返回指定租户与用户的操作者身份。
 func permAuth(tenant string, userID int64) biz.Identity {

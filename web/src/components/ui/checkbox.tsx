@@ -3,9 +3,7 @@ import { cn } from 'cn'
 import { Checkbox as CheckboxPrimitive } from 'radix-ui'
 import { CheckIcon, MinusIcon } from 'lucide-react'
 
-// 源自 shadcn/ui new-york-v4 checkbox，按 hex 兼容规则改写：dark:bg-input/30
-// 等 alpha 分支删除；聚焦环统一实色 ring-ring；指示器不做位移动画，
-// 半选态用减号图标呈现。
+// 本地改写：聚焦环实色，指示器不做位移动画，半选态用减号图标呈现。
 function Checkbox({
   className,
   ...props

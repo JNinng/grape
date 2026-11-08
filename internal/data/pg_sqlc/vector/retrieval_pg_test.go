@@ -20,20 +20,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// 检索留痕集成测试：以真实 PostgreSQL 验证检索留痕
-// 行落库（query/top_k/命中与实际一致）、租户 RLS、RLS 关闭时读侧兜底、
-// 留痕失败不中断检索、管线摄取留痕来源与分页边界。测试自建专属库并
-// 重建（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单全量装载，含
-// schema/97_agent_retrieval_log.sql 与 agent_vector.sql），不触碰其他
-// 数据库。设置以下环境变量后运行，未设置时跳过：
-//
-//	GRAPE_RETRIEVAL_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_RETRIEVAL_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_retrieval_test \
-//	go test ./internal/data/pg_sqlc/vector -run "TestRetrievalLog" -count=1 -v
-//
-// 隔离口径：本表启用租户 RLS（部署默认），租户边界由 RLS 强制、读侧
-// WHERE 的同源租户谓词作应用层兜底——RLS 被关闭时跨租户仍不可见（对齐「隔离正确性不押在 RLS
-// 是否存在上」的口径）。
+// 检索留痕集成测试（真实 PostgreSQL，未设 GRAPE_RETRIEVAL_TEST_ADMIN_DSN /
+// GRAPE_RETRIEVAL_TEST_DSN 时跳过）：覆盖留痕落库、租户 RLS 与读侧兜底、
+// 留痕失败不中断检索、管线摄取来源与分页。测试自建专属库并按部署清单
+// 全量装载，不触碰其他数据库。
 
 const retrievalTestDatabase = "grape_retrieval_test"
 

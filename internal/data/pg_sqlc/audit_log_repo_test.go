@@ -14,19 +14,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 审计日志与会话管理面集成测试：以真实 PostgreSQL 验证 sys_login_log /
-// sys_operation_log 只读查询（点查 + 动态 List + RLS 租户隔离）与
-// sys_session 管理面 List（签发后可查、令牌哈希不出现、跨租户隔离）。
-// 复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见
-// sqlc/test_seed.sql：t-test-01 有登录日志 4 条与操作日志 5 条，t-test-02
-// 仅登录日志 1 条（zhaoliu）；两表 append-only，种子即全部事实）。各用例
-// 经 setupTestDB 重建数据库实现隔离。
-//
-// 运行（PostgreSQL 必需，未设环境变量时跳过）：
-//
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
-//	go test ./internal/data/pg_sqlc/ -run "TestAuditLogRepo|TestSessionAdminList" -count=1
+// 审计日志与会话管理面集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时
+// 跳过）：覆盖 sys_login_log / sys_operation_log 只读查询与 sys_session 管理
+// 面 List（令牌哈希不出现、跨租户隔离）。setupTestDB 每次重建数据库；两表
+// append-only，种子即全部事实。
 
 // auditTenantSeeded 是种子日志所在的租户（test_seed.sql）。
 const auditTenantSeeded = "t-test-01"
@@ -211,13 +202,8 @@ func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T
 }
 
 func TestSessionAdminListCursorPageKeepsTotalUnshifted(t *testing.T) {
-	// 会话行经 repo.Issue 以 newID() 发号（id ~1.1e17，超出 JS 安全整数
-	// 2^53）：dynq v0.5.0 起游标整型列值以十进制字符串编码、解码精确
-	// ParseInt（v0.3.0 经 float64 往返对超范围值直接拒绝），大主键的
-	// after 游标翻页自本版本恢复可用——本用例即以真实大 id 验证 total
-	// 与翻页位置无关的语义。（bigserial 的审计日志表 id 从小序列增长，
-	// TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted 直接
-	// 用种子行即可。）
+	// 会话行经 newID() 发号，id 超出 JS 安全整数：本用例验证大主键游标
+	// 翻页时 total 与翻页位置无关（dynq 以十进制字符串精确解码）。
 	d := setupTestDB(t)
 	repo := NewSessionRepo(d)
 	auth := dictAuth(dictTenantSeeded)

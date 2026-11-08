@@ -1,11 +1,9 @@
 import * as React from 'react'
 
-// 主题提供者：移植自 shadcn/ui 官方 vite-app 模板（零依赖，替代 next-themes）。
-// theme 持久化在 localStorage（键 "theme"，dark/light/system），system 经
-// matchMedia 实时跟随系统切换；切换时临时禁用过渡避免颜色渐变闪烁；跨标签
-// 页通过 storage 事件同步。html 上的 .dark 类在 index.html 头部脚本预挂载，
-// 避免暗色用户刷新时闪白。相较模板移除了按 d 键切换的彩蛋，并补充
-// resolvedTheme 供切换按钮展示当前生效主题。
+// 主题提供者（零依赖，替代 next-themes）：theme（dark/light/system）与
+// accent（品牌色系）持久化在 localStorage，system 经 matchMedia 实时跟随；
+// 切换时临时禁用过渡，跨标签经 storage 事件同步。html 上的 .dark 与
+// data-accent 由 index.html 头部脚本预挂载，避免刷新闪现。
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = 'dark' | 'light'
 

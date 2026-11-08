@@ -10,14 +10,12 @@ import (
 
 // ErrPermissionDenied 表示入口层功能权限码判定不通过：当前用户（角色 →
 // 菜单 → 权限码链）不持有端点声明的权限码。存在性不敏感的明确拒绝
-// （403），与行级判定的 NotFound 口径（不泄露存在性）分工见 permission.md
-// 的错误语义表。
+// （403），与行级判定的 NotFound 口径（不可见即 404）分工。
 var ErrPermissionDenied = kratoserrors.Forbidden(v1.ErrorReason_PERM_ACCESS_DENIED.String(), "permission denied")
 
-// 管理面功能权限码常量：<资源>:<操作> 形态，与生产种子菜单权限点
-// （sqlc/seed/ 的 sys_menu.permission_code）一一对应。码只被入口层
-// （middleware 的操作码表）与测试引用，业务用例不携带权限参数
-// （permission.md 落点约束）。
+// 管理面功能权限码常量：<资源>:<操作> 形态，与生产种子菜单的权限点
+// 一一对应。码只被入口层（middleware 的操作码表）与测试引用，业务用例
+// 不携带权限参数。
 const (
 	// 用户管理（sys_user，种子菜单 202 子树）。
 	PermUserQuery         = "sys:user:query"
@@ -110,9 +108,8 @@ const (
 
 	// 租户管理（sys_tenant，种子菜单 219 子树：操作级权限点 220-223 由
 	// seed 包预铺）。平台级租户实体管理面：方法名带 super 表达「管理
-	// 一整个租户实体」而非「绕过 RLS」（租户树边界仍由 RLS 承担，见
-	// permission.md 的 super 口径条目）。停用/恢复并入 sys:tenant:update
-	//（状态变更属编辑形态，种子权限点不设独立码）。
+	// 一整个租户实体」，租户树边界仍由 RLS 承担。停用/恢复并入
+	// sys:tenant:update（状态变更属编辑形态，种子权限点不设独立码）。
 	PermTenantQuery  = "sys:tenant:query"
 	PermTenantCreate = "sys:tenant:create"
 	PermTenantUpdate = "sys:tenant:update"

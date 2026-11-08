@@ -1,9 +1,7 @@
 package audit
 
-// 工具执行终态 wrapper 与审计写入纪律的单元面：无调用 ID 跳过、失败
-// 终态状态、挂点 panic 不传播、恢复路径捕获器归集、工具自身 panic 落
-// error 行后 re-panic、写入短超时预算、观测契约的终态计数与组合形态。
-// 装配后的全链路审计接线（live/recovery 两路径与决定路由）由根包
+// 工具执行终态 wrapper 与写入纪律的单元面：无调用 ID 跳过、失败终态、
+// panic 不传播、恢复捕获器归集、短超时预算与观测计数；装配级接线由根包
 // audit_wire_test.go 覆盖。
 
 import (

@@ -18,24 +18,11 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
-// 向量存储设施（biz.VectorStore 的 PostgreSQL 实现）。存取对象是
-// agent.agent_document（见 sqlc/agent_vector.sql）：pgvector 类型与相似
-// 度算子超出 sqlc catalog 的支持面，SQL 以手写参数化常量维护于此，
-// 不进 sqlc 生成（治理口径见 sqlc/README.md）。
-//
-// 空间模型：一表承载多嵌入空间——embedding 列无固定维度（裸 vector），
-// embedder/embed_dim 列逐行声明归属（DB 层 CHECK 把维度列与实际向量
-// 长度绑定），检索按空间键等值 + 维度谓词命中对应维度的表达式部分
-// HNSW 索引。空间注册表（键→维度）经 conf.VectorSpaces 单一解析源
-// 构建：写侧与检索侧的声明都要过注册表对账（调用方声明不可伪造），
-// 检索 SQL 的 vector(N) cast 以校验后的维度内联（typmod 不可参数化，
-// 与表名白名单同纪律：进 SQL 文本的只有服务端产出的整数）。
-//
-// 租户隔离（应用层强制执行点）：全部方法从认证 ctx 提取身份，缺身份
-// 直接拒绝；写入侧身份落租户列并冗余进 metadata，读侧每条 SQL 强制
-// tenant_id 过滤（表无 RLS，隔离不依赖数据库策略存在）。过滤值一律走
-// 占位符参数，唯一进入 SQL 文本的配置值是表名与校验后的维度常量
-// （构造期按标识符白名单校验）。
+// 向量存储设施（biz.VectorStore 的 PostgreSQL 实现），存取 agent.agent_document。
+// 一表承载多嵌入空间：embedding 为裸 vector，embedder/embed_dim 逐行声明
+// 身份，检索命中对应维度的表达式部分 HNSW 索引。SQL 手写参数化，不进 sqlc
+// 生成。表无 RLS，租户隔离由应用层强制；空间模型与探针契约见
+// internal/data/README.md「迁移暂存（阶段 2 并入）」。
 const (
 	// vectorSchema 是 agent 域设施的固定 schema（与框架会话表同域）。
 	vectorSchema = "agent"
@@ -105,11 +92,8 @@ type vectorStore struct {
 var _ biz.VectorStore = (*vectorStore)(nil)
 
 // NewVectorStore 构造向量存储设施。conf.vector.enabled=false 时返回禁用
-// 占位实现（所有调用按设施缺失拒绝，不触库）；启用时执行装配期校验并
-// fail-fast：空间注册表合法（键唯一、维度合法、default 引用已声明键）、
-// 表名过标识符白名单、启动探针确认部署表为多空间形状（裸 vector 列 +
-// embedder/embed_dim 列）且每个声明维度存在匹配的表达式部分 HNSW
-// 索引——配置与部署失配启动即失败。
+// 占位实现（不触库）；启用时 fail-fast 校验空间注册表、表名白名单与部署
+// 探针（多空间形状 + 每声明维度的表达式部分 HNSW 索引）。
 func NewVectorStore(c *conf.Vector, d *pgsqlc.Data) (biz.VectorStore, func(), error) {
 	if !c.GetEnabled() {
 		return &disabledVectorStore{}, func() {}, nil
@@ -192,13 +176,10 @@ func (r *vectorStore) probeColumns(ctx context.Context, qualified string) (map[s
 	return columns, nil
 }
 
-// probeIndexes 核对每个声明维度的表达式部分 HNSW 索引：indexdef 须含
-// `::vector(N)) vector_cosine_ops`（cast 尾段，闭括号锚定数字边界，维度
-// 4 不会被维度 40 的定义误配——pg_get_indexdef 以 `(列)::vector(N)` 形态
-// 渲染表达式）与 `embed_dim = N)`（部分谓词）——cast 与谓词是检索 SQL
-// 命中索引的前提（查询侧重复同一 cast 表达式），缺失即检索退化为顺序
-// 扫描，装配期拒绝。维度超过 2000 时 vector ops 不可索引（pgvector
-// 上限），需 halfvec 索引变体（见 agent_vector.sql）。
+// probeIndexes 核对每个声明维度的表达式部分 HNSW 索引：索引定义须同时含
+// `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)`，cast 与谓词是检索
+// SQL 命中索引的前提，缺失即装配期拒绝。索引表达式细节见 sqlc/README.md
+// 「迁移暂存（阶段 2 并入）」。
 func (r *vectorStore) probeIndexes(ctx context.Context, qualified string) error {
 	parts := strings.SplitN(qualified, ".", 2)
 	rows, err := r.data.Pool().Query(ctx, vectorIndexesProbeSQL, parts[0], parts[1])

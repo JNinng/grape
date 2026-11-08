@@ -3,8 +3,7 @@ import { cn } from 'cn'
 import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react'
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 dropdown-menu，按 hex 兼容规则改写：
-// destructive 项聚焦的 bg-destructive/10（dark /20）→ bg-destructive-soft。
+// 本地改写：destructive 项聚焦面用 bg-destructive-soft。
 function DropdownMenu({
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Root>) {

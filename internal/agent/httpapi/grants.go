@@ -17,17 +17,10 @@ import (
 	"github.com/jninng/trpc_agent_go_ack"
 )
 
-// StoredGrants 是许可源的真实现：ack 的
-// string UserID 是 userKey（tenant_id:user_id），经 identity.DecodeUserKey 映射
-// 为内部 (tenant_id, user_id) 后交 biz.GrantUsecase 落 agent_tool_grant
-// 表（经 IdentityTx 走 RLS；仓储查询另显式携带租户过滤，RLS 关闭时
-// 跨租户仍不可见）。Lookup 的「会话级先于全局级」次序由用例层的
-// Resolve 显式编排（对齐 ack grants.go memoryGrants 的既有语义）。
-//
-// 错误姿态：许可只能把 confirm 层级降级为放行，因此一切失败（身份
-// 解码失败、存储故障）都按「未命中」处理——确认照常发起，fail-closed
-// 的代价只是重复确认，绝不因故障静默放行（与 ack 对策略源故障升级
-// confirm 的方向一致）。存储故障记日志便于排障。
+// StoredGrants 是许可源的真实现：ack 的 UserID 是 userKey，解码为
+// (tenant_id, user_id) 后交 biz.GrantUsecase 落 agent_tool_grant 表
+// （IdentityTx + RLS，仓储查询另带显式租户过滤）。一切失败按未命中处理：
+// 代价只是重复确认，绝不静默放行；存储故障记日志便于排障。
 type StoredGrants struct {
 	grants *biz.GrantUsecase
 }

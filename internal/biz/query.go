@@ -16,9 +16,9 @@ var (
 )
 
 // QuerySchemaProvider 由存储能力目录实现：返回资源动态 List 的能力 schema。
-// schema 是（生成期元数据，opts）的确定性纯函数；出口须与 Parse/List/Count
-// 使用同一份 opts（四点同参纪律），当前查询面未传能力收窄 opts，故恒为
-// 全量 schema。schema 不触库、无租户边界，是能力元数据而非行数据。
+// schema 是（生成期元数据，opts）的确定性纯函数；schema 出口与 Parse/List/
+// Count 必须使用同一份 opts（四点同参纪律）。schema 不触库、无租户边界，
+// 是能力元数据而非行数据。
 type QuerySchemaProvider interface {
 	// ListSchema 返回资源的 List 能力 schema；未收录资源返回 ErrQueryResourceUnknown。
 	ListSchema(resource string) (dynq.ResourceSchema, error)

@@ -1,10 +1,9 @@
 package audit
 
-// 授权终态观察转写器（permission_audit.go）的转写契约测试：事件 →
-// 授权确认审计行的映射面——allow/deny、带/不带来源命名空间、confirmed
-// by 属主 userKey、path 恒 auto、confirmation_id 即 tool_call_id；取不
-// 到调用 ID / 身份只记日志放弃；来源名非法 fail-closed 丢弃；写入失败
-// 与 panic 不向观察回调传播（审计旁路纪律）。
+// 授权终态观察转写器的契约测试：事件 → 授权确认行的映射（allow/deny、
+// 来源命名空间、属主 userKey、path 恒 auto、confirmation_id 即
+// tool_call_id），以及缺 ID/身份、来源名非法、写入失败与 panic 的旁路
+// 纪律。
 
 import (
 	"context"

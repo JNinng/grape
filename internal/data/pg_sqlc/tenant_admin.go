@@ -15,14 +15,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// tenantRepo 是 biz.TenantRepo 的 PostgreSQL 实现。租户树模型：sys_tenant
-// 的每一行归属其父租户（tenant_id 列），RLS 策略
-// sys_tenant_tenant_isolation 允许命中 tenant_id = app.tenant_id 或
-// id = app.tenant_id 的行——每个租户可读写自己名下的直接子租户与自身，
-// 树外行天然不可见（等同不存在）。super 命名表达「管理一整个租户实体」，
-// 不表示绕过 RLS：除删除前置的受控只读计数函数
-// （fn_tenant_active_child_count，只返回计数）外，本仓储不提供 RLS 绕过
-// 机制，写路径是普通 DML（role.sql 未对 sys_tenant REVOKE 直写授权）。
+// tenantRepo 是 biz.TenantRepo 的 PostgreSQL 实现。sys_tenant 按租户树模型
+// 由 RLS 承担边界：每个租户可读写自己名下的直接子租户与自身，树外行天然
+// 不可见。super 命名表达「管理一整个租户实体」，不表示绕过 RLS；删除前置
+// 的受控计数函数见 internal/data/README.md「迁移暂存（阶段 2 并入）」。
 type tenantRepo struct {
 	data *Data
 }
@@ -176,16 +172,11 @@ func (r *tenantRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query)
 	return out, nil
 }
 
-// CreateSuper 创建租户实体：主键由本仓储发号（newTenantID，`t-` + 14 位
-// 十六进制），tenant_id 由 SQL 取会话 app.tenant_id 落值（行归属父租户，
-// 不取入参），审计列记操作者；未删除行间 code/name 唯一冲突映射
-// ErrTenantAlreadyExists。parent_id 只允许省略或等于调用方租户（省略同样
-// 落为调用方租户）——RLS 的 WITH CHECK 要求新行 tenant_id =
-// app.tenant_id，结构父级与行归属必须一致，其它值一律按入参错误拒绝
-// （不写入，避免分裂的树）。插入前在同一事务内对父级（即调用方租户）行
-// 执行 LockSysTenantByID：不存在/已软删/树外不可见返回 ErrTenantCallerMissing
-// （INVALID_ARGUMENT），锁持有到提交，与 DeleteSuper 的锁串行化，
-// 杜绝「父删 → 子插」并发窗口产生的孤儿。
+// CreateSuper 创建租户实体：主键由本仓储发号（newTenantID），tenant_id 由
+// SQL 取会话 app.tenant_id 落值，审计列记操作者；code/name 唯一冲突映射
+// ErrTenantAlreadyExists。parent_id 只允许省略或等于调用方租户；插入前在
+// 同事务锁定父级行，不存在/已软删返回 ErrTenantCallerMissing，与删除锁
+// 串行化，杜绝「父删 → 子插」的孤儿。
 func (r *tenantRepo) CreateSuper(ctx context.Context, auth biz.Identity, t *biz.Tenant) (*biz.Tenant, error) {
 	var out *biz.Tenant
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -232,14 +223,10 @@ func (r *tenantRepo) CreateSuper(ctx context.Context, auth biz.Identity, t *biz.
 	return out, nil
 }
 
-// UpdateSuper 覆盖可变字段（status、name、contact_name、contact_phone、
-// expired_at、max_user_count、default_locale）。code 是身份列（与 dict
-// code / feature flag_key 同口径，创建后不可变），id/parent_id/tenant_id
-// 是身份/结构/归属列：均不在更新列内。目标行先经 LockSysTenantByID
-// 锁定：不存在、已软删或树外不可见等同不存在（NotFound），锁持有到
-// 提交。调用方自身租户的 status 变更按锁定行状态原子复核：与当前值不同
-// 即 ErrTenantSelfStatusChange（自身停用/恢复须走 Disable/Restore），同值
-// 更新（如只改 name）放行。
+// UpdateSuper 覆盖可变字段（status、name、contact、expired_at、max_user_count、
+// default_locale）；code 是创建后不可变的身份列。目标行先经 LockSysTenantByID
+// 锁定：不存在、已软删或树外不可见等同不存在。调用方自身租户的 status 变更
+// 与当前值不同即 ErrTenantSelfStatusChange（自身停用/恢复须走 Disable/Restore）。
 func (r *tenantRepo) UpdateSuper(ctx context.Context, auth biz.Identity, t *biz.Tenant) (*biz.Tenant, error) {
 	var out *biz.Tenant
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -274,13 +261,9 @@ func (r *tenantRepo) UpdateSuper(ctx context.Context, auth biz.Identity, t *biz.
 }
 
 // DeleteSuper 软删除租户。同一事务内先锁行、再经受控计数函数统计未删除
-// 直接子租户：有子租户返回 ErrTenantHasChildren 不写入，否则置位
-// deleted_at；判定与写入同事务。CreateSuper 在插入前对父级（调用方）
-// 行加锁，删除与创建在同一行锁上串行化，杜绝「父删 → 子插」并发窗口
-// 产生的孤儿。计数走 fn_tenant_active_child_count（SECURITY DEFINER）：
-// 租户树 RLS 只放行 tenant_id = app.tenant_id 或 id = app.tenant_id 的行，
-// 祖父看不到子租户自己创建的孙行，直接 count 会漏掉它们——函数只返回
-// 计数、不返回行数据，不构成跨租户数据读面（见 98_tenant_guard.sql）。
+// 直接子租户：有子返回 ErrTenantHasChildren 不写入，否则置位 deleted_at。
+// 孤儿判定口径（祖父看不到孙行、函数只返回计数）见 internal/data/README.md
+// 「迁移暂存（阶段 2 并入）」。
 func (r *tenantRepo) DeleteSuper(ctx context.Context, auth biz.Identity, id string) error {
 	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		if _, err := s.Q().LockSysTenantByID(ctx, id); err != nil {

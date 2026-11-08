@@ -120,7 +120,6 @@ func main() {
 	}
 	defer cleanup()
 
-	// 启动并等待停止信号
 	if err := app.Run(); err != nil {
 		panic(err)
 	}

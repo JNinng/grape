@@ -130,8 +130,7 @@ func TestAgentRetrieval_default_page_size_applied_when_unset(t *testing.T) {
 	repo := &retrievalFakeRepo{}
 	svc := NewAgentRetrievalService(biz.NewRetrievalLogUsecase(repo))
 
-	// 假仓储不消费 filter；用例侧的缺省补齐经 Repository 契约透传校验
-	// 在 biz 单测覆盖，这里验证缺省请求 200 且信封恒有 items 数组。
+	// 假仓储不消费 filter；此处只验证缺省请求 200 且信封恒有 items 数组。
 	rec := httptest.NewRecorder()
 	svc.retrievalLogs(retrievalIdentityRequest("/v1/agent/retrieval-logs"), rec)
 	if rec.Code != http.StatusOK {

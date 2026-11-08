@@ -23,13 +23,9 @@ var agentSessionDDLTables = []string{
 }
 
 // TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape
-// 守卫 agent_session.sql 与部署清单的一致性：文件在清单内且位于
-// 种子包之后、通过事务破坏语句校验、六张框架表与索引齐备、关键
-// 列型与框架期望一致。WithSkipDBInit(true) 下框架启动期零校验，本
-// 静态守卫是表结构漂移的唯一防线：框架表/索引名规则
-// （idx_{schema}_{前缀表}_{suffix}）由框架内部 builder 计算，列型/
-// 可空性与框架 verifySchema 的 expectedSchema 对应，DDL 偏离任何一项，
-// 框架升级跑全量校验或运行期读写即断。
+// 静态守卫 agent_session.sql 与部署清单的一致性：文件位置、事务安全、
+// 六张框架表与索引、关键列型。框架以 WithSkipDBInit(true) 启动时零校验，
+// 本测试是表结构漂移的唯一防线。
 func TestAgentSessionDDL_when_deployed_matches_manifest_and_framework_shape(t *testing.T) {
 	// 相对序约束：agent_session.sql 在种子包最后一个文件之后即可，不锁
 	// 绝对最后——向量域的清单项即落其后，避免尾部互斥。

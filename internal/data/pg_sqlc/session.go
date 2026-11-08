@@ -91,12 +91,9 @@ func (d *Data) runInTx(ctx context.Context, gucs []txGuC, fn func(tx pgx.Tx) err
 }
 
 // IdentityTx 是绑定完整身份的事务门面：app.tenant_id 以 local=true 注入，
-// 事务结束自动失效，连接归还池后不残留上一请求的租户上下文。所有经
-// 普通数据库角色（grape_u）建立的连接都必须经 IdentityTx 访问数据库，
-// 禁止绕过租户注入直连。身份成立前的例外走 TenantTx（登录点查，只读）
-// 与 TokenTx（会话校验/刷新/登出撤销，限令牌哈希命中的单行读写）；
-// 介质维护经池直连调 SECURITY DEFINER 函数，是文档化的另一例外——
-// 绕过路径清单见 permission.md。
+// 事务结束自动失效。所有经普通数据库角色（grape_u）建立的连接都必须经
+// 它访问数据库，禁止绕过租户注入直连；身份成立前的例外与绕过路径清单见
+// internal/data/README.md「迁移暂存（阶段 2 并入）」。
 type IdentityTx struct {
 	txHandle
 	auth Identity

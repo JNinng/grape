@@ -34,29 +34,11 @@ const (
 // 中间件本体仍是普通 middleware.Middleware。
 type TraceMiddleware middleware.Middleware
 
-// NewTraceMiddleware 构造链路标识中间件，是所有入站请求的链路唯一生成点，
-// 单件同时服务 HTTP 与 gRPC（同一实现，两协议同链、同 trace-id）。
-// trusted_networks 含非法 CIDR 时返回错误，装配失败即拒绝启动，与数据侧
-// 构造函数的错误口径一致。
-//
-// 生命周期：
-//   - 继承：上游 traceparent 格式合法（W3C）且对端 IP 落在
-//     server.trace.trusted_networks 内才被继承；配置为空一律不可信
-//     （fail-closed，新建根），不继承时剥头置空，下游不可再读到原值。
-//   - 新建根：trace-id 取 utils.NewTraceID，flags 置 sampled；本跳
-//     span-id 恒取 utils.NewSpanID（继承只认 trace-id，不认上游 span）。
-//   - 注入 ctx：构造 otel SpanContext 放进 ctx，日志链路字段（trace_id/
-//     span_id）由默认 logger 的 tracing.TraceAttrs extractor 自动携带，
-//     下游 slog.XxxContext 无需手工拼链路字段。
-//   - 回传：调 handler 之前写 ReplyHeader，错误路径同样回传——HTTP 走
-//     响应头，gRPC 经初始 metadata，两协议统一口径；trace-id 不进响应体、
-//     不进 errors.Metadata。跨域暴露（Access-Control-Expose-Headers 含
-//     x-trace-id）归 [cors.go](cors.go) 的 CORS 中间件，本中间件不感知。
-//
-// 本实现自研生成，与 SDK 解耦（OTel 全局 provider 由 telemetry 层装配，
-// 本中间件在构造 otel SpanContext 时使用）；如需换用 tracer 的生成实现，
-// 只动 NewTraceID/NewSpanID，中间件形态不变。对端取不到传输上下文时原样放行
-// （无头可回、无链路可标，与 auth 的 fail-closed 不同）。
+// NewTraceMiddleware 构造链路标识中间件，是所有入站请求的唯一链路生成点，
+// 同一实现服务 HTTP 与 gRPC。上游 traceparent 合法且对端 IP 落在
+// server.trace.trusted_networks 内才继承 trace-id，否则剥头新建根
+// （配置为空即 fail-closed）；本跳 span-id 恒新生成，SpanContext 注入 ctx，
+// x-trace-id 恒回传（错误路径同样）。生命周期细节见 README。
 func NewTraceMiddleware(c *conf.Server) (TraceMiddleware, error) {
 	// 网段在启动期解析一次：配置项非法属配置错误，返回错误不带病启动。
 	var trusted []netip.Prefix

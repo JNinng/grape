@@ -16,18 +16,11 @@ import (
 	"github.com/go-kratos/kratos/v3/transport"
 )
 
-// operationPermissionCodes 是管理面端点的功能权限码表：tr.Operation()
-// → 权限码（biz 常量，种子菜单权限点一一对应）。在表内即受功能权限
-// 约束；不在表内的端点只受令牌校验与行级判定约束（认证生命周期
-// Login/Refresh/Logout、agent 业务面、权限码查询端点 GetMyPermissions
-// 不设码，口径见 permission.md）。判定由库内 fn_has_permission 推导，
-// 与前端导航过滤共用同一权限码集合。
-//
-// 覆盖面（入口层按操作声明权限码）：用户/部门/用户组/角色/
-// 菜单/字典/配置（全局 + 租户）管理面与审计日志/会话治理面的全部写端点
-// 与管理读端点；super 写端点（受控写面）同样在列。一个码可覆盖多个操作
-// （读类并入 :query、结构移动并入 :update）——码的粒度对齐种子权限点，
-// 不为每个 RPC 各造一码。
+// operationPermissionCodes 是管理面端点的功能权限码表（tr.Operation()
+// → biz 权限码常量，与种子菜单权限点一一对应）。在表内即受功能权限约束，
+// 不在表内只受令牌校验与行级判定约束（登录生命周期、agent 业务面、
+// GetMyPermissions 不设码）。判定由库内 fn_has_permission 推导，与前端
+// 导航过滤共用同一权限码集合。
 var operationPermissionCodes = map[string]string{
 	// 用户管理
 	userv1.OperationUserServiceGetUser:           biz.PermUserQuery,
@@ -38,9 +31,8 @@ var operationPermissionCodes = map[string]string{
 	userv1.OperationUserServiceDeleteUser:        biz.PermUserDelete,
 	userv1.OperationUserServiceAssignRoles:       biz.PermUserAssignRole,
 	userv1.OperationUserServiceTransferUserOwner: biz.PermUserTransferOwner,
-	// 用户分配选择器与角色整组替换：候选接口按分配动作设权限码（角色
-	// 选择器与当前/设置角色并入 assign-role，三个归属候选并入
-	// transfer-owner）。
+	// 用户分配选择器与角色整组替换：候选接口按分配动作设码（角色相关
+	// 并入 assign-role，归属候选并入 transfer-owner）。
 	userv1.OperationUserServiceListAssignableRoles:   biz.PermUserAssignRole,
 	userv1.OperationUserServiceListUserRoles:         biz.PermUserAssignRole,
 	userv1.OperationUserServiceSetUserRoles:          biz.PermUserAssignRole,
@@ -137,12 +129,10 @@ var operationPermissionCodes = map[string]string{
 // 承载，否则 Wire 无法按类型装配（TraceMiddleware 先例）。
 type PermissionMiddleware middleware.Middleware
 
-// NewPermissionMiddleware 构造功能权限码判定中间件：对码表内声明的端点，
-// 以认证中间件注入的身份经 fn_has_permission 判定（角色 → 菜单 → 权限码
-// 链，库内推导），不通过返回 ErrPermissionDenied（403）。必须在认证中间
-// 件之后入链：身份事实由前者注入。fail-closed 口径：取不到传输上下文
-// （端点是否受控无从判定）或受控端点上身份缺失（装配错误/绕过认证链）
-// 一律拒绝。码表外的端点原样放行。
+// NewPermissionMiddleware 构造功能权限码判定中间件：码表内端点以认证
+// 注入的身份经 fn_has_permission 判定，不通过返回 ErrPermissionDenied；
+// 必须排在认证之后。fail-closed：无传输上下文或受控端点缺身份一律拒绝
+// （装配错误或绕过认证链）；码表外端点原样放行。
 func NewPermissionMiddleware(perms *biz.PermissionUsecase) PermissionMiddleware {
 	return PermissionMiddleware(func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {

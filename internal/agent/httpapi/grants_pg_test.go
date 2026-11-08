@@ -1,24 +1,8 @@
 package httpapi_test
 
-// 工具授权集成测试：以真实 PostgreSQL（本套件专属库
-// grape_grant_test）验证许可存储的全链路语义——remember 落库
-// agent_tool_grant、同会话二次调用免确认、吊销后重新确认、会话级/
-// 全局级作用域差异、重启（重建连接池）后许可仍生效、同键重复授权
-// 幂等、RLS 关闭场景跨租户不可见（应用层兜底，与向量层隔离口径一致）、
-// 管理端点的权限码边界（种子角色经 fn_has_permission 库内判定）。
-//
-// 环境变量门控（未设置时跳过）：
-//
-//	GRAPE_GRANT_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent/httpapi -run TestPGGrant -count=1 -v
-//
-// 装载取舍与会话/确认恢复集成测试一致：TestDeployFiles 全清单部署（含
-// 96_agent_grant.sql、权限码种子与测试种子 test_seed.sql）+ 跨包部署锁
-// 互斥，绝不触碰其他套件的测试库。「重启」以全新连接池 + 全新栈模拟
-//（不 Close 旧栈），与确认恢复路径（根包 confirm_pg_test.go）的口径一致。
-//
-// 外部测试包（httpapi_test）形态：用例经完整 Stack（根包生产装配路径）
-// 与本包导出构造函数驱动，不触达包内私有符号。
+// 工具授权 PG 集成测试：remember 落库、同会话免二次确认、吊销、作用域、
+// 重启存活、幂等、RLS 关闭时跨租户不可见与管理端点权限码边界。套件、
+// 环境变量与装载口径见 README「测试」；用例经完整 Stack 驱动。
 
 import (
 	"context"

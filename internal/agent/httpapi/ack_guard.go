@@ -15,23 +15,11 @@ import (
 // 面收口（决定请求体合法形态远小于此；ackhttp 对超限体的解码同样失败）。
 const ackGuardMaxBodyBytes = 1 << 20 // 1MiB
 
-// AckOwnerGuard 是 ack 路由的会话归属守卫。
-//
-// 背景与必要性：ack 的等待者以（会话 ID, 确认 ID）隔离命名空间，live
-// 路径的 Decide 不校验决定者与会话归属（其恢复路径经 userKey 会话定位
-// 天然隔离，但 live 路径无此检查）；ackhttp 自身不做鉴权。grape 的验收
-// 要求跨用户不能决定/查询他人确认，故在唯一挂载点对 ack 子树强制归属：
-// 以请求解析出的 threadId + 当前认证身份的 userKey 定位会话，会话不
-// 存在于调用者名下即 404（不区分「不存在」与「非你所有」，与会话存储
-// 的跨用户读取语义一致）。
-//
-// threadId 取值源与 ackhttp 严格对齐（防绕过的关键）：POST /confirmation
-// 的 threadId 只认请求体（ackhttp decide 只解码 body），绝不采信查询
-// 参数——若查询参数也被采信，攻击者可用「查询参数=自己名下会话 +
-// body=他人会话」骗过归属校验；GET /confirmations 只认查询参数。其余
-// ack 子路径与形状非法的请求原样透传给内层 mux（404/400 语义归 ackhttp，
-// 本守卫只在 threadId 明确成立时加锁）。请求体预读上限
-// ackGuardMaxBodyBytes，读失败按 400 拒绝（不放行无归属事实的请求）。
+// AckOwnerGuard 在 ack 子树的唯一挂载点强制会话归属：threadId 加认证
+// userKey 定位会话，不在调用者名下即 404（不区分不存在与非你所有）。
+// threadId 取值源必须与 ackhttp 严格对齐——POST 只认请求体、GET 只认
+// 查询参数；其余形状非法的请求原样透传给内层 ackhttp。安全约束见
+// README「ack 归属守卫」。
 type AckOwnerGuard struct {
 	inner    nethttp.Handler
 	sessions session.Service
@@ -54,12 +42,9 @@ func (g *AckOwnerGuard) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) 
 		}
 		_ = r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewReader(body))
-		// 与 ackhttp decide 完全同一的解码方式：json.NewDecoder(...).Decode
-		// 只取首个 JSON 值、容忍尾随数据。取值结果必然一致——若退化为
-		// json.Unmarshal（拒绝尾随数据），「合法 JSON + 尾随数据」的请求
-		// 会被守卫当作形状非法放行，ackhttp 却能正常解码照常决定，
-		// 形成跨用户绕过（已知绕过形态）。解码失败放行：ackhttp 对同一
-		// 输入同样失败，以 400 拒绝。
+		// 与 ackhttp decide 同一解码方式（Decode 只取首个 JSON 值、容忍
+		// 尾随数据）：退化为 Unmarshal 会让带尾随数据的请求被守卫放行、
+		// ackhttp 照常决定，形成跨用户绕过。解码失败交 ackhttp 以 400 收场。
 		var req struct {
 			ThreadID string `json:"threadId"`
 		}

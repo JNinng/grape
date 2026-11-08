@@ -13,27 +13,15 @@ import (
 	"grape/pkg/redact"
 )
 
-// Agent 业务审计：工具调用审计与授权确认审计的领域
-// 契约。写入侧（RecordToolCall / RecordConfirmation / 组合批量）供 Agent
-// 运行面（internal/agent 的工具执行与 ack 决定路径，挂点见 agent/audit.Hook，
-// 经 agent.WithAuditHook 装配）调用；查询侧供运维复现视图
-// 的手写端点消费。摘要脱敏在用例内完成：参数摘要走 pkg/redact 的
-// tool_param 类别、结果摘要走 retrieval 类别，与检索留痕装饰器共用同一
-// 注册表（wire 单例；data 层 debug 日志 tracer 自建同默认值实例）。
+// Agent 业务审计：工具调用审计与授权确认审计的领域契约。写入侧供 Agent
+// 运行面的工具执行与 ack 决定路径调用，查询侧供运维复现视图的手写端点
+// 消费。摘要脱敏在用例内完成，与检索留痕装饰器共用 pkg/redact 注册表。
 
-// 审计记录的领域取值。与 ack / 框架语义一一对应：
-//   - 工具调用终态：成功 / 失败（一次调用一行，重试只记最终态与次数）；
-//   - 确认决定：人工封闭值 approved / denied（pending 是决定前状态，不入
-//     审计）+ 系统决定两形态——无来源 auto / auto_deny，来源命名空间
-//     {name}_auto / {name}_deny（构造见 SystemDecision、词形判定见
-//     isSystemDecision）。系统决定由授权终态观察挂点落行、与人工决定
-//     互斥，每次工具调用恰好一条授权行；
-//   - 决定路径：live（原运行存活直接唤醒）/ recovery（孤儿确认由网关
-//     代执行或合成拒绝后续跑，ack PathLive / PathRecovery 同名）为人工
-//     决定专用；auto（系统自动决定，评估管线内终结）为系统决定专用，
-//     与决定值一一配对，交叉配对非法；
-//   - 记住作用域：session / global（空串语义为「未记住」，落库为 NULL），
-//     仅人工批准（approved）可携带。
+// 审计记录的领域取值。工具调用终态一次调用一行；人工确认决定为
+// approved/denied，系统决定为 auto/auto_deny 或来源命名空间
+// {name}_auto/{name}_deny；决定路径 live/recovery 仅人工、auto 仅系统；
+// remember 仅人工 approved 可携带（空串即未记住）。词形规则、配对不变量
+// 与脱敏口径见 README「迁移暂存」。
 const (
 	ToolCallStatusSuccess = "success"
 	ToolCallStatusError   = "error"
@@ -131,10 +119,8 @@ const (
 	auditIDColumnWidth = 128
 	// auditSessionColumnWidth 是 session_id 列宽上限。
 	auditSessionColumnWidth = 255
-	// AuditSummaryMaxRunes 是参数/结果摘要的截断上限（rune 计）。脱敏
-	// 之后的兜底截断：tool_param 键名过滤不改变长度、retrieval 类别在
-	// 标准注册表下自带 512 rune 截断，本上限只防未按标准装配的注册表
-	// 或非截断型实现把超长原文送进审计表。
+	// AuditSummaryMaxRunes 是参数/结果摘要的截断上限（rune 计）：脱敏后的
+	// 兜底截断，防非标准注册表把超长原文送进审计表。
 	AuditSummaryMaxRunes = 4096
 )
 
@@ -151,7 +137,7 @@ var (
 	// ErrAuditInvalidArgument 表示审计写入/查询的入参非法。
 	ErrAuditInvalidArgument = kratoserrors.BadRequest("AGENT_AUDIT_INVALID_ARGUMENT", "invalid audit argument")
 	// ErrAuditNotFound 表示审计记录不存在或不在调用者租户范围内——两者
-	// 不区分（与 permission.md 的 NotFound 口径一致，不泄露存在性）。
+	// 不区分，不泄露存在性。
 	ErrAuditNotFound = kratoserrors.NotFound("AGENT_AUDIT_NOT_FOUND", "audit record not found")
 )
 
@@ -495,12 +481,9 @@ func (uc *AuditUsecase) buildConfirmation(ctx context.Context, in *ConfirmationR
 	}, nil
 }
 
-// redactSummary 按类别消费脱敏注册表并做长度兜底。未登记类别（Redact
-// 返回 false）的选择是【放行原值但保留截断】：拒绝会让这次工具调用
-// 完全没有审计行——审计的目的是留痕，因脱敏语义未声明而丢弃记录比
-// 落一条已截断的原文危害更大；截断兜底保证不会落超长原文。装配方
-// 补齐类别后自动全量生效。已登记类别输出脱敏值后同样过上限
-// （非截断型实现如掩码/哈希天然短，此处只为统一语义）。
+// redactSummary 按类别消费脱敏注册表并做长度兜底。未登记类别放行原值但
+// 保留截断：审计目的是留痕，因脱敏语义未声明而丢弃整行比落一条已截断
+// 原文危害更大；已登记输出同样过上限。装配方补齐类别后自动全量生效。
 func (uc *AuditUsecase) redactSummary(category, value string) string {
 	if value == "" {
 		return ""

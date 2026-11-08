@@ -23,10 +23,8 @@ var (
 	// ErrConfigAlreadyExists 表示未删除全局配置间 config_key 唯一约束冲突。
 	ErrConfigAlreadyExists = kratoserrors.Conflict(v1.ErrorReason_CONFIG_ALREADY_EXISTS.String(), "config already exists")
 	// ErrConfigPlatformRequired 表示全局配置写路径的调用方不是平台（根）
-	// 租户。sys_config 是跨租户共享表，写权限若只依赖调用者租户内的
-	// 角色 → 菜单 → 权限码链，子租户被授予菜单/角色管理后可自造
-	// sys:config:global:* 写码——因此写路径在用例层强制平台信任边界，
-	// 非根租户即使持有权限码也拒绝（403，存在性不敏感）。
+	// 租户。sys_config 跨租户共享，租户内权限码不足以授权其写入（见
+	// README「迁移暂存」）。
 	ErrConfigPlatformRequired = kratoserrors.Forbidden(v1.ErrorReason_CONFIG_PLATFORM_REQUIRED.String(), "platform tenant required")
 	// ErrTenantConfigNotFound 表示目标租户配置不存在（含跨租户不可见与
 	// 已软删）。
@@ -129,8 +127,7 @@ type TenantConfigList struct {
 
 // ConfigRepo 是全局配置仓储接口。sys_config 无 RLS 与行级范围，读取
 // 本身即全局口径（不带 super）；写入经部署面 SECURITY DEFINER 固定口径
-// 写函数（role.sql 已对运行角色 REVOKE 直写），方法名按 permission.md
-// 口径带 Super。List 消费 dynq 动态查询协议。
+// 写函数，运行角色无直写权限，方法名带 Super。List 消费 dynq 协议。
 type ConfigRepo interface {
 	// Get 按 id 查询单个全局配置；不存在或已软删返回 ErrConfigNotFound。
 	Get(ctx context.Context, auth Identity, id int64) (*Config, error)
@@ -166,11 +163,9 @@ type TenantConfigRepo interface {
 }
 
 // PlatformTenantGuard 判定调用方租户是否为平台（根）租户，供全局配置写
-// 路径的信任边界使用。sys_config 是跨租户全局表，功能权限码链（角色 →
-// 菜单 → 权限码）只在调用者租户内成立，不能单独作为写全局配置的授权
-// 依据；实现须读调用方自身租户行（RLS 放行 id = app.tenant_id）：租户
-// 存在、未软删且 parent_id IS NULL 才是平台租户，目标不存在/已删 →
-// (false, nil)。错误应原样透传（用例不吞错）。
+// 路径的信任边界使用：sys_config 跨租户共享，租户内权限码不足以授权其
+// 写入。目标不存在/已删返回 (false, nil)，错误原样透传；判定规则见
+// README「迁移暂存」。
 type PlatformTenantGuard interface {
 	IsPlatformTenant(ctx context.Context, auth Identity) (bool, error)
 }
@@ -215,12 +210,9 @@ func (uc *ConfigUsecase) ListConfigs(ctx context.Context, auth Identity, q *dynq
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateConfigSuper 创建全局配置：仅平台（根）租户可写（写权限不能只
-// 依赖租户内功能权限码，见 PlatformTenantGuard）；status 未指定（哨兵）
-// 缺省启用、显式 0 原样落库为禁用；config_key/value_type 必须合法（后者
-// 限白名单）。name/config_key 落库前去除首尾空白（与列宽校验口径一致，
-// 避免「校验按 trim 后长度、落库却是原值」触发库层 22001）；value 原样
-// 透传。
+// CreateConfigSuper 创建全局配置：仅平台（根）租户可写；status 未指定
+// 缺省启用、显式 0 禁用；value_type 限白名单。name/config_key 落库前去
+// 首尾空白（与列宽校验同口径），value 原样透传。
 func (uc *ConfigUsecase) CreateConfigSuper(ctx context.Context, auth Identity, c *Config) (*Config, error) {
 	if err := uc.requirePlatformTenant(ctx, auth); err != nil {
 		return nil, err
@@ -358,7 +350,8 @@ type FeatureFlagList struct {
 // Translation 是通用翻译领域模型。租户边界由存储层 RLS 承担（表无
 // @scope，租户内全可见），TenantID 由服务端按认证身份落值、只读。
 // TableName/RowID/ColumnName/Locale 共同构成身份四元组（租户内未删除
-// 行间唯一），创建后不可变；Value 是翻译文本，原样透传但落库前去空白。
+// 行间唯一），创建后不可变；Value 是翻译文本，落库前去首尾空白（内部
+// 空白保留）。
 type Translation struct {
 	ID         int64
 	Status     int32 // 0 禁用、1 启用

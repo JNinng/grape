@@ -1,12 +1,9 @@
 // Package web 承载前端（Vite + React）构建产物的 go:embed 导出。
 //
-// go:embed 不能引用父目录，故本包必须位于 web/ 目录内、与 dist 同级；
-// server 是唯一消费方，只导入本包导出的 fs.FS（见 internal/README.md
-// 的分层规则），不感知前端工程细节。
-//
-// 占位策略：仓库内恒有极简 dist/index.html 占位页（未执行 npm 构建时
-// 也在），保证 go build 永远可通过；npm 构建后产物覆盖 dist（不入库，
-// 见 web/.gitignore），重新编译即嵌入真实前端。
+// go:embed 不能引用父目录，故本包必须位于 web/、与 dist 同级；server 是
+// 唯一消费方，只导入导出的 fs.FS，不感知前端工程细节（见 internal/README.md）。
+// 仓库内恒有极简 dist/index.html 占位页，保证 go build 始终可通过；npm 构建
+// 后产物覆盖 dist（不入库），重新编译即嵌入真实前端。
 package web
 
 import (

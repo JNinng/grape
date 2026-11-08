@@ -1,23 +1,7 @@
-// 压缩占位符识别（纯函数，复现视图）：在回放文本中识别上下文压缩
-// 产生的占位符形状，提取 event_id 恢复引用供「占位 ↔ 原文」对照。
-//
-// 占位符形状与 trpc-agent-go internal/flow/processor/context_compact.go
-// 一致（前端识别单测 compaction.test.ts 按这些形状断言；会话集成测试
-// 只断言占位符携带 event_id 引用）：
-//  1. 整体替换占位符（Pass 0/1 可恢复）：`[elided] Previous tool call
-//     succeeded …` 头部 + 尾部行式恢复引用（`event_id: <id>` /
-//     `tool_call_id: <id>` / `tool_name: <name>` / `reason: <reason>`）；
-//  2. 超大截断标记（Pass 2）：`[... N characters truncated from
-//     tool result; event_id=X; tool_call_id=Y; ...]` 方括号内联引用（含
-//     无字符数说明的紧凑变体 `[... event_id=X; tool_call_id=Y; session_load]`）；
-//     恢复引用缺失时框架退化为裸标记 `[... N characters truncated ...]`
-//     （不可恢复，只标注）；
-//  3. 不可恢复占位符：无引用行的 elided 块与 `Tool result omitted by
-//     context compaction policy.`（只能标注、无法反查原文）。
-//
-// 会话事件流保留全部原文（压缩只作用于请求投影副本），占位符只会随
-// 模型回复被引用或出现在模型可见投影的回显里；识别以形状特征为准，
-// 不假设必然出现。
+// 压缩占位符识别（纯函数，复现视图）：在回放文本中识别上下文压缩产生的
+// 占位符形状并提取 event_id 恢复引用，供「占位 ↔ 原文」对照。识别以形状
+// 特征为准，不假设必然出现；畸形输入返回空数组。形状清单与上游出处见
+// web/README.md「迁移暂存」。
 
 export type CompactionRefKind = 'placeholder' | 'truncated' | 'elided' | 'policy'
 

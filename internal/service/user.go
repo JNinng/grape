@@ -394,8 +394,8 @@ func tsPBPtr(t *time.Time) *timestamppb.Timestamp {
 	return timestamppb.New(*t)
 }
 
-// normalizeUserStatus 归一化创建入参的状态：proto3 下 0 与未设置不可
-// 区分，统一交给用例按缺省启用处理。
+// normalizeUserStatus 归一化创建入参的状态：nil 落 0，交由用例按缺省启用
+// 处理（创建时显式 0 与未设置同口径）。
 func normalizeUserStatus(status *int32) int32 {
 	if status == nil {
 		return 0

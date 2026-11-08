@@ -1,25 +1,9 @@
 package agent
 
-// 确认恢复路径集成测试：以真实 PostgreSQL（本套件专属库 grape_agent_confirm_test）
-// 验证「重启后孤儿确认」的完整恢复语义——原进程的运行与网关等待者不复
-// 存在，持久化在 agent_session_states 的待确认指针仍在；新栈经 ackhttp
-// 决定路由走恢复路径：同意则服务端代执行工具并拉起续跑运行（/history
-// 可回放续跑产出），拒绝则合成 denied 结果续跑、工具不执行。
-//
-// 环境变量门控（未设置时跳过）：
-//
-//	GRAPE_CONFIRM_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent -run TestPGConfirm -count=1 -v
-//
-// 装载取舍与会话集成测试（session_pg_test.go）一致：TestDeployFiles 全清单
-// 部署 + 跨包部署锁互斥，绝不触碰其他套件的测试库。
-//
-// 「重启」的模拟口径：不关闭旧栈（其阻塞运行随测试进程存活，模拟进程
-// 被替换前失联的运行现场），在其上以全新连接池 + 全新网关构建新栈——
-// 等待者表在进程内存中不可达、待确认指针与会话事件在库中完好，与真实
-// 重启后新进程看到的存储状态一致。不能走 stack.Close：core runner 的
-// Close 会取消在途运行，ack 按「运行取消」清理待确认指针，孤儿场景即
-// 被破坏（这是生产语义：优雅取消不是孤儿）。
+// 确认恢复路径 PG 集成测试：重启后孤儿确认的同意/拒绝恢复语义（同意则
+// 代执行并续跑，拒绝则合成 denied 结果）。套件、环境变量与装载口径见
+// README「测试」；「重启」以不 Close 旧栈的新栈模拟，理由见 README
+// 「迁移暂存」。
 
 import (
 	"net/http"
@@ -119,13 +103,9 @@ func (l *lockedRecorder) snapshot() (int, string) {
 	return l.rec.Code, l.rec.Body.String()
 }
 
-// confirmWaitHistoryPoll 轮询 /history 直到快照包含期望文本。请求在后台
-// goroutine 发起，宽限期内检查已写入的部分响应体：follow 开启时，快照
-// 响应在尾随终止前不闭合，而上游缺陷（track 事件按时间戳严格大于
-// 游标过滤，同毫秒事件被跳过）会让尾随一直等到下一个终态事件（如搁置
-// 旧运行的 30s 超时 RUN_ERROR）才闭合——这正是前端以「快照轮询 + 部分读取」
-// 兜底的场景，此处按同一模式取样。未闭合的
-// 请求随之搁置（其尾随 goroutine 随旧运行终态或进程退出消亡）。
+// confirmWaitHistoryPoll 轮询 /history 直到快照包含期望文本：请求在后台
+// 发起，宽限期内检查已写入的部分响应体（follow 未闭合时上游同毫秒事件
+// 过滤缺陷会让尾随久等），未闭合请求随之搁置。
 func confirmWaitHistoryPoll(t *testing.T, h http.Handler, threadID, wantContains string) string {
 	t.Helper()
 	deadline := time.Now().Add(testsupport.WaitLimit)

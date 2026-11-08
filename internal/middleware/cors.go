@@ -17,9 +17,8 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// corsExposeHeaders 是跨域暴露头清单：配 CORS 时
-// x-trace-id 必须对浏览器脚本可读；x-request-id 与 trace-id 同源回传，
-// 一并暴露。
+// corsExposeHeaders 是跨域暴露头清单：配 CORS 时 x-trace-id 必须对
+// 浏览器脚本可读，x-request-id 与 trace-id 同源回传一并暴露。
 const corsExposeHeaders = "x-trace-id, x-request-id"
 
 // CORS 是解析后的跨域共享配置：链内中间件（Middleware）管实际请求的
@@ -71,17 +70,10 @@ func (cr *CORS) originAllowed(origin string) bool {
 	return ok
 }
 
-// Middleware 返回链内 CORS 中间件：
-//   - 启用即恒回 Access-Control-Expose-Headers（x-trace-id 必须可读），
-//     Origin 命中白名单时回 Allow-Origin（回显具体 origin，兼容携带
-//     Authorization 的请求）；带 Origin 即回 Vary: Origin（防共享缓存
-//     串答），未命中白名单不带 Allow-Origin，由浏览器侧自拒；
-//   - 预检（OPTIONS 且带 Access-Control-Request-Method）短路 204，不进
-//     认证与其后的任何链环；方法与请求头按预检请求回显。
-//
-// 仅手写通配路由（agent 前缀）的 OPTIONS 能进链，生成代码路由的预检由
-// MethodNotAllowed 兜底；非预检请求一律放行。预检不经过链路中间件，
-// 故不携带 x-trace-id——预检不是业务请求，浏览器亦不从预检读业务头。
+// Middleware 返回链内 CORS 中间件：恒回 Expose-Headers；Origin 命中白名单
+// 回显 Allow-Origin 并带 Vary: Origin，未命中由浏览器自拒；预检
+// （OPTIONS + Access-Control-Request-Method）短路 204 并回显方法与请求头。
+// 仅手写通配路由的预检进链，生成路由预检由 MethodNotAllowed 兜底。
 func (cr *CORS) Middleware() middleware.Middleware {
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req any) (any, error) {

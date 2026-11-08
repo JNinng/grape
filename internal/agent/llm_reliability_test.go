@@ -61,10 +61,8 @@ func (m *stubModel) GenerateContent(ctx context.Context, _ *model.Request) (<-ch
 	step := m.steps[min(i, len(m.steps)-1)]
 	m.mu.Unlock()
 
-	// 纯系统错误（无延迟）同步返回，保住「函数级错误」语义；带延迟的
-	// 步骤在后台协程等待——GenerateContent 立即返回空 channel，ctx 取消
-	// 能落在延迟窗口内（hedge 落败副本的取消可观测），超时后不产出任何
-	// 响应块（框架按「无有效内容即失败」结算）。
+	// 纯系统错误同步返回以保住函数级错误语义；带延迟步骤在后台协程等待，
+	// GenerateContent 立即返回空 channel，取消与超时可在延迟窗口内观测。
 	if step.err != nil && step.delay == 0 {
 		return nil, step.err
 	}

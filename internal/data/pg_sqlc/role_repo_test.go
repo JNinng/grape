@@ -12,16 +12,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 角色仓储集成测试：以真实 PostgreSQL 验证 sys_role 固定 CRUD、动态查询
-// 协议、数据范围明细（sys_role_id_scope）与分发部门（sys_role_allowed_dept）
-// 的差量同步语义、角色-菜单授权（sys_role_menu）的整组替换语义、RLS 租户
-// 边界（跨租户角色不可见、跨租户引用不可入配置）与既有分配判定
-//（fn_can_assign_role，经 queries/operate.sql 的 CanAssignRole 命名查询）
-// 的回归。复用根包套件的 setupTestDB（deploy 全清单装载，种子数据见
-// sqlc/test_seed.sql：t-test-01 有角色 102-110、部门 1-8（1 总公司 → 2-6，
-// 2 技术部 → 7/8）、用户 2-11、菜单 32xx 副本及角色-菜单映射；t-test-02
-// 仅角色 105、用户 5、菜单 1201-1237）。各用例经 setupTestDB 重建数据库
-// 实现隔离；新建角色用 newID() 发号，不与种子主键冲突。
+// 角色仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_role 固定 CRUD、动态查询、数据范围明细与分发部门的差量同步、菜单授权
+// 整组替换、RLS 租户边界与 fn_can_assign_role 回归。种子见 sqlc/test_seed.sql，
+// 每次重建数据库。
 
 const (
 	// roleTenantSeeded 是种子角色所在的租户。
@@ -896,10 +890,8 @@ func TestRoleRepo_can_assign_role_allowed_dept_mapping_changes_judgment(t *testi
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
-	// 种子基线：角色 102 scope_dept_id=2、分发部门 {2,5}。新方案目标部门
-	// 须同时落入 M 与 subtree(S)（取交集）：用户 2（部门 2）两处命中 →
-	// 可分配；用户 10（部门 5）只命中 M、落在 subtree(2) 之外 → 拒绝
-	//（映射命中不再豁免组织范围）。
+	// 种子基线：角色 102 scope_dept_id=2、分发部门 {2,5}；目标部门须同时
+	// 落入 M 与 subtree(S)，用户 10 只命中 M → 拒绝。
 	if !mustCanAssignRole(t, d, auth, 11, 102, 2) {
 		t.Fatal("target dept in both mapping and scope subtree must be assignable")
 	}

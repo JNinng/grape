@@ -10,13 +10,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// roleRepo 是 biz.RoleRepo 的 PostgreSQL 实现。角色是租户内资源：租户
-// 边界由 IdentityTx 的 RLS 会话变量承担，行级可见性由表级 @scope 守卫
-//（动态 List/Count，fn_visible_role_ids）与 fn_can_see_role（详情共用
-// 判定）承担。数据范围明细（sys_role_id_scope）、分发部门
-//（sys_role_allowed_dept）与角色-菜单映射（sys_role_menu）不单独立
-// 资源，随本仓储的方法维护：写路径先锁角色行，差量在事务内读活跃行
-// 集合后在应用层算出并逐行增删，角色行锁串行化同一角色的全部配置写。
+// roleRepo 是 biz.RoleRepo 的 PostgreSQL 实现。角色是租户内资源：租户边界
+// 由 RLS 承担，行级可见性由表级 @scope 守卫（fn_visible_role_ids）与
+// fn_can_see_role 承担。数据范围明细与菜单映射随本仓储维护：写路径先锁
+// 角色行，差量在事务内读活跃行集合后算出并逐行增删。
 type roleRepo struct {
 	data *Data
 }
@@ -70,7 +67,7 @@ func (r *roleRepo) GetByID(ctx context.Context, auth biz.Identity, id int64) (*b
 }
 
 // List 解析动态查询协议并返回分页信封；角色可见性由表级 @scope 守卫
-//（fn_visible_role_ids，与 fn_can_see_role 共用 A AND G 口径）注入，
+// （fn_visible_role_ids，与 fn_can_see_role 共用 A AND G 口径）注入，
 // 软删过滤由表级 @filter 声明在解析期作为服务端固定不变量注入（协议
 // 不可见、调用方不可控），字段、操作符、投影与游标合法性由生成代码
 // 校验，协议错误映射为 ErrRoleInvalidArgument。

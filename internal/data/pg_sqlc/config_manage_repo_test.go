@@ -16,21 +16,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 配置族仓储集成测试：以真实 PostgreSQL 验证 sys_config（平台级全局表，
-// 无 RLS）与 sys_tenant_config（租户表，RLS）的固定 CRUD、受控写面
-//（grape_u 对 sys_config 无直写权限，经 98_config_write.sql 的 SECURITY
-// DEFINER 写函数）、唯一键与软删语义、动态查询协议与租户边界。复用根包
-// 套件的 setupTestDB（deploy 全清单装载，种子数据见 sqlc/seed/ 与
-// sqlc/test_seed.sql：t-super-01 有全局配置 1-7 与租户配置 1-2；t-test-02
-// 有租户配置 3-4）。
-// 各用例经 setupTestDB 重建数据库实现隔离；新建行用 newID() 发号，不与
-// 种子主键冲突。
-//
-// 运行（PostgreSQL 必需，未设环境变量时跳过）：
-//
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
-//	go test ./internal/data/pg_sqlc/ -run TestConfigRepo|TestTenantConfigRepo -count=1
+// 配置族仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_ADMIN_DSN /
+// GRAPE_TEST_DSN 时跳过）：覆盖 sys_config（平台级，无 RLS，经受控写函数）
+// 与 sys_tenant_config（租户表，RLS）的 CRUD、唯一键与软删语义、动态查询
+// 与租户边界。setupTestDB 每次重建数据库；种子见 sqlc/seed/ 与 test_seed.sql。
 
 const (
 	// configTenantSeeded 是种子全局/租户配置所在的租户。

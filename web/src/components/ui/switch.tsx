@@ -2,10 +2,8 @@ import * as React from 'react'
 import { cn } from 'cn'
 import { Switch as SwitchPrimitive } from 'radix-ui'
 
-// 源自 shadcn/ui new-york-v4 switch，按 hex 兼容规则改写：unchecked 面
-// dark:bg-input/30 等 alpha 分支删除，统一 bg-input；聚焦环 ring-ring。
-// 滑块位移不用 translate-x-* 工具类：v4 该族类输出 CSS translate 属性，
-// 兼容目标内核不支持（声明被静默丢弃，滑块不动），统一走 transform。
+// 本地改写：alpha 分支删除、聚焦环实色；滑块位移走 transform（旧内核会
+// 静默丢弃 CSS translate 属性，滑块不动）。
 function Switch({
   className,
   ...props

@@ -11,18 +11,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 字典仓储集成测试：以真实 PostgreSQL 验证 sys_dict_type / sys_dict_data
-// 固定 CRUD、动态查询协议、两级写路径纪律（数据创建先锁宿主类型行、类型
-// 删除先校验活跃数据）与 RLS 租户边界。复用根包套件的 setupTestDB（deploy
-// 全清单装载，种子数据见 sqlc/test_seed.sql：t-test-01 有字典类型 1-3 与
-// 字典数据 1-14；t-test-02 无字典种子）。各用例经 setupTestDB 重建数据库
-// 实现隔离；新建行用 newID() 发号，不与种子主键冲突。
-//
-// 运行（PostgreSQL 必需，未设环境变量时跳过）：
-//
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
-//	go test ./internal/data/pg_sqlc/ -run TestDictRepo -count=1
+// 字典仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_dict_type / sys_dict_data 的 CRUD、动态查询、两级写路径纪律（数据创建
+// 先锁宿主类型行、类型删除先校验活跃数据）与 RLS 租户边界。setupTestDB
+// 每次重建数据库；字典种子属 t-test-01。
 
 const (
 	// dictTenantSeeded 是种子字典所在的租户（test_seed.sql 的主测试租户）。
@@ -510,11 +502,8 @@ func TestDictRepoListDictDatasFiltersByHostType(t *testing.T) {
 }
 
 func TestDictRepoListDictDatasAcceptsStringInt64Filter(t *testing.T) {
-	// 前端走 protojson 口径：int64 一律序列化为字符串，where 值即字符串
-	// 形态。协议门必须接受十进制字符串并精确解析（>2^53 的 newID 主键
-	// 无法用 JSON number 无损表达，此形态是唯一无损传输口径）——这正是
-	// 字典数据维护弹窗按宿主过滤的真实请求形态，曾因协议门只收数字形态
-	// 而整单 400。
+	// protojson 口径：int64 一律以十进制字符串传输，协议门必须精确解析
+	//（>2^53 的 newID 主键无法用 JSON number 无损表达）。
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 

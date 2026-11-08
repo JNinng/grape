@@ -36,9 +36,8 @@ func InstanceId() string {
 	return instanceID()
 }
 
-// NewTraceID 生成合法的 otel TraceID：两次 rand.Uint64()（Go 1.20+ 运行时自动播种）
-// 经 binary.NativeEndian 填满 16 字节，字节序不影响结果（消费方只按字节串与十六进制解读）；
-// 全零对 otel 非法（概率 2^-128），循环重生成直至 IsValid 兜底。
+// NewTraceID 生成非全零的合法 otel TraceID，随机源为 math/rand
+// （Go 1.20+ 运行时自动播种）。
 func NewTraceID() trace.TraceID {
 	var tid trace.TraceID
 	for {
@@ -50,9 +49,8 @@ func NewTraceID() trace.TraceID {
 	}
 }
 
-// NewSpanID 生成合法的 otel SpanID：单次 rand.Uint64() 经 binary.NativeEndian
-// 填满 8 字节，字节序不影响结果（消费方只按字节串与十六进制解读）；
-// 全零对 otel 非法（概率 2^-64），循环重生成直至 IsValid 兜底。
+// NewSpanID 生成非全零的合法 otel SpanID，随机源为 math/rand
+// （Go 1.20+ 运行时自动播种）。
 func NewSpanID() trace.SpanID {
 	var sid trace.SpanID
 	for {

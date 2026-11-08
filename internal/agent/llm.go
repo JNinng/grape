@@ -16,17 +16,10 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/model/openai"
 )
 
-// newLLMModel 按配置构造模型链（OpenAI 兼容直连；模型层
-// 可靠性）。装配层次从内到外固定为：裸 provider（主 + failover 备选）→
-// hedge（只包主模型）→ failover（包全部候选）→ logging（每台候选内层，
-// 见 llmCandidates）。各可靠性段 enabled=false（默认）时跳过对应包装，
-// 全部缺省即返回裸 provider——与未引入可靠性段时逐字节等价。
-//
-// 层次取舍说明：hedge 只包主模型——备选路径本身是故障路径，再叠加重复
-// 请求只会放大故障面的调用量；failover 不与 hedge 叠加语义（备选不做
-// hedge），全部候选失败时以框架聚合错误响应上抛。模型层重试：框架
-// model 层无内建重试（仅 tool 层有 ToolCallRetryPolicy，与模型调用非同
-// 一面），跨 provider 的 failover 即本层的重试维度，不另造自制重试包装。
+// newLLMModel 按配置构造模型链：裸 provider（主 + failover 备选）→
+// hedge（只包主模型）→ failover（包全部候选），每台候选内层另可有
+// logging。各可靠性段 enabled=false 时不包装，全关即返回裸 provider。
+// 层次取舍与重试口径见 README「迁移暂存」。
 func newLLMModel(c *conf.Agent_LLM) (model.Model, error) {
 	candidates, err := llmCandidates(c)
 	if err != nil {
@@ -68,12 +61,10 @@ func llmCandidates(c *conf.Agent_LLM) ([]model.Model, error) {
 	return candidates, nil
 }
 
-// newOpenAIModel 构造单台 OpenAI 兼容模型适配器。provider 命中框架变体
-// 时直接透传：base_url 为空由框架取该变体的内置默认端点，API key 也支持
-// 从变体约定环境变量回退。模型调用超时落在 HTTP client 上（conf 逐候选
-// 参数化），未配置时用框架默认传输参数。api_key 只进入 HTTP client 配置
-// 面，模型请求/响应载体（model.Request/Response）不含凭据，日志面天然
-// 无密钥（测试有守卫断言）。
+// newOpenAIModel 构造单台 OpenAI 兼容模型适配器：provider 命中框架变体时
+// 直接透传（base_url 为空由框架取内置端点，API key 可从变体约定环境变量
+// 回退）；超时落在 HTTP client 上。api_key 只进 HTTP client 配置面，模型
+// 请求/响应载体不含凭据，日志面天然无密钥。
 func newOpenAIModel(provider, baseURL, apiKey, name string, timeout *durationpb.Duration) model.Model {
 	opts := []openai.Option{}
 	if v, ok := providerVariant(provider); ok {
@@ -156,11 +147,9 @@ const promptLogLimit = 512
 // 敏（工具敏感参数/检索内容等）的脱敏归审计与复现视图面。
 var llmContentRedactor = redact.NewTruncate(promptLogLimit, "...(truncated)")
 
-// llmLoggerOf 返回 LLM 日志落点：生产为进程默认 logger（main.go 经
-// kratos log.SetDefault 注入 grape JSON logger，且 kratos v3 的
-// SetDefault 即 slog.SetDefault）——ctx 携带 SpanContext 时 trace_id /
-// span_id 由 logger extractor 自动展开（桥接口径）。变量间接层仅供
-// 测试替换捕获输出。
+// llmLoggerOf 返回 LLM 日志落点：生产为进程默认 logger（kratos
+// log.SetDefault 即 slog.SetDefault），ctx 携带 SpanContext 时 trace_id /
+// span_id 由 logger extractor 自动展开。变量间接层仅供测试替换。
 var llmLoggerOf = func() *slog.Logger { return slog.Default() }
 
 // callCompletionsKey 携带单次调用的补全累积器：包装层在请求 ctx 上放入，
@@ -169,12 +158,9 @@ var llmLoggerOf = func() *slog.Logger { return slog.Default() }
 // 升级到框架完整回调面的接缝是把 log 字段注册到 LLMAgent 选项。
 type callCompletionsKey struct{}
 
-// loggingModel 是 LLM 调用的观测包装：经框架
-// model.Callbacks 注册前后回调（model/callbacks.go 形态），把每次模型
-// 调用落 grape logger。与 llmagent.WithModelCallbacks 的完整回调语义
-// （可改写请求、短路返回 CustomResponse）不同，本包装的回调是纯观测：
-// 不消费 CustomResponse、不改写请求；回调执行错误只记不传——观测面不
-// 打断模型调用。
+// loggingModel 是 LLM 调用的纯观测包装：经框架 model.Callbacks 注册前后
+// 回调落 grape logger。与 LLMAgent 的完整回调面不同，本包装不消费
+// CustomResponse、不改写请求；回调错误只记不传——观测面不打断模型调用。
 type loggingModel struct {
 	inner model.Model
 	log   *model.Callbacks

@@ -10,14 +10,11 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// AgentEventWindowService 承载 agent 会话事件窗口手写端点（非 proto 生成）
-// 的路由注册面：GET {basePath}/event-window 按 threadId + eventId 取
-// 锚点事件窗口（before/after 可选），供运维复现视图做压缩占位符的原文
-// 对照与执行轨迹回查。窗口装配与 HTTP 形态收在 internal/agent
-// （Stack.EventWindowHandler：与 AG-UI / ack 同一框架 session.Service 实
-// 例的 WindowService 能力、同一 app 名命名空间、同一 userKey 编码），本
-// 类型只把该 handler 注册进 Kratos 中间件链——参数校验、认证归属（跨用
-// 户锚点不可见统一 404）与错误语义都在装配面内实现。
+// AgentEventWindowService 承接 agent 会话事件窗口的手写端点路由注册面
+// （非 proto 生成）：GET {basePath}/event-window 按 threadId + eventId 取
+// 锚点事件窗口。窗口装配、参数校验、认证归属与错误语义都在 internal/agent
+// 的 Stack.EventWindowHandler 内（与 AG-UI 共享 session.Service 实例、app
+// 命名空间与 userKey 编码），本类型只负责注册进 Kratos 中间件链。
 type AgentEventWindowService struct {
 	handler  nethttp.Handler
 	basePath string
@@ -32,12 +29,9 @@ func NewAgentEventWindowService(stack *agent.Stack) *AgentEventWindowService {
 	}
 }
 
-// RegisterHTTP 把事件窗口路由注册到 Kratos HTTP 服务器。必须先于
-// AgentService 的前缀通配路由注册（与 AgentSessionsService 同序，见
-// server.NewHTTPServer）：gorilla/mux 按注册顺序匹配，/agui/event-window
-// 精确路径只有排在 /agui/{rest:.*} 之前才会命中本端点。方法取 GET：只读
-// 语义；操作名即路径模板，认证中间件按它判定非公开端点，缺令牌
-// fail-closed 返回 401。
+// RegisterHTTP 把事件窗口路由注册到 Kratos HTTP 服务器。必须先于 AgentService
+// 的前缀通配路由注册：gorilla/mux 按注册顺序匹配，精确路径只有排在
+// /agui/{rest:.*} 之前才会命中本端点。GET 只读；缺令牌 fail-closed 401。
 func (s *AgentEventWindowService) RegisterHTTP(srv *kratoshttp.Server) {
 	route := srv.Route("/")
 	route.Handle(nethttp.MethodGet, s.basePath+"/event-window", s.routeHandler(s.handler))

@@ -14,11 +14,9 @@ import (
 // 全部子路径（chat、cancel、ack 的确认路由），空尾段也命中。
 const agentRoutePrefixSuffix = "/{rest:.*}"
 
-// AgentService 承载 Agent 骨架的手写 HTTP 端点：不实现 proto 契约，只把
-// agent.Stack 的外层 ServeMux 经 srv.Route + ctx.Middleware 挂进 Kratos
-// 中间件链（recovery → CORS（可选）→ 路由级超时 → trace → auth），认证
-// 与链路对 AG-UI 与 ack 的全部子路径生效。本层不装配框架对象，DTO 也不经过——SSE 事件
-// 流由框架直写 ResponseWriter。
+// AgentService 承接 Agent 骨架的手写 HTTP 端点（AG-UI 与 ack 子路径），不
+// 实现 proto 契约：只把 agent.Stack 的外层 ServeMux 挂进 Kratos 中间件链，
+// 认证与链路对全部子路径生效；SSE 事件流由框架直写 ResponseWriter。
 type AgentService struct {
 	stack *agent.Stack
 }

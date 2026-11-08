@@ -11,14 +11,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// TenantService 是平台级租户实体（sys_tenant）的传输层适配器：DTO ↔ DO
-// 转换、动态查询协议转换，委托给 biz 用例，不实现业务规则。
-//
-// super 命名口径：本服务全部方法名带 Super，表达「平台级租户实体管理」
-// （被管理的是一整个租户实体，不是调用方自己租户内的业务数据），不表示
-// 绕过 RLS——租户树边界仍由数据库 RLS 承担，树外行天然不可见（等同
-// NOT_FOUND）。详见 api/tenant/v1/tenant.proto 与 permission.md 的 super
-// 口径条目。
+// TenantService 是平台级租户实体（sys_tenant）的传输层适配器：DTO ↔ DO 与
+// 动态查询协议转换，委托 biz 用例。方法名带 Super 表达「管理对象是一整个
+// 租户实体」，不表示绕过约束——租户树边界仍由 RLS 承担，树外行等同
+// NOT_FOUND（口径见 permission.md）。
 type TenantService struct {
 	tenantv1.UnimplementedTenantServiceServer
 	uc *biz.TenantUsecase
@@ -43,8 +39,6 @@ func (s *TenantService) CreateTenantSuper(ctx context.Context, req *tenantv1.Cre
 		return nil, biz.ErrTenantInvalidArgument
 	}
 	status := normalizeTenantStatus(in.Status)
-	// 只有 nil（未设置）映射为未指定哨兵；显式值必须是 0/1，-1 等值
-	// 直接拒绝（哨兵不对外暴露为合法入参）。
 	if in.Status != nil && status != biz.TenantStatusDisabled && status != biz.TenantStatusEnabled {
 		return nil, biz.ErrTenantInvalidArgument
 	}

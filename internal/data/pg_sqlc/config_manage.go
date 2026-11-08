@@ -10,14 +10,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// configRepo 与 tenantConfigRepo 是 biz.ConfigRepo / biz.TenantConfigRepo
-// 的 PostgreSQL 实现。配置族是「全局默认 + 租户覆盖」两级：
-// sys_config 是平台级全局表（无 tenant_id、无 RLS），读路径为普通读、
-// 写路径经受控写函数（98_config_write.sql，role.sql 已 REVOKE 运行角色
-// 直写）——super 命名指有意绕过直写禁令的受控写路径，事务纪律与普通写
-// 一致：仍经 IdentityTx 每事务设 app.tenant_id。sys_tenant_config 是租户
-// 表：读写都走普通 DML/动态 List，租户边界由 RLS 承担，tenant_id 一律由
-// 会话 app.tenant_id 落值，不取请求值。
+// configRepo 与 tenantConfigRepo 是 biz.ConfigRepo / biz.TenantConfigRepo 的
+// PostgreSQL 实现。sys_config 是平台级全局表（无 tenant_id、无 RLS），写经
+// 受控写函数（98_config_write.sql）；sys_tenant_config 是租户表，读写走
+// 普通 DML/动态 List，租户边界由 RLS 承担，tenant_id 一律取会话。
 
 // configRepo 是 biz.ConfigRepo 的 PostgreSQL 实现。
 type configRepo struct {

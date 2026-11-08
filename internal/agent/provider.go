@@ -27,19 +27,10 @@ const (
 // ProviderSet 是 agent 框架适配层的 Wire 依赖注入集合。
 var ProviderSet = wire.NewSet(NewStack, NewSessionService, NewVectorStore)
 
-// NewSessionService 提供 Agent 会话存储：框架 session/postgres，schema agent + agent_ 表前缀，表由部署面（sqlc/
-// agent_session.sql）以超级用户预建并授权 grape_u，运行期
-// WithSkipDBInit 跳过 DDL。
-//
-// 连接复用 grape 设施的口径：框架 postgres 实现不接受外部连接池、
-// NewService 内部强制经自身 storage builder 建池，故这里复用的是
-// data.database.master 的同一 DSN（同实例同库同角色 grape_u），而非
-// 同一 pgxpool——运行期实际存在两条池（grape 业务池 + 框架会话池），
-// 生命周期都收在各自 cleanup 内。
-//
-// TTL 口径：session/app/user state 的 0 = 不过期（框架默认），原样
-// 传入；track 事件 TTL 的 0 在框架里是显式指针语义（禁用过期）而非
-// 缺省（沿用 session_ttl），只在配置正值时传入。
+// NewSessionService 提供 Agent 会话存储：框架 session/postgres，schema
+// agent + agent_ 表前缀，表由部署面预建并授权 grape_u，运行期跳过 DDL。
+// 连接复用 master DSN（框架实现不接受外部连接池）；state 与 track 事件
+// 的 TTL 0 值语义不同，见 README「迁移暂存」。
 func NewSessionService(c *conf.Agent, d *conf.Data) (session.Service, func(), error) {
 	dsn := d.GetDatabase().GetMaster().GetSource()
 	if dsn == "" {
@@ -92,15 +83,10 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 	return tools.NewVectorStoreAdapter(store)
 }
 
-// NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler
-// 唯一挂载；cleanup 释放 core runner 等框架资源。业务工具经注入的
-// 用户用例访问数据，许可源经授权用例落 agent_tool_grant
-// 表，检索工具经向量适配器、embedder 与默认空间解析器访问向量；
-// 运行面观测经注入的 observer 接 /metrics（ops 的 RuntimeMetrics 经
-// wire.Bind 以 biz.AgentRunObserver 提供）；审计经注入的审计用例接
-// audit.Hook（工具执行终态、ack 决定与授权终态观察三个写入面——自动授
-// 权终态由观察转写器落行，见 audit 包 permission_audit.go，与复现视图
-// 查询端点共用同一用例实例）；测试经 NewStackWithOptions 注入替身。
+// NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler 唯一
+// 挂载：业务工具经用户用例访问数据，许可源经授权用例落 agent_tool_grant，
+// 检索经向量适配器、embedder 与默认空间解析器，观测与审计经注入契约接入；
+// cleanup 释放框架资源。测试注入替身走 NewStackWithOptions。
 func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, resolver biz.EmbedderResolver, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
 	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, resolver, WithAuditHook(audit), WithRunObserver(observer))
 	if err != nil {

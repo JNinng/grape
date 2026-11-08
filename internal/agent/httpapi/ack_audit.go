@@ -15,17 +15,10 @@ import (
 	"github.com/jninng/trpc_agent_go_ack"
 )
 
-// ack 决定路径审计：ackhttp.Mount 收具体
-// *ack.Gateway，无法以装饰器包网关，故在唯一挂载点对决定路由
-// （POST {basePath}{ackSuffix}/confirmation）做 HTTP 面拦截——请求体与
-// 响应体就是决定契约（threadId/confirmationId/approved/remember 与生效
-// 路径 path），拦截器读请求得决定事实、读 200 响应得结算路径，恰在
-// gateway.Decide 返回后写审计。归属守卫（AckOwnerGuard）在拦截器外层，
-// 跨用户决定到不了这里；非决定路由原样透传，无任何行为变化。
-//
-// 待确认负载（工具名/工具调用 ID）在结算前经 gateway.Pending 取得：
-// Decide 成功即删除待确认指针，事后不可得。取不到负载即无法构造合法
-// 确认行（ToolName 必填），记日志放弃该行——决定主流程不受影响。
+// ack 决定路由审计：ackhttp.Mount 收具体网关、无法装饰，故在唯一挂载点
+// 对 POST .../confirmation 做 HTTP 面拦截——读请求得决定事实、读 200
+// 响应得结算路径后写确认行；恢复路径的代执行行由捕获器归集并组合批量。
+// 归属守卫在外层，跨用户决定到不了这里；待确认负载在结算前经 Pending 取。
 
 // ackDecisionBody 是决定请求体的审计视角投影：与 ackhttp 的解码契约
 // 一致（json.NewDecoder 只取首个 JSON 值、容忍尾随数据，与归属守卫的
@@ -57,10 +50,8 @@ func (g *AckAuditGuard) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) 
 		g.inner.ServeHTTP(w, r)
 		return
 	}
-	// 预读决定体（外层归属守卫已限宽并恢复过一次，这里再限宽后恢复，
-	// ackhttp 对同一输入做最终解码）。读失败按 400 直接应答：此时请求体
-	// 已耗尽，放行只会让 ackhttp 以同样的 400 收场，且形状非法的请求
-	// 不产生结算、无需审计。
+	// 预读并恢复决定体（外层守卫已限宽过一次）；读失败直接 400——请求体
+	// 已耗尽，ackhttp 对同一输入同样失败，且形状非法无结算、无需审计。
 	body, err := io.ReadAll(nethttp.MaxBytesReader(w, r.Body, ackGuardMaxBodyBytes))
 	if err != nil {
 		writeAckGuardError(w, nethttp.StatusBadRequest, "unreadable request body")
@@ -124,13 +115,10 @@ func (g *AckAuditGuard) lookupPayload(r *nethttp.Request, threadID, confirmation
 	return nil
 }
 
-// record 结算成功后写确认审计行：live 路径的工具行由工具执行终态自然
-// 落库（批准后工具在原运行内执行，拒绝则工具不执行），这里只写确认行；
-// 恢复路径的代执行行由捕获器归集，与确认行组合批量写入（无代执行——
-// 拒绝或降级拒绝——即单边批量只写确认行）。deny 时归一 Remember=""：
-// ack 对拒绝静默忽略 remember，biz 侧校验也拒绝 deny 携带 remember。
-// decided_by 取结算后有效值：ackhttp 的决定请求不携带 decidedBy，ack 以
-// 网关身份（WithUserFunc 的 userKey）回填，此处取同一 userKey。
+// record 结算成功后写确认审计行：live 只写确认行（工具行由终态 wrapper
+// 自然落库）；recovery 的代执行行由捕获器归集，与确认行组合批量写入
+// （无代执行则单边批量）。deny 归一 Remember=""；decided_by 取网关回填的
+// userKey。
 func (g *AckAuditGuard) record(ctx context.Context, decided *ackDecisionBody, payload *ack.Payload, path string, capture *audit.RecoveryCapture) {
 	decidedBy, err := identity.UserKeyFromContext(ctx)
 	if err != nil {
@@ -141,10 +129,8 @@ func (g *AckAuditGuard) record(ctx context.Context, decided *ackDecisionBody, pa
 		return
 	}
 	if payload == nil || payload.ToolName == "" {
-		// Pending 预读失败或未命中，但恢复路径代执行已发生（捕获器持有
-		// 工具行）时回退单边批量：确认行的事实（工具名等）不可得只能
-		// 放弃，代执行工具行不能跟着丢——它是恢复路径执行证据的唯一
-		// 通路（预读失败不得连坐丢失已归集的工具行）。
+		// 确认行事实不可得时放弃确认行，但已归集的代执行工具行必须单边
+		// 落库：它是恢复路径执行证据的唯一通路，不因预读失败连坐丢失。
 		if tool := capture.Take(); tool != nil {
 			audit.WriteAudit(ctx, g.logger, "record recovered tool call", func(wctx context.Context) error {
 				return g.hook.RecordToolCallWithConfirmation(wctx, tool, nil)

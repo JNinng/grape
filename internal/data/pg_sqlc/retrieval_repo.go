@@ -10,16 +10,10 @@ import (
 	"grape/internal/data/pg_sqlc/gen"
 )
 
-// retrievalLogRepo 是 biz.RetrievalLogRepo 的 PostgreSQL 实现。写入与查询全部经身份事务门面 IdentityTx 执行（每事务
-// set_config('app.tenant_id', ..., true)）：写入侧租户由门面注入、查询
-// 侧租户由 RLS 兜底（schema/97_agent_retrieval_log.sql 的策略），读侧
-// WHERE 再显式带同源租户谓词（queries/agent_retrieval_log.sql 文件头
-// 声明的应用层兜底，RLS 被关闭时仍不越租户）。表为追加写，仓储只提供
-// 写入与分页读取，没有更新/删除面。
-//
-// jsonb 落库的长度兜底：调用方（留痕装饰器）已做脱敏与条数上限，本仓储
-// 再按字节上限做最后防线——超限整体降级为截断声明形态，保证行宽有界
-// （上限调整不伴随存量行迁移，见域文件头注释）。
+// retrievalLogRepo 是 biz.RetrievalLogRepo 的 PostgreSQL 实现。写入与查询经
+// IdentityTx 执行：写入侧租户由门面注入，读取侧由 RLS 兜底且 WHERE 显式带
+// 同源租户谓词（RLS 关闭时仍不越租户）。表为追加写，仓储只有写入与分页读
+// 取面；jsonb 落库再按字节上限兜底，超限降级为截断声明形态。
 type retrievalLogRepo struct {
 	data *Data
 }

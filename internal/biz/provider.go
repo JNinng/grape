@@ -12,8 +12,7 @@ import (
 var ProviderSet = wire.NewSet(NewUserUsecase, NewAssignmentUsecase, NewDeptUsecase, NewUserGroupUsecase, NewRoleUsecase, NewMenuUsecase, NewPermissionUsecase, NewDictUsecase, NewConfigUsecase, NewTenantConfigUsecase, NewFeatureFlagUsecase, NewTranslationUsecase, NewTenantUsecase, NewAuditLogUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecase, NewGrantUsecase, NewRetrievalLogUsecase, NewQueryUsecase, NewRedactRegistry)
 
 // NewRedactRegistry 提供标准脱敏注册表（四类骨架默认值，装配方按需
-// Register 覆盖）。独立成函数是为了让 wire 装配层有明确的提供点注释。
-// 日志 debug tracer（data 层）当前自建同默认值实例，未共用本单例。
+// Register 覆盖）；审计、检索留痕与复现视图经 wire 共用同一实例。
 func NewRedactRegistry() *redact.Registry {
 	return redact.NewStandardRegistry()
 }

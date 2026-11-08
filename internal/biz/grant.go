@@ -141,9 +141,8 @@ func (uc *GrantUsecase) ListOwn(ctx context.Context, auth Identity) ([]*ToolGran
 }
 
 // ListTenant 列出租户内全部用户的活跃授权（管理视图）：功能权限码
-// agent:grant:query 不通过即 ErrGrantAccessDenied（403）。判定在用例层
-// 完成（入口的直接受托方），仓储方法不携带权限参数——功能权限码不进
-// 仓储（permission.md 的落点约束）。
+// agent:grant:query 不通过即 ErrGrantAccessDenied。判定在用例层完成，
+// 仓储方法不携带权限参数。
 func (uc *GrantUsecase) ListTenant(ctx context.Context, auth Identity) ([]*ToolGrant, error) {
 	ok, err := uc.repo.HasPermission(ctx, auth, PermAgentGrantQuery)
 	if err != nil {
@@ -155,15 +154,10 @@ func (uc *GrantUsecase) ListTenant(ctx context.Context, auth Identity) ([]*ToolG
 	return uc.repo.ListActiveByTenant(ctx, auth)
 }
 
-// Revoke 吊销授权：属主本人吊销自己的授权不设码；吊销他人的授权要求
-// 功能权限码 agent:grant:revoke，不通过即 ErrGrantAccessDenied（403）。
-// 目标不可见（跨租户）等同不存在返回 ErrGrantNotFound——先取行判归属
-// 再走对应仓储原语；并发下授权恰已被吊销时仓储以 0 行落
-// ErrGrantNotFound（幂等，不报错）。
-// 存在性语义（有意取舍）：无码调用方对「存在但他人」的 id 得 403、对
-// 「不存在」的 id 得 404——同租户内授权 id 的存在性可被枚举（id 含
-// 时间戳混合随机，不可预测、无内容泄露）；如需存在性不敏感，将无码
-// 调用方收敛到 RevokeOwn 的 0 行统一 404 口径即可。
+// Revoke 吊销授权：属主本人不设码；吊销他人要求功能权限码
+// agent:grant:revoke，不通过即 ErrGrantAccessDenied。目标不可见等同不存在
+// 返回 ErrGrantNotFound；并发下已被吊销时同样以 0 行落 NotFound（幂等）。
+// 存在性枚举的取舍见 README「迁移暂存」。
 func (uc *GrantUsecase) Revoke(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrGrantInvalidArgument

@@ -4,9 +4,8 @@ import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
-// 源自 shadcn/ui new-york-v4 pagination 的本地改写：链接版（<a href>）
-// 服务整页跳转，管理页分页是页内状态切换，统一改为按钮承载；仅保留
-// 上一页 / 下一页两端项，页码展示交由使用方（DataTable）拼装。
+// 本地改写：按钮化分页（管理页为页内状态切换），只保留上/下一页两项，
+// 页码展示交由使用方（DataTable）拼装。
 function Pagination({ className, ...props }: React.ComponentProps<'nav'>) {
   return (
     <nav

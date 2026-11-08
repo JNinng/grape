@@ -10,7 +10,7 @@ import (
 //   - ErrVectorStoreDisabled：设施未启用（conf.vector.enabled=false），
 //     所有方法一律拒绝，调用方按能力缺失处理而非系统故障；
 //   - ErrVectorDocNotFound：文档不存在或不在调用者租户范围内——两者
-//     不区分（与 permission.md 的 NotFound 口径一致，不泄露存在性）；
+//     不区分，不泄露存在性；
 //   - ErrEmbedderUnknown：文档/过滤声明的嵌入空间键未在设施注册表中
 //     声明（与 Embedder 契约同语义，透传复用）。
 var (
@@ -18,16 +18,11 @@ var (
 	ErrVectorDocNotFound   = errors.New("biz: vector document not found")
 )
 
-// VectorDocument 是向量存储的领域文档。ID 由调用方生成（摄取管线或
-// 框架侧，字符串形态，租户内唯一）；租户/用户身份不是文档字段——实现
-// 必须从认证 ctx 提取（见 VectorStore 注释），文档自身不携带归属，杜绝
-// 请求侧伪造归属。
+// VectorDocument 是向量存储的领域文档。ID 由调用方生成、租户内唯一；
+// 归属不是文档字段——实现从认证 ctx 提取，杜绝请求侧伪造。
 //
-// 嵌入空间身份与维度成对显式出现（Embedder + Dimension）：写入侧两者
-// 必填，实现对照空间注册表（conf.Vector.embedders 解析，实现侧细节）
-// 校验——空间必须已声明、维度必须等于该空间的声明维度、且等于
-// embedding 实际长度，任一不符拒绝（声明不可伪造）；读取侧按行回填，
-// 文档落在哪个空间由数据说话。
+// Embedder + Dimension 成对声明嵌入空间身份与维度：写入侧必填并经注册表
+// 对账（空间已声明、维度等于声明值且等于向量实际长度），读取侧按行回填。
 type VectorDocument struct {
 	ID        string
 	Embedder  string
@@ -65,26 +60,13 @@ type ScoredVectorDocument struct {
 	Score    float64
 }
 
-// VectorStore 是向量检索设施的框架无关契约（租户隔离的强制点）：
-// 声明在 biz、由 data 以参数化 SQL 实现（pgvector 算子不进 sqlc catalog，
-// 见 sqlc/README.md）、由 agent 适配层包装成框架 knowledge/vectorstore
-// 接口供检索工具消费。框架 pgvector store 自建连接且启动建表，不
-// 引入。
+// VectorStore 是向量检索设施的框架无关契约，也是租户隔离的强制点：
+// 声明在 biz、由 data 以参数化 SQL 实现、由 agent 适配层包装成框架
+// knowledge/vectorstore 接口供检索工具消费。
 //
-// 租户隔离由实现强制，契约不接收身份参数：所有方法从认证 ctx
-// （IdentityFromContext）提取 tenant_id/user_id，写入侧身份落到租户列
-// 与 metadata，读侧每条 SQL 强制租户过滤；身份缺失即拒绝（fail-closed），
-// 绝不回落默认租户。
-//
-// 嵌入空间纪律：一表承载多空间（不同模型/版本/维度的向量共存，物理
-// 上 embedding 列无固定维度、embedder/embed_dim 列逐行声明身份，DB 层
-// CHECK 把维度列与实际向量长度绑定），空间是余弦相似可比性的边界——
-// 相似度只对同一空间内的向量有意义，跨空间混排检索不存在。Search 以
-// filter.Embedder/Dimension 声明检索空间（必填，实现与查询向量长度及
-// 注册表三方对账）；写侧以文档字段声明归属；Count/DeleteByFilter/
-// GetMetadata 的 Embedder 为可空过滤（空 = 跨空间操作，重摄取迁移正是
-// 借此清理旧空间切片）。维度 N 的检索 SQL 以内联常量下钻 vector(N)
-// cast——维度来自校验后的注册表值而非请求侧输入，与表名白名单同纪律。
+// 契约不接收身份参数：实现从认证 ctx 提取租户/用户身份并在每条读写强制
+// 租户过滤，身份缺失即拒绝（fail-closed），绝不回落默认租户。
+// 嵌入空间纪律与方法边界见 README「迁移暂存」。
 type VectorStore interface {
 	// Add 写入文档与向量。ID 必填且租户内唯一，重复即报错；嵌入空间
 	// 身份与维度必填且经注册表对账（见 VectorDocument 注释）。
@@ -104,8 +86,7 @@ type VectorStore interface {
 	// 长度、注册表三方对账，任一不符拒绝。
 	Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error)
 	// DeleteByFilter 按 IDs/Embedder/Metadata 交集删除，返回删除行数；
-	// 所有条件均空时拒绝执行——租户级全量清理是跨租户管理口径（super
-	// 路径，向量层仅留占位，见 permission.md），不设普通入口。
+	// 所有条件均空时拒绝执行——租户级全量清理不设普通入口。
 	DeleteByFilter(ctx context.Context, filter *VectorFilter) (int64, error)
 	// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量，
 	// Embedder 非空则限该空间。

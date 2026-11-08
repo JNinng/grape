@@ -64,10 +64,8 @@ const (
 )
 
 // Role 是角色领域模型。角色是租户内资源：租户边界由存储层 RLS 承担，
-// 行级可见性由表级 @scope 守卫（动态 List/Count，fn_visible_role_ids）
-// 与 fn_can_see_role（详情共用判定）承担——角色对操作人可见与否由
-// A（分发映射命中可见部门集合）与 G（组织可见范围 + data_scope 档位）
-// 库内推导。code 与 role_type 是身份列（创建后不变）；data_scope 与
+// 行级可见性由表级 @scope（动态 List/Count）与 fn_can_see_role（详情）
+// 承担。code 与 role_type 是身份列（创建后不变）；data_scope 与
 // scope_dept_id 归数据范围配置面维护，不经 Update 用例修改。
 type Role struct {
 	ID          int64
@@ -178,9 +176,9 @@ func (uc *RoleUsecase) ListRoles(ctx context.Context, auth Identity, q *dynq.Que
 	return uc.repo.List(ctx, auth, q)
 }
 
-// CreateRole 创建角色：status 未指定（哨兵）缺省启用、显式 0 原样落库为
-// 禁用；role_type 由服务端定为租户自定义（2）；数据范围缺省仅本人（1）、
-// scope_dept_id 为空，后续经 SetRoleDataScope 配置。
+// CreateRole 创建角色：status 未指定缺省启用、显式 0 禁用；role_type
+// 服务端定为租户自定义（2）；数据范围缺省仅本人、scope_dept_id 为空，
+// 由 SetRoleDataScope 配置。
 func (uc *RoleUsecase) CreateRole(ctx context.Context, auth Identity, r *Role) (*Role, error) {
 	if err := validateRole(r, false); err != nil {
 		return nil, err

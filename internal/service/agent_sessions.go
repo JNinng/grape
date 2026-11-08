@@ -10,14 +10,11 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// AgentSessionsService 承载 agent 会话列表手写端点（非 proto 生成）
-// 的路由注册面：GET {basePath}/sessions 列出当前认证用户的 agent 会话
-// 元数据，供前端对话页的会话切换使用。列表装配与 HTTP 形态收在
-// internal/agent（Stack.SessionsHandler：与 AG-UI / ack 同一框架
-// session.Service 实例、同一 app 名命名空间、同一 userKey 编码），本类型
-// 只把该 handler 注册进 Kratos 中间件链——认证、分页校验、JSON 形态与
-// 错误语义都在装配面内实现，会话范围以服务端认证身份编码的 userKey 为
-// 唯一来源，跨用户天然不可见。
+// AgentSessionsService 承接 agent 会话列表的手写端点路由注册面（非 proto
+// 生成）：GET {basePath}/sessions 列出当前认证用户的会话元数据。列表装配、
+// 认证、分页与 JSON 形态都在 internal/agent 的 Stack.SessionsHandler 内（与
+// AG-UI 共享 session.Service 实例、app 命名空间与 userKey 编码）；会话范围
+// 只认服务端认证身份，跨用户不可见，本类型只负责注册进 Kratos 中间件链。
 type AgentSessionsService struct {
 	handler  nethttp.Handler
 	basePath string

@@ -15,23 +15,16 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
-// 检索留痕查询端点（供运维复现视图）的默认与上限
-// 分页参数：口径与 biz 留痕用例一致（默认 20、单页上限 200）。
+// 检索留痕查询端点的分页缺省值与上限，口径与 biz 留痕用例一致。
 const (
 	agentRetrievalDefaultLimit = 20
 	agentRetrievalMaxLimit     = 200
 )
 
-// AgentRetrievalService 承载检索留痕查询的手写端点（非 proto 生成）：
-//
-//	GET /v1/agent/retrieval-logs                    检索留痕列表
-//	GET /v1/agent/retrieval-logs?session_id=…       按会话过滤
-//	GET /v1/agent/retrieval-logs?source=tool|pipeline  按来源过滤
-//
-// 依赖只有 biz 留痕用例——不含 internal/agent 与框架包，遵守审计
-// 端点的同款纪律。租户边界由仓储 IdentityTx 与表 RLS 强制（跨租户不可
-// 见等同不存在）；返回的 query_text / 过滤摘要 / 命中是落库时已脱敏的
-// 形态（写入侧经 pkg/redact 注册表），本端点不二次脱敏也不回传原文。
+// AgentRetrievalService 承接检索留痕查询的手写 HTTP 端点，未纳入 proto
+// 契约：按会话与来源过滤分页。依赖只有 biz 留痕用例；租户边界由仓储
+// IdentityTx 与表 RLS 强制，跨租户不可见等同不存在；查询文本与证据摘要为
+// 落库时已脱敏形态，本层不二次脱敏、不回传原文。
 type AgentRetrievalService struct {
 	uc *biz.RetrievalLogUsecase
 }

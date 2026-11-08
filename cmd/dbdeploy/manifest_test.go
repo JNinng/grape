@@ -121,6 +121,6 @@ func TestDeployFiles_role_precedes_rls_and_agent_session_follows_seed(t *testing
 		}
 	}
 	// agent_session.sql 只依赖 role.sql 的 grape_u 存在，与 public 业务域
-	// 零耦合：相对种子包最后一项在后即可。不锁「绝对最后」：后续域（如
-	// 向量域）追加的清单项可落在其后，避免尾部互斥。
+	// 零耦合：位于种子包最后一项之后即可。不锁「绝对最后」：agent_vector
+	// 等后续域已落在其后，新增清单项同样可追加，避免尾部互斥。
 }

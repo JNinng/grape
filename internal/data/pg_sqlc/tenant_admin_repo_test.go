@@ -15,19 +15,10 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// 租户仓储集成测试：以真实 PostgreSQL 验证 sys_tenant 的租户树 RLS 边界
-//（tenant_id = app.tenant_id 或 id = app.tenant_id）、固定 CRUD、唯一键与
-// 软删语义、子租户删除守卫、目标状态写与动态查询协议。种子数据见
-// sqlc/seed/ 与 sqlc/test_seed.sql：t-super-01 是树根（tenant_id =
-// 自身 id），其名下直接子租户为 t-test-01/t-test-02（tenant_id 均为
-// t-super-01）。各用例经 setupTestDB 重建数据库实现隔离；新建行由
-// newTenantID 发号（`t-` + 14 位十六进制），不与种子主键冲突。
-//
-// 运行（PostgreSQL 必需，未设环境变量时跳过）：
-//
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
-//	go test ./internal/data/pg_sqlc/ -run TestTenant -count=1
+// 租户仓储集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* DSN 时跳过）：覆盖
+// sys_tenant 租户树 RLS 边界、CRUD、唯一键与软删语义、子租户删除守卫、
+// 目标状态写与动态查询。setupTestDB 每次重建数据库；种子树根为 t-super-01，
+// 其子租户为 t-test-01/t-test-02。
 
 const (
 	// tenantTreeRoot 是种子租户树的根（平台租户）。
@@ -433,10 +424,8 @@ func TestTenantRepo_delete_rejects_children_and_hides_row(t *testing.T) {
 }
 
 func TestTenantRepo_delete_rejects_invisible_grandchildren(t *testing.T) {
-	// 租户树 RLS 下祖父看不到孙行：t-test-01 自己创建的子租户
-	//（tenant_id = t-test-01）对 t-super-01 不可见。删除前置完整性判定
-	// 经 fn_tenant_active_child_count（SECURITY DEFINER，只返回计数）取得
-	// 全局事实，祖父删除子租户仍被拒绝，不会产生孤儿行。
+	// 祖父看不到孙行：删除前置完整性判定经受控计数函数取得全局事实，
+	// 祖父删除子租户仍被拒绝，不产生孤儿行。
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)

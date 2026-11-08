@@ -21,19 +21,9 @@ import (
 	"github.com/pgvector/pgvector-go"
 )
 
-// 向量存储介质集成测试：以真实 PostgreSQL 验证应用层租户隔离、嵌入空间
-// 隔离与向量读写语义。测试自建专属库并重建（DROP+CREATE+按 deploy.TestDeployFiles()
-// 部署清单全量装载，含 agent_vector.sql），不触碰其他数据库。设置以下环境
-// 变量后运行，未设置时跳过：
-//
-//	GRAPE_VECTOR_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_VECTOR_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_vector_test \
-//	go test ./internal/data/pg_sqlc/vector -run "TestVectorStore|TestNewVectorStore" -count=1 -v
-//
-// 隔离口径：agent_document 不启用 RLS，租户边界由 vector_repo 的应用层
-// 过滤强制——用例显式断言 RLS 关闭（relrowsecurity=false）时跨租户仍
-// 不可召回，证明隔离不依赖数据库策略存在。空间隔离同表验证：同维度
-// 双空间共存，检索只落声明空间。
+// 向量存储介质集成测试（真实 PostgreSQL，未设 GRAPE_VECTOR_TEST_ADMIN_DSN /
+// GRAPE_VECTOR_TEST_DSN 时跳过）：覆盖应用层租户隔离（RLS 关闭时仍不可越
+// 租户）、嵌入空间隔离与向量读写语义。测试自建专属库并按部署清单全量装载。
 
 const (
 	vectorTestDatabase = "grape_vector_test"
@@ -471,11 +461,8 @@ VALUES ('bad-dim', 't-vec-a', 11, 'bge-m3@v1', 4, 'c', $1, 11, 11)`,
 }
 
 func TestVectorStore_search_plan_uses_expression_partial_index(t *testing.T) {
-	// 检索计划断言：与仓储同形状的 SQL 必须命中表达式部分 HNSW 索引
-	//（查询侧 cast 与索引表达式逐字一致才可命中）。先播种 200 行——
-	// 空表/极小表上优化器对 ORDER BY+LIMIT 的选计划随统计与版本波动，
-	// 批量原生 SQL 单语句插入（数据合法，与 Store 写入同形状）保持断言
-	// 快且稳。
+	// 与仓储同形状的 SQL 须命中表达式部分 HNSW 索引；先播种 200 行，
+	// 避免空表/极小表上优化器选计划波动。
 	d := setupVectorTestDB(t)
 	newVectorStoreForTest(t, d)
 	ctx := context.Background()

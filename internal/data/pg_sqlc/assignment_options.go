@@ -54,7 +54,7 @@ func (r *assignmentRepo) ListAssignableRoles(ctx context.Context, auth biz.Ident
 }
 
 // ListUserRoles 读取目标用户当前可管理角色集合与版本：目标按 ID 读取
-//（分配读面不要求目标可见）；currentAll 是全部活跃映射（含停用/软删
+// （分配读面不要求目标可见）；currentAll 是全部活跃映射（含停用/软删
 // 角色的残留映射），activeCurrent 是其中活跃的角色；按 fn_can_assign_role
 // 分区后 manageable 返回明细、locked 只计数。
 func (r *assignmentRepo) ListUserRoles(ctx context.Context, auth biz.Identity, userID int64) (*biz.UserRoleSet, error) {
@@ -77,18 +77,9 @@ func (r *assignmentRepo) ListUserRoles(ctx context.Context, auth biz.Identity, u
 }
 
 // SetUserRoles 按「管理范围内整组替换」写入角色集合，全部步骤在同一事务：
-//
-//  1. LockSysUserByID 按 ID 锁定目标（不判可见性——分配规则不要求目标
-//     可见；无行等同不存在；行锁串行化并发分配/撤销，与 AssignRoles 共用）；
-//  2. 读全部活跃映射与活跃角色，按 fn_can_assign_role / fn_can_revoke_role
-//     分区出 manageable/revocable/locked（两者皆否才是 locked——撤销改
-//     软删后禁用目标、禁用/软删角色的残留映射仍可撤）；
-//  3. 请求触及 locked、desired 有失活角色、新增角色任一不可分配 → 拒绝；
-//  4. expected_version 与当前 manageable 集合不一致 → Conflict；
-//  5. 操作目标为本人时，最终集合必须至少保留一个带分配权限码的有效角色；
-//  6. 先软删 removed（SQL 内按 fn_can_revoke_role 判定且要求行数相等，
-//     放宽角色/目标状态校验——禁用用户、并发失活角色也可撤）、
-//     再补 added，最后以最终原集合重算 version 返回。
+// 锁定目标行 → 按 fn_can_assign_role / fn_can_revoke_role 分区出
+// manageable/revocable/locked → 拒绝触及 locked、失活新增与版本不一致 →
+// 自锁保护 → 先软删 removed 再补 added，最后重算 version 返回。
 func (r *assignmentRepo) SetUserRoles(ctx context.Context, auth biz.Identity, in biz.SetUserRolesInput) (*biz.UserRoleSet, error) {
 	var out *biz.UserRoleSet
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {

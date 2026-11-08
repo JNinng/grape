@@ -87,12 +87,9 @@ type sessionListReply struct {
 	Sessions []sessionItem `json:"sessions"`
 }
 
-// ServeHTTP 处理 GET {basePath}/sessions（路由注册与入链归 service，
-// 精确路径先于 agent 前缀通配）：分页校验 → 认证身份 → userKey →
-// 框架 ListSessions（仅元数据 + offset 分页）。身份解析与 ack 守卫同走
-// identity.UserKeyFromContext 单一代码点；身份缺失（绕过认证中间件的调用）
-// fail-closed 返回 401，与 AckOwnerGuard 的绕过口径一致。分页参数非法
-// 返回 400。
+// ServeHTTP 处理 GET {basePath}/sessions（路由注册与入链归 service，精确
+// 路径先于 agent 前缀通配）：分页校验 → 认证身份 → userKey → 框架
+// ListSessions（仅元数据 + offset 分页）。身份缺失 401、分页非法 400。
 func (s *SessionList) ServeHTTP(w nethttp.ResponseWriter, r *nethttp.Request) {
 	offset, limit, err := sessionListPageOf(r)
 	if err != nil {

@@ -19,15 +19,10 @@ var (
 // envIPNames 是本机 IP 候选环境变量，按优先级从高到低排列。
 var envIPNames = [...]string{"INSTANCE_IP", "POD_IP"}
 
-// ResolveLocalIP 解析本机非回环 IPv4，按以下优先级取首个可用来源：
-//  1. 环境变量 INSTANCE_IP
-//  2. 环境变量 POD_IP
-//  3. net.InterfaceAddrs 中首个非回环 IPv4
-//
-// 契约：环境变量已设置但非法（解析失败、非 IPv4 或回环地址）时不采用，
-// 回落下一来源；全部来源均不可用时返回 error，
-// 错误信息附带各来源被拒绝的原因，便于部署排查。
-// 返回值恒为 4 字节 IPv4 形式。
+// ResolveLocalIP 解析本机非回环 IPv4，按 INSTANCE_IP → POD_IP →
+// net.InterfaceAddrs 首个非回环 IPv4 依次取用。环境变量已设置但非法
+// （解析失败、非 IPv4 或回环）时不采用、回落下一来源；全部来源不可用时
+// 返回含各来源拒绝原因的错误，便于部署排查。返回值恒为 4 字节 IPv4。
 func ResolveLocalIP() (net.IP, error) {
 	var reasons []string
 	for _, name := range envIPNames {

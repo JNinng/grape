@@ -6,8 +6,7 @@ import (
 )
 
 // 向量设施嵌入空间的解析与校验单测（纯内存）：键派生、注册表合法性、
-// 全局默认引用。消费方（openaiembedder / 向量仓储 / 解析器）共用本文件，
-// 校验语义只在此断言一次。
+// 全局默认引用；校验语义只在此断言一次。
 
 func spacesConf(embedders []*Vector_Embedding, def string) *Vector {
 	return &Vector{Enabled: true, DefaultEmbedder: def, Embedders: embedders}

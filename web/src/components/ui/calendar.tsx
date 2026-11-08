@@ -4,10 +4,8 @@ import { DayPicker, getDefaultClassNames, type DayButtonProps } from 'react-day-
 import { cn } from 'cn'
 import { buttonVariants } from '@/components/ui/button'
 
-// 源自 shadcn/ui new-york-v4 calendar（底层 react-day-picker v10），按 hex
-// 兼容规则改写：官方版依赖 oklch、/NN 透明度与渐变工具类，此处改用语义
-// token，并把日期格子的选中/区间样式集中到 DayButton 上按 modifiers 计算
-// （避免依赖 td 透底叠色的写法），交互与官方单/区间选择保持一致。
+// 本地改写日历（react-day-picker v10）：日期格子的选中/区间样式集中在
+// DayButton 上按 modifiers 计算；hex/transform 兼容改写规则见 README。
 
 // CalendarDayButton 渲染单个日期格子：today/outside/disabled/区间与选中态
 // 全部经 data 属性与条件类呈现，selected 优先级最高（区间端点是主色圆角，

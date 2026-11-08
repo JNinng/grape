@@ -168,10 +168,8 @@ func (r *sessionRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query
 		}
 		res, err := gen.ListSysSession(ctx, s.Tx(), params)
 		if err != nil {
-			// List 阶段同样产协议错误（畸形/篡改游标的解码失败、指纹不
-			// 匹配、seek 谓词非法等）：按契约映射为 INVALID_ARGUMENT 而非
-			// 透传成 500。会话行 id 超出 2^53 的大主键游标自 dynq v0.5.0
-			// 起以十进制字符串精确解码，正常翻页不受影响。
+			// List 阶段同样产协议错误：按契约映射为 INVALID_ARGUMENT 而
+			// 非透传成 500。
 			if isDynqError(err) {
 				return biz.ErrSessionInvalidArgument
 			}
@@ -257,13 +255,10 @@ func NewSessionMaintenance(d *Data) biz.FacilityMaintenance {
 // Facility 返回设施名。
 func (*sessionRepo) Facility() string { return "postgres" }
 
-// Maintain 执行一轮会话介质维护，动作顺序先删后判：
-//
-//  1. 清理过期/已撤销会话：池直连调用 SECURITY DEFINER 清理函数
-//     （sys_session 启用 ENABLE+FORCE 租户 RLS，维护无租户身份，跨
-//     租户资格由函数属主承担），绝不走 IdentityTx/TokenTx/TenantTx；
-//  2. 按 pg_stat_user_tables 死元组统计判定是否 REINDEX token_hash
-//     索引。
+// Maintain 执行一轮会话介质维护，动作顺序先删后判：过期/已撤销会话经池
+// 直连 SECURITY DEFINER 清理函数删除（不走 IdentityTx），再按死元组统计
+// 判定是否 REINDEX token_hash 索引。判定阈值与例外见 internal/data/README.md
+// 「迁移暂存（阶段 2 并入）」。
 func (r *sessionRepo) Maintain(ctx context.Context) (biz.MaintenanceReport, error) {
 	report := biz.MaintenanceReport{}
 
@@ -288,11 +283,8 @@ func (r *sessionRepo) Maintain(ctx context.Context) (biz.MaintenanceReport, erro
 }
 
 // reindexTokenHashIndex 按死元组统计判定是否 REINDEX token_hash 索引。
-// REINDEX CONCURRENTLY 不能在事务块/函数内执行，必须以池直连的顶层
-// 独立语句运行；取裸连接走简单协议（PgConn.Exec），绕开 pgx 扩展协议
-// 对事务块的包装。属主现实：表/索引属主是部署超级用户，应用角色大概率
-// 42501 insufficient_privilege——按跳过处理并留痕，不视为错误；其余
-// 错误向上返回。
+// REINDEX CONCURRENTLY 不能在事务块内执行，须以池直连的顶层独立语句运行；
+// 索引属主是部署超级用户，应用角色权限不足（42501）按跳过处理并留痕。
 func (r *sessionRepo) reindexTokenHashIndex(ctx context.Context) (biz.MaintenanceAction, error) {
 	action := biz.MaintenanceAction{Kind: "reindex", Target: sessionTokenHashIndex}
 

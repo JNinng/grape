@@ -117,11 +117,9 @@ func TestAckOwnerGuard_when_session_lookup_errors_returns_500(t *testing.T) {
 	}
 }
 
-// TestAckOwnerGuard_when_post_ignores_query_param_and_trusts_body 锁定
-// POST 取值源与 ackhttp 的对齐关系：查询参数不参与归属判定——查询参数
-// 指向自己名下会话 + body 指向他人会话必须 404（采信查询参数的实现对
-// 本用例失守）；反向组合（查询参数指向他人 + body 指向自己）必须放行，
-// 守卫不越权收紧。
+// TestAckOwnerGuard_when_post_ignores_query_param_and_trusts_body 验证
+// POST 的取值源只有请求体：查询参数指向自己名下、body 指向他人时必须
+// 404；反向组合（查询参数他人 + body 自己）必须放行，守卫不越权收紧。
 func TestAckOwnerGuard_when_post_ignores_query_param_and_trusts_body(t *testing.T) {
 	f := newGuardFixture(t)
 	ctx := guardIdentityCtx()
@@ -151,11 +149,10 @@ func TestAckOwnerGuard_when_post_ignores_query_param_and_trusts_body(t *testing.
 	}
 }
 
-// TestAckOwnerGuard_when_post_body_has_trailing_data_still_checked 锁定
-// 守卫解码方式与 ackhttp 一致（Decode 只取首个 JSON 值、容忍尾随数据）：
-// 「合法 JSON + 尾随数据」必须照常经过归属判定——若退化为 json.Unmarshal
-// （拒绝尾随数据），该形态会被守卫误判形状非法而放行，ackhttp 却能正常
-// 解码照常决定，形成跨用户绕过（已知绕过形态，变异检验钉住）。
+// TestAckOwnerGuard_when_post_body_has_trailing_data_still_checked 验证守卫
+// 与 ackhttp 的解码方式一致（Decode 只取首个 JSON 值、容忍尾随数据）：
+// 「合法 JSON + 尾随数据」必须照常经过归属判定——退化为 Unmarshal 会误
+// 判形状非法而放行，ackhttp 却能正常解码照常决定，形成跨用户绕过。
 func TestAckOwnerGuard_when_post_body_has_trailing_data_still_checked(t *testing.T) {
 	f := newGuardFixture(t)
 	ctx := guardIdentityCtx()

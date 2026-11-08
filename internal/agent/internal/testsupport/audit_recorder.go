@@ -14,11 +14,9 @@ type AuditBatchRow struct {
 }
 
 // AuditRecorder 是审计挂点接口的内存替身：捕获三类写入的入参快照，可
-// 注入写入错误与 panic（失败注入用例；构造时直接设 Err / PanicOn，用例
-// 中途改注入经 SetFailure 加锁）。快照做浅拷贝，断言不受调用侧后续变更
-// 影响。Attempts 记写入尝试次数（含失败与 panic 的调用），供「写入确实
-// 被尝试」的正向对照。方法签名与 agent 树 audit.Hook 的形状一致（结构化
-// 满足，无需 import 审计包——本包禁止 import agent 生产包）。
+// 注入写入错误与 panic（构造时直接设 Err / PanicOn，中途改注入经
+// SetFailure）。快照做浅拷贝；Attempts 记含失败的写入尝试次数。方法
+// 形状与 audit.Hook 结构一致，无需 import 审计包。
 type AuditRecorder struct {
 	mu            sync.Mutex
 	toolCalls     []*biz.ToolCallRecordInput

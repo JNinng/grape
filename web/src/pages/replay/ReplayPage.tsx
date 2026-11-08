@@ -381,10 +381,8 @@ export function ReplayPage() {
     setError(null)
     setHistoryUnavailable(false)
     try {
-      // /history 快照独立降级：无 track 事件的会话（仅存 ack 待确认指针、
-      // 或 track 事件已过保留期的会话）上游快照运行会 500（RunStartedEvent
-      // validation failed，同族的上游快照缺陷）。回放只是四联
-      // 证据之一，缺失按空态提示降级，其余证据面照常装载。
+      // /history 快照独立降级：无 track 事件的会话上游快照运行会 500；
+      // 回放只是四联证据之一，缺失按空态提示降级，其余证据面照常装载。
       const [history, auditToolCalls, auditConfirmations, retrievalLogs] = await Promise.all([
         fetchHistorySnapshot(tid).catch(() => null),
         fetchToolCallAudits(tid),
@@ -447,11 +445,9 @@ export function ReplayPage() {
     [toolCalls, confirmations, retrievals],
   )
   const traceIds = useMemo(() => collectTraceIds(facets), [facets])
-  // 链路选中只做高亮对比：三证据面全量渲染，命中行品牌紫高亮、未命中
-  // 行灰显，不隐藏任何证据行（对比呈现保住证据间的上下文）。
-  // 回放流关联：桥接 ID 取审计∪确认（live 路径两面 trace 不同），再按分
-  // 段邻近归属扩散到整段消息；仅在确有命中项时降透明度，避免整流变灰
-  // 而无所指。
+  // 链路选中只做高亮对比（命中行高亮、未命中灰显，不隐藏证据行）；
+  // 回放流经审计∪确认的 toolCallId 桥接，再按分段邻近归属扩散，仅在
+  // 确有命中项时降透明度。
   const relatedToolIds = useMemo(() => relatedToolCallIds(facets, traceFilter), [facets, traceFilter])
   const relatedItemIds = useMemo(() => relatedChatItemIds(items, relatedToolIds), [items, relatedToolIds])
   const dimStream = traceFilter !== null && relatedItemIds.size > 0

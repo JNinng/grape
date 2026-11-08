@@ -11,20 +11,11 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Deploy 执行数据库全量部署。流程（对应仓库根 deploy_db.md）：
-//
-//  1. 校验部署清单完整性（拒绝 CREATE DATABASE / CONCURRENTLY 破坏
-//     单事务前提）；
-//  2. 以管理 DSN 连接 postgres 库，目标库不存在则创建（CREATE DATABASE
-//     不能在事务块内，独立于后续事务执行）；已存在则沿用并声明幂等边界；
-//  3. 连接目标库，单事务内按 DeployFiles 清单顺序执行全部文件
-//     （simple protocol；role.sql 的口令占位符在内存中替换，残留即拒绝）；
-//  4. 事务内补 GRANT CONNECT（库名动态拼接，role.sql 无法预知库名）；
-//  5. 任一步失败整体回滚并上抛错误。
-//
-// 幂等边界：角色（DO 块判存）与种子（ON CONFLICT DO NOTHING）可重复
-// 执行；结构 DDL 为裸创建，重复执行报错，全量重建先手动 DROP DATABASE。
-// logf 为日志回调（面向运维），口令绝不进入日志与错误文本。
+// Deploy 执行数据库全量部署：校验清单，幂等建库，单事务内按 DeployFiles
+// 顺序执行全部文件并补 GRANT CONNECT，任一步失败整体回滚。幂等边界：角色
+// 与种子可重复执行，结构 DDL 为裸创建、重复执行报错，全量重建须先手动
+// DROP DATABASE。logf 面向运维，口令绝不进入日志与错误文本。流程与升级
+// 口径见仓库根 deploy_db.md。
 func Deploy(ctx context.Context, opts *Options, logf func(format string, args ...any)) error {
 	dir, err := deploy.DeployDir()
 	if err != nil {

@@ -1,17 +1,9 @@
 package audit_test
 
-// 授权终态观察转写器的 PG 集成测试：以真实 PostgreSQL（本套件专属库
-// grape_agent_permission_test）验证 allow 层级工具调用经授权终态观察
-// 挂点落一条 auto 授权行——真实 biz.AuditUsecase + audit 仓储写入
-// agent_confirmation_log，RLS 租户边界生效。环境变量门控（未设置时
-// 跳过），形态与会话/确认集成测试一致（TestDeployFiles 全清单部署 + 跨包
-// 部署锁互斥）：
-//
-//	GRAPE_PERMISSION_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	go test ./internal/agent/audit -run TestPGPermissionAudit -count=1 -v
-//
-// 外部测试包（audit_test）形态：用例经完整 Stack（根包生产装配路径）
-// 驱动，不触达本包私有符号。
+// 授权终态观察转写器的 PG 集成测试：allow 层级工具调用经观察挂点落一条
+// auto 授权行（真实 biz.AuditUsecase 写 agent_confirmation_log，RLS 租户
+// 边界生效）。套件、环境变量与装载口径见 README「测试」；用例经完整
+// Stack 驱动。
 
 import (
 	"context"

@@ -48,16 +48,10 @@ func TestTokenLookupValidate(t *testing.T) {
 	}
 }
 
-// 存储边界集成测试：以真实 PostgreSQL 验证会话门面、RLS/@scope 运行
-// 纪律与用户/会话仓储（断言基于 sqlc/seed/ 与 sqlc/test_seed.sql 的
-// 种子事实）。设置以下环境变量后运行，未设置时跳过：
-//
-//	GRAPE_TEST_ADMIN_DSN=postgres://postgresql:root@127.0.0.1:5432/postgres \
-//	GRAPE_TEST_DSN=postgres://grape_u:grape_u_pwd@127.0.0.1:5432/grape_pgsqlc_test \
-//	go test ./internal/data/pg_sqlc -run TestSession -count=1 -v
-//
-// 测试自重建 grape_pgsqlc_test 库（DROP+CREATE+按 deploy.TestDeployFiles() 部署清单
-// 装载 sqlc/ 全部文件，见 deploy 子包），不触碰其他数据库。
+// 存储边界集成测试（真实 PostgreSQL，未设 GRAPE_TEST_ADMIN_DSN /
+// GRAPE_TEST_DSN 时跳过）：覆盖会话门面、RLS/@scope 运行纪律与用户/会话
+// 仓储，断言基于 sqlc/seed/ 与 sqlc/test_seed.sql 的种子事实。测试自重建
+// grape_pgsqlc_test 库并按部署清单全量装载。
 
 const testDatabase = "grape_pgsqlc_test"
 
@@ -255,10 +249,8 @@ func TestSessionDiscipline(t *testing.T) {
 		}
 	})
 
-	// 种子事实（test_seed.sql）：t-test-01 内 basic 共 10 行；用户 11
-	// （testadmin）持全租户角色 110（data_scope=7），用户 3 持仅本人角色
-	// 103（data_scope=1）。t-test-01 内含字典演示数据（类型 3、数据 14），
-	// 租户可见性用它验证；t-super-01 与 t-test-02 不播种字典。
+	// 种子事实：t-test-01 内 basic 共 10 行；用户 11 持全租户角色 110
+	//（data_scope=7），用户 3 持仅本人角色 103（data_scope=1）。
 	testAdmin := biz.Identity{TenantID: "t-test-01", UserID: 11}
 
 	t.Run("scope 7 sees all basic rows of tenant", func(t *testing.T) {
