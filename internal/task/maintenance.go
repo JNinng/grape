@@ -1,6 +1,6 @@
-// Package task 是后台异步任务入口（定时、事件、手动触发），与 service
-// 平级构成第二类入口：task → biz → data 单向依赖，无 DTO，直接以契约
-// 调用 biz 声明的能力面；任务自身不实现业务规则。
+// Package task 是后台维护任务入口（当前为周期维护），与 service 平级
+// 构成第二类入口：task → biz → data 单向依赖，无 DTO，直接以契约调用
+// biz 声明的能力面；任务自身不实现业务规则。
 package task
 
 import (
