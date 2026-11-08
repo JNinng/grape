@@ -138,7 +138,7 @@ func usersFindByName(users *biz.UserUsecase) func(context.Context, findUsersByNa
 		if name == "" {
 			return findUsersByNameOutput{}, fmt.Errorf("name is required")
 		}
-		if len(name) > maxUserNameChars {
+		if len([]rune(name)) > maxUserNameChars {
 			return findUsersByNameOutput{}, fmt.Errorf("name must be at most %d characters", maxUserNameChars)
 		}
 		limit := in.Limit
@@ -196,7 +196,7 @@ func usersUpdateNickname(users *biz.UserUsecase) func(context.Context, updateNic
 		if nickname == "" {
 			return updateNicknameOutput{}, fmt.Errorf("nickname is required")
 		}
-		if len(nickname) > maxNicknameChars {
+		if len([]rune(nickname)) > maxNicknameChars {
 			return updateNicknameOutput{}, fmt.Errorf("nickname must be at most %d characters", maxNicknameChars)
 		}
 		// 定向更新昵称：其余可变字段（email/phone/remark/locale）保持原值。

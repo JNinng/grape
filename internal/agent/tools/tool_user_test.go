@@ -321,3 +321,31 @@ func TestUserTool_declaration_output_schema_declares_field_descriptions(t *testi
 		}
 	}
 }
+
+func TestUserTool_when_multibyte_name_within_character_limit_accepted(t *testing.T) {
+	args, err := json.Marshal(map[string]string{"name": strings.Repeat("用", maxUserNameChars)})
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+	if _, err := callTool(t, authCtx(), FindUsersByNameToolName, string(args)); err != nil {
+		t.Fatalf("multibyte name within character limit must be accepted: %v", err)
+	}
+}
+
+func TestUserTool_when_multibyte_nickname_within_character_limit_accepted(t *testing.T) {
+	repo := testsupport.NewFakeUserRepo(toolTestUsers()...)
+	users := biz.NewUserUsecase(repo)
+	var target tool.Tool
+	for _, tl := range NewUserTools(users) {
+		if d := tl.(tool.CallableTool).Declaration(); d != nil && d.Name == UpdateMyNicknameToolName {
+			target = tl
+		}
+	}
+	args, err := json.Marshal(map[string]string{"nickname": strings.Repeat("昵", maxNicknameChars)})
+	if err != nil {
+		t.Fatalf("marshal args: %v", err)
+	}
+	if _, err := target.(tool.CallableTool).Call(authCtx(), args); err != nil {
+		t.Fatalf("multibyte nickname within character limit must be accepted: %v", err)
+	}
+}
