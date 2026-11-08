@@ -258,7 +258,7 @@ func (*sessionRepo) Facility() string { return "postgres" }
 // Maintain 执行一轮会话介质维护，动作顺序先删后判：过期/已撤销会话经池
 // 直连 SECURITY DEFINER 清理函数删除（不走 IdentityTx），再按死元组统计
 // 判定是否 REINDEX token_hash 索引。判定阈值与例外见 internal/data/README.md
-// 「迁移暂存（阶段 2 并入）」。
+// 「会话介质维护」。
 func (r *sessionRepo) Maintain(ctx context.Context) (biz.MaintenanceReport, error) {
 	report := biz.MaintenanceReport{}
 

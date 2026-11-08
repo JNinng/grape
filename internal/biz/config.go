@@ -24,7 +24,7 @@ var (
 	ErrConfigAlreadyExists = kratoserrors.Conflict(v1.ErrorReason_CONFIG_ALREADY_EXISTS.String(), "config already exists")
 	// ErrConfigPlatformRequired 表示全局配置写路径的调用方不是平台（根）
 	// 租户。sys_config 跨租户共享，租户内权限码不足以授权其写入（见
-	// README「迁移暂存」）。
+	// permission.md 与 README「关键约束」）。
 	ErrConfigPlatformRequired = kratoserrors.Forbidden(v1.ErrorReason_CONFIG_PLATFORM_REQUIRED.String(), "platform tenant required")
 	// ErrTenantConfigNotFound 表示目标租户配置不存在（含跨租户不可见与
 	// 已软删）。
@@ -165,7 +165,7 @@ type TenantConfigRepo interface {
 // PlatformTenantGuard 判定调用方租户是否为平台（根）租户，供全局配置写
 // 路径的信任边界使用：sys_config 跨租户共享，租户内权限码不足以授权其
 // 写入。目标不存在/已删返回 (false, nil)，错误原样透传；判定规则见
-// README「迁移暂存」。
+// permission.md。
 type PlatformTenantGuard interface {
 	IsPlatformTenant(ctx context.Context, auth Identity) (bool, error)
 }

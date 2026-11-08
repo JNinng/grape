@@ -25,7 +25,7 @@ var (
 //
 // 多嵌入空间共存，不同空间向量互不可比；Embed 必须为目标空间生成向量，
 // 长度与 Dimension 声明一致（端点维度漂移在调用点显式报错而非落库）。
-// 空间与维度纪律见 README「迁移暂存」。
+// 空间与维度纪律见 README「关键约束」。
 type Embedder interface {
 	// Embed 为单段文本生成向量。embedder 是嵌入空间键；空白文本与
 	// 未知空间拒绝；返回向量长度必须与 Dimension(embedder) 一致。

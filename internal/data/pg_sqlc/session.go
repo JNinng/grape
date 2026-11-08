@@ -93,7 +93,7 @@ func (d *Data) runInTx(ctx context.Context, gucs []txGuC, fn func(tx pgx.Tx) err
 // IdentityTx 是绑定完整身份的事务门面：app.tenant_id 以 local=true 注入，
 // 事务结束自动失效。所有经普通数据库角色（grape_u）建立的连接都必须经
 // 它访问数据库，禁止绕过租户注入直连；身份成立前的例外与绕过路径清单见
-// internal/data/README.md「迁移暂存（阶段 2 并入）」。
+// internal/data/README.md「事务门面」。
 type IdentityTx struct {
 	txHandle
 	auth Identity

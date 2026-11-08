@@ -70,7 +70,7 @@ func WithChunking(size, overlap int) DocumentOption {
 // DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约落库。
 // 租户过滤由 VectorStore 实现强制，管线不接触存储细节、不直连 SQL；身份
 // 从认证 ctx 提取（管线由受权入口驱动），缺失 fail-closed。嵌入空间在
-// 每次 Ingest 现场解析，默认空间切换即迁移路径（见 README「迁移暂存」）。
+// 每次 Ingest 现场解析，默认空间切换即迁移路径（见 README「关键文件导览」）。
 type DocumentUsecase struct {
 	store        VectorStore
 	embedder     Embedder

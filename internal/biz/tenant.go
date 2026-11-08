@@ -90,7 +90,7 @@ type TenantList struct {
 // 策略允许命中 tenant_id = app.tenant_id 或 id = app.tenant_id 的行，每个
 // 租户可读写自己名下的直接子租户与自身，树外行等同不存在。
 // 写/状态方法名带 Super 表达「管理一整个租户实体」，不表示绕过 RLS；
-// 唯一例外是删除前置的只读计数函数（见 README「迁移暂存」）。
+// 唯一例外是删除前置的只读计数函数（见 README「关键约束」）。
 type TenantRepo interface {
 	// List 按动态查询协议返回分页集合（调用方租户树可见部分）。
 	List(ctx context.Context, auth Identity, q *dynq.Query) (*TenantList, error)

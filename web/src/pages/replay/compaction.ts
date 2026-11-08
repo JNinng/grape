@@ -1,7 +1,7 @@
 // 压缩占位符识别（纯函数，复现视图）：在回放文本中识别上下文压缩产生的
 // 占位符形状并提取 event_id 恢复引用，供「占位 ↔ 原文」对照。识别以形状
 // 特征为准，不假设必然出现；畸形输入返回空数组。形状清单与上游出处见
-// web/README.md「迁移暂存」。
+// web/README.md「运维复现视图」。
 
 export type CompactionRefKind = 'placeholder' | 'truncated' | 'elided' | 'policy'
 

@@ -21,7 +21,7 @@ import (
 // approved/denied，系统决定为 auto/auto_deny 或来源命名空间
 // {name}_auto/{name}_deny；决定路径 live/recovery 仅人工、auto 仅系统；
 // remember 仅人工 approved 可携带（空串即未记住）。词形规则、配对不变量
-// 与脱敏口径见 README「迁移暂存」。
+// 与脱敏口径见 replay.md 与 README「关键文件导览」。
 const (
 	ToolCallStatusSuccess = "success"
 	ToolCallStatusError   = "error"

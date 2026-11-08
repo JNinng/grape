@@ -66,7 +66,7 @@ type ScoredVectorDocument struct {
 //
 // 契约不接收身份参数：实现从认证 ctx 提取租户/用户身份并在每条读写强制
 // 租户过滤，身份缺失即拒绝（fail-closed），绝不回落默认租户。
-// 嵌入空间纪律与方法边界见 README「迁移暂存」。
+// 嵌入空间纪律与方法边界见 README「关键约束」与 data/README.md「向量介质」。
 type VectorStore interface {
 	// Add 写入文档与向量。ID 必填且租户内唯一，重复即报错；嵌入空间
 	// 身份与维度必填且经注册表对账（见 VectorDocument 注释）。

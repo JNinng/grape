@@ -18,7 +18,7 @@ import (
 // tenantRepo 是 biz.TenantRepo 的 PostgreSQL 实现。sys_tenant 按租户树模型
 // 由 RLS 承担边界：每个租户可读写自己名下的直接子租户与自身，树外行天然
 // 不可见。super 命名表达「管理一整个租户实体」，不表示绕过 RLS；删除前置
-// 的受控计数函数见 internal/data/README.md「迁移暂存（阶段 2 并入）」。
+// 的受控计数函数见 internal/data/README.md「租户管理与删除孤儿判定」。
 type tenantRepo struct {
 	data *Data
 }
@@ -263,7 +263,7 @@ func (r *tenantRepo) UpdateSuper(ctx context.Context, auth biz.Identity, t *biz.
 // DeleteSuper 软删除租户。同一事务内先锁行、再经受控计数函数统计未删除
 // 直接子租户：有子返回 ErrTenantHasChildren 不写入，否则置位 deleted_at。
 // 孤儿判定口径（祖父看不到孙行、函数只返回计数）见 internal/data/README.md
-// 「迁移暂存（阶段 2 并入）」。
+// 「租户管理与删除孤儿判定」。
 func (r *tenantRepo) DeleteSuper(ctx context.Context, auth biz.Identity, id string) error {
 	return r.mapErr(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		if _, err := s.Q().LockSysTenantByID(ctx, id); err != nil {

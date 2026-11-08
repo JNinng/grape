@@ -157,7 +157,7 @@ func (uc *GrantUsecase) ListTenant(ctx context.Context, auth Identity) ([]*ToolG
 // Revoke 吊销授权：属主本人不设码；吊销他人要求功能权限码
 // agent:grant:revoke，不通过即 ErrGrantAccessDenied。目标不可见等同不存在
 // 返回 ErrGrantNotFound；并发下已被吊销时同样以 0 行落 NotFound（幂等）。
-// 存在性枚举的取舍见 README「迁移暂存」。
+// 存在性枚举的取舍见 README「关键约束」。
 func (uc *GrantUsecase) Revoke(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrGrantInvalidArgument

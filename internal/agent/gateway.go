@@ -14,7 +14,7 @@ import (
 // noopPolicy 是外部策略源的弃权空实现：恒返回 abstain，不介入裁决。
 // 接入真实策略面时以实现 ack.PolicySource 的类型替换本类型；需要让生效
 // 依据进入事件与审计行时改挂 ack.NamedPolicy，名字须满足 biz 的来源
-// 命名空间约束（见 README「迁移暂存」），不合规名字的授权行会被转写器
+// 命名空间约束（见 README「工具分级与授权」），不合规名字的授权行会被转写器
 // fail-closed 丢弃。
 type noopPolicy struct{}
 

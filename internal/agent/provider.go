@@ -30,7 +30,7 @@ var ProviderSet = wire.NewSet(NewStack, NewSessionService, NewVectorStore)
 // NewSessionService 提供 Agent 会话存储：框架 session/postgres，schema
 // agent + agent_ 表前缀，表由部署面预建并授权 grape_u，运行期跳过 DDL。
 // 连接复用 master DSN（框架实现不接受外部连接池）；state 与 track 事件
-// 的 TTL 0 值语义不同，见 README「迁移暂存」。
+// 的 TTL 0 值语义不同，见 README「会话与运行」。
 func NewSessionService(c *conf.Agent, d *conf.Data) (session.Service, func(), error) {
 	dsn := d.GetDatabase().GetMaster().GetSource()
 	if dsn == "" {

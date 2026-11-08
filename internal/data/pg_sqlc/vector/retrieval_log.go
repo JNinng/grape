@@ -17,7 +17,7 @@ import (
 // 检索留痕装饰器：位于向量仓储之上、框架适配器之下，检索与摄取两条链路
 // 都经它留痕（一次操作一行，失败行同样留痕）。留痕点、独立 IdentityTx、
 // 脱敏与长度兜底、top_k 口径见 internal/data/README.md 的
-// 「迁移暂存（阶段 2 并入）」。
+// 「检索留痕装饰器」。
 const (
 	// retrievalQueryMaxRunes 是查询文本的兜底截断上限（rune 计）。
 	retrievalQueryMaxRunes = 4096

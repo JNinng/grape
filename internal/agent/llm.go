@@ -19,7 +19,7 @@ import (
 // newLLMModel 按配置构造模型链：裸 provider（主 + failover 备选）→
 // hedge（只包主模型）→ failover（包全部候选），每台候选内层另可有
 // logging。各可靠性段 enabled=false 时不包装，全关即返回裸 provider。
-// 层次取舍与重试口径见 README「迁移暂存」。
+// 层次取舍与重试口径见 README「模型链」。
 func newLLMModel(c *conf.Agent_LLM) (model.Model, error) {
 	candidates, err := llmCandidates(c)
 	if err != nil {

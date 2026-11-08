@@ -22,7 +22,7 @@ import (
 // 一表承载多嵌入空间：embedding 为裸 vector，embedder/embed_dim 逐行声明
 // 身份，检索命中对应维度的表达式部分 HNSW 索引。SQL 手写参数化，不进 sqlc
 // 生成。表无 RLS，租户隔离由应用层强制；空间模型与探针契约见
-// internal/data/README.md「迁移暂存（阶段 2 并入）」。
+// internal/data/README.md「向量介质」。
 const (
 	// vectorSchema 是 agent 域设施的固定 schema（与框架会话表同域）。
 	vectorSchema = "agent"
@@ -178,8 +178,8 @@ func (r *vectorStore) probeColumns(ctx context.Context, qualified string) (map[s
 
 // probeIndexes 核对每个声明维度的表达式部分 HNSW 索引：索引定义须同时含
 // `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)`，cast 与谓词是检索
-// SQL 命中索引的前提，缺失即装配期拒绝。索引表达式细节见 sqlc/README.md
-// 「迁移暂存（阶段 2 并入）」。
+// SQL 命中索引的前提，缺失即装配期拒绝。索引表达式细节见 internal/data/README.md
+// 「向量介质」。
 func (r *vectorStore) probeIndexes(ctx context.Context, qualified string) error {
 	parts := strings.SplitN(qualified, ".", 2)
 	rows, err := r.data.Pool().Query(ctx, vectorIndexesProbeSQL, parts[0], parts[1])
