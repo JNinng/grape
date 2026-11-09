@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronDownIcon } from 'lucide-react'
 import { listDocumentChunks, type DocumentDTO, type KnowledgeChunkDTO } from '@/api/knowledge'
-import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   Dialog,
   DialogContent,
@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/dialog'
 
 // KnowledgeDocumentDetailDialog 是条目详情：目录事实 + 向量存储中的实际
-// 分片列表（分片正文点击展开）。分片来自检索同源的向量表，不是回放切分
+// 分片列表（分片正文点击展开，开合动画与对话流工具组件同款）。分片来自检索同源的向量表，不是回放切分
 // 算法的结果——改过切分参数而未重建时，两者可能不一致。分片正文是不可信
 // 文本，一律以 React 文本节点渲染。
 
@@ -90,76 +90,79 @@ export function KnowledgeDocumentDetailDialog({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent size="lg">
+      <DialogContent size="xl" className="grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="min-w-0 truncate">{document.title}</DialogTitle>
           <DialogDescription>
             条目详情与实际分片（切分结果以向量存储为准，改过切分参数需重建索引才会生效）。
           </DialogDescription>
         </DialogHeader>
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-          <div className="grid gap-0.5">
-            <dt className="text-xs text-muted-foreground">状态</dt>
-            <dd>{statusLabel}</dd>
+        {/* 正文区独立滚动：弹窗高度封顶，分片再多也不撑破视口。 */}
+        <div className="grid min-h-0 gap-3 overflow-y-auto pr-1">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">状态</dt>
+              <dd>{statusLabel}</dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">最近摄取</dt>
+              <dd>{formatTime(document.indexedAt)}</dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">嵌入空间</dt>
+              <dd>{document.indexedEmbedder || '未记录'}</dd>
+            </div>
+            <div className="grid gap-0.5">
+              <dt className="text-xs text-muted-foreground">有效期</dt>
+              <dd>{formatRange(document.validFrom, document.validTo)}</dd>
+            </div>
+          </dl>
+          <div className="grid gap-2">
+            <h3 className="text-sm font-semibold">
+              分片{loading ? '' : `（${chunks.length}）`}
+            </h3>
+            {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : null}
+            {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {!loading && !error && chunks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无分片（尚未摄取或已被清理）。</p>
+            ) : null}
+            {chunks.length > 0 ? (
+              <ul aria-label="分片列表" className="grid gap-2">
+                {chunks.map((chunk) => {
+                  const open = expanded.has(chunk.chunkId)
+                  return (
+                    <li key={chunk.chunkId}>
+                      <Collapsible open={open} onOpenChange={() => toggle(chunk.chunkId)}>
+                        <div className="overflow-hidden rounded-lg border border-border">
+                          <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-sm transition-colors select-none hover:bg-soft">
+                            <ChevronDownIcon
+                              aria-hidden
+                              className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+                            />
+                            <span className="min-w-0 flex-1 truncate">
+                              #{chunk.index}
+                              {chunk.anchor ? ` · ${chunk.anchor}` : ''}
+                            </span>
+                            <span className="shrink-0 text-xs text-muted-foreground">
+                              {chunk.embedder || '未记录空间'}
+                            </span>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <pre
+                              aria-label={`分片 #${chunk.index} 正文`}
+                              className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-border p-3 text-sm"
+                            >
+                              {chunk.content}
+                            </pre>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
           </div>
-          <div className="grid gap-0.5">
-            <dt className="text-xs text-muted-foreground">最近摄取</dt>
-            <dd>{formatTime(document.indexedAt)}</dd>
-          </div>
-          <div className="grid gap-0.5">
-            <dt className="text-xs text-muted-foreground">嵌入空间</dt>
-            <dd>{document.indexedEmbedder || '未记录'}</dd>
-          </div>
-          <div className="grid gap-0.5">
-            <dt className="text-xs text-muted-foreground">有效期</dt>
-            <dd>{formatRange(document.validFrom, document.validTo)}</dd>
-          </div>
-        </dl>
-        <div className="grid gap-2">
-          <h3 className="text-sm font-semibold">
-            分片{loading ? '' : `（${chunks.length}）`}
-          </h3>
-          {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : null}
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          {!loading && !error && chunks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">暂无分片（尚未摄取或已被清理）。</p>
-          ) : null}
-          {chunks.length > 0 ? (
-            <ul aria-label="分片列表" className="grid max-h-96 gap-2 overflow-y-auto">
-              {chunks.map((chunk) => {
-                const open = expanded.has(chunk.chunkId)
-                return (
-                  <li key={chunk.chunkId} className="rounded-lg border border-border">
-                    <Button
-                      variant="ghost"
-                      className="grid w-full grid-cols-[auto_1fr_auto] items-center gap-2 rounded-b-none px-3 py-2 text-left"
-                      aria-expanded={open}
-                      onClick={() => toggle(chunk.chunkId)}
-                    >
-                      {open ? (
-                        <ChevronDownIcon aria-hidden className="size-4" />
-                      ) : (
-                        <ChevronRightIcon aria-hidden className="size-4" />
-                      )}
-                      <span className="min-w-0 truncate text-sm">
-                        #{chunk.index}
-                        {chunk.anchor ? ` · ${chunk.anchor}` : ''}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{chunk.embedder || '未记录空间'}</span>
-                    </Button>
-                    {open ? (
-                      <pre
-                        aria-label={`分片 #${chunk.index} 正文`}
-                        className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-border p-3 text-sm"
-                      >
-                        {chunk.content}
-                      </pre>
-                    ) : null}
-                  </li>
-                )
-              })}
-            </ul>
-          ) : null}
         </div>
       </DialogContent>
     </Dialog>

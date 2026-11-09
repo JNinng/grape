@@ -369,7 +369,7 @@ export function KnowledgeManagePage() {
                     <TableCell className="max-w-80 truncate font-medium">
                       <button
                         type="button"
-                        className="max-w-full truncate text-left underline-offset-4 hover:underline"
+                        className="max-w-full cursor-pointer truncate text-left font-medium text-primary underline-offset-4 hover:underline"
                         title="查看详情与分片"
                         onClick={() => setDetailDocument(doc)}
                       >

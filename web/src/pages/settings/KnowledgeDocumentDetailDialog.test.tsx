@@ -167,3 +167,24 @@ describe('KnowledgeDocumentDetailDialog', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+describe('KnowledgeDocumentDetailDialog layout and animation', () => {
+  it('dialog_uses_the_widened_tall_size', async () => {
+    const { dialog } = renderDialog()
+    expect(dialog).toHaveAttribute('data-size', 'xl')
+    expect(dialog.className).toContain('max-w-4xl')
+    expect(dialog.className).toContain('max-h-[88vh]')
+  })
+
+  it('expanded_chunk_uses_the_animated_collapsible', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    const row = await within(dialog).findByRole('button', { name: /#0/ })
+    expect(row).toHaveAttribute('data-state', 'closed')
+    await user.click(row)
+    expect(row).toHaveAttribute('data-state', 'open')
+    const wrapper = within(dialog).getByLabelText('分片 #0 正文').closest('[data-slot="collapsible-content"]')
+    expect(wrapper).toHaveAttribute('data-state', 'open')
+    expect(wrapper).toHaveClass('motion-safe:data-[state=open]:animate-collapsible-down')
+  })
+})

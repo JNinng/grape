@@ -50,7 +50,7 @@ function DialogContent({
   size = 'default',
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
-  size?: 'default' | 'sm' | 'lg'
+  size?: 'default' | 'sm' | 'lg' | 'xl'
 }) {
   return (
     <DialogPortal>
@@ -60,7 +60,7 @@ function DialogContent({
           data-slot="dialog-content"
           data-size={size}
           className={cn(
-            'pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[size=lg]:max-w-2xl data-[size=sm]:max-w-sm data-[size=default]:sm:max-w-lg data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
+            'pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[size=lg]:max-w-2xl data-[size=xl]:max-h-[88vh] data-[size=xl]:max-w-4xl data-[size=sm]:max-w-sm data-[size=default]:sm:max-w-lg data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95',
             className
           )}
           {...props}

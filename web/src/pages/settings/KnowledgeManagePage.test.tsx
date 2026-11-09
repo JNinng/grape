@@ -319,3 +319,16 @@ describe('KnowledgeManagePage document detail', () => {
     expect(screen.getByLabelText('分片 #0 正文')).toHaveTextContent('30 天内全额退款')
   })
 })
+
+describe('KnowledgeManagePage document title styling', () => {
+  beforeEach(() => {
+    mockListLibraryDocuments.mockResolvedValue({ items: [documentRow()], total: '1', hasMore: false, nextCursor: '', page: 1 })
+  })
+
+  it('document_title_renders_as_a_blue_clickable_link', async () => {
+    renderPage()
+    const title = await screen.findByRole('button', { name: '退款政策' })
+    expect(title).toHaveClass('text-primary')
+    expect(title).toHaveClass('cursor-pointer')
+  })
+})
