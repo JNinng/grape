@@ -33,7 +33,8 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
 ## 超时与 SSE
 
 `server.http.timeout` 归零后传输层不限时，普通路由限时由 [timeout.go](timeout.go)
-的路由级中间件按 `server.http.request_timeout` 恢复；agent 前缀（SSE 长流）
+的路由级中间件按 `server.http.request_timeout` 恢复，同步调用嵌入端点的知识
+库路由按 `embedding_request_timeout`（未配置回落前者）；agent 前缀（SSE 长流）
 按操作名边界匹配跳过，防止 `/aguiX` 类相邻操作被误跳过。各配置项语义、
 心跳与前置代理要求见 [../../operations.md](../../operations.md#sse-与超时治理)，
 本目录只保留挂载实现。
@@ -45,7 +46,7 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
 | [http.go](http.go) | `NewHTTPServer`：装配中间件链、按注册顺序挂载生成路由与手写路由、`srv.Handle` 直挂 `/metrics`、最后挂载 SPA；CORS 启用时接 405 兜底。 |
 | [grpc.go](grpc.go) | `NewGRPCServer`：同构的 gRPC 装配与生成服务注册；不挂运维出口，无 SSE 不涉超时治理。 |
 | [web.go](web.go) | `NewWebHandler` / `ReservedAPIPrefixes`：嵌入 dist 静态托管、保留前缀按边界 404、assets 长缓存与 `index.html` 禁缓存、非 GET/HEAD 405。 |
-| [timeout.go](timeout.go) | `NewRouteTimeoutMiddleware`：按 `request_timeout` 恢复普通路由限时，agent 前缀跳过；请求超时非正时退化为直通。 |
+| [timeout.go](timeout.go) | `NewRouteTimeoutMiddleware`：按 `request_timeout` 恢复普通路由限时，向量化路由登记表按 `embedding_request_timeout`，agent 前缀跳过；请求超时非正时退化为直通。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：暴露 `NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`。 |
 
 ## 测试
@@ -58,7 +59,8 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
   不断流、`x-trace-id` 回传且分片阶段中途可见、echo 工具端到端。
 - **观测与跨域**：OTel 经内存导出器断言 agent 路由产生 server span；CORS
   预检链内短路与生成路由 405 兜底、白名单外不带 Allow-Origin、关闭零头。
-- **路由级超时**：普通路由超时、agent 操作跳过、相邻前缀不误跳过。
+- **路由级超时**：普通路由超时、agent 操作跳过、相邻前缀不误跳过；向量化
+  路由取 `embedding_request_timeout`、未配置回落、超过普通超时仍完成。
 
 ## 接入要点
 

@@ -170,7 +170,12 @@ func operationTargetTable(service, method string) string {
 	}
 }
 
+// operationAuditWriteTimeout 是审计写入的独立限时：写入不继承请求 ctx 的
+// 取消与截止（请求超时或客户端断开的操作同样要留痕），但不能无限挂起。
+const operationAuditWriteTimeout = 5 * time.Second
+
 // recordOperationAudit 组装并追加一条操作日志；错误只记日志，不影响响应。
+// 写入 ctx 剥离请求的取消/截止（保留身份、链路等值），另设独立限时。
 func recordOperationAudit(
 	ctx context.Context,
 	audit *biz.AuditLogUsecase,
@@ -210,7 +215,9 @@ func recordOperationAudit(
 		ResultMsg:     auditStringPtr(resultMsg),
 		RequestID:     auditStringPtr(truncateAuditRunes(requestID, 64)),
 	}
-	if err := audit.RecordOperation(ctx, auth, in); err != nil {
+	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), operationAuditWriteTimeout)
+	defer cancel()
+	if err := audit.RecordOperation(writeCtx, auth, in); err != nil {
 		slog.WarnContext(ctx, "operation audit write failed",
 			"tenant_id", auth.TenantID, "user_id", auth.UserID, "operation", meta.OperationType,
 			"target_table", meta.TargetTable, "err", err)

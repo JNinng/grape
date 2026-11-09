@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	knowledgev1 "grape/api/knowledge/v1"
 	"grape/internal/agent"
 	"grape/internal/biz"
 	"grape/internal/service"
@@ -112,5 +113,95 @@ func TestRouteTimeoutAppliesDeadlineToOperationAdjacentToAgentPrefix(t *testing.
 	if _, err := adjacent(transport.NewServerContext(context.Background(),
 		&timeoutFakeTransporter{operation: timeoutTestAdjacentApiOperation}), nil); err != nil {
 		t.Fatalf("adjacent operation: %v", err)
+	}
+}
+
+// newEmbeddingRouteTimeoutForTest 构建只关心向量化路由口径的中间件（无 agent
+// 前缀装配）；embeddingTimeout 为 0 表示未配置。
+func newEmbeddingRouteTimeoutForTest(requestTimeout, embeddingTimeout time.Duration) middleware.Middleware {
+	confServer := agentHTTPConf()
+	confServer.Http.RequestTimeout = durationpb.New(requestTimeout)
+	if embeddingTimeout > 0 {
+		confServer.Http.EmbeddingRequestTimeout = durationpb.New(embeddingTimeout)
+	}
+	return middleware.Middleware(NewRouteTimeoutMiddleware(confServer, nil))
+}
+
+// remainingDeadline 以给定操作名调用中间件，返回 handler 观察到的剩余时长；
+// 无截止时间返回 ok=false。
+func remainingDeadline(t *testing.T, mw middleware.Middleware, operation string) (time.Duration, bool) {
+	t.Helper()
+	var remaining time.Duration
+	var ok bool
+	handler := mw(func(ctx context.Context, _ any) (any, error) {
+		var deadline time.Time
+		deadline, ok = ctx.Deadline()
+		remaining = time.Until(deadline)
+		return nil, nil
+	})
+	if _, err := handler(transport.NewServerContext(context.Background(), &timeoutFakeTransporter{operation: operation}), nil); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	return remaining, ok
+}
+
+func TestRouteTimeout_embedding_operations_use_embedding_timeout(t *testing.T) {
+	mw := newEmbeddingRouteTimeoutForTest(time.Second, time.Minute)
+	for _, op := range []string{
+		knowledgev1.OperationDocumentServiceCreateDocument,
+		knowledgev1.OperationDocumentServiceUpdateDocument,
+		knowledgev1.OperationDocumentServiceReindexDocument,
+		knowledgev1.OperationDocumentServiceSearchDocuments,
+	} {
+		t.Run(op, func(t *testing.T) {
+			remaining, ok := remainingDeadline(t, mw, op)
+			if !ok || remaining <= time.Second || remaining > time.Minute {
+				t.Fatalf("deadline = (%v, %v), want within (1s, 1m]", remaining, ok)
+			}
+		})
+	}
+}
+
+func TestRouteTimeout_non_embedding_knowledge_operation_keeps_request_timeout(t *testing.T) {
+	mw := newEmbeddingRouteTimeoutForTest(time.Second, time.Minute)
+
+	remaining, ok := remainingDeadline(t, mw, knowledgev1.OperationDocumentServiceGetDocument)
+	if !ok || remaining <= 0 || remaining > time.Second {
+		t.Fatalf("deadline = (%v, %v), want within (0, 1s]", remaining, ok)
+	}
+}
+
+func TestRouteTimeout_embedding_timeout_unset_falls_back_to_request_timeout(t *testing.T) {
+	mw := newEmbeddingRouteTimeoutForTest(time.Second, 0)
+
+	remaining, ok := remainingDeadline(t, mw, knowledgev1.OperationDocumentServiceCreateDocument)
+	if !ok || remaining <= 0 || remaining > time.Second {
+		t.Fatalf("deadline = (%v, %v), want within (0, 1s]", remaining, ok)
+	}
+}
+
+func TestRouteTimeout_request_timeout_unset_passes_embedding_operation_through(t *testing.T) {
+	mw := newEmbeddingRouteTimeoutForTest(0, time.Minute)
+
+	if remaining, ok := remainingDeadline(t, mw, knowledgev1.OperationDocumentServiceCreateDocument); ok {
+		t.Fatalf("deadline remaining = %v, want none (route timeout disabled)", remaining)
+	}
+}
+
+// TestRouteTimeout_embedding_operation_exceeding_request_timeout_completes
+// 回归守卫：嵌入端点耗时超过 request_timeout（本地模型冷启动）但在
+// embedding_request_timeout 内时，条目摄取不再被截断。
+func TestRouteTimeout_embedding_operation_exceeding_request_timeout_completes(t *testing.T) {
+	const requestTimeout = 40 * time.Millisecond
+	mw := newEmbeddingRouteTimeoutForTest(requestTimeout, time.Minute)
+
+	slowIngest := mw(func(ctx context.Context, _ any) (any, error) {
+		time.Sleep(3 * requestTimeout)
+		return nil, ctx.Err()
+	})
+	_, err := slowIngest(transport.NewServerContext(context.Background(),
+		&timeoutFakeTransporter{operation: knowledgev1.OperationDocumentServiceCreateDocument}), nil)
+	if err != nil {
+		t.Fatalf("slow embedding operation = %v, want completed within embedding timeout", err)
 	}
 }

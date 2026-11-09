@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	userv1 "grape/api/user/v1"
 	"grape/internal/biz"
@@ -21,6 +22,10 @@ type fakeAuditRepo struct {
 	inserted  *biz.OperationLogInput
 	auth      biz.Identity
 	insertErr error
+	// writeCtxErr / writeDeadline 记录写入时 ctx 的取消态与截止时间。
+	writeCtxErr   error
+	writeDeadline time.Time
+	writeHasLimit bool
 }
 
 func (f *fakeAuditRepo) GetLoginLogByID(context.Context, biz.Identity, int64) (*biz.LoginLog, error) {
@@ -36,7 +41,9 @@ func (f *fakeAuditRepo) GetOperationLogByID(context.Context, biz.Identity, int64
 func (f *fakeAuditRepo) ListOperationLogs(context.Context, biz.Identity, *dynq.Query) (*biz.OperationLogList, error) {
 	return &biz.OperationLogList{}, nil
 }
-func (f *fakeAuditRepo) InsertOperationLog(_ context.Context, auth biz.Identity, in *biz.OperationLogInput) error {
+func (f *fakeAuditRepo) InsertOperationLog(ctx context.Context, auth biz.Identity, in *biz.OperationLogInput) error {
+	f.writeCtxErr = ctx.Err()
+	f.writeDeadline, f.writeHasLimit = ctx.Deadline()
 	f.auth = auth
 	f.inserted = in
 	return f.insertErr
@@ -250,5 +257,45 @@ func TestAuditMessageJSONMasksPasswordAndHashesOtherSecrets(t *testing.T) {
 	}
 	if again := string(auditMessageJSON("sys_user", value)); again != got {
 		t.Fatalf("hashed snapshot = %s, want deterministic %s", again, got)
+	}
+}
+
+// expiredRequestContext 构造已超过截止时间的写操作请求 ctx（模拟路由级超时
+// 已触发后审计中间件拿到的 ctx）。
+func expiredRequestContext(t *testing.T) context.Context {
+	t.Helper()
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7})
+	ctx = transport.NewServerContext(ctx, &fakeTransporter{
+		operation: "/user.v1.UserService/CreateUser",
+		header:    fakeHeader{},
+		req:       httptest.NewRequest(http.MethodPost, "/v1/users", nil),
+	})
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(-time.Second))
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func TestOperationAuditMiddleware_request_deadline_exceeded_still_writes_with_live_ctx(t *testing.T) {
+	repo := &fakeAuditRepo{}
+	mw := NewOperationAuditMiddleware(biz.NewAuditLogUsecase(repo), nil)
+	handler := func(ctx context.Context, _ any) (any, error) { return nil, ctx.Err() }
+
+	if _, err := mw(handler)(expiredRequestContext(t), nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("handler err = %v, want DeadlineExceeded passed through", err)
+	}
+	if repo.inserted == nil || repo.writeCtxErr != nil {
+		t.Fatalf("audit write = (%+v, ctx err %v), want written with a live ctx", repo.inserted, repo.writeCtxErr)
+	}
+}
+
+func TestOperationAuditMiddleware_detached_write_ctx_has_bounded_deadline(t *testing.T) {
+	repo := &fakeAuditRepo{}
+	mw := NewOperationAuditMiddleware(biz.NewAuditLogUsecase(repo), nil)
+	handler := func(context.Context, any) (any, error) { return nil, context.DeadlineExceeded }
+
+	_, _ = mw(handler)(expiredRequestContext(t), nil)
+	remaining := time.Until(repo.writeDeadline)
+	if !repo.writeHasLimit || remaining <= 0 || remaining > operationAuditWriteTimeout {
+		t.Fatalf("write deadline = (%v, %v), want within (0, %v]", remaining, repo.writeHasLimit, operationAuditWriteTimeout)
 	}
 }

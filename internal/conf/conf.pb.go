@@ -1447,9 +1447,13 @@ type Server_HTTP struct {
 	// CORS 是跨域资源共享的可选配置。默认关闭：不输出任何 CORS 头。
 	// 开启时所有链内响应恒带 Access-Control-Expose-Headers:
 	// x-trace-id, x-request-id（前端可读链路 ID）。
-	Cors          *Server_CORS `protobuf:"bytes,5,opt,name=cors,proto3" json:"cors,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Cors *Server_CORS `protobuf:"bytes,5,opt,name=cors,proto3" json:"cors,omitempty"`
+	// 向量化路由的请求超时：知识条目新建/更新/重建索引与知识检索要逐块
+	// 调用嵌入端点（含本地模型冷启动加载），以本值替代 request_timeout；
+	// 非正时回落 request_timeout。
+	EmbeddingRequestTimeout *durationpb.Duration `protobuf:"bytes,6,opt,name=embedding_request_timeout,json=embeddingRequestTimeout,proto3" json:"embedding_request_timeout,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *Server_HTTP) Reset() {
@@ -1513,6 +1517,13 @@ func (x *Server_HTTP) GetRequestTimeout() *durationpb.Duration {
 func (x *Server_HTTP) GetCors() *Server_CORS {
 	if x != nil {
 		return x.Cors
+	}
+	return nil
+}
+
+func (x *Server_HTTP) GetEmbeddingRequestTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.EmbeddingRequestTimeout
 	}
 	return nil
 }
@@ -1900,17 +1911,18 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\rSummarization\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\"2\n" +
 	"\x04Auth\x12*\n" +
-	"\x11default_tenant_id\x18\x01 \x01(\tR\x0fdefaultTenantId\"\x8d\x05\n" +
+	"\x11default_tenant_id\x18\x01 \x01(\tR\x0fdefaultTenantId\"\xe4\x05\n" +
 	"\x06Server\x12+\n" +
 	"\x04http\x18\x01 \x01(\v2\x17.kratos.api.Server.HTTPR\x04http\x12+\n" +
 	"\x04grpc\x18\x02 \x01(\v2\x17.kratos.api.Server.GRPCR\x04grpc\x12.\n" +
-	"\x05trace\x18\x03 \x01(\v2\x18.kratos.api.Server.TraceR\x05trace\x1a\xda\x01\n" +
+	"\x05trace\x18\x03 \x01(\v2\x18.kratos.api.Server.TraceR\x05trace\x1a\xb1\x02\n" +
 	"\x04HTTP\x12\x18\n" +
 	"\anetwork\x18\x01 \x01(\tR\anetwork\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x123\n" +
 	"\atimeout\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12B\n" +
 	"\x0frequest_timeout\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x0erequestTimeout\x12+\n" +
-	"\x04cors\x18\x05 \x01(\v2\x17.kratos.api.Server.CORSR\x04cors\x1a}\n" +
+	"\x04cors\x18\x05 \x01(\v2\x17.kratos.api.Server.CORSR\x04cors\x12U\n" +
+	"\x19embedding_request_timeout\x18\x06 \x01(\v2\x19.google.protobuf.DurationR\x17embeddingRequestTimeout\x1a}\n" +
 	"\x04CORS\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12'\n" +
 	"\x0fallowed_origins\x18\x02 \x03(\tR\x0eallowedOrigins\x122\n" +
@@ -2013,15 +2025,16 @@ var file_conf_conf_proto_depIdxs = []int32{
 	24, // 31: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
 	24, // 32: kratos.api.Server.HTTP.request_timeout:type_name -> google.protobuf.Duration
 	19, // 33: kratos.api.Server.HTTP.cors:type_name -> kratos.api.Server.CORS
-	24, // 34: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
-	24, // 35: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	23, // 36: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
-	23, // 37: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
-	38, // [38:38] is the sub-list for method output_type
-	38, // [38:38] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	24, // 34: kratos.api.Server.HTTP.embedding_request_timeout:type_name -> google.protobuf.Duration
+	24, // 35: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
+	24, // 36: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	23, // 37: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
+	23, // 38: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
+	39, // [39:39] is the sub-list for method output_type
+	39, // [39:39] is the sub-list for method input_type
+	39, // [39:39] is the sub-list for extension type_name
+	39, // [39:39] is the sub-list for extension extendee
+	0,  // [0:39] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }

@@ -72,6 +72,12 @@ AG-UI 长流的治理方案（`configs/config.yaml` 有逐项注释）：
 - `server.http.request_timeout: 1s`——普通路由超时由 server 层路由级超时
   中间件按此值恢复；agent 前缀（`agent.agui.base_path`，默认 `/agui`）在
   跳过名单内不施加；
+- `server.http.embedding_request_timeout: 60s`——同步调用嵌入端点的路由
+  （知识条目新建/更新/重建索引、知识检索）改按此值限时：摄取逐块串行
+  向量化，耗时随切片数增长，本地模型（如 Ollama）空闲卸载后首次调用含
+  加载耗时（实测 1s 以上），按 `request_timeout` 会截断摄取并报
+  `DOCUMENT_INDEX_FAILED`。未配置时回落 `request_timeout`；登记表在
+  `internal/server/timeout.go`，新增同步调用嵌入端点的路由须登记；
 - `agent.agui.timeout`（默认 1800s）——单次 AG-UI 运行的服务端兜底超时，
   同时是未决确认的最终结算时钟（超时由 ack 结算为拒绝）；
 - `agent.agui.heartbeat_interval`（默认 15s）——SSE 心跳，保持中间设备不

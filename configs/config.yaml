@@ -8,6 +8,9 @@ server:
     timeout: 0s
     # 非 agent 路由的请求超时（覆盖生成代码端点与未来手写端点）。
     request_timeout: 1s
+    # 向量化路由（知识条目新建/更新/重建索引、知识检索）的请求超时，替代
+    # request_timeout：逐块调用嵌入端点，本地模型冷启动加载可超过 1s。
+    embedding_request_timeout: 60s
     # CORS 跨域共享（可选，默认关闭不输出任何 CORS 头）。开启时响应恒带
     # Access-Control-Expose-Headers: x-trace-id, x-request-id；allowed_origins
     # 为精确 origin（scheme://host[:port]）清单，条目 "*" 表示任意来源。
