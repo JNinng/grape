@@ -20,6 +20,7 @@ type fakeInnerStore struct {
 	addErr    error
 	searchErr error
 	hits      []*biz.ScoredVectorDocument
+	listed    []*biz.VectorDocument
 	calls     []string
 }
 
@@ -69,6 +70,11 @@ func (s *fakeInnerStore) UpdateMetadata(_ context.Context, _ *biz.VectorFilter, 
 func (s *fakeInnerStore) GetMetadata(_ context.Context, _ *biz.VectorFilter) (map[string]map[string]any, error) {
 	s.calls = append(s.calls, "get_metadata")
 	return map[string]map[string]any{}, nil
+}
+
+func (s *fakeInnerStore) List(_ context.Context, _ *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	s.calls = append(s.calls, "list")
+	return s.listed, nil
 }
 
 // fakeRetrievalRepo 是留痕仓储替身：记录写入行，可注入失败。
@@ -446,5 +452,22 @@ func TestLoggedVectorStore_hits_capped_at_declared_limit(t *testing.T) {
 	store.Search(context.Background(), nil, nil)
 	if len(repo.rows[0].Hits) != retrievalMaxLoggedHits {
 		t.Fatalf("recorded hits = %d, want capped at %d", len(repo.rows[0].Hits), retrievalMaxLoggedHits)
+	}
+}
+
+func TestLoggedVectorStore_list_forwards_without_logging(t *testing.T) {
+	inner := &fakeInnerStore{listed: []*biz.VectorDocument{{ID: "doc#0", Content: "chunk"}}}
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(inner, repo, redact.NewStandardRegistry())
+
+	docs, err := store.List(context.Background(), &biz.VectorFilter{IDs: []string{"doc#0"}})
+	if err != nil || len(docs) != 1 || docs[0].Content != "chunk" {
+		t.Fatalf("List = (%d docs, %v), want forwarded result", len(docs), err)
+	}
+	if len(repo.rows) != 0 {
+		t.Fatalf("recorded rows = %d, want 0 (enumeration reads are not evidence)", len(repo.rows))
+	}
+	if len(inner.calls) != 1 || inner.calls[0] != "list" {
+		t.Fatalf("inner calls = %v, want exactly one list", inner.calls)
 	}
 }

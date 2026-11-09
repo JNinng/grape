@@ -889,6 +889,28 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/knowledge/documents/{id}/chunks:
+        get:
+            tags:
+                - DocumentService
+            description: |-
+                ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
+                 供管理页查看切分结果；分片正文按原文返回，不含向量。
+            operationId: DocumentService_ListDocumentChunks
+            parameters:
+                - name: id
+                  in: path
+                  description: 条目 ID。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.DocumentChunkSet'
     /v1/knowledge/documents/{id}/reindex:
         post:
             tags:
@@ -3328,6 +3350,38 @@ components:
                     type: string
                     format: date-time
             description: Document 是知识条目的规范表示。列表响应不填充 content。
+        knowledge.v1.DocumentChunk:
+            type: object
+            properties:
+                index:
+                    type: integer
+                    description: 分片序号（原文顺序，从 0 起）。
+                    format: int32
+                chunkId:
+                    type: string
+                    description: 分片 ID（"<条目 ID>#<序号>"），与检索留痕的命中对账。
+                anchor:
+                    type: string
+                    description: 原文锚点（rune 区间描述）。
+                content:
+                    type: string
+                    description: 分片正文原文。
+                embedder:
+                    type: string
+                    description: 该分片所属嵌入空间键（只读）。
+            description: DocumentChunk 是条目的一个实际分片（向量表中的一行）。
+        knowledge.v1.DocumentChunkSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/knowledge.v1.DocumentChunk'
+                total:
+                    type: integer
+                    description: 分片数。
+                    format: int32
+            description: DocumentChunkSet 是条目分片列表（按分片序，不分页）。
         knowledge.v1.DocumentSet:
             type: object
             properties:

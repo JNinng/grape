@@ -104,6 +104,9 @@ func (*mockVectorStore) UpdateMetadata(context.Context, *VectorFilter, map[strin
 func (*mockVectorStore) GetMetadata(context.Context, *VectorFilter) (map[string]map[string]any, error) {
 	return nil, nil
 }
+func (*mockVectorStore) List(context.Context, *VectorFilter) ([]*VectorDocument, error) {
+	return nil, nil
+}
 
 func newDocumentUsecaseForTest(store VectorStore, embedder Embedder) (*DocumentUsecase, error) {
 	dim, err := embedder.Dimension(testEmbedderSpace)

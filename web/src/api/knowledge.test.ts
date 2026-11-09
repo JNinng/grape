@@ -6,6 +6,7 @@ import {
   createLibrary,
   deleteDocument,
   deleteLibrary,
+  listDocumentChunks,
   listLibraries,
   listLibraryDocuments,
   listModelOptions,
@@ -221,5 +222,30 @@ describe('knowledge api', () => {
       jsonResponse(503, { code: 503, reason: 'SEARCH_UNAVAILABLE', message: 'knowledge search is unavailable' }),
     )
     await expect(searchDocuments({ query: '年假' })).rejects.toThrow('knowledge search is unavailable')
+  })
+})
+
+describe('knowledge chunk api', () => {
+  it('lists_document_chunks_by_path_id', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ index: 0, chunkId: '200#0', content: '正文' }], total: 1 }))
+    const set = await listDocumentChunks('200')
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/v1/knowledge/documents/200/chunks')
+    expect(init(fetchMock.mock.calls[0]).method).toBeUndefined()
+    expect(set).toEqual({
+      items: [{ index: 0, chunkId: '200#0', anchor: '', content: '正文', embedder: '' }],
+      total: 1,
+    })
+  })
+
+  it('empty_chunk_reply_normalizes_to_no_items', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+    expect(await listDocumentChunks('200')).toEqual({ items: [], total: 0 })
+  })
+
+  it('chunk_error_response_throws_api_error', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(503, { code: 503, reason: 'DOCUMENT_CHUNKS_UNAVAILABLE', message: 'knowledge document chunks unavailable' }),
+    )
+    await expect(listDocumentChunks('200')).rejects.toThrow('knowledge document chunks unavailable')
   })
 })

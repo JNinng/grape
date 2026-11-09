@@ -189,6 +189,45 @@ func (s *KnowledgeService) CreateDocument(ctx context.Context, req *knowledgev1.
 	return toProtoDocument(out), nil
 }
 
+// ListDocumentChunks 返回条目的实际分片（按分片序，不分页）。
+func (s *KnowledgeService) ListDocumentChunks(ctx context.Context, req *knowledgev1.ListDocumentChunksRequest) (*knowledgev1.DocumentChunkSet, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	chunks, err := s.uc.ListDocumentChunks(ctx, auth, req.GetId())
+	if err != nil {
+		return nil, documentChunksError(ctx, err)
+	}
+	items := make([]*knowledgev1.DocumentChunk, 0, len(chunks))
+	for _, c := range chunks {
+		items = append(items, &knowledgev1.DocumentChunk{
+			Index:    int32(c.Index),
+			ChunkId:  c.ID,
+			Anchor:   c.Anchor,
+			Content:  c.Content,
+			Embedder: c.Embedder,
+		})
+	}
+	return &knowledgev1.DocumentChunkSet{Items: items, Total: int32(len(items))}, nil
+}
+
+// documentChunksError 映射分片查询错误：已成型的领域错误原样透传；向量
+// 设施未启用映射为能力缺失；其余执行故障对外只给固定文案，细节进服务端
+// 日志（与知识检索同一口径）。
+func documentChunksError(ctx context.Context, err error) error {
+	var domain *kratoserrors.Error
+	switch {
+	case errors.As(err, &domain):
+		return err
+	case errors.Is(err, biz.ErrVectorStoreDisabled):
+		return biz.ErrDocumentChunksUnavailable
+	default:
+		slog.WarnContext(ctx, "knowledge document chunks failed", slog.Any("error", err))
+		return biz.ErrDocumentChunksFailed
+	}
+}
+
 // GetDocument 按 id 查询条目（含正文）。
 func (s *KnowledgeService) GetDocument(ctx context.Context, req *knowledgev1.GetDocumentRequest) (*knowledgev1.Document, error) {
 	auth, err := authOf(ctx)

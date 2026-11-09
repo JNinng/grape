@@ -44,7 +44,7 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
   `NewVectorStore` 不入集合，留给测试直用。
 - 留痕点：`Search`（来源取 ctx 声明：console 或缺省 tool）、`Add`/`Update`/`DeleteByFilter`（来源
   pipeline）一次操作一行，失败行同样留痕；`Get`/`Delete`/`Count`/
-  `UpdateMetadata`/`GetMetadata` 不留痕。留痕写入失败只记日志，不影响业务
+  `UpdateMetadata`/`GetMetadata`/`List` 不留痕。留痕写入失败只记日志，不影响业务
   结果。
 - top_k 口径：请求值取调用方 `Limit`（0=未指定），生效值在未指定时取存储
   默认页大小（10，与框架 pgvector 实现一致）。

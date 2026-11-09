@@ -103,7 +103,7 @@ RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原�
   来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例声明
   `console`，未声明即工具链路 `tool`）；Add/Update/DeleteByFilter 记摄取
   侧、来源 `pipeline`；
-  Get/Delete/Count/GetMetadata 不留痕。
+  Get/Delete/Count/GetMetadata/List 不留痕（点读与枚举不构成召回证据）。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
   留痕失败只记日志，不中断业务。
 - query 与过滤摘要在落库前经 `pkg/redact` 的 retrieval 类别脱敏；

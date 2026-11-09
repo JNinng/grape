@@ -888,3 +888,70 @@ func searchIDs(hits []*biz.ScoredVectorDocument) []string {
 	}
 	return ids
 }
+
+func TestVectorStore_list_returns_content_in_write_order_with_tenant_isolation(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	for i := 0; i < 3; i++ {
+		addVectorDocument(t, store, vectorTenantA, spaceDoc(&biz.VectorDocument{
+			ID:        fmt.Sprintf("doc-%02d", i),
+			Content:   fmt.Sprintf("content-%d", i),
+			Embedding: unitVector(int(vectorDimension), i),
+			Metadata:  map[string]any{"document_id": "5", "chunk_index": i},
+		}))
+	}
+	addVectorDocument(t, store, vectorTenantB, spaceDoc(&biz.VectorDocument{
+		ID:        "doc-00",
+		Content:   "foreign",
+		Embedding: unitVector(int(vectorDimension), 0),
+		Metadata:  map[string]any{"document_id": "5", "chunk_index": 0},
+	}))
+
+	docs, err := store.List(vectorIdentityContext(vectorTenantA), &biz.VectorFilter{
+		Conditions: []biz.MetadataCondition{{Key: "document_id", Op: biz.VectorMetadataEq, Values: []any{"5"}}},
+	})
+	if err != nil || len(docs) != 3 {
+		t.Fatalf("List = (%d docs, %v), want 3 own docs", len(docs), err)
+	}
+	for i, doc := range docs {
+		if doc.ID != fmt.Sprintf("doc-%02d", i) || doc.Content != fmt.Sprintf("content-%d", i) {
+			t.Fatalf("doc %d = (%s, %s), want write order", i, doc.ID, doc.Content)
+		}
+		if doc.Embedding != nil {
+			t.Fatalf("doc %d embedding = %v, want not populated on enumeration", i, doc.Embedding)
+		}
+	}
+}
+
+func TestVectorStore_list_limit_and_offset_page_deterministically(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	for i := 0; i < 4; i++ {
+		addVectorDocument(t, store, vectorTenantA, spaceDoc(&biz.VectorDocument{
+			ID:        fmt.Sprintf("doc-%02d", i),
+			Content:   "content",
+			Embedding: unitVector(int(vectorDimension), i),
+		}))
+	}
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	page, err := store.List(ctx, &biz.VectorFilter{Limit: 2, Offset: 2})
+	if err != nil || len(page) != 2 {
+		t.Fatalf("List(limit 2 offset 2) = (%d docs, %v), want 2", len(page), err)
+	}
+	if page[0].ID != "doc-02" || page[1].ID != "doc-03" {
+		t.Fatalf("page = (%s, %s), want doc-02/doc-03", page[0].ID, page[1].ID)
+	}
+	if _, err := store.List(ctx, &biz.VectorFilter{Offset: 1}); err == nil {
+		t.Fatal("List(offset without limit) = nil error, want rejection")
+	}
+}
+
+func TestVectorStore_list_without_identity_fails_closed(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+
+	if _, err := store.List(context.Background(), &biz.VectorFilter{IDs: []string{"doc-00"}}); err == nil {
+		t.Fatal("List without identity = nil error, want rejection")
+	}
+}

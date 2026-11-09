@@ -154,4 +154,8 @@ type VectorStore interface {
 	// 向量与正文），按写入时间升序分页；返回值以文档 ID 为键。Limit
 	// 非正为不限量，此时 Offset 必须为 0。
 	GetMetadata(ctx context.Context, filter *VectorFilter) (map[string]map[string]any, error)
+	// List 按 IDs/Embedder/Metadata/Conditions 交集枚举文档（含正文与
+	// metadata，不回填 Embedding——枚举读面不需要向量，避免批量拉取），
+	// 按写入时间升序；Limit 非正为不限量，此时 Offset 必须为 0。
+	List(ctx context.Context, filter *VectorFilter) ([]*VectorDocument, error)
 }

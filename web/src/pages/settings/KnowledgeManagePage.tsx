@@ -57,6 +57,7 @@ import {
   describeChunkDelimiter,
   encodeChunkDelimiter,
 } from './chunkDelimiter'
+import { KnowledgeDocumentDetailDialog } from './KnowledgeDocumentDetailDialog'
 import { KnowledgeSearchDialog } from './KnowledgeSearchDialog'
 
 // KnowledgeManagePage 是知识库管理页：左侧库列表，右侧选中库的条目表。
@@ -147,6 +148,7 @@ export function KnowledgeManagePage() {
   const [libraryDialog, setLibraryDialog] = useState<{ mode: 'create' } | { mode: 'edit'; library: LibraryDTO } | null>(null)
   const [documentDialog, setDocumentDialog] = useState<{ mode: 'create' } | { mode: 'edit'; document: DocumentDTO } | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [detailDocument, setDetailDocument] = useState<DocumentDTO | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<
     | { kind: 'library'; library: LibraryDTO }
     | { kind: 'document'; document: DocumentDTO }
@@ -364,7 +366,16 @@ export function KnowledgeManagePage() {
                 const label = statusLabel(doc.status, doc.validFrom, doc.validTo)
                 return (
                   <TableRow key={doc.id}>
-                    <TableCell className="max-w-80 truncate font-medium">{doc.title}</TableCell>
+                    <TableCell className="max-w-80 truncate font-medium">
+                      <button
+                        type="button"
+                        className="max-w-full truncate text-left underline-offset-4 hover:underline"
+                        title="查看详情与分片"
+                        onClick={() => setDetailDocument(doc)}
+                      >
+                        {doc.title}
+                      </button>
+                    </TableCell>
                     <TableCell className={statusClass(label)}>{label}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {doc.indexedAt ? new Date(doc.indexedAt).toLocaleString() : '未摄取'}
@@ -450,6 +461,14 @@ export function KnowledgeManagePage() {
       ) : null}
 
       {searchOpen ? <KnowledgeSearchDialog libraries={libraries} onClose={() => setSearchOpen(false)} /> : null}
+
+      {detailDocument ? (
+        <KnowledgeDocumentDetailDialog
+          document={detailDocument}
+          statusLabel={statusLabel(detailDocument.status, detailDocument.validFrom, detailDocument.validTo)}
+          onClose={() => setDetailDocument(null)}
+        />
+      ) : null}
 
       {confirmDelete ? (
         <AlertDialog open onOpenChange={(open) => { if (!open) setConfirmDelete(null) }}>

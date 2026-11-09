@@ -139,6 +139,7 @@ var operationPermissionCodes = map[string]string{
 	knowledgev1.OperationDocumentServiceDeleteDocument:       biz.PermKnowledgeDelete,
 	knowledgev1.OperationDocumentServiceReindexDocument:      biz.PermKnowledgeUpdate,
 	knowledgev1.OperationDocumentServiceSearchDocuments:      biz.PermKnowledgeQuery,
+	knowledgev1.OperationDocumentServiceListDocumentChunks:   biz.PermKnowledgeQuery,
 	// 模型目录（租户行与平台 super 写分码）
 	modelv1.OperationModelServiceGetModel:         biz.PermModelQuery,
 	modelv1.OperationModelServiceListModels:       biz.PermModelQuery,

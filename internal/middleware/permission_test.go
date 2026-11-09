@@ -276,6 +276,13 @@ func TestOperationPermissionCodes_search_documents_maps_to_knowledge_query(t *te
 	}
 }
 
+func TestOperationPermissionCodes_list_document_chunks_maps_to_knowledge_query(t *testing.T) {
+	got, ok := operationPermissionCodes[knowledgev1.OperationDocumentServiceListDocumentChunks]
+	if !ok || got != biz.PermKnowledgeQuery {
+		t.Fatalf("list document chunks maps to (%q, %v), want (%q, true)", got, ok, biz.PermKnowledgeQuery)
+	}
+}
+
 // TestOperationPermissionCodes_cover_gated_endpoints 守卫码表与受控端点
 // 集合完全一致：无漏项、无未声明条目。
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
@@ -392,6 +399,7 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		knowledgev1.OperationDocumentServiceDeleteDocument:       {},
 		knowledgev1.OperationDocumentServiceReindexDocument:      {},
 		knowledgev1.OperationDocumentServiceSearchDocuments:      {},
+		knowledgev1.OperationDocumentServiceListDocumentChunks:   {},
 		// 模型目录
 		modelv1.OperationModelServiceGetModel:         {},
 		modelv1.OperationModelServiceListModels:       {},

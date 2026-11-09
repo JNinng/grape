@@ -78,6 +78,14 @@ service DocumentService {
     };
   }
 
+  // ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
+  // 供管理页查看切分结果；分片正文按原文返回，不含向量。
+  rpc ListDocumentChunks (ListDocumentChunksRequest) returns (DocumentChunkSet) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/{id}/chunks"
+    };
+  }
+
   // GetDocument 按 id 查询条目（含正文）。
   rpc GetDocument (GetDocumentRequest) returns (Document) {
     option (google.api.http) = {
@@ -262,6 +270,33 @@ message ListModelOptionsRequest {
 // CreateDocumentRequest 是 DocumentService.CreateDocument 的输入。
 message CreateDocumentRequest {
   Document document = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ListDocumentChunksRequest 是 DocumentService.ListDocumentChunks 的输入。
+message ListDocumentChunksRequest {
+  // 条目 ID。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DocumentChunk 是条目的一个实际分片（向量表中的一行）。
+message DocumentChunk {
+  // 分片序号（原文顺序，从 0 起）。
+  int32 index = 1;
+  // 分片 ID（"<条目 ID>#<序号>"），与检索留痕的命中对账。
+  string chunk_id = 2;
+  // 原文锚点（rune 区间描述）。
+  string anchor = 3;
+  // 分片正文原文。
+  string content = 4;
+  // 该分片所属嵌入空间键（只读）。
+  string embedder = 5;
+}
+
+// DocumentChunkSet 是条目分片列表（按分片序，不分页）。
+message DocumentChunkSet {
+  repeated DocumentChunk items = 1;
+  // 分片数。
+  int32 total = 2;
 }
 
 // GetDocumentRequest 是 DocumentService.GetDocument 的输入。

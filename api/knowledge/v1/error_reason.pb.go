@@ -51,6 +51,10 @@ const (
 	ErrorReason_SEARCH_UNAVAILABLE ErrorReason = 11
 	// 知识检索执行失败（嵌入端点或向量存储错误，细节只进服务端日志）。
 	ErrorReason_SEARCH_FAILED ErrorReason = 12
+	// 条目分片查询能力缺失（向量设施未启用）。
+	ErrorReason_DOCUMENT_CHUNKS_UNAVAILABLE ErrorReason = 13
+	// 条目分片查询执行失败（细节只进服务端日志）。
+	ErrorReason_DOCUMENT_CHUNKS_FAILED ErrorReason = 14
 )
 
 // Enum value maps for ErrorReason.
@@ -69,6 +73,8 @@ var (
 		10: "SEARCH_INVALID_ARGUMENT",
 		11: "SEARCH_UNAVAILABLE",
 		12: "SEARCH_FAILED",
+		13: "DOCUMENT_CHUNKS_UNAVAILABLE",
+		14: "DOCUMENT_CHUNKS_FAILED",
 	}
 	ErrorReason_value = map[string]int32{
 		"KNOWLEDGE_UNSPECIFIED":         0,
@@ -84,6 +90,8 @@ var (
 		"SEARCH_INVALID_ARGUMENT":       10,
 		"SEARCH_UNAVAILABLE":            11,
 		"SEARCH_FAILED":                 12,
+		"DOCUMENT_CHUNKS_UNAVAILABLE":   13,
+		"DOCUMENT_CHUNKS_FAILED":        14,
 	}
 )
 
@@ -118,7 +126,7 @@ var File_knowledge_v1_error_reason_proto protoreflect.FileDescriptor
 
 const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
-	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xf0\x02\n" +
+	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xad\x03\n" +
 	"\vErrorReason\x12\x19\n" +
 	"\x15KNOWLEDGE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11LIBRARY_NOT_FOUND\x10\x01\x12\x1c\n" +
@@ -133,7 +141,9 @@ const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\x17SEARCH_INVALID_ARGUMENT\x10\n" +
 	"\x12\x16\n" +
 	"\x12SEARCH_UNAVAILABLE\x10\v\x12\x11\n" +
-	"\rSEARCH_FAILED\x10\fBM\n" +
+	"\rSEARCH_FAILED\x10\f\x12\x1f\n" +
+	"\x1bDOCUMENT_CHUNKS_UNAVAILABLE\x10\r\x12\x1a\n" +
+	"\x16DOCUMENT_CHUNKS_FAILED\x10\x0eBM\n" +
 	"\x1dio.grpc.examples.knowledge.v1P\x01Z\x19grape/api/knowledge/v1;v1\xa2\x02\x0eAPIKnowledgeV1b\x06proto3"
 
 var (

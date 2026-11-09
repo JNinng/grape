@@ -7,6 +7,7 @@ import {
   listLibraries,
   listLibraryDocuments,
   listModelOptions,
+  listDocumentChunks,
   updateDocument,
   updateLibrary,
   type DocumentDTO,
@@ -25,6 +26,7 @@ vi.mock('@/api/knowledge', async (importOriginal) => ({
   updateLibrary: vi.fn(),
   getDocument: vi.fn(),
   updateDocument: vi.fn(),
+  listDocumentChunks: vi.fn(),
 }))
 
 const mockListLibraries = vi.mocked(listLibraries)
@@ -34,6 +36,7 @@ const mockCreateLibrary = vi.mocked(createLibrary)
 const mockUpdateLibrary = vi.mocked(updateLibrary)
 const mockGetDocument = vi.mocked(getDocument)
 const mockUpdateDocument = vi.mocked(updateDocument)
+const mockListDocumentChunks = vi.mocked(listDocumentChunks)
 
 function library(overrides: Partial<LibraryDTO> = {}): LibraryDTO {
   return {
@@ -81,6 +84,10 @@ beforeEach(() => {
   mockUpdateLibrary.mockResolvedValue(library())
   mockGetDocument.mockResolvedValue(documentDetail())
   mockUpdateDocument.mockResolvedValue(documentDetail())
+  mockListDocumentChunks.mockResolvedValue({
+    items: [{ index: 0, chunkId: '200#0', anchor: 'runes 0-11', content: '30 天内全额退款', embedder: 'space@v1' }],
+    total: 1,
+  })
 })
 
 afterEach(() => {
@@ -281,5 +288,34 @@ describe('KnowledgeManagePage edit document', () => {
     const dialog = await openEditDocument(user)
     await user.clear(await within(dialog).findByDisplayValue('30 天内全额退款'))
     expect(within(dialog).getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+})
+
+describe('KnowledgeManagePage document detail', () => {
+  beforeEach(() => {
+    mockListLibraryDocuments.mockResolvedValue({ items: [documentRow()], total: '1', hasMore: false, nextCursor: '', page: 1 })
+  })
+
+  it('clicking_document_title_opens_detail_dialog', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: '退款政策' }))
+    expect(await screen.findByText('条目详情与实际分片（切分结果以向量存储为准，改过切分参数需重建索引才会生效）。')).toBeInTheDocument()
+  })
+
+  it('opening_detail_loads_chunks_of_that_document', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: '退款政策' }))
+    expect(mockListDocumentChunks).toHaveBeenCalledWith('200')
+  })
+
+  it('chunk_row_in_detail_expands_content', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: '退款政策' }))
+    const row = await screen.findByRole('button', { name: /#0 · runes 0-11/ })
+    await user.click(row)
+    expect(screen.getByLabelText('分片 #0 正文')).toHaveTextContent('30 天内全额退款')
   })
 })

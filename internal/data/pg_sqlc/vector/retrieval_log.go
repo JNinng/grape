@@ -133,6 +133,11 @@ func (s *loggedVectorStore) UpdateMetadata(ctx context.Context, filter *biz.Vect
 	return s.inner.UpdateMetadata(ctx, filter, patch)
 }
 
+// List 转发枚举（含正文），不留痕（枚举读面非证据面）。
+func (s *loggedVectorStore) List(ctx context.Context, filter *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	return s.inner.List(ctx, filter)
+}
+
 // GetMetadata 转发枚举，不留痕（枚举统计非证据面）。
 func (s *loggedVectorStore) GetMetadata(ctx context.Context, filter *biz.VectorFilter) (map[string]map[string]any, error) {
 	return s.inner.GetMetadata(ctx, filter)

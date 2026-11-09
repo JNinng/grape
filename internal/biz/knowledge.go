@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -33,6 +35,10 @@ var (
 	ErrDocumentKindUnsupported = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_KIND_UNSUPPORTED.String(), "only text documents are supported")
 	// ErrDocumentIndexFailed 表示摄取/重建索引失败。
 	ErrDocumentIndexFailed = kratoserrors.InternalServer(knowledgev1.ErrorReason_DOCUMENT_INDEX_FAILED.String(), "knowledge document indexing failed")
+	// ErrDocumentChunksUnavailable 表示分片查询能力缺失（向量设施未启用）。
+	ErrDocumentChunksUnavailable = kratoserrors.ServiceUnavailable(knowledgev1.ErrorReason_DOCUMENT_CHUNKS_UNAVAILABLE.String(), "knowledge document chunks unavailable")
+	// ErrDocumentChunksFailed 表示分片查询执行失败（细节只进服务端日志）。
+	ErrDocumentChunksFailed = kratoserrors.InternalServer(knowledgev1.ErrorReason_DOCUMENT_CHUNKS_FAILED.String(), "knowledge document chunks failed")
 )
 
 // 知识库与条目状态取值（与存储层 status 对齐）。
@@ -221,6 +227,76 @@ func (uc *KnowledgeUsecase) DeleteLibrary(ctx context.Context, auth Identity, id
 		return fmt.Errorf("biz: clear chunks of library %d: %w", id, err)
 	}
 	return uc.repo.SoftDeleteLibrary(ctx, auth, id)
+}
+
+// KnowledgeChunk 是条目在向量存储中的一个实际分片：Index 为原文顺序，
+// Anchor 与 Content 取自切片元数据与正文，Embedder 是落库时的嵌入空间。
+type KnowledgeChunk struct {
+	ID       string
+	Index    int
+	Anchor   string
+	Content  string
+	Embedder string
+}
+
+// ListDocumentChunks 返回条目的实际分片（按分片序），供管理页核对切分
+// 结果。条目不存在按 NotFound 拒绝；分片只经 VectorStore 枚举——切分实现
+// 与存量数据可能不一致（改过区分串/切分参数而未重建），回放切分算法得到
+// 的不是「实际」分片。设施未启用的错误原样透传，不降级为空列表。
+func (uc *KnowledgeUsecase) ListDocumentChunks(ctx context.Context, auth Identity, id int64) ([]*KnowledgeChunk, error) {
+	if id <= 0 {
+		return nil, ErrDocumentInvalidArgument
+	}
+	if _, err := uc.repo.GetDocument(ctx, auth, id); err != nil {
+		return nil, err
+	}
+	docs, err := uc.store.List(ctx, &VectorFilter{Conditions: []MetadataCondition{
+		{Key: "document_id", Op: VectorMetadataEq, Values: []any{idString(id)}},
+	}})
+	if err != nil {
+		return nil, fmt.Errorf("biz: list chunks of document %d: %w", id, err)
+	}
+	chunks := make([]*KnowledgeChunk, 0, len(docs))
+	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		chunks = append(chunks, &KnowledgeChunk{
+			ID:       doc.ID,
+			Index:    chunkIndexOf(doc.ID, doc.Metadata),
+			Anchor:   metadataText(doc.Metadata, "anchor"),
+			Content:  doc.Content,
+			Embedder: doc.Embedder,
+		})
+	}
+	sort.SliceStable(chunks, func(i, j int) bool {
+		if chunks[i].Index != chunks[j].Index {
+			return chunks[i].Index < chunks[j].Index
+		}
+		return chunks[i].ID < chunks[j].ID
+	})
+	return chunks, nil
+}
+
+// chunkIndexOf 取分片序号：切片 ID 的 "#<index>" 后缀是摄取侧确定性派生
+// 的结果，优先采用；形状不符时回落 metadata 的 chunk_index。
+func chunkIndexOf(id string, metadata map[string]any) int {
+	if at := strings.LastIndex(id, "#"); at >= 0 {
+		if index, err := strconv.Atoi(id[at+1:]); err == nil {
+			return index
+		}
+	}
+	switch v := metadata["chunk_index"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case string:
+		if index, err := strconv.Atoi(v); err == nil {
+			return index
+		}
+	}
+	return 0
 }
 
 // GetDocument 按 id 查询条目。

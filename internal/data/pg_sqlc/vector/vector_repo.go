@@ -69,6 +69,11 @@ SELECT count(*) FROM updated`
 	// agent_document_tenant_created_idx（租户前缀）对齐。
 	vectorMetadataSQL = `SELECT id, metadata FROM %s WHERE tenant_id = $1%s ORDER BY created_at, id`
 
+	// vectorListSQL 是枚举读面（含正文、不含向量）：排序键与 GetMetadata
+	// 同源，分页确定。
+	vectorListSQL = `SELECT id, embedder, embed_dim, name, content, metadata, created_at, updated_at
+FROM %s WHERE tenant_id = $1%s ORDER BY created_at, id`
+
 	// vectorColumnsProbeSQL 读结构列：embedding 必须是裸 vector（无
 	// typmod，维度随行），embedder/embed_dim 必须存在——三者构成多空间
 	// 表形状，任一缺失即部署不符。
@@ -627,6 +632,63 @@ func (r *vectorStore) GetMetadata(ctx context.Context, filter *biz.VectorFilter)
 	return out, nil
 }
 
+// List 按 IDs/Embedder/Metadata/Conditions 交集枚举文档（含正文，不含
+// 向量）。分页组合校验与 GetMetadata 同口径：Limit 非正为不限量，此时
+// Offset 必须为 0。
+func (r *vectorStore) List(ctx context.Context, filter *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	auth, err := vectorIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	plan, err := planVectorFilter(2, filter)
+	if err != nil {
+		return nil, err
+	}
+	limit, offset := 0, 0
+	if filter != nil {
+		limit, offset = filter.Limit, filter.Offset
+	}
+	if limit <= 0 && offset > 0 {
+		return nil, errors.New("pg_sqlc: vector list offset requires a positive limit")
+	}
+	args := append([]any{auth.TenantID}, plan.args...)
+	sql := fmt.Sprintf(vectorListSQL, r.qualifiedTable(), plan.where())
+	if limit > 0 {
+		args = append(args, limit)
+		sql += fmt.Sprintf(" LIMIT $%d", len(args))
+		if offset > 0 {
+			args = append(args, offset)
+			sql += fmt.Sprintf(" OFFSET $%d", len(args))
+		}
+	}
+
+	var out []*biz.VectorDocument
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
+		rows, err := s.Tx().Query(ctx, sql, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			row := &vectorDocRow{}
+			if err := rows.Scan(&row.ID, &row.Embedder, &row.Dim, &row.Name, &row.Content,
+				&row.Metadata, &row.CreatedAt, &row.UpdatedAt); err != nil {
+				return err
+			}
+			doc, err := row.toBiz()
+			if err != nil {
+				return err
+			}
+			out = append(out, doc)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // mapErr 把无行统一映射为 ErrVectorDocNotFound（不存在与跨租户不可见
 // 不区分，与 permission.md 的 NotFound 口径一致）。
 func (r *vectorStore) mapErr(err error) error {
@@ -943,5 +1005,9 @@ func (*disabledVectorStore) Count(context.Context, *biz.VectorFilter) (int64, er
 }
 
 func (*disabledVectorStore) GetMetadata(context.Context, *biz.VectorFilter) (map[string]map[string]any, error) {
+	return nil, biz.ErrVectorStoreDisabled
+}
+
+func (*disabledVectorStore) List(context.Context, *biz.VectorFilter) ([]*biz.VectorDocument, error) {
 	return nil, biz.ErrVectorStoreDisabled
 }

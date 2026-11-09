@@ -172,6 +172,14 @@ func TestSearchDocuments_store_failure_returns_500_without_detail(t *testing.T) 
 type libraryFakeRepo struct {
 	biz.KnowledgeRepo
 	existing *biz.KnowledgeLibrary
+	doc      *biz.KnowledgeDocument
+}
+
+func (r *libraryFakeRepo) GetDocument(context.Context, biz.Identity, int64) (*biz.KnowledgeDocument, error) {
+	if r.doc == nil {
+		return nil, biz.ErrDocumentNotFound
+	}
+	return r.doc, nil
 }
 
 func (r *libraryFakeRepo) GetLibrary(context.Context, biz.Identity, int64) (*biz.KnowledgeLibrary, error) {
@@ -244,5 +252,79 @@ func TestUpdateLibrary_without_chunk_delimiter_keeps_existing(t *testing.T) {
 	}
 	if out.GetChunkDelimiter() != "---" {
 		t.Fatalf("chunk delimiter = %q, want existing ---", out.GetChunkDelimiter())
+	}
+}
+
+// chunkListStore 是分片查询端点单测的向量存储替身：List 记录过滤条件并
+// 返回可编程结果。
+type chunkListStore struct {
+	biz.VectorStore
+	docs []*biz.VectorDocument
+	err  error
+}
+
+func (s *chunkListStore) List(context.Context, *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	return s.docs, s.err
+}
+
+func newChunksTestService(store biz.VectorStore) *KnowledgeService {
+	repo := &libraryFakeRepo{existing: &biz.KnowledgeLibrary{ID: 1, Status: biz.KnowledgeStatusEnabled}, doc: &biz.KnowledgeDocument{
+		ID: 2, LibraryID: 1, Kind: "text", Title: "t", Status: biz.KnowledgeStatusEnabled,
+	}}
+	return NewKnowledgeService(biz.NewKnowledgeUsecase(repo, nil, store, nil), nil)
+}
+
+func TestListDocumentChunks_maps_chunks_in_order(t *testing.T) {
+	store := &chunkListStore{docs: []*biz.VectorDocument{
+		{ID: "2#1", Embedder: "space@v1", Content: "second", Metadata: map[string]any{"anchor": "runes 10-16"}},
+		{ID: "2#0", Embedder: "space@v1", Content: "first", Metadata: map[string]any{"anchor": "runes 0-6"}},
+	}}
+	svc := newChunksTestService(store)
+
+	reply, err := svc.ListDocumentChunks(searchIdentityCtx(), &knowledgev1.ListDocumentChunksRequest{Id: 2})
+	if err != nil {
+		t.Fatalf("ListDocumentChunks: %v", err)
+	}
+	if reply.GetTotal() != 2 {
+		t.Fatalf("total = %d, want 2", reply.GetTotal())
+	}
+	first := reply.GetItems()[0]
+	if first.GetIndex() != 0 || first.GetChunkId() != "2#0" || first.GetAnchor() != "runes 0-6" ||
+		first.GetContent() != "first" || first.GetEmbedder() != "space@v1" {
+		t.Fatalf("first chunk = %+v, want mapped fields", first)
+	}
+	if reply.GetItems()[1].GetIndex() != 1 {
+		t.Fatalf("second index = %d, want 1", reply.GetItems()[1].GetIndex())
+	}
+}
+
+func TestListDocumentChunks_without_identity_returns_401(t *testing.T) {
+	svc := newChunksTestService(&chunkListStore{})
+
+	_, err := svc.ListDocumentChunks(context.Background(), &knowledgev1.ListDocumentChunksRequest{Id: 2})
+	assertKratosError(t, err, http.StatusUnauthorized, "SESSION_INVALID")
+}
+
+func TestListDocumentChunks_invalid_id_returns_400(t *testing.T) {
+	svc := newChunksTestService(&chunkListStore{})
+
+	_, err := svc.ListDocumentChunks(searchIdentityCtx(), &knowledgev1.ListDocumentChunksRequest{Id: 0})
+	assertKratosError(t, err, http.StatusBadRequest, knowledgev1.ErrorReason_DOCUMENT_INVALID_ARGUMENT.String())
+}
+
+func TestListDocumentChunks_vector_store_disabled_returns_503(t *testing.T) {
+	svc := newChunksTestService(&chunkListStore{err: biz.ErrVectorStoreDisabled})
+
+	_, err := svc.ListDocumentChunks(searchIdentityCtx(), &knowledgev1.ListDocumentChunksRequest{Id: 2})
+	assertKratosError(t, err, http.StatusServiceUnavailable, knowledgev1.ErrorReason_DOCUMENT_CHUNKS_UNAVAILABLE.String())
+}
+
+func TestListDocumentChunks_store_failure_returns_500_without_detail(t *testing.T) {
+	svc := newChunksTestService(&chunkListStore{err: errors.New("pq: password authentication failed for user grape_u")})
+
+	_, err := svc.ListDocumentChunks(searchIdentityCtx(), &knowledgev1.ListDocumentChunksRequest{Id: 2})
+	assertKratosError(t, err, http.StatusInternalServerError, knowledgev1.ErrorReason_DOCUMENT_CHUNKS_FAILED.String())
+	if e := kratoserrors.FromError(err); e.Message != "knowledge document chunks failed" {
+		t.Fatalf("message = %q, want fixed text without storage detail", e.Message)
 	}
 }

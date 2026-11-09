@@ -43,6 +43,9 @@ func (r *libraryFakeRepo) ListDocumentsByLibrary(context.Context, Identity, int6
 }
 
 func (r *libraryFakeRepo) GetDocument(context.Context, Identity, int64) (*KnowledgeDocument, error) {
+	if r.doc == nil {
+		return nil, ErrDocumentNotFound
+	}
 	return r.doc, nil
 }
 

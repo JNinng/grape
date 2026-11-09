@@ -308,3 +308,36 @@ export async function searchDocuments(input: SearchDocumentsInput): Promise<Sear
   }))
   return { items, total: reply.total ?? 0 }
 }
+
+// KnowledgeChunkDTO 是条目的一个实际分片：chunkId 为 "<条目 ID>#<序号>"，
+// content 为不可信原文，只按文本渲染。
+export interface KnowledgeChunkDTO {
+  index: number
+  chunkId: string
+  anchor: string
+  content: string
+  embedder: string
+}
+
+export interface KnowledgeChunkSetDTO {
+  items: KnowledgeChunkDTO[]
+  total: number
+}
+
+// listDocumentChunks 读取条目在向量存储中的实际分片（按分片序）。
+// protojson 省略零值字段，命中缺省键在此补齐。
+export async function listDocumentChunks(documentId: string): Promise<KnowledgeChunkSetDTO> {
+  const res = await authFetch(`/v1/knowledge/documents/${encodeURIComponent(documentId)}/chunks`)
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+  const set = (await res.json()) as { items?: Partial<KnowledgeChunkDTO>[]; total?: number }
+  const items = (set.items ?? []).map((item) => ({
+    index: item.index ?? 0,
+    chunkId: item.chunkId ?? '',
+    anchor: item.anchor ?? '',
+    content: item.content ?? '',
+    embedder: item.embedder ?? '',
+  }))
+  return { items, total: set.total ?? 0 }
+}

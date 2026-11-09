@@ -22,6 +22,7 @@
 | `Count`          | `store.Count`          | metadata 过滤计数                                                 |
 | `GetMetadata`    | `store.GetMetadata`    | 框架侧 Limit/Offset 校验先行，分页语义与契约一致                               |
 | `Close`          | —                      | 无自有资源；连接池与仓储生命周期归 data 层 cleanup                              |
+| `List`           | `store.List`           | 契约新增的枚举读面（含正文）；框架接口无对应方法，适配器不映射                       |
 
 ## 检索逻辑
 

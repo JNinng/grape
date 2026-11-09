@@ -46,7 +46,7 @@ DTO ↔ DO 转换与 `query.v1` → `dynq.Query` 协议转换，然后委托 [bi
 | [agent_event_window.go](agent_event_window.go) | `AgentEventWindowService`：会话事件窗口手写路由注册面，按 threadId + eventId 取锚点窗口（before/after 各上限 50）、跨用户 404；与会话列表同序，先于前缀通配。 |
 | [agent_audit.go](agent_audit.go) | `AgentAuditService`：工具调用与授权确认审计查询（列表/点查互斥，默认 20、上限 200；摘要为落库时已脱敏形态）。 |
 | [agent_retrieval.go](agent_retrieval.go) | `AgentRetrievalService`：检索留痕查询（会话/来源过滤，默认 20、上限 200），证据字段按落库形态透传。 |
-| [knowledge.go](knowledge.go) | `KnowledgeService` 同时实现 `LibraryService` 与 `DocumentService`：库/条目 DTO 与动态 List、库内固定分页、模型选项与重建索引；`SearchDocuments` 委托知识检索用例，设施未启用映射 503 `SEARCH_UNAVAILABLE`，其余执行故障固定文案 500 `SEARCH_FAILED`、细节只进服务端日志。 |
+| [knowledge.go](knowledge.go) | `KnowledgeService` 同时实现 `LibraryService` 与 `DocumentService`：库/条目 DTO 与动态 List、库内固定分页、模型选项与重建索引；`SearchDocuments` 委托知识检索用例，设施未启用映射 503 `SEARCH_UNAVAILABLE`，其余执行故障固定文案 500 `SEARCH_FAILED`、细节只进服务端日志；`ListDocumentChunks` 返回条目实际分片（同类映射：503 `DOCUMENT_CHUNKS_UNAVAILABLE`、500 `DOCUMENT_CHUNKS_FAILED`）。 |
 | [model.go](model.go) | `ModelService`：模型目录租户 CRUD 与平台 super 写面；密钥只写不读，响应只回 `hasApiKey`。 |
 | [provider.go](provider.go) | `ProviderSet` 聚合全部服务构造函数，由 cmd 的 Wire 统一装配。 |
 

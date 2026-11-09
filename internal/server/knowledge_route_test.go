@@ -35,3 +35,29 @@ func TestKnowledgeSearchRoute_without_permission_returns_403(t *testing.T) {
 		t.Fatalf("has-permission calls = %d, want 1 (gated operation)", repo.hasPermCalls)
 	}
 }
+
+func TestKnowledgeChunksRoute_without_token_returns_401_before_permission(t *testing.T) {
+	repo := &stubPermissionRepo{}
+	srv := newPermissionTestServer(t, repo, nil, nil)
+
+	rec := agentDo(t, srv, http.MethodGet, "/v1/knowledge/documents/2/chunks", "", "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401\n%s", rec.Code, rec.Body.String())
+	}
+	if repo.hasPermCalls != 0 {
+		t.Fatalf("has-permission calls = %d, want 0", repo.hasPermCalls)
+	}
+}
+
+func TestKnowledgeChunksRoute_without_permission_returns_403(t *testing.T) {
+	repo := &stubPermissionRepo{granted: false}
+	srv := newPermissionTestServer(t, repo, nil, nil)
+
+	rec := agentDo(t, srv, http.MethodGet, "/v1/knowledge/documents/2/chunks", "any-token", "")
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "PERM_ACCESS_DENIED") {
+		t.Fatalf("status = %d, want 403 PERM_ACCESS_DENIED\n%s", rec.Code, rec.Body.String())
+	}
+	if repo.hasPermCalls != 1 {
+		t.Fatalf("has-permission calls = %d, want 1 (gated operation)", repo.hasPermCalls)
+	}
+}

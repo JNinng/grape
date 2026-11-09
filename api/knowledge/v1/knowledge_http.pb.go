@@ -313,6 +313,7 @@ func (c *LibraryServiceHTTPClientImpl) UpdateLibrary(ctx context.Context, in *Up
 const OperationDocumentServiceCreateDocument = "/knowledge.v1.DocumentService/CreateDocument"
 const OperationDocumentServiceDeleteDocument = "/knowledge.v1.DocumentService/DeleteDocument"
 const OperationDocumentServiceGetDocument = "/knowledge.v1.DocumentService/GetDocument"
+const OperationDocumentServiceListDocumentChunks = "/knowledge.v1.DocumentService/ListDocumentChunks"
 const OperationDocumentServiceListDocuments = "/knowledge.v1.DocumentService/ListDocuments"
 const OperationDocumentServiceListLibraryDocuments = "/knowledge.v1.DocumentService/ListLibraryDocuments"
 const OperationDocumentServiceReindexDocument = "/knowledge.v1.DocumentService/ReindexDocument"
@@ -326,6 +327,9 @@ type DocumentServiceHTTPServer interface {
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	// GetDocument GetDocument 按 id 查询条目（含正文）。
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
+	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
+	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
+	ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error)
 	// ListDocuments ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
 	ListDocuments(context.Context, *ListDocumentsRequest) (*DocumentSet, error)
 	// ListLibraryDocuments ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
@@ -345,6 +349,7 @@ type DocumentServiceHTTPServer interface {
 func RegisterDocumentServiceHTTPServer(s *http.Server, srv DocumentServiceHTTPServer) {
 	r := s.Route("/")
 	r.Handle("POST", "/v1/knowledge/documents/create", _DocumentService_CreateDocument0_HTTP_Handler(srv))
+	r.Handle("GET", "/v1/knowledge/documents/{id}/chunks", _DocumentService_ListDocumentChunks0_HTTP_Handler(srv))
 	r.Handle("GET", "/v1/knowledge/documents/{id}", _DocumentService_GetDocument0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/knowledge/documents/list", _DocumentService_ListDocuments0_HTTP_Handler(srv))
 	r.Handle("GET", "/v1/knowledge/libraries/{id}/documents", _DocumentService_ListLibraryDocuments0_HTTP_Handler(srv))
@@ -369,6 +374,28 @@ func _DocumentService_CreateDocument0_HTTP_Handler(srv DocumentServiceHTTPServer
 			return err
 		}
 		reply := out.(*Document)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _DocumentService_ListDocumentChunks0_HTTP_Handler(srv DocumentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in ListDocumentChunksRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationDocumentServiceListDocumentChunks)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.ListDocumentChunks(ctx, req.(*ListDocumentChunksRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DocumentChunkSet)
 		return ctx.Result(200, reply)
 	}
 }
@@ -531,6 +558,9 @@ type DocumentServiceHTTPClient interface {
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// GetDocument GetDocument 按 id 查询条目（含正文）。
 	GetDocument(ctx context.Context, req *GetDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
+	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
+	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
+	ListDocumentChunks(ctx context.Context, req *ListDocumentChunksRequest, opts ...http.CallOption) (rsp *DocumentChunkSet, err error)
 	// ListDocuments ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *DocumentSet, err error)
 	// ListLibraryDocuments ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
@@ -598,6 +628,24 @@ func (c *DocumentServiceHTTPClientImpl) GetDocument(ctx context.Context, in *Get
 	opts = append([]http.CallOption{
 		http.Accept("application/protojson"),
 		http.Operation(OperationDocumentServiceGetDocument),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
+// 供管理页查看切分结果；分片正文按原文返回，不含向量。
+func (c *DocumentServiceHTTPClientImpl) ListDocumentChunks(ctx context.Context, in *ListDocumentChunksRequest, opts ...http.CallOption) (*DocumentChunkSet, error) {
+	var out DocumentChunkSet
+	pattern := "/v1/knowledge/documents/{id}/chunks"
+	path := http.BuildPath(pattern, in, http.WithQueryParams())
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.Operation(OperationDocumentServiceListDocumentChunks),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)

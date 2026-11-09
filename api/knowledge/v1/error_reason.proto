@@ -35,4 +35,8 @@ enum ErrorReason {
   SEARCH_UNAVAILABLE = 11;
   // 知识检索执行失败（嵌入端点或向量存储错误，细节只进服务端日志）。
   SEARCH_FAILED = 12;
+  // 条目分片查询能力缺失（向量设施未启用）。
+  DOCUMENT_CHUNKS_UNAVAILABLE = 13;
+  // 条目分片查询执行失败（细节只进服务端日志）。
+  DOCUMENT_CHUNKS_FAILED = 14;
 }

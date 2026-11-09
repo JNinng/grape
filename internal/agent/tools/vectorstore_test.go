@@ -36,6 +36,8 @@ type fakeVectorStore struct {
 	count     int64
 	metaF     *biz.VectorFilter
 	metadata  map[string]map[string]any
+	listF     *biz.VectorFilter
+	listed    []*biz.VectorDocument
 }
 
 func (f *fakeVectorStore) Add(_ context.Context, doc *biz.VectorDocument) error {
@@ -87,6 +89,11 @@ func (f *fakeVectorStore) Count(_ context.Context, filter *biz.VectorFilter) (in
 func (f *fakeVectorStore) GetMetadata(_ context.Context, filter *biz.VectorFilter) (map[string]map[string]any, error) {
 	f.metaF = filter
 	return f.metadata, nil
+}
+
+func (f *fakeVectorStore) List(_ context.Context, filter *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	f.listF = filter
+	return f.listed, nil
 }
 
 // spaceCtx 是适配器单测的固定空间 ctx：检索工具在生产路径经
