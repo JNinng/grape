@@ -102,6 +102,19 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   `kb_document` / `sys_model` 与索引），以超级用户/表 owner 执行；裸创建，
   重复执行报错；RLS 策略随 `rls.sql` 重放（`CREATE POLICY` 亦为裸创建，
   历史库需手工补对应策略或重建）。
+- **kb_library.chunk_delimiter（91_knowledge.sql）**：已有 `kb_library` 的历史库
+  以表 owner 手工追加列。先以空串默认追加（存量库回填空串，保持纯固定窗口
+  切分行为不变），再把默认改为段落空行（之后新建的库启用区分串切分），
+  最后补长度约束与列注释（注释原文取 91_knowledge.sql）：
+
+  ```sql
+  ALTER TABLE public.kb_library ADD COLUMN chunk_delimiter text NOT NULL DEFAULT '';
+  ALTER TABLE public.kb_library ALTER COLUMN chunk_delimiter SET DEFAULT E'\n\n';
+  ALTER TABLE public.kb_library
+      ADD CONSTRAINT kb_library_chunk_delimiter_chk CHECK (char_length(chunk_delimiter) <= 32);
+  ```
+
+  存量库要改用区分串切分时，经管理页编辑库的区分串后对条目执行重建索引。
 - **98_model_write.sql**：历史库追加对象，以部署超级用户执行；只含
   `CREATE OR REPLACE FUNCTION`，可重复。平台模型写端点（`sys:model:platform:*`）
   与模型管理页菜单（279–286）依赖 `050_sys_menu.sql` / `060_sys_role_menu.sql`

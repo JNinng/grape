@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -134,6 +135,10 @@ func TestDocumentUsecase_when_constructed_with_missing_dependency_fails(t *testi
 		},
 		"bad chunking": func() error {
 			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(10, 10))
+			return err
+		},
+		"oversize delimiter": func() error {
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunkDelimiter(strings.Repeat("-", maxChunkDelimiterRunes+1)))
 			return err
 		},
 	} {
@@ -313,19 +318,19 @@ func TestDocumentUsecase_when_add_fails_midway_reports(t *testing.T) {
 	}
 }
 
-func TestChunkText_boundaries_overlap_and_multibyte(t *testing.T) {
+func TestChunkText_without_delimiter_boundaries_overlap_and_multibyte(t *testing.T) {
 	// 短文本：单块且保留原文。
-	one := chunkText("短文", 10, 2)
+	one := chunkText("短文", 10, 2, "")
 	if len(one) != 1 || one[0].content != "短文" || one[0].start != 0 || one[0].end != 2 {
 		t.Fatalf("short text chunks = %+v, want single original chunk", one)
 	}
 	// 恰好等于 size：单块。
-	exact := chunkText(strings.Repeat("a", 8), 8, 2)
+	exact := chunkText(strings.Repeat("a", 8), 8, 2, "")
 	if len(exact) != 1 {
 		t.Fatalf("exact-size chunks = %d, want 1", len(exact))
 	}
 	// 超长：相邻块重叠 overlap 个 rune，末块推进到原文末尾。
-	long := chunkText(strings.Repeat("x", 20), 8, 2)
+	long := chunkText(strings.Repeat("x", 20), 8, 2, "")
 	if len(long) != 3 {
 		t.Fatalf("long chunks = %d, want 3", len(long))
 	}
@@ -333,12 +338,12 @@ func TestChunkText_boundaries_overlap_and_multibyte(t *testing.T) {
 		t.Fatalf("overlap windows drifted: %+v", long)
 	}
 	// overlap 0：不重叠。
-	noOverlap := chunkText(strings.Repeat("x", 16), 8, 0)
+	noOverlap := chunkText(strings.Repeat("x", 16), 8, 0, "")
 	if len(noOverlap) != 2 || noOverlap[1].start != 8 {
 		t.Fatalf("no-overlap chunks = %+v", noOverlap)
 	}
 	// 多字节 rune 不被劈开：中文内容切块后可无损拼回原文。
-	cjk := chunkText(strings.Repeat("中", 10), 4, 1)
+	cjk := chunkText(strings.Repeat("中", 10), 4, 1, "")
 	var rebuilt strings.Builder
 	for i, c := range cjk {
 		if i > 0 {
@@ -354,7 +359,202 @@ func TestChunkText_boundaries_overlap_and_multibyte(t *testing.T) {
 		t.Fatalf("multibyte chunks lost content: %q", got)
 	}
 	// 全空白原文：无块产出（上游正文校验兜底）。
-	if chunks := chunkText("   \n ", 4, 1); len(chunks) != 0 {
+	if chunks := chunkText("   \n ", 4, 1, ""); len(chunks) != 0 {
 		t.Fatalf("blank content chunks = %+v, want none", chunks)
+	}
+}
+
+// chunkSpan 把切分产物折叠为 (content, start, end) 三元组，便于整体断言。
+type chunkSpan struct {
+	content    string
+	start, end int
+}
+
+func chunkSpans(chunks []chunk) []chunkSpan {
+	out := make([]chunkSpan, 0, len(chunks))
+	for _, c := range chunks {
+		out = append(out, chunkSpan{c.content, c.start, c.end})
+	}
+	return out
+}
+
+func assertChunkSpans(t *testing.T, got []chunk, want []chunkSpan) {
+	t.Helper()
+	if !reflect.DeepEqual(chunkSpans(got), want) {
+		t.Fatalf("chunks = %+v, want %+v", chunkSpans(got), want)
+	}
+}
+
+// assertAnchorsMapToOriginal 断言每块锚点区间切回原文恰为块正文（引用可追溯）。
+func assertAnchorsMapToOriginal(t *testing.T, content string, chunks []chunk) {
+	t.Helper()
+	runes := []rune(content)
+	for i, c := range chunks {
+		if got := string(runes[c.start:c.end]); got != c.content {
+			t.Fatalf("chunk %d anchor [%d,%d) = %q, want content %q", i, c.start, c.end, got, c.content)
+		}
+	}
+}
+
+func TestChunkText_with_delimiter_splits_paragraphs_and_drops_separator(t *testing.T) {
+	content := "ab@@cd"
+	got := chunkText(content, 10, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{"ab", 0, 2}, {"cd", 4, 6}})
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkText_with_consecutive_delimiters_drops_empty_blocks(t *testing.T) {
+	got := chunkText("ab@@@@cd", 10, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{"ab", 0, 2}, {"cd", 6, 8}})
+}
+
+func TestChunkText_with_whitespace_only_block_drops_it(t *testing.T) {
+	got := chunkText("ab@@ \n @@cd", 10, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{"ab", 0, 2}, {"cd", 9, 11}})
+}
+
+func TestChunkText_with_delimiter_at_head_and_tail_keeps_inner_block(t *testing.T) {
+	got := chunkText("@@ab@@", 10, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{"ab", 2, 4}})
+}
+
+func TestChunkText_with_oversize_paragraph_rewindows_with_overlap(t *testing.T) {
+	content := strings.Repeat("x", 20) + "@@yy"
+	got := chunkText(content, 8, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{
+		{strings.Repeat("x", 8), 0, 8},
+		{strings.Repeat("x", 8), 6, 14},
+		{strings.Repeat("x", 8), 12, 20},
+		{"yy", 22, 24},
+	})
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkText_with_paragraph_exactly_size_keeps_single_block(t *testing.T) {
+	got := chunkText(strings.Repeat("x", 8)+"@@y", 8, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{strings.Repeat("x", 8), 0, 8}, {"y", 10, 11}})
+}
+
+func TestChunkText_with_multi_rune_cjk_delimiter_matches_runes(t *testing.T) {
+	content := "甲乙。。丙丁"
+	got := chunkText(content, 10, 2, "。。")
+	assertChunkSpans(t, got, []chunkSpan{{"甲乙", 0, 2}, {"丙丁", 4, 6}})
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkText_with_partial_delimiter_match_keeps_text(t *testing.T) {
+	got := chunkText("a--b---c", 10, 2, "---")
+	assertChunkSpans(t, got, []chunkSpan{{"a--b", 0, 4}, {"c", 7, 8}})
+}
+
+func TestChunkText_with_default_paragraph_delimiter_splits_blank_lines(t *testing.T) {
+	content := "第一段\n第一段续\n\n第二段"
+	got := chunkText(content, 800, 100, defaultChunkDelimiter)
+	assertChunkSpans(t, got, []chunkSpan{{"第一段\n第一段续", 0, 8}, {"第二段", 10, 13}})
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkText_without_delimiter_ignores_paragraph_breaks(t *testing.T) {
+	got := chunkText("ab\n\ncd", 10, 2, "")
+	assertChunkSpans(t, got, []chunkSpan{{"ab\n\ncd", 0, 6}})
+}
+
+func TestChunkText_with_only_delimiters_produces_nothing(t *testing.T) {
+	if got := chunkText("@@@@@@", 4, 1, "@@"); len(got) != 0 {
+		t.Fatalf("chunks = %+v, want none", chunkSpans(got))
+	}
+}
+
+func TestChunkText_with_mixed_content_anchors_map_to_original(t *testing.T) {
+	content := "标题\n\n" + strings.Repeat("正文", 9) + "\n\n\n\n尾段 tail"
+	assertAnchorsMapToOriginal(t, content, chunkText(content, 5, 1, defaultChunkDelimiter))
+}
+
+func TestDocChunkDelimiter_merges_default_and_override(t *testing.T) {
+	empty, custom := "", "|"
+	atLimit := strings.Repeat("|", maxChunkDelimiterRunes)
+	oversize := strings.Repeat("|", maxChunkDelimiterRunes+1)
+	for name, tc := range map[string]struct {
+		override *string
+		want     string
+	}{
+		"nil uses default":               {nil, "@@"},
+		"empty disables":                 {&empty, ""},
+		"custom overrides":               {&custom, "|"},
+		"at limit overrides":             {&atLimit, atLimit},
+		"oversize falls back to default": {&oversize, "@@"},
+	} {
+		if got := docChunkDelimiter("@@", tc.override); got != tc.want {
+			t.Fatalf("%s: docChunkDelimiter = %q, want %q", name, got, tc.want)
+		}
+	}
+}
+
+func TestDocumentUsecase_ingest_without_delimiter_override_splits_on_default(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "para one\n\npara two"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 2 || store.added[0].Metadata["anchor"] != "runes 0-8" || store.added[1].Metadata["anchor"] != "runes 10-18" {
+		t.Fatalf("added = %d chunks, want two paragraph chunks anchored 0-8 / 10-18", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_ingest_with_empty_delimiter_override_uses_fixed_window(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	empty := ""
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "para one\n\npara two", ChunkDelimiter: &empty}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 1 || store.added[0].Content != "para one\n\npara two" {
+		t.Fatalf("added = %d chunks, want one fixed-window chunk", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_ingest_with_custom_delimiter_override_splits_on_it(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	custom := "|"
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "a|b|c", ChunkDelimiter: &custom}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 3 || store.added[2].Content != "c" {
+		t.Fatalf("added = %d chunks, want three", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_constructed_with_empty_delimiter_uses_fixed_window(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunkDelimiter(""))
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "para one\n\npara two"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 1 {
+		t.Fatalf("added = %d chunks, want one", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_ingest_with_only_delimiters_rejected(t *testing.T) {
+	u, err := newDocumentUsecaseForTest(&mockVectorStore{}, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	custom := "@@"
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "@@@@", ChunkDelimiter: &custom}); err == nil || !strings.Contains(err.Error(), "chunks to nothing") {
+		t.Fatalf("Ingest = %v, want chunks to nothing rejection", err)
 	}
 }

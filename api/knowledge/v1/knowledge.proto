@@ -15,8 +15,8 @@ option java_outer_classname = "KnowledgeProto";
 
 // LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
 // 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-// 全局默认嵌入模型；chunk_size/chunk_overlap 决定条目切分参数。
-// 列表走动态查询协议。
+// 全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
+// 参数。列表走动态查询协议。
 service LibraryService {
   // CreateLibrary 创建知识库。
   rpc CreateLibrary (CreateLibraryRequest) returns (Library) {
@@ -42,7 +42,7 @@ service LibraryService {
   }
 
   // UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-  // chunk_size/chunk_overlap/有效期限）。
+  // chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
   rpc UpdateLibrary (UpdateLibraryRequest) returns (Library) {
     option (google.api.http) = {
       put: "/v1/knowledge/libraries/update"
@@ -124,6 +124,16 @@ service DocumentService {
       body: "*"
     };
   }
+
+  // SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+  // 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+  // 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+  rpc SearchDocuments (SearchDocumentsRequest) returns (SearchDocumentsReply) {
+    option (google.api.http) = {
+      post: "/v1/knowledge/documents/search"
+      body: "*"
+    };
+  }
 }
 
 // Library 是知识库的规范表示。审计列与时间戳只读。
@@ -150,6 +160,10 @@ message Library {
   google.protobuf.Timestamp created_at = 12;
   google.protobuf.Timestamp updated_at = 13;
   google.protobuf.Timestamp deleted_at = 14;
+  // 切分区分串：非空时先按该字符串切出段落块，超过 chunk_size 的段落块
+  // 再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。创建时省略
+  // 取缺省区分串 "\n\n"（段落空行），更新时省略保持原值；至多 32 字符。
+  optional string chunk_delimiter = 15;
 }
 
 // LibrarySet 是 ListLibraries 的分页集合。
@@ -283,4 +297,37 @@ message DeleteDocumentRequest {
 // ReindexDocumentRequest 是 DocumentService.ReindexDocument 的输入。
 message ReindexDocumentRequest {
   int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// SearchDocumentsRequest 是 DocumentService.SearchDocuments 的输入。
+message SearchDocumentsRequest {
+  // 查询文本，去除首尾空白后 1–512 字符。
+  string query = 1 [(google.api.field_behavior) = REQUIRED];
+  // 知识库 ID：大于 0 时收窄到该库，0 或省略检索全部知识库，负值拒绝。
+  int64 library_id = 2;
+  // 返回条数：省略或 0 取缺省 5，负值拒绝，超过 20 按 20 返回。
+  int32 top_k = 3;
+}
+
+// SearchHit 是单条检索命中。
+message SearchHit {
+  // 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账。
+  string document_id = 1;
+  // 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。
+  string source_id = 2;
+  // 来源名。
+  string source_name = 3;
+  // 原文锚点（rune 区间描述）。
+  string anchor = 4;
+  // 归一化相似度，[0,1]，越大越相似。
+  double score = 5;
+  // 切片正文原文。
+  string content = 6;
+}
+
+// SearchDocumentsReply 是 DocumentService.SearchDocuments 的输出。
+message SearchDocumentsReply {
+  repeated SearchHit items = 1;
+  // 命中条数。
+  int32 total = 2;
 }

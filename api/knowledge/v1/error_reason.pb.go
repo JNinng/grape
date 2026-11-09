@@ -45,21 +45,30 @@ const (
 	ErrorReason_DOCUMENT_INDEX_FAILED ErrorReason = 8
 	// 模型选项查询参数非法（kind 未知）。
 	ErrorReason_MODEL_OPTION_INVALID_ARGUMENT ErrorReason = 9
+	// 知识检索参数非法（查询文本为空或超长、top_k 或 library_id 为负）。
+	ErrorReason_SEARCH_INVALID_ARGUMENT ErrorReason = 10
+	// 知识检索能力缺失（嵌入或向量设施未启用）。
+	ErrorReason_SEARCH_UNAVAILABLE ErrorReason = 11
+	// 知识检索执行失败（嵌入端点或向量存储错误，细节只进服务端日志）。
+	ErrorReason_SEARCH_FAILED ErrorReason = 12
 )
 
 // Enum value maps for ErrorReason.
 var (
 	ErrorReason_name = map[int32]string{
-		0: "KNOWLEDGE_UNSPECIFIED",
-		1: "LIBRARY_NOT_FOUND",
-		2: "LIBRARY_INVALID_ARGUMENT",
-		3: "LIBRARY_ALREADY_EXISTS",
-		4: "LIBRARY_HAS_DOCUMENTS",
-		5: "DOCUMENT_NOT_FOUND",
-		6: "DOCUMENT_INVALID_ARGUMENT",
-		7: "DOCUMENT_KIND_UNSUPPORTED",
-		8: "DOCUMENT_INDEX_FAILED",
-		9: "MODEL_OPTION_INVALID_ARGUMENT",
+		0:  "KNOWLEDGE_UNSPECIFIED",
+		1:  "LIBRARY_NOT_FOUND",
+		2:  "LIBRARY_INVALID_ARGUMENT",
+		3:  "LIBRARY_ALREADY_EXISTS",
+		4:  "LIBRARY_HAS_DOCUMENTS",
+		5:  "DOCUMENT_NOT_FOUND",
+		6:  "DOCUMENT_INVALID_ARGUMENT",
+		7:  "DOCUMENT_KIND_UNSUPPORTED",
+		8:  "DOCUMENT_INDEX_FAILED",
+		9:  "MODEL_OPTION_INVALID_ARGUMENT",
+		10: "SEARCH_INVALID_ARGUMENT",
+		11: "SEARCH_UNAVAILABLE",
+		12: "SEARCH_FAILED",
 	}
 	ErrorReason_value = map[string]int32{
 		"KNOWLEDGE_UNSPECIFIED":         0,
@@ -72,6 +81,9 @@ var (
 		"DOCUMENT_KIND_UNSUPPORTED":     7,
 		"DOCUMENT_INDEX_FAILED":         8,
 		"MODEL_OPTION_INVALID_ARGUMENT": 9,
+		"SEARCH_INVALID_ARGUMENT":       10,
+		"SEARCH_UNAVAILABLE":            11,
+		"SEARCH_FAILED":                 12,
 	}
 )
 
@@ -106,7 +118,7 @@ var File_knowledge_v1_error_reason_proto protoreflect.FileDescriptor
 
 const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
-	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xa8\x02\n" +
+	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xf0\x02\n" +
 	"\vErrorReason\x12\x19\n" +
 	"\x15KNOWLEDGE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11LIBRARY_NOT_FOUND\x10\x01\x12\x1c\n" +
@@ -117,7 +129,11 @@ const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\x19DOCUMENT_INVALID_ARGUMENT\x10\x06\x12\x1d\n" +
 	"\x19DOCUMENT_KIND_UNSUPPORTED\x10\a\x12\x19\n" +
 	"\x15DOCUMENT_INDEX_FAILED\x10\b\x12!\n" +
-	"\x1dMODEL_OPTION_INVALID_ARGUMENT\x10\tBM\n" +
+	"\x1dMODEL_OPTION_INVALID_ARGUMENT\x10\t\x12\x1b\n" +
+	"\x17SEARCH_INVALID_ARGUMENT\x10\n" +
+	"\x12\x16\n" +
+	"\x12SEARCH_UNAVAILABLE\x10\v\x12\x11\n" +
+	"\rSEARCH_FAILED\x10\fBM\n" +
 	"\x1dio.grpc.examples.knowledge.v1P\x01Z\x19grape/api/knowledge/v1;v1\xa2\x02\x0eAPIKnowledgeV1b\x06proto3"
 
 var (

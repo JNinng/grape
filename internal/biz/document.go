@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // 文档摄取管线的错误语义：
@@ -18,13 +19,18 @@ var ErrDocumentSourceTooLong = errors.New("biz: document source id too long")
 // 摄取管线的入参边界与切片缺省：
 //   - maxSourceIDChars 限制来源 ID 长度，为切片 ID 后缀 "#<index>" 留出
 //     列宽余量（agent.agent_document.id 为 varchar(128)）；
-//   - defaultChunkSize/defaultChunkOverlap 是简版固定长度切分的缺省
-//     （rune 计），与主流 embedding 模型的输入窗口量级匹配；替换为
-//     语义切分（递归/按结构）时改 DocumentOption 注入，接口面不变。
+//   - defaultChunkSize/defaultChunkOverlap 是固定窗口切分的缺省（rune
+//     计），与主流 embedding 模型的输入窗口量级匹配；
+//   - defaultChunkDelimiter 是分隔符切分的缺省区分串：段落空行是文档最
+//     普遍的结构边界，切出的块语义完整度最高（单换行过碎）；空串表示不按
+//     分隔符切分。maxChunkDelimiterRunes 与 kb_library 的长度 CHECK 同值。
+//     替换为其他语义切分时改 DocumentOption 注入，接口面不变。
 const (
-	maxSourceIDChars    = 96
-	defaultChunkSize    = 800
-	defaultChunkOverlap = 100
+	maxSourceIDChars       = 96
+	defaultChunkSize       = 800
+	defaultChunkOverlap    = 100
+	defaultChunkDelimiter  = "\n\n"
+	maxChunkDelimiterRunes = 32
 )
 
 // Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部网页
@@ -33,15 +39,17 @@ const (
 //
 // Embedder 非空时指定摄取空间（知识库级 embedding_model_key）；空值走
 // 默认空间解析。ChunkSize/ChunkOverlap 非零时覆盖管线缺省（知识库级切分
-// 参数），零值取构造期缺省。
+// 参数），零值取构造期缺省。ChunkDelimiter 非 nil 时覆盖管线缺省区分串
+// （空串即关闭分隔符切分），nil 取构造期缺省。
 type Document struct {
-	ID           string
-	Name         string
-	Content      string
-	Metadata     map[string]any
-	Embedder     string
-	ChunkSize    int
-	ChunkOverlap int
+	ID             string
+	Name           string
+	Content        string
+	Metadata       map[string]any
+	Embedder       string
+	ChunkSize      int
+	ChunkOverlap   int
+	ChunkDelimiter *string
 }
 
 // IngestResult 是摄取结果：Chunks 为本次写入的切片数，Replaced 为覆盖
@@ -65,8 +73,9 @@ type chunk struct {
 type DocumentOption func(*documentOptions)
 
 type documentOptions struct {
-	chunkSize    int
-	chunkOverlap int
+	chunkSize      int
+	chunkOverlap   int
+	chunkDelimiter string
 }
 
 // WithChunking 覆盖切分参数：size 为单块 rune 上限，overlap 为相邻块
@@ -75,16 +84,23 @@ func WithChunking(size, overlap int) DocumentOption {
 	return func(o *documentOptions) { o.chunkSize, o.chunkOverlap = size, overlap }
 }
 
+// WithChunkDelimiter 覆盖缺省区分串：空串关闭分隔符切分（纯固定窗口），
+// 非空至多 32 rune。
+func WithChunkDelimiter(delimiter string) DocumentOption {
+	return func(o *documentOptions) { o.chunkDelimiter = delimiter }
+}
+
 // DocumentUsecase 是摄取管线用例：切分 → embed → 经 VectorStore 契约落库。
 // 租户过滤由 VectorStore 实现强制，管线不接触存储细节、不直连 SQL；身份
 // 从认证 ctx 提取（管线由受权入口驱动），缺失 fail-closed。嵌入空间在
 // 每次 Ingest 现场解析，默认空间切换即迁移路径（见 README「关键文件导览」）。
 type DocumentUsecase struct {
-	store        VectorStore
-	embedder     Embedder
-	resolver     EmbedderResolver
-	chunkSize    int
-	chunkOverlap int
+	store          VectorStore
+	embedder       Embedder
+	resolver       EmbedderResolver
+	chunkSize      int
+	chunkOverlap   int
+	chunkDelimiter string
 }
 
 // NewDocumentUsecase 构造摄取管线。维度链路（embedder 空间声明 → conf
@@ -101,7 +117,7 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 	if resolver == nil {
 		return nil, errors.New("biz: document usecase requires an embedder resolver")
 	}
-	o := &documentOptions{chunkSize: defaultChunkSize, chunkOverlap: defaultChunkOverlap}
+	o := &documentOptions{chunkSize: defaultChunkSize, chunkOverlap: defaultChunkOverlap, chunkDelimiter: defaultChunkDelimiter}
 	for _, opt := range opts {
 		opt(o)
 	}
@@ -111,12 +127,16 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 	if o.chunkOverlap < 0 || o.chunkOverlap >= o.chunkSize {
 		return nil, errors.New("biz: chunk overlap must be in [0, chunk size)")
 	}
+	if utf8.RuneCountInString(o.chunkDelimiter) > maxChunkDelimiterRunes {
+		return nil, fmt.Errorf("biz: chunk delimiter must be at most %d runes", maxChunkDelimiterRunes)
+	}
 	return &DocumentUsecase{
-		store:        store,
-		embedder:     embedder,
-		resolver:     resolver,
-		chunkSize:    o.chunkSize,
-		chunkOverlap: o.chunkOverlap,
+		store:          store,
+		embedder:       embedder,
+		resolver:       resolver,
+		chunkSize:      o.chunkSize,
+		chunkOverlap:   o.chunkOverlap,
+		chunkDelimiter: o.chunkDelimiter,
 	}, nil
 }
 
@@ -144,7 +164,8 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		return nil, errors.New("biz: document content is required")
 	}
 	chunkSize, chunkOverlap := docChunking(u.chunkSize, u.chunkOverlap, doc.ChunkSize, doc.ChunkOverlap)
-	chunks := chunkText(content, chunkSize, chunkOverlap)
+	delimiter := docChunkDelimiter(u.chunkDelimiter, doc.ChunkDelimiter)
+	chunks := chunkText(content, chunkSize, chunkOverlap, delimiter)
 	if len(chunks) == 0 {
 		return nil, errors.New("biz: document content chunks to nothing")
 	}
@@ -214,6 +235,16 @@ func docChunking(defSize, defOverlap, size, overlap int) (int, int) {
 	return size, overlap
 }
 
+// docChunkDelimiter 合并管线缺省与文档级区分串：nil 取缺省；超长的非法
+// 覆盖值同样回落缺省（与 docChunking 同一静默回落口径）。空串是合法覆盖，
+// 表示关闭分隔符切分。
+func docChunkDelimiter(def string, override *string) string {
+	if override == nil || utf8.RuneCountInString(*override) > maxChunkDelimiterRunes {
+		return def
+	}
+	return *override
+}
+
 // chunkID 派生切片 ID："<sourceID>#<index>"，确定性保证重摄的覆盖语义；
 // 长度在来源 ID 上限与列宽之间留有余量。
 func chunkID(sourceID string, index int) string {
@@ -237,25 +268,72 @@ func chunkMetadata(doc *Document, index, total int, c chunk) map[string]any {
 	return metadata
 }
 
-// chunkText 是简版固定长度切分（可替换点）：按 rune 窗口滑过原文，相邻
-// 块重叠 overlap 个 rune 保住边界语义；全空白块跳过，编号连续、锚点仍
-// 指向原文位置。替换为递归/结构化切分时保持「内容 + 原文锚点」产出
-// 形状即可，管线其余环节无感。
-func chunkText(content string, size, overlap int) []chunk {
+// chunkText 是切分实现（可替换点）。delimiter 为空时按 rune 固定窗口滑过
+// 全文；非空时先按区分串（rune 序列匹配）切出段落块——区分串本身不入块，
+// 全空白块（含连续区分串之间的空块）丢弃——超过 size 的段落块再按固定
+// 窗口二次切分。相邻窗口重叠 overlap 个 rune 保住边界语义；锚点始终是
+// 原文 rune 闭开区间。替换为递归/结构化切分时保持「内容 + 原文锚点」
+// 产出形状即可，管线其余环节无感。
+func chunkText(content string, size, overlap int, delimiter string) []chunk {
 	runes := []rune(content)
+	if delimiter == "" {
+		return windowChunks(nil, runes, 0, len(runes), size, overlap)
+	}
+	sep := []rune(delimiter)
 	var out []chunk
+	segStart := 0
+	for i := 0; i <= len(runes)-len(sep); {
+		if !runesHavePrefix(runes[i:], sep) {
+			i++
+			continue
+		}
+		out = segmentChunks(out, runes, segStart, i, size, overlap)
+		i += len(sep)
+		segStart = i
+	}
+	return segmentChunks(out, runes, segStart, len(runes), size, overlap)
+}
+
+// segmentChunks 产出段落块 runes[from:to)：全空白丢弃，不超 size 整块产出，
+// 超长按固定窗口二次切分。
+func segmentChunks(out []chunk, runes []rune, from, to, size, overlap int) []chunk {
+	if from >= to || strings.TrimSpace(string(runes[from:to])) == "" {
+		return out
+	}
+	if to-from <= size {
+		return append(out, chunk{content: string(runes[from:to]), start: from, end: to})
+	}
+	return windowChunks(out, runes, from, to, size, overlap)
+}
+
+// windowChunks 在 runes[from:to) 内按 size 窗口、size-overlap 步长滑切，
+// 全空白窗口跳过；末窗口推进到 to 为止。
+func windowChunks(out []chunk, runes []rune, from, to, size, overlap int) []chunk {
 	step := size - overlap
-	for start := 0; start < len(runes); start += step {
+	for start := from; start < to; start += step {
 		end := start + size
-		if end > len(runes) {
-			end = len(runes)
+		if end > to {
+			end = to
 		}
 		if text := string(runes[start:end]); strings.TrimSpace(text) != "" {
 			out = append(out, chunk{content: text, start: start, end: end})
 		}
-		if end == len(runes) {
+		if end == to {
 			break
 		}
 	}
 	return out
+}
+
+// runesHavePrefix 判断 s 是否以 prefix 开头（rune 序列比较）。
+func runesHavePrefix(s, prefix []rune) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	for i, r := range prefix {
+		if s[i] != r {
+			return false
+		}
+	}
+	return true
 }

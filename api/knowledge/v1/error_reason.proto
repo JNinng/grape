@@ -29,4 +29,10 @@ enum ErrorReason {
   DOCUMENT_INDEX_FAILED = 8;
   // 模型选项查询参数非法（kind 未知）。
   MODEL_OPTION_INVALID_ARGUMENT = 9;
+  // 知识检索参数非法（查询文本为空或超长、top_k 或 library_id 为负）。
+  SEARCH_INVALID_ARGUMENT = 10;
+  // 知识检索能力缺失（嵌入或向量设施未启用）。
+  SEARCH_UNAVAILABLE = 11;
+  // 知识检索执行失败（嵌入端点或向量存储错误，细节只进服务端日志）。
+  SEARCH_FAILED = 12;
 }

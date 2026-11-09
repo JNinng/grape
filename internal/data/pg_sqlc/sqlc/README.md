@@ -425,8 +425,8 @@ status 校验收在 biz 用例。
 | --- | --- | --- | --- |
 | GetKbLibraryByID | :one | id → KbLibrary | 读未软删知识库 |
 | LockKbLibraryByID | :one | id → KbLibrary | 锁定知识库（FOR UPDATE） |
-| InsertKbLibrary | :one | 字段 + 操作者 → KbLibrary | 插入；租户取会话，名称冲突映射 AlreadyExists |
-| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段 |
+| InsertKbLibrary | :one | 字段 + 操作者 → KbLibrary | 插入（含切分区分串）；租户取会话，名称冲突映射 AlreadyExists |
+| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段（含切分区分串） |
 | CountKbDocumentsByLibrary | :one | library_id → 行数 | 库下未删除条目数（删除前置） |
 | SoftDeleteKbLibrary | :execrows | 操作者 + id → 行数 | 软删知识库 |
 

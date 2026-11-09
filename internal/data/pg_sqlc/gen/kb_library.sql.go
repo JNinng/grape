@@ -28,7 +28,7 @@ func (q *Queries) CountKbDocumentsByLibrary(ctx context.Context, libraryID int64
 
 const getKbLibraryByID = `-- name: GetKbLibraryByID :one
 
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
 `
@@ -48,6 +48,7 @@ func (q *Queries) GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, er
 		&i.EmbeddingModelKey,
 		&i.ChunkSize,
 		&i.ChunkOverlap,
+		&i.ChunkDelimiter,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -62,14 +63,14 @@ func (q *Queries) GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, er
 
 const insertKbLibrary = `-- name: InsertKbLibrary :one
 INSERT INTO public.kb_library (id, tenant_id, status, "name", remark, embedding_model_key,
-                               chunk_size, chunk_overlap, valid_from, valid_to,
+                               chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to,
                                created_by, updated_by)
 VALUES ($1, current_setting('app.tenant_id'), $2, $3,
         $4, $5,
-        $6, $7,
-        $8, $9,
-        $10, $11)
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+        $6, $7, $8,
+        $9, $10,
+        $11, $12)
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type InsertKbLibraryParams struct {
@@ -80,6 +81,7 @@ type InsertKbLibraryParams struct {
 	EmbeddingModelKey *string          `db:"embedding_model_key" json:"embedding_model_key"`
 	ChunkSize         int32            `db:"chunk_size" json:"chunk_size"`
 	ChunkOverlap      int32            `db:"chunk_overlap" json:"chunk_overlap"`
+	ChunkDelimiter    string           `db:"chunk_delimiter" json:"chunk_delimiter"`
 	ValidFrom         pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	ValidTo           pgtype.Timestamp `db:"valid_to" json:"valid_to"`
 	CreatedBy         int64            `db:"created_by" json:"created_by"`
@@ -97,6 +99,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		arg.EmbeddingModelKey,
 		arg.ChunkSize,
 		arg.ChunkOverlap,
+		arg.ChunkDelimiter,
 		arg.ValidFrom,
 		arg.ValidTo,
 		arg.CreatedBy,
@@ -111,6 +114,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		&i.EmbeddingModelKey,
 		&i.ChunkSize,
 		&i.ChunkOverlap,
+		&i.ChunkDelimiter,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -124,7 +128,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 }
 
 const lockKbLibraryByID = `-- name: LockKbLibraryByID :one
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
 FOR UPDATE
@@ -142,6 +146,7 @@ func (q *Queries) LockKbLibraryByID(ctx context.Context, id int64) (KbLibrary, e
 		&i.EmbeddingModelKey,
 		&i.ChunkSize,
 		&i.ChunkOverlap,
+		&i.ChunkDelimiter,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -183,12 +188,13 @@ SET "name"              = $1,
     embedding_model_key = $4,
     chunk_size          = $5,
     chunk_overlap       = $6,
-    valid_from          = $7,
-    valid_to            = $8,
-    updated_by          = $9
-WHERE id = $10
+    chunk_delimiter     = $7,
+    valid_from          = $8,
+    valid_to            = $9,
+    updated_by          = $10
+WHERE id = $11
   AND deleted_at IS NULL
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type UpdateKbLibraryParams struct {
@@ -198,6 +204,7 @@ type UpdateKbLibraryParams struct {
 	EmbeddingModelKey *string          `db:"embedding_model_key" json:"embedding_model_key"`
 	ChunkSize         int32            `db:"chunk_size" json:"chunk_size"`
 	ChunkOverlap      int32            `db:"chunk_overlap" json:"chunk_overlap"`
+	ChunkDelimiter    string           `db:"chunk_delimiter" json:"chunk_delimiter"`
 	ValidFrom         pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	ValidTo           pgtype.Timestamp `db:"valid_to" json:"valid_to"`
 	UpdatedBy         int64            `db:"updated_by" json:"updated_by"`
@@ -205,7 +212,7 @@ type UpdateKbLibraryParams struct {
 }
 
 // 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
-// chunk_overlap/valid_from/valid_to）；updated_at 由触发器刷新
+// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新
 func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error) {
 	row := q.db.QueryRow(ctx, updateKbLibrary,
 		arg.Name,
@@ -214,6 +221,7 @@ func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams
 		arg.EmbeddingModelKey,
 		arg.ChunkSize,
 		arg.ChunkOverlap,
+		arg.ChunkDelimiter,
 		arg.ValidFrom,
 		arg.ValidTo,
 		arg.UpdatedBy,
@@ -228,6 +236,7 @@ func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams
 		&i.EmbeddingModelKey,
 		&i.ChunkSize,
 		&i.ChunkOverlap,
+		&i.ChunkDelimiter,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,

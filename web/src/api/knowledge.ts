@@ -14,6 +14,8 @@ export interface LibraryDTO {
   embeddingModelKey?: string
   chunkSize: number
   chunkOverlap: number
+  // 切分区分串：空串表示不按区分串切分；缺省（未返回）视为 "\n\n"。
+  chunkDelimiter?: string
   validFrom?: string
   validTo?: string
   createdBy: string
@@ -77,6 +79,8 @@ export interface CreateLibraryInput {
   embeddingModelKey?: string
   chunkSize?: number
   chunkOverlap?: number
+  // 省略取服务端缺省区分串 "\n\n"；空串关闭区分串切分。
+  chunkDelimiter?: string
   validFrom?: string
   validTo?: string
 }
@@ -89,6 +93,8 @@ export interface UpdateLibraryInput {
   embeddingModelKey?: string
   chunkSize: number
   chunkOverlap: number
+  // 省略保持原值；空串关闭区分串切分。
+  chunkDelimiter?: string
   validFrom?: string
   validTo?: string
 }
@@ -112,6 +118,28 @@ export interface UpdateDocumentInput {
   sourceName?: string
   validFrom?: string
   validTo?: string
+}
+
+export interface SearchDocumentsInput {
+  query: string
+  libraryId?: string
+  topK?: number
+}
+
+// SearchHitDTO 是单条检索命中：documentId 为切片 ID，sourceId 为来源条目
+// ID（可经 getDocument 查看条目原文）；content 为不可信原文，只按文本渲染。
+export interface SearchHitDTO {
+  documentId: string
+  sourceId: string
+  sourceName: string
+  anchor: string
+  score: number
+  content: string
+}
+
+export interface SearchDocumentsResultDTO {
+  items: SearchHitDTO[]
+  total: number
 }
 
 function compact(body: object): string {
@@ -256,4 +284,27 @@ export async function reindexDocument(id: string): Promise<DocumentDTO> {
     throw await toApiError(res)
   }
   return (await res.json()) as DocumentDTO
+}
+
+// searchDocuments 检索租户内知识库。protojson 省略零值字段，命中缺省
+// 键在此补齐为空串/0，空结果的 items/total 同样补齐。
+export async function searchDocuments(input: SearchDocumentsInput): Promise<SearchDocumentsResultDTO> {
+  const res = await authFetch('/v1/knowledge/documents/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: compact(input),
+  })
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+  const reply = (await res.json()) as { items?: Partial<SearchHitDTO>[]; total?: number }
+  const items = (reply.items ?? []).map((hit) => ({
+    documentId: hit.documentId ?? '',
+    sourceId: hit.sourceId ?? '',
+    sourceName: hit.sourceName ?? '',
+    anchor: hit.anchor ?? '',
+    score: hit.score ?? 0,
+    content: hit.content ?? '',
+  }))
+  return { items, total: reply.total ?? 0 }
 }

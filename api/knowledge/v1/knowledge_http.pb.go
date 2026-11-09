@@ -38,7 +38,7 @@ type LibraryServiceHTTPServer interface {
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(context.Context, *ListModelOptionsRequest) (*ModelOptionSet, error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
 }
 
@@ -191,7 +191,7 @@ type LibraryServiceHTTPClient interface {
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(ctx context.Context, req *ListModelOptionsRequest, opts ...http.CallOption) (rsp *ModelOptionSet, err error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
 	UpdateLibrary(ctx context.Context, req *UpdateLibraryRequest, opts ...http.CallOption) (rsp *Library, err error)
 }
 
@@ -292,7 +292,7 @@ func (c *LibraryServiceHTTPClientImpl) ListModelOptions(ctx context.Context, in 
 }
 
 // UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-// chunk_size/chunk_overlap/有效期限）。
+// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
 func (c *LibraryServiceHTTPClientImpl) UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...http.CallOption) (*Library, error) {
 	var out Library
 	pattern := "/v1/knowledge/libraries/update"
@@ -316,6 +316,7 @@ const OperationDocumentServiceGetDocument = "/knowledge.v1.DocumentService/GetDo
 const OperationDocumentServiceListDocuments = "/knowledge.v1.DocumentService/ListDocuments"
 const OperationDocumentServiceListLibraryDocuments = "/knowledge.v1.DocumentService/ListLibraryDocuments"
 const OperationDocumentServiceReindexDocument = "/knowledge.v1.DocumentService/ReindexDocument"
+const OperationDocumentServiceSearchDocuments = "/knowledge.v1.DocumentService/SearchDocuments"
 const OperationDocumentServiceUpdateDocument = "/knowledge.v1.DocumentService/UpdateDocument"
 
 type DocumentServiceHTTPServer interface {
@@ -332,6 +333,10 @@ type DocumentServiceHTTPServer interface {
 	ListLibraryDocuments(context.Context, *ListLibraryDocumentsRequest) (*DocumentSet, error)
 	// ReindexDocument ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
+	// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
 	// 有效期限）；正文变更时重新摄取。
 	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
@@ -346,6 +351,7 @@ func RegisterDocumentServiceHTTPServer(s *http.Server, srv DocumentServiceHTTPSe
 	r.Handle("PUT", "/v1/knowledge/documents/update", _DocumentService_UpdateDocument0_HTTP_Handler(srv))
 	r.Handle("DELETE", "/v1/knowledge/documents/{id}", _DocumentService_DeleteDocument0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/knowledge/documents/{id}/reindex", _DocumentService_ReindexDocument0_HTTP_Handler(srv))
+	r.Handle("POST", "/v1/knowledge/documents/search", _DocumentService_SearchDocuments0_HTTP_Handler(srv))
 }
 
 func _DocumentService_CreateDocument0_HTTP_Handler(srv DocumentServiceHTTPServer) func(ctx http.Context) error {
@@ -499,6 +505,25 @@ func _DocumentService_ReindexDocument0_HTTP_Handler(srv DocumentServiceHTTPServe
 	}
 }
 
+func _DocumentService_SearchDocuments0_HTTP_Handler(srv DocumentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in SearchDocumentsRequest
+		if err := ctx.Bind(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationDocumentServiceSearchDocuments)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.SearchDocuments(ctx, req.(*SearchDocumentsRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*SearchDocumentsReply)
+		return ctx.Result(200, reply)
+	}
+}
+
 type DocumentServiceHTTPClient interface {
 	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储。
 	CreateDocument(ctx context.Context, req *CreateDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
@@ -513,6 +538,10 @@ type DocumentServiceHTTPClient interface {
 	ListLibraryDocuments(ctx context.Context, req *ListLibraryDocumentsRequest, opts ...http.CallOption) (rsp *DocumentSet, err error)
 	// ReindexDocument ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(ctx context.Context, req *ReindexDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
+	// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	SearchDocuments(ctx context.Context, req *SearchDocumentsRequest, opts ...http.CallOption) (rsp *SearchDocumentsReply, err error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
 	// 有效期限）；正文变更时重新摄取。
 	UpdateDocument(ctx context.Context, req *UpdateDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
@@ -623,6 +652,26 @@ func (c *DocumentServiceHTTPClientImpl) ReindexDocument(ctx context.Context, in 
 		http.Accept("application/protojson"),
 		http.ContentType("application/protojson"),
 		http.Operation(OperationDocumentServiceReindexDocument),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+func (c *DocumentServiceHTTPClientImpl) SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...http.CallOption) (*SearchDocumentsReply, error) {
+	var out SearchDocumentsReply
+	pattern := "/v1/knowledge/documents/search"
+	path := http.BuildPath(pattern, in)
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.ContentType("application/protojson"),
+		http.Operation(OperationDocumentServiceSearchDocuments),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "POST", path, in, &out, opts...)

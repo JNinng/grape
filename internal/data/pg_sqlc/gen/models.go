@@ -52,15 +52,15 @@ type AgentRetrievalLog struct {
 	UserID int64 `db:"user_id" json:"user_id"`
 	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL
 	TraceID *string `db:"trace_id" json:"trace_id"`
-	// Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；摄取管线当前无会话事实，恒为 NULL
+	// Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；前端检索（console）与摄取管线无会话事实，恒为 NULL
 	SessionID *string `db:"session_id" json:"session_id"`
-	// 检索来源：tool-检索工具链路（Search）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
+	// 检索来源：tool-检索工具链路（Search，ctx 未声明来源时的缺省）、console-前端主动检索（Search，知识库检索用例声明）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
 	Source string `db:"source" json:"source"`
 	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，声明为空时为 NULL；留痕面只记录事实、不做注册表对账——带未声明键的调用（含失败尝试的原始声明）原样落库留证
 	Embedder *string `db:"embedder" json:"embedder"`
-	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
+	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool/console 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
 	QueryText *string `db:"query_text" json:"query_text"`
-	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。框架适配器的 top_k 硬上限钳制（20）发生在本值上游（internal/agent/tools/vectorstore.go），本值是存储契约实际收到的请求值；模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL
+	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。top_k 硬上限钳制（20）发生在本值上游——tool 来源在框架适配器（internal/agent/tools/vectorstore.go）、console 来源在知识库检索用例（internal/biz/knowledge_search.go），本值是存储契约实际收到的请求值；tool 来源的模型原始入参可对账 agent_tool_call_log 的参数摘要，console 来源无工具调用可对账。非检索操作为 NULL
 	RequestedTopK *int32 `db:"requested_top_k" json:"requested_top_k"`
 	// 实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL
 	EffectiveTopK *int32 `db:"effective_top_k" json:"effective_top_k"`
@@ -220,6 +220,8 @@ type KbLibrary struct {
 	ChunkSize int32 `db:"chunk_size" json:"chunk_size"`
 	// 相邻块重叠 rune 数，缺省 100，须小于 chunk_size [@dynamic: exact, range @updatable: set]
 	ChunkOverlap int32 `db:"chunk_overlap" json:"chunk_overlap"`
+	// 切分区分串：非空时先按该字符串切出段落块（区分串不入块），超过 chunk_size 的段落块再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。新建库缺省为两个换行（段落空行），至多 32 字符；历史库升级回填空串保持原行为 [@dynamic: exact @updatable: set]
+	ChunkDelimiter string `db:"chunk_delimiter" json:"chunk_delimiter"`
 	// 生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]
 	ValidFrom pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	// 失效时间，NULL 表示长期有效 [@dynamic: exact, range, sort @updatable: set]

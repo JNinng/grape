@@ -26,6 +26,7 @@ func toBizLibrary(po *gen.KbLibrary) *biz.KnowledgeLibrary {
 	if po == nil {
 		return nil
 	}
+	delimiter := po.ChunkDelimiter
 	return &biz.KnowledgeLibrary{
 		ID:                po.ID,
 		Status:            int32(po.Status),
@@ -34,6 +35,7 @@ func toBizLibrary(po *gen.KbLibrary) *biz.KnowledgeLibrary {
 		EmbeddingModelKey: po.EmbeddingModelKey,
 		ChunkSize:         po.ChunkSize,
 		ChunkOverlap:      po.ChunkOverlap,
+		ChunkDelimiter:    &delimiter,
 		ValidFrom:         tsToTimePtr(po.ValidFrom),
 		ValidTo:           tsToTimePtr(po.ValidTo),
 		CreatedBy:         po.CreatedBy,
@@ -136,6 +138,7 @@ func (r *knowledgeRepo) CreateLibrary(ctx context.Context, auth biz.Identity, l 
 			EmbeddingModelKey: l.EmbeddingModelKey,
 			ChunkSize:         l.ChunkSize,
 			ChunkOverlap:      l.ChunkOverlap,
+			ChunkDelimiter:    stringOrEmpty(l.ChunkDelimiter),
 			ValidFrom:         timeToTS(l.ValidFrom),
 			ValidTo:           timeToTS(l.ValidTo),
 			CreatedBy:         auth.UserID,
@@ -167,6 +170,7 @@ func (r *knowledgeRepo) UpdateLibrary(ctx context.Context, auth biz.Identity, l 
 			EmbeddingModelKey: l.EmbeddingModelKey,
 			ChunkSize:         l.ChunkSize,
 			ChunkOverlap:      l.ChunkOverlap,
+			ChunkDelimiter:    stringOrEmpty(l.ChunkDelimiter),
 			ValidFrom:         timeToTS(l.ValidFrom),
 			ValidTo:           timeToTS(l.ValidTo),
 			UpdatedBy:         auth.UserID,

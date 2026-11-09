@@ -71,11 +71,12 @@ type loggedVectorStore struct {
 var _ biz.VectorStore = (*loggedVectorStore)(nil)
 
 // Search 转发向量检索并留痕：无论成败都记一行（status 区分），留痕写入
-// 失败只记日志，检索结果不受影响。
+// 失败只记日志，检索结果不受影响。来源取 ctx 声明（前端检索用例声明
+// console），未声明即工具链路（tool）。
 func (s *loggedVectorStore) Search(ctx context.Context, embedding []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
 	start := time.Now()
 	hits, err := s.inner.Search(ctx, embedding, filter)
-	rec := s.buildRecord(ctx, biz.RetrievalSourceTool, filter, retrievalHitList(hits), err, time.Since(start))
+	rec := s.buildRecord(ctx, searchSource(ctx), filter, retrievalHitList(hits), err, time.Since(start))
 	rec.QueryText = s.redactQueryText(biz.RetrievalQueryFromContext(ctx))
 	rec.RequestedTopK = requestedTopK(filter)
 	rec.EffectiveTopK = effectiveTopK(filter)
@@ -135,6 +136,14 @@ func (s *loggedVectorStore) UpdateMetadata(ctx context.Context, filter *biz.Vect
 // GetMetadata 转发枚举，不留痕（枚举统计非证据面）。
 func (s *loggedVectorStore) GetMetadata(ctx context.Context, filter *biz.VectorFilter) (map[string]map[string]any, error) {
 	return s.inner.GetMetadata(ctx, filter)
+}
+
+// searchSource 取检索行来源：ctx 未声明时回落 tool（工具链路不声明来源）。
+func searchSource(ctx context.Context) string {
+	if source := biz.RetrievalSourceFromContext(ctx); source != "" {
+		return source
+	}
+	return biz.RetrievalSourceTool
 }
 
 // buildRecord 组装留痕行公共部分：身份/租户不进行（仓储从认证 ctx 提取

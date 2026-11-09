@@ -157,7 +157,18 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	knowledgeUsecase := biz.NewKnowledgeUsecase(knowledgeRepo, modelRepo, vectorStore, documentUsecase)
-	knowledgeService := service.NewKnowledgeService(knowledgeUsecase)
+	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver)
+	if err != nil {
+		cleanup7()
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, knowledgeSearchUsecase)
 	modelUsecase := biz.NewModelUsecase(modelRepo, secretCipher)
 	modelService := service.NewModelService(modelUsecase)
 	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, knowledgeService, modelService)

@@ -72,7 +72,7 @@ func (r *retrievalLogRepo) Append(ctx context.Context, rec *biz.RetrievalLogReco
 		return errors.New("pg_sqlc: retrieval log record is required")
 	}
 	switch rec.Source {
-	case biz.RetrievalSourceTool, biz.RetrievalSourcePipeline:
+	case biz.RetrievalSourceTool, biz.RetrievalSourceConsole, biz.RetrievalSourcePipeline:
 	default:
 		return fmt.Errorf("pg_sqlc: retrieval log source %q is unknown", rec.Source)
 	}

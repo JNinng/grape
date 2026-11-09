@@ -100,7 +100,9 @@ RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原�
 `NewLoggedVectorStore`），装饰器位于仓储之上、框架适配器与摄取管线之下。
 
 - 留痕点：Search 记 query、请求/生效 top_k、过滤摘要、命中、耗时、
-  来源 `tool`；Add/Update/DeleteByFilter 记摄取侧、来源 `pipeline`；
+  来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例声明
+  `console`，未声明即工具链路 `tool`）；Add/Update/DeleteByFilter 记摄取
+  侧、来源 `pipeline`；
   Get/Delete/Count/GetMetadata 不留痕。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
   留痕失败只记日志，不中断业务。

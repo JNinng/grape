@@ -159,6 +159,45 @@ func TestLoggedVectorStore_search_forwards_and_records_row(t *testing.T) {
 	}
 }
 
+func TestLoggedVectorStore_search_with_declared_console_source_records_console(t *testing.T) {
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
+
+	ctx := biz.WithRetrievalSource(retrievalTestContext("q"), biz.RetrievalSourceConsole)
+	if _, err := store.Search(ctx, nil, &biz.VectorFilter{Limit: 5}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if got := repo.rows[0].Source; got != biz.RetrievalSourceConsole {
+		t.Fatalf("source = %q, want console", got)
+	}
+}
+
+func TestLoggedVectorStore_search_with_blank_declared_source_falls_back_to_tool(t *testing.T) {
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
+
+	ctx := biz.WithRetrievalSource(retrievalTestContext("q"), "  ")
+	if _, err := store.Search(ctx, nil, &biz.VectorFilter{Limit: 5}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if got := repo.rows[0].Source; got != biz.RetrievalSourceTool {
+		t.Fatalf("source = %q, want tool (blank source is not injected)", got)
+	}
+}
+
+func TestLoggedVectorStore_ingest_ignores_declared_search_source(t *testing.T) {
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
+
+	ctx := biz.WithRetrievalSource(retrievalTestContext("q"), biz.RetrievalSourceConsole)
+	if err := store.Add(ctx, &biz.VectorDocument{ID: "doc#0"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if got := repo.rows[0].Source; got != biz.RetrievalSourcePipeline {
+		t.Fatalf("source = %q, want pipeline (ingest rows are not search rows)", got)
+	}
+}
+
 func TestLoggedVectorStore_search_without_filter_records_default_top_k(t *testing.T) {
 	repo := &fakeRetrievalRepo{}
 	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())

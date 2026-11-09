@@ -3,6 +3,7 @@ package pg_sqlc
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"grape/internal/biz"
@@ -159,5 +160,65 @@ func TestKnowledgeRepo_mark_indexed(t *testing.T) {
 	}
 	if indexed.IndexedAt == nil || indexed.IndexedEmbedder == nil || *indexed.IndexedEmbedder != "bge-m3@v1" {
 		t.Fatalf("indexed document = %+v, want indexed_at and embedder", indexed)
+	}
+}
+
+func TestKnowledgeRepo_library_chunk_delimiter_round_trips(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewKnowledgeRepo(d)
+	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
+	ctx := context.Background()
+
+	lib := knowledgeTestLibrary("区分串手册")
+	paragraph := "\n\n"
+	lib.ChunkDelimiter = &paragraph
+	created, err := repo.CreateLibrary(ctx, auth, lib)
+	if err != nil {
+		t.Fatalf("create library: %v", err)
+	}
+	got, err := repo.GetLibrary(ctx, auth, created.ID)
+	if err != nil || got.ChunkDelimiter == nil || *got.ChunkDelimiter != "\n\n" {
+		t.Fatalf("get library delimiter = (%v, %v), want blank-line delimiter", got, err)
+	}
+
+	empty := ""
+	got.ChunkDelimiter = &empty
+	updated, err := repo.UpdateLibrary(ctx, auth, got)
+	if err != nil || *updated.ChunkDelimiter != "" {
+		t.Fatalf("update library delimiter = (%v, %v), want explicit empty", updated, err)
+	}
+}
+
+func TestKnowledgeRepo_library_oversize_chunk_delimiter_rejected_by_check(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewKnowledgeRepo(d)
+	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
+
+	lib := knowledgeTestLibrary("超长区分串")
+	oversize := strings.Repeat("-", 33)
+	lib.ChunkDelimiter = &oversize
+	if _, err := repo.CreateLibrary(context.Background(), auth, lib); !errors.Is(err, biz.ErrLibraryInvalidArgument) {
+		t.Fatalf("create with 33-char delimiter = %v, want ErrLibraryInvalidArgument", err)
+	}
+}
+
+func TestKnowledgeRepo_library_inserted_without_delimiter_defaults_to_blank_line(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewKnowledgeRepo(d)
+	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
+	ctx := context.Background()
+
+	const id int64 = 990001
+	err := d.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		_, err := s.Tx().Exec(ctx,
+			"INSERT INTO public.kb_library (id, tenant_id, \"name\", created_by, updated_by) VALUES ($1, current_setting('app.tenant_id'), 'default-delimiter', 1, 1)", id)
+		return err
+	})
+	if err != nil {
+		t.Fatalf("insert library without delimiter: %v", err)
+	}
+	got, err := repo.GetLibrary(ctx, auth, id)
+	if err != nil || got.ChunkDelimiter == nil || *got.ChunkDelimiter != "\n\n" {
+		t.Fatalf("get library delimiter = (%v, %v), want column default blank-line delimiter", got, err)
 	}
 }

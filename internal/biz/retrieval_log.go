@@ -17,15 +17,17 @@ import (
 // 也不回传原文）。
 
 // 留痕行的领域取值：
-//   - source：检索来源。tool-检索工具链路（Search 的唯一消费方是检索
-//     工具，经框架适配器访问）；pipeline-摄取管线（Add/Update/
-//     DeleteByFilter）；管理面（索引重建/过滤策略调整，super 路径占位）
-//     的扩展取值与触发点见 sqlc/schema/97_agent_retrieval_log.sql
+//   - source：检索来源。tool-检索工具链路（经框架适配器访问 Search，
+//     ctx 未声明来源时的缺省）；console-前端主动检索（知识库检索用例直调
+//     Search，经 WithRetrievalSource 声明）；pipeline-摄取管线（Add/
+//     Update/DeleteByFilter）；管理面（索引重建/过滤策略调整，super 路径
+//     占位）的扩展取值与触发点见 sqlc/schema/97_agent_retrieval_log.sql
 //     的头注释；
 //   - status：操作终态，成功 / 失败（失败行同样留痕——尝试即证据，
 //     与工具调用审计的终态口径一致）。
 const (
 	RetrievalSourceTool     = "tool"
+	RetrievalSourceConsole  = "console"
 	RetrievalSourcePipeline = "pipeline"
 
 	RetrievalStatusSuccess = "success"
@@ -182,7 +184,7 @@ func retrievalFilterOf(filter *RetrievalLogFilter) (*RetrievalLogFilter, error) 
 		return nil, ErrRetrievalLogInvalidArgument
 	}
 	switch f.Source {
-	case "", RetrievalSourceTool, RetrievalSourcePipeline:
+	case "", RetrievalSourceTool, RetrievalSourceConsole, RetrievalSourcePipeline:
 	default:
 		return nil, ErrRetrievalLogInvalidArgument
 	}
@@ -198,7 +200,8 @@ func retrievalFilterOf(filter *RetrievalLogFilter) (*RetrievalLogFilter, error) 
 // 留痕的 ctx 事实载体：查询文本与会话 ID 在检索工具执行现场（agent 层）
 // 提取后经 ctx 传入 data 层装饰器——框架类型不向下游渗透（agent 只导入
 // biz），data 层无从感知框架执行 ctx，这两项事实必须由能读到它们的层
-// 放入中性载体。空白值不注入（留痕缺失如实留空，不伪造）。
+// 放入中性载体；检索来源由直调 Search 的非工具链路声明。空白值不注入
+// （留痕缺失如实留空，不伪造）。
 
 type sessionIDKey struct{}
 
@@ -232,5 +235,24 @@ func WithRetrievalQuery(ctx context.Context, query string) context.Context {
 // 侧落库为 NULL，不伪造查询文本）。
 func RetrievalQueryFromContext(ctx context.Context) string {
 	s, _ := ctx.Value(retrievalQueryKey{}).(string)
+	return s
+}
+
+type retrievalSourceKey struct{}
+
+// WithRetrievalSource 声明本次检索的来源（RetrievalSource* 常量）。工具
+// 链路不声明（装饰器缺省记 tool），直调 Search 的其他链路必须声明，否则
+// 被误记为工具检索。
+func WithRetrievalSource(ctx context.Context, source string) context.Context {
+	if strings.TrimSpace(source) == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, retrievalSourceKey{}, source)
+}
+
+// RetrievalSourceFromContext 读取检索来源事实；缺失返回空串（由消费方
+// 决定缺省）。
+func RetrievalSourceFromContext(ctx context.Context) string {
+	s, _ := ctx.Value(retrievalSourceKey{}).(string)
 	return s
 }

@@ -12,8 +12,8 @@ import (
 
 	knowledgev1 "grape/api/knowledge/v1"
 
-	"github.com/jninng/sqlc_gen_dynamic/dynq"
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 var (
@@ -46,7 +46,9 @@ const (
 // 与 §3.4 的 chunk metadata 契约一致。
 const unixInfinite = int64(253402300799)
 
-// KnowledgeLibrary 是知识库领域模型。
+// KnowledgeLibrary 是知识库领域模型。ChunkDelimiter 是切分区分串：写入
+// 侧 nil 表示未设置（创建落缺省区分串、更新保持原值），空串表示关闭
+// 区分串切分；读出恒非 nil。
 type KnowledgeLibrary struct {
 	ID                int64
 	Status            int32
@@ -55,6 +57,7 @@ type KnowledgeLibrary struct {
 	EmbeddingModelKey *string
 	ChunkSize         int32
 	ChunkOverlap      int32
+	ChunkDelimiter    *string
 	ValidFrom         *time.Time
 	ValidTo           *time.Time
 	CreatedBy         int64
@@ -176,13 +179,21 @@ func (uc *KnowledgeUsecase) CreateLibrary(ctx context.Context, auth Identity, l 
 }
 
 // UpdateLibrary 覆盖知识库可变字段，并把新状态/有效期同步到库内全部
-// 条目的 chunk metadata（不重新嵌入）。同步失败使本次更新失败。
+// 条目的 chunk metadata（不重新嵌入）。同步失败使本次更新失败。未携带
+// 区分串时保持原值（不隐式改变存量库的切分行为）。
 func (uc *KnowledgeUsecase) UpdateLibrary(ctx context.Context, auth Identity, l *KnowledgeLibrary) (*KnowledgeLibrary, error) {
 	if l == nil || l.ID <= 0 {
 		return nil, ErrLibraryInvalidArgument
 	}
 	if err := uc.validateLibrary(ctx, auth, l, true); err != nil {
 		return nil, err
+	}
+	if l.ChunkDelimiter == nil {
+		existing, err := uc.repo.GetLibrary(ctx, auth, l.ID)
+		if err != nil {
+			return nil, err
+		}
+		l.ChunkDelimiter = existing.ChunkDelimiter
 	}
 	normalizeChunking(l)
 	if err := uc.syncLibraryChunks(ctx, auth, l); err != nil {
@@ -369,13 +380,14 @@ func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *Kno
 		sourceName = *doc.SourceName
 	}
 	result, err := uc.ingest.Ingest(ctx, &Document{
-		ID:           idString(doc.ID),
-		Name:         sourceName,
-		Content:      *doc.Content,
-		Metadata:     metadata,
-		Embedder:     stringOrEmpty(lib.EmbeddingModelKey),
-		ChunkSize:    int(lib.ChunkSize),
-		ChunkOverlap: int(lib.ChunkOverlap),
+		ID:             idString(doc.ID),
+		Name:           sourceName,
+		Content:        *doc.Content,
+		Metadata:       metadata,
+		Embedder:       stringOrEmpty(lib.EmbeddingModelKey),
+		ChunkSize:      int(lib.ChunkSize),
+		ChunkOverlap:   int(lib.ChunkOverlap),
+		ChunkDelimiter: lib.ChunkDelimiter,
 	})
 	if err != nil {
 		// 客户端只收到统一的 DOCUMENT_INDEX_FAILED；底层原因（嵌入端点不可用、
@@ -430,6 +442,9 @@ func (uc *KnowledgeUsecase) validateLibrary(ctx context.Context, auth Identity, 
 	if l.Remark != nil && utf8.RuneCountInString(*l.Remark) > 512 {
 		return ErrLibraryInvalidArgument
 	}
+	if l.ChunkDelimiter != nil && utf8.RuneCountInString(*l.ChunkDelimiter) > maxChunkDelimiterRunes {
+		return ErrLibraryInvalidArgument
+	}
 	if !update {
 		if l.ChunkSize < 0 || l.ChunkOverlap < 0 {
 			return ErrLibraryInvalidArgument
@@ -475,13 +490,18 @@ func (uc *KnowledgeUsecase) validateEmbeddingKey(ctx context.Context, auth Ident
 }
 
 // normalizeChunking 归一化切分参数：创建时两者皆 0 取缺省 800/100；
-// 仅 chunk_size 为 0 取 800；重叠不小于块大小时视为非法（由调用方判定）。
+// 仅 chunk_size 为 0 取 800；重叠不小于块大小时视为非法（由调用方判定）；
+// 区分串未设置取缺省区分串（显式空串保留，表示关闭区分串切分）。
 func normalizeChunking(l *KnowledgeLibrary) {
 	if l.ChunkSize == 0 {
 		l.ChunkSize = 800
 		if l.ChunkOverlap == 0 {
 			l.ChunkOverlap = 100
 		}
+	}
+	if l.ChunkDelimiter == nil {
+		delimiter := defaultChunkDelimiter
+		l.ChunkDelimiter = &delimiter
 	}
 }
 

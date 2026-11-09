@@ -9,7 +9,7 @@ import (
 // ProviderSet 是 biz 层的 Wire 依赖注入集合。NewRedactRegistry 提供审计
 // 表与复现视图共用的脱敏注册表（单一代码点）：经 wire 装配为
 // 同一实例，消费方按类别取用、不自行构造。
-var ProviderSet = wire.NewSet(NewUserUsecase, NewAssignmentUsecase, NewDeptUsecase, NewUserGroupUsecase, NewRoleUsecase, NewMenuUsecase, NewPermissionUsecase, NewDictUsecase, NewConfigUsecase, NewTenantConfigUsecase, NewFeatureFlagUsecase, NewTranslationUsecase, NewTenantUsecase, NewAuditLogUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecaseDefault, NewGrantUsecase, NewRetrievalLogUsecase, NewQueryUsecase, NewRedactRegistry, NewKnowledgeUsecase, NewModelUsecase)
+var ProviderSet = wire.NewSet(NewUserUsecase, NewAssignmentUsecase, NewDeptUsecase, NewUserGroupUsecase, NewRoleUsecase, NewMenuUsecase, NewPermissionUsecase, NewDictUsecase, NewConfigUsecase, NewTenantConfigUsecase, NewFeatureFlagUsecase, NewTranslationUsecase, NewTenantUsecase, NewAuditLogUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecaseDefault, NewGrantUsecase, NewRetrievalLogUsecase, NewQueryUsecase, NewRedactRegistry, NewKnowledgeUsecase, NewKnowledgeSearchUsecase, NewModelUsecase)
 
 // NewDocumentUsecaseDefault 是 NewDocumentUsecase 的无选项装配形态：缺省
 // 切分参数由构造函数内置，Wire 不需要 DocumentOption 提供方。

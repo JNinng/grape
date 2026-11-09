@@ -267,6 +267,15 @@ func TestOperationPermissionCodes_match_assignment_codes(t *testing.T) {
 	}
 }
 
+// TestOperationPermissionCodes_search_documents_maps_to_knowledge_query
+// 验证知识检索端点沿用知识库查询码（漏配即退化为仅令牌校验放行）。
+func TestOperationPermissionCodes_search_documents_maps_to_knowledge_query(t *testing.T) {
+	got, ok := operationPermissionCodes[knowledgev1.OperationDocumentServiceSearchDocuments]
+	if !ok || got != biz.PermKnowledgeQuery {
+		t.Fatalf("search documents maps to (%q, %v), want (%q, true)", got, ok, biz.PermKnowledgeQuery)
+	}
+}
+
 // TestOperationPermissionCodes_cover_gated_endpoints 守卫码表与受控端点
 // 集合完全一致：无漏项、无未声明条目。
 func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
@@ -382,6 +391,7 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		knowledgev1.OperationDocumentServiceUpdateDocument:       {},
 		knowledgev1.OperationDocumentServiceDeleteDocument:       {},
 		knowledgev1.OperationDocumentServiceReindexDocument:      {},
+		knowledgev1.OperationDocumentServiceSearchDocuments:      {},
 		// 模型目录
 		modelv1.OperationModelServiceGetModel:         {},
 		modelv1.OperationModelServiceListModels:       {},

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BookOpenIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import { BookOpenIcon, PencilIcon, PlusIcon, RefreshCwIcon, SearchIcon, Trash2Icon } from 'lucide-react'
 import {
   createDocument,
   createLibrary,
@@ -50,10 +50,18 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
+import {
+  DEFAULT_CHUNK_DELIMITER,
+  decodeChunkDelimiter,
+  describeChunkDelimiter,
+  encodeChunkDelimiter,
+} from './chunkDelimiter'
+import { KnowledgeSearchDialog } from './KnowledgeSearchDialog'
 
 // KnowledgeManagePage 是知识库管理页：左侧库列表，右侧选中库的条目表。
 // 条目列表走库内固定分页端点（宿主 id 在路径参数，规避动态协议整型过滤
-// 值的 JSON number 精度限制）；状态与有效期在列表内合成展示。
+// 值的 JSON number 精度限制）；状态与有效期在列表内合成展示。检索面板
+// 复用已加载的库列表做库过滤。
 
 const DOC_PAGE_SIZE = 20
 const LIBRARY_PAGE_SIZE = 200
@@ -137,6 +145,7 @@ export function KnowledgeManagePage() {
 
   const [libraryDialog, setLibraryDialog] = useState<{ mode: 'create' } | { mode: 'edit'; library: LibraryDTO } | null>(null)
   const [documentDialog, setDocumentDialog] = useState<{ mode: 'create' } | { mode: 'edit'; document: DocumentDTO } | null>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<
     | { kind: 'library'; library: LibraryDTO }
     | { kind: 'document'; document: DocumentDTO }
@@ -234,12 +243,18 @@ export function KnowledgeManagePage() {
             <BookOpenIcon aria-hidden className="size-4" />
             知识库
           </h1>
-          {canCreate ? (
-            <Button size="sm" onClick={() => setLibraryDialog({ mode: 'create' })}>
-              <PlusIcon aria-hidden className="size-4" />
-              新建
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => setSearchOpen(true)}>
+              <SearchIcon aria-hidden className="size-4" />
+              检索
             </Button>
-          ) : null}
+            {canCreate ? (
+              <Button size="sm" onClick={() => setLibraryDialog({ mode: 'create' })}>
+                <PlusIcon aria-hidden className="size-4" />
+                新建
+              </Button>
+            ) : null}
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {librariesLoading ? <p className="p-3 text-sm text-muted-foreground">加载中…</p> : null}
@@ -306,7 +321,7 @@ export function KnowledgeManagePage() {
             <h2 className="text-sm font-semibold">{selected ? selected.name : '未选择知识库'}</h2>
             {selected ? (
               <p className="text-xs text-muted-foreground">
-                切分 {selected.chunkSize}/{selected.chunkOverlap} · 嵌入模型{' '}
+                切分 {selected.chunkSize}/{selected.chunkOverlap} · {describeChunkDelimiter(selected.chunkDelimiter)} · 嵌入模型{' '}
                 {selected.embeddingModelKey ?? '跟随默认'}
               </p>
             ) : null}
@@ -433,6 +448,8 @@ export function KnowledgeManagePage() {
         />
       ) : null}
 
+      {searchOpen ? <KnowledgeSearchDialog libraries={libraries} onClose={() => setSearchOpen(false)} /> : null}
+
       {confirmDelete ? (
         <AlertDialog open onOpenChange={(open) => { if (!open) setConfirmDelete(null) }}>
           <AlertDialogContent size="sm">
@@ -475,6 +492,9 @@ function LibraryDialog({
   const [embeddingModelKey, setEmbeddingModelKey] = useState(library?.embeddingModelKey ?? '__default__')
   const [chunkSize, setChunkSize] = useState(String(library?.chunkSize ?? 800))
   const [chunkOverlap, setChunkOverlap] = useState(String(library?.chunkOverlap ?? 100))
+  const [chunkDelimiter, setChunkDelimiter] = useState(
+    encodeChunkDelimiter(library?.chunkDelimiter ?? DEFAULT_CHUNK_DELIMITER),
+  )
   const [validFrom, setValidFrom] = useState(toLocalInput(library?.validFrom))
   const [validTo, setValidTo] = useState(toLocalInput(library?.validTo))
   const [options, setOptions] = useState<ModelOptionDTO[]>([])
@@ -513,6 +533,7 @@ function LibraryDialog({
           embeddingModelKey: embeddingKey,
           chunkSize: Number(chunkSize) || 0,
           chunkOverlap: Number(chunkOverlap) || 0,
+          chunkDelimiter: decodeChunkDelimiter(chunkDelimiter),
           validFrom: fromLocalInput(validFrom),
           validTo: fromLocalInput(validTo),
         })
@@ -525,6 +546,7 @@ function LibraryDialog({
           embeddingModelKey: embeddingKey,
           chunkSize: Number(chunkSize) || 0,
           chunkOverlap: Number(chunkOverlap) || 0,
+          chunkDelimiter: decodeChunkDelimiter(chunkDelimiter),
           validFrom: fromLocalInput(validFrom),
           validTo: fromLocalInput(validTo),
         })
@@ -575,6 +597,19 @@ function LibraryDialog({
               <Label htmlFor="kb-overlap">重叠（rune）</Label>
               <Input id="kb-overlap" value={chunkOverlap} onChange={(e) => setChunkOverlap(e.target.value)} />
             </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="kb-delimiter">区分串</Label>
+            <Input
+              id="kb-delimiter"
+              aria-describedby="kb-delimiter-hint"
+              value={chunkDelimiter}
+              placeholder="留空表示不按区分串切分"
+              onChange={(e) => setChunkDelimiter(e.target.value)}
+            />
+            <p id="kb-delimiter-hint" className="text-xs text-muted-foreground">
+              {'先按区分串切出段落、超长段落再按切分大小切分；\\n 表示换行、\\t 表示制表，缺省 \\n\\n（段落空行），至多 32 字符。'}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">

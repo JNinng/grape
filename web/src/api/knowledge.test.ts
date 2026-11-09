@@ -10,6 +10,7 @@ import {
   listLibraryDocuments,
   listModelOptions,
   reindexDocument,
+  searchDocuments,
   updateDocument,
   updateLibrary,
 } from './knowledge'
@@ -95,6 +96,13 @@ describe('knowledge api', () => {
     })
   })
 
+  it('creates_a_library_with_an_explicit_empty_chunk_delimiter', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, libraryDTO({ chunkDelimiter: '' })))
+    const created = await createLibrary({ name: '手册', chunkDelimiter: '' })
+    expect(body(fetchMock.mock.calls[0])).toEqual({ library: { name: '手册', chunkDelimiter: '' } })
+    expect(created.chunkDelimiter).toBe('')
+  })
+
   it('updates_a_library_with_the_library_message_as_body', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, libraryDTO()))
     await updateLibrary({ id: '100', status: 0, name: '手册', chunkSize: 800, chunkOverlap: 100 })
@@ -174,5 +182,44 @@ describe('knowledge api', () => {
     expect(String(call[0])).toBe('/v1/knowledge/documents/200/reindex')
     expect(init(call).method).toBe('POST')
     expect(body(call)).toEqual({})
+  })
+
+  it('searches_documents_with_query_library_and_top_k_body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }))
+    await searchDocuments({ query: '年假', libraryId: '100', topK: 8 })
+    const call = fetchMock.mock.calls[0]
+    expect(String(call[0])).toBe('/v1/knowledge/documents/search')
+    expect(init(call).method).toBe('POST')
+    expect(body(call)).toEqual({ query: '年假', libraryId: '100', topK: 8 })
+  })
+
+  it('searches_documents_without_optional_fields_omits_them', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+    await searchDocuments({ query: '年假' })
+    expect(body(fetchMock.mock.calls[0])).toEqual({ query: '年假' })
+  })
+
+  it('search_reply_with_omitted_zero_values_is_normalized', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { items: [{ documentId: '200#0', content: '正文' }], total: 1 }),
+    )
+    const result = await searchDocuments({ query: '年假' })
+    expect(result).toEqual({
+      items: [{ documentId: '200#0', sourceId: '', sourceName: '', anchor: '', score: 0, content: '正文' }],
+      total: 1,
+    })
+  })
+
+  it('search_empty_reply_returns_no_items_and_zero_total', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+    const result = await searchDocuments({ query: '年假' })
+    expect(result).toEqual({ items: [], total: 0 })
+  })
+
+  it('search_error_response_throws_api_error', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(503, { code: 503, reason: 'SEARCH_UNAVAILABLE', message: 'knowledge search is unavailable' }),
+    )
+    await expect(searchDocuments({ query: '年假' })).rejects.toThrow('knowledge search is unavailable')
   })
 })

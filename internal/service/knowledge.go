@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
 	knowledgev1 "grape/api/knowledge/v1"
 	"grape/internal/biz"
 
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -17,12 +20,13 @@ import (
 type KnowledgeService struct {
 	knowledgev1.UnimplementedLibraryServiceServer
 	knowledgev1.UnimplementedDocumentServiceServer
-	uc *biz.KnowledgeUsecase
+	uc     *biz.KnowledgeUsecase
+	search *biz.KnowledgeSearchUsecase
 }
 
 // NewKnowledgeService 构造知识库服务。
-func NewKnowledgeService(uc *biz.KnowledgeUsecase) *KnowledgeService {
-	return &KnowledgeService{uc: uc}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, search *biz.KnowledgeSearchUsecase) *KnowledgeService {
+	return &KnowledgeService{uc: uc, search: search}
 }
 
 // CreateLibrary 创建知识库。
@@ -39,9 +43,10 @@ func (s *KnowledgeService) CreateLibrary(ctx context.Context, req *knowledgev1.C
 		Status:            normalizeKnowledgeStatus(in.Status),
 		Name:              in.GetName(),
 		Remark:            optionalString(in.Remark),
-			EmbeddingModelKey: optionalString(in.EmbeddingModelKey),
+		EmbeddingModelKey: optionalString(in.EmbeddingModelKey),
 		ChunkSize:         in.GetChunkSize(),
 		ChunkOverlap:      in.GetChunkOverlap(),
+		ChunkDelimiter:    in.ChunkDelimiter,
 		ValidFrom:         pbToTimePtr(in.GetValidFrom()),
 		ValidTo:           pbToTimePtr(in.GetValidTo()),
 	})
@@ -109,6 +114,7 @@ func (s *KnowledgeService) UpdateLibrary(ctx context.Context, req *knowledgev1.U
 		EmbeddingModelKey: optionalString(in.EmbeddingModelKey),
 		ChunkSize:         in.GetChunkSize(),
 		ChunkOverlap:      in.GetChunkOverlap(),
+		ChunkDelimiter:    in.ChunkDelimiter,
 		ValidFrom:         pbToTimePtr(in.GetValidFrom()),
 		ValidTo:           pbToTimePtr(in.GetValidTo()),
 	})
@@ -300,6 +306,49 @@ func (s *KnowledgeService) ReindexDocument(ctx context.Context, req *knowledgev1
 	return toProtoDocument(out), nil
 }
 
+// SearchDocuments 在租户内知识库做向量检索。
+func (s *KnowledgeService) SearchDocuments(ctx context.Context, req *knowledgev1.SearchDocumentsRequest) (*knowledgev1.SearchDocumentsReply, error) {
+	if _, err := authOf(ctx); err != nil {
+		return nil, err
+	}
+	hits, err := s.search.Search(ctx, &biz.KnowledgeSearchQuery{
+		Query:     req.GetQuery(),
+		LibraryID: req.GetLibraryId(),
+		TopK:      int(req.GetTopK()),
+	})
+	if err != nil {
+		return nil, knowledgeSearchError(ctx, err)
+	}
+	items := make([]*knowledgev1.SearchHit, 0, len(hits))
+	for _, h := range hits {
+		items = append(items, &knowledgev1.SearchHit{
+			DocumentId: h.DocumentID,
+			SourceId:   h.SourceID,
+			SourceName: h.SourceName,
+			Anchor:     h.Anchor,
+			Score:      h.Score,
+			Content:    h.Content,
+		})
+	}
+	return &knowledgev1.SearchDocumentsReply{Items: items, Total: int32(len(items))}, nil
+}
+
+// knowledgeSearchError 映射检索错误：已成型的领域错误（入参非法、身份
+// 失效）原样透传；嵌入/向量设施未启用映射为能力缺失；其余执行故障对外
+// 只给固定文案，底层原因只进服务端日志。
+func knowledgeSearchError(ctx context.Context, err error) error {
+	var domain *kratoserrors.Error
+	switch {
+	case errors.As(err, &domain):
+		return err
+	case errors.Is(err, biz.ErrEmbedderDisabled), errors.Is(err, biz.ErrVectorStoreDisabled):
+		return biz.ErrKnowledgeSearchUnavailable
+	default:
+		slog.WarnContext(ctx, "knowledge search failed", slog.Any("error", err))
+		return biz.ErrKnowledgeSearchFailed
+	}
+}
+
 func toProtoLibrary(l *biz.KnowledgeLibrary) *knowledgev1.Library {
 	return &knowledgev1.Library{
 		Id:                l.ID,
@@ -309,6 +358,7 @@ func toProtoLibrary(l *biz.KnowledgeLibrary) *knowledgev1.Library {
 		EmbeddingModelKey: l.EmbeddingModelKey,
 		ChunkSize:         l.ChunkSize,
 		ChunkOverlap:      l.ChunkOverlap,
+		ChunkDelimiter:    l.ChunkDelimiter,
 		ValidFrom:         tsPBPtr(l.ValidFrom),
 		ValidTo:           tsPBPtr(l.ValidTo),
 		CreatedBy:         l.CreatedBy,

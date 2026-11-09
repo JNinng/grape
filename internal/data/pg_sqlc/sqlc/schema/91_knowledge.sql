@@ -19,6 +19,7 @@ CREATE TABLE public.kb_library
     embedding_model_key varchar(128)                                           NULL,
     chunk_size          int4         DEFAULT 800                               NOT NULL,
     chunk_overlap       int4         DEFAULT 100                               NOT NULL,
+    chunk_delimiter     text         DEFAULT E'\n\n'                           NOT NULL,
     valid_from          timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     valid_to            timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     created_by          int8                                                   NOT NULL,
@@ -30,6 +31,7 @@ CREATE TABLE public.kb_library
     CONSTRAINT kb_library_pkey PRIMARY KEY (id),
     CONSTRAINT kb_library_status_chk CHECK (status IN (0, 1)),
     CONSTRAINT kb_library_chunk_chk CHECK (chunk_size > 0 AND chunk_overlap >= 0 AND chunk_overlap < chunk_size),
+    CONSTRAINT kb_library_chunk_delimiter_chk CHECK (char_length(chunk_delimiter) <= 32),
     CONSTRAINT kb_library_valid_chk CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to > valid_from)
 );
 CREATE UNIQUE INDEX kb_library_tenant_name_un ON public.kb_library USING btree (tenant_id, "name") WHERE deleted_at IS NULL;
@@ -43,6 +45,7 @@ COMMENT ON COLUMN public.kb_library.remark IS '备注 [@dynamic: fuzzy @updatabl
 COMMENT ON COLUMN public.kb_library.embedding_model_key IS '嵌入模型键；为空表示跟随租户/全局默认解析，非空必须是可见的 embedding 模型 model_key [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.kb_library.chunk_size IS '切分单块 rune 上限，缺省 800 [@dynamic: exact, range @updatable: set]';
 COMMENT ON COLUMN public.kb_library.chunk_overlap IS '相邻块重叠 rune 数，缺省 100，须小于 chunk_size [@dynamic: exact, range @updatable: set]';
+COMMENT ON COLUMN public.kb_library.chunk_delimiter IS '切分区分串：非空时先按该字符串切出段落块（区分串不入块），超过 chunk_size 的段落块再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。新建库缺省为两个换行（段落空行），至多 32 字符；历史库升级回填空串保持原行为 [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.kb_library.valid_from IS '生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]';
 COMMENT ON COLUMN public.kb_library.valid_to IS '失效时间，NULL 表示长期有效 [@dynamic: exact, range, sort @updatable: set]';
 COMMENT ON COLUMN public.kb_library.created_by IS '创建人 [@dynamic: exact, membership]';

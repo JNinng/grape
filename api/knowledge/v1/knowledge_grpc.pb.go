@@ -34,8 +34,8 @@ const (
 //
 // LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
 // 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-// 全局默认嵌入模型；chunk_size/chunk_overlap 决定条目切分参数。
-// 列表走动态查询协议。
+// 全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
+// 参数。列表走动态查询协议。
 type LibraryServiceClient interface {
 	// CreateLibrary 创建知识库。
 	CreateLibrary(ctx context.Context, in *CreateLibraryRequest, opts ...grpc.CallOption) (*Library, error)
@@ -44,7 +44,7 @@ type LibraryServiceClient interface {
 	// ListLibraries 按动态查询协议返回一页知识库。
 	ListLibraries(ctx context.Context, in *ListLibrariesRequest, opts ...grpc.CallOption) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
 	UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...grpc.CallOption) (*Library, error)
 	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
 	DeleteLibrary(ctx context.Context, in *DeleteLibraryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -127,8 +127,8 @@ func (c *libraryServiceClient) ListModelOptions(ctx context.Context, in *ListMod
 //
 // LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
 // 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-// 全局默认嵌入模型；chunk_size/chunk_overlap 决定条目切分参数。
-// 列表走动态查询协议。
+// 全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
+// 参数。列表走动态查询协议。
 type LibraryServiceServer interface {
 	// CreateLibrary 创建知识库。
 	CreateLibrary(context.Context, *CreateLibraryRequest) (*Library, error)
@@ -137,7 +137,7 @@ type LibraryServiceServer interface {
 	// ListLibraries 按动态查询协议返回一页知识库。
 	ListLibraries(context.Context, *ListLibrariesRequest) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
 	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
 	DeleteLibrary(context.Context, *DeleteLibraryRequest) (*emptypb.Empty, error)
@@ -345,6 +345,7 @@ const (
 	DocumentService_UpdateDocument_FullMethodName       = "/knowledge.v1.DocumentService/UpdateDocument"
 	DocumentService_DeleteDocument_FullMethodName       = "/knowledge.v1.DocumentService/DeleteDocument"
 	DocumentService_ReindexDocument_FullMethodName      = "/knowledge.v1.DocumentService/ReindexDocument"
+	DocumentService_SearchDocuments_FullMethodName      = "/knowledge.v1.DocumentService/SearchDocuments"
 )
 
 // DocumentServiceClient is the client API for DocumentService service.
@@ -371,6 +372,10 @@ type DocumentServiceClient interface {
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(ctx context.Context, in *ReindexDocumentRequest, opts ...grpc.CallOption) (*Document, error)
+	// SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...grpc.CallOption) (*SearchDocumentsReply, error)
 }
 
 type documentServiceClient struct {
@@ -451,6 +456,16 @@ func (c *documentServiceClient) ReindexDocument(ctx context.Context, in *Reindex
 	return out, nil
 }
 
+func (c *documentServiceClient) SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...grpc.CallOption) (*SearchDocumentsReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SearchDocumentsReply)
+	err := c.cc.Invoke(ctx, DocumentService_SearchDocuments_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DocumentServiceServer is the server API for DocumentService service.
 // All implementations must embed UnimplementedDocumentServiceServer
 // for forward compatibility.
@@ -475,6 +490,10 @@ type DocumentServiceServer interface {
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	// ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
+	// SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
+	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
+	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	mustEmbedUnimplementedDocumentServiceServer()
 }
 
@@ -505,6 +524,9 @@ func (UnimplementedDocumentServiceServer) DeleteDocument(context.Context, *Delet
 }
 func (UnimplementedDocumentServiceServer) ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReindexDocument not implemented")
+}
+func (UnimplementedDocumentServiceServer) SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method SearchDocuments not implemented")
 }
 func (UnimplementedDocumentServiceServer) mustEmbedUnimplementedDocumentServiceServer() {}
 func (UnimplementedDocumentServiceServer) testEmbeddedByValue()                         {}
@@ -653,6 +675,24 @@ func _DocumentService_ReindexDocument_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DocumentService_SearchDocuments_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchDocumentsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DocumentServiceServer).SearchDocuments(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DocumentService_SearchDocuments_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DocumentServiceServer).SearchDocuments(ctx, req.(*SearchDocumentsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DocumentService_ServiceDesc is the grpc.ServiceDesc for DocumentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -687,6 +727,10 @@ var DocumentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReindexDocument",
 			Handler:    _DocumentService_ReindexDocument_Handler,
+		},
+		{
+			MethodName: "SearchDocuments",
+			Handler:    _DocumentService_SearchDocuments_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

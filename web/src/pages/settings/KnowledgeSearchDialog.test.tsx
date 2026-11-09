@@ -1,0 +1,176 @@
+import { cleanup, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getDocument, searchDocuments, type LibraryDTO, type SearchHitDTO } from '@/api/knowledge'
+import { ApiError } from '@/api/toApiError'
+import { KnowledgeSearchDialog } from './KnowledgeSearchDialog'
+
+vi.mock('@/api/knowledge', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/knowledge')>()),
+  searchDocuments: vi.fn(),
+  getDocument: vi.fn(),
+}))
+
+const mockSearchDocuments = vi.mocked(searchDocuments)
+const mockGetDocument = vi.mocked(getDocument)
+
+function library(id: string, name: string): LibraryDTO {
+  return {
+    id,
+    status: 1,
+    name,
+    chunkSize: 800,
+    chunkOverlap: 100,
+    createdBy: '7',
+    updatedBy: '7',
+    createdAt: '2026-01-01T00:00:00Z',
+  }
+}
+
+function hit(overrides: Partial<SearchHitDTO> = {}): SearchHitDTO {
+  return {
+    documentId: '200#0',
+    sourceId: '200',
+    sourceName: '员工手册',
+    anchor: 'runes 0-12',
+    score: 0.91234,
+    content: '年假 5 天',
+    ...overrides,
+  }
+}
+
+const libraries = [library('100', '人事'), library('101', '财务')]
+
+function renderDialog() {
+  const onClose = vi.fn()
+  render(<KnowledgeSearchDialog libraries={libraries} onClose={onClose} />)
+  return { onClose, dialog: screen.getByRole('dialog') }
+}
+
+beforeEach(() => {
+  mockSearchDocuments.mockResolvedValue({ items: [hit()], total: 1 })
+})
+
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
+
+describe('KnowledgeSearchDialog', () => {
+  it('blank_query_keeps_search_disabled', () => {
+    const { dialog } = renderDialog()
+    expect(within(dialog).getByRole('button', { name: '检索' })).toBeDisabled()
+  })
+
+  it('submitting_query_searches_all_libraries_with_default_top_k', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '  年假  ')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(mockSearchDocuments).toHaveBeenCalledWith({ query: '年假', libraryId: undefined, topK: 5 })
+  })
+
+  it('selected_library_and_top_k_are_sent', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '报销')
+    await user.click(within(dialog).getByRole('combobox', { name: '知识库' }))
+    await user.click(await screen.findByRole('option', { name: '财务' }))
+    const topK = within(dialog).getByLabelText('返回条数（最多 20）')
+    await user.clear(topK)
+    await user.type(topK, '12')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(mockSearchDocuments).toHaveBeenCalledWith({ query: '报销', libraryId: '101', topK: 12 })
+  })
+
+  it('hits_render_score_source_anchor_and_content', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    const results = await within(dialog).findByRole('list', { name: '检索结果' })
+    expect(within(results).getByText('员工手册')).toBeInTheDocument()
+    expect(within(results).getByText(/runes 0-12/)).toBeInTheDocument()
+    expect(within(results).getByText('相似度 0.912')).toBeInTheDocument()
+    expect(within(results).getByText('年假 5 天')).toBeInTheDocument()
+  })
+
+  it('markup_in_hit_content_renders_as_text', async () => {
+    mockSearchDocuments.mockResolvedValue({ items: [hit({ content: '<img src=x onerror=alert(1)>' })], total: 1 })
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    const results = await within(dialog).findByRole('list', { name: '检索结果' })
+    expect(within(results).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument()
+    expect(results.querySelector('img')).toBeNull()
+  })
+
+  it('long_hit_content_is_truncated_to_summary', async () => {
+    mockSearchDocuments.mockResolvedValue({ items: [hit({ content: '字'.repeat(300) })], total: 1 })
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    const results = await within(dialog).findByRole('list', { name: '检索结果' })
+    expect(within(results).getByText(`${'字'.repeat(240)}…`)).toBeInTheDocument()
+  })
+
+  it('no_hits_shows_empty_hint', async () => {
+    mockSearchDocuments.mockResolvedValue({ items: [], total: 0 })
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(await within(dialog).findByText('无命中')).toBeInTheDocument()
+  })
+
+  it('search_failure_shows_error_message', async () => {
+    mockSearchDocuments.mockRejectedValue(new ApiError('knowledge search is unavailable', 'SEARCH_UNAVAILABLE'))
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(await within(dialog).findByText('knowledge search is unavailable')).toBeInTheDocument()
+  })
+
+  it('view_source_loads_document_by_source_id_and_shows_content', async () => {
+    mockGetDocument.mockResolvedValue({
+      id: '200',
+      libraryId: '100',
+      kind: 'text',
+      title: '员工手册',
+      content: '第一章 年假 5 天',
+      createdBy: '7',
+      updatedBy: '7',
+      createdAt: '2026-01-01T00:00:00Z',
+    })
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    await user.click(await within(dialog).findByRole('button', { name: '查看原文' }))
+    expect(mockGetDocument).toHaveBeenCalledWith('200')
+    expect(await within(dialog).findByLabelText('条目原文')).toHaveTextContent('第一章 年假 5 天')
+  })
+
+  it('hit_without_source_id_disables_view_source', async () => {
+    mockSearchDocuments.mockResolvedValue({ items: [hit({ sourceId: '' })], total: 1 })
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(await within(dialog).findByRole('button', { name: '查看原文' })).toBeDisabled()
+  })
+
+  it('view_source_failure_shows_error_and_keeps_results', async () => {
+    mockGetDocument.mockRejectedValue(new ApiError('knowledge document not found', 'DOCUMENT_NOT_FOUND'))
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    await user.click(await within(dialog).findByRole('button', { name: '查看原文' }))
+    expect(await within(dialog).findByText('knowledge document not found')).toBeInTheDocument()
+    expect(within(dialog).getByRole('list', { name: '检索结果' })).toBeInTheDocument()
+  })
+})

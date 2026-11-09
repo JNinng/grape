@@ -274,6 +274,39 @@ func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *test
 	}
 }
 
+func TestRetrievalLog_console_search_records_console_source_without_session(t *testing.T) {
+	d := setupRetrievalTestDB(t)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
+	store := newLoggedVectorStoreForTest(t, d, logRepo)
+	queryVector := seedVectorDocs(t, store, retrievalTenantA)
+
+	ctx := retrievalIdentityContext(retrievalTenantA, true)
+	ctx = biz.WithRetrievalQuery(ctx, "console query")
+	ctx = biz.WithRetrievalSource(ctx, biz.RetrievalSourceConsole)
+	if _, err := store.Search(ctx, queryVector, retrievalSpaceFilter()); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+
+	uc := biz.NewRetrievalLogUsecase(logRepo)
+	list, err := uc.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourceConsole})
+	if err != nil || list.Total != 1 {
+		t.Fatalf("list console rows = (%d total, %v), want 1", list.Total, err)
+	}
+	row := list.Items[0]
+	switch {
+	case row.SessionID != "":
+		t.Fatalf("session id = %q, want empty (console path has no session)", row.SessionID)
+	case row.QueryText != "console query":
+		t.Fatalf("query text = %q, want console query", row.QueryText)
+	case row.RequestedTopK != 2 || row.EffectiveTopK != 2:
+		t.Fatalf("top_k = (%d, %d), want (2, 2)", row.RequestedTopK, row.EffectiveTopK)
+	}
+	tools, err := uc.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourceTool})
+	if err != nil || tools.Total != 0 {
+		t.Fatalf("list tool rows = (%d total, %v), want 0 (console search is not a tool row)", tools.Total, err)
+	}
+}
+
 func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
