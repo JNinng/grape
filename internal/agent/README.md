@@ -39,7 +39,7 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | [concurrency.go](concurrency.go) | 按 userKey 的 chat 在途运行门控（超限 429），并向观测推送起止与拒绝。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：骨架、框架会话存储（预建表、TTL 翻译）、向量适配器。 |
 | [identity/](identity/) | userKey 编解码、`UserKeyFromContext`、`ErrMissingIdentity`；身份的单一代码点。 |
-| [tools/](tools/) | 业务工具（echo / 用户 / 检索）、检索 ctx 事实接线（嵌入空间 + 固定检索条件）、biz 向量契约的框架适配器（top_k 20 硬上限）。 |
+| [tools/](tools/README.md) | 业务工具（echo / 用户 / 检索）、检索 ctx 事实接线（嵌入空间 + 固定检索条件）、biz 向量契约的框架适配器（top_k 20 硬上限）。 |
 | [audit/](audit/) | 审计挂点 `Hook`、工具终态 wrapper、恢复路径代执行归集器、自动授权终态转写器、共用写入纪律 `WriteAudit`。 |
 | [httpapi/](httpapi/) | 会话列表、事件窗口、授权管理、许可源适配器，以及 ack 归属守卫与决定审计拦截器。 |
 | [internal/testsupport/](internal/testsupport/) | 各包共享的替身与夹具；只允许 `_test.go` 导入，且不 import agent 树的生产包（否则成环）。 |
