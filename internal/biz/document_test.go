@@ -465,6 +465,23 @@ func TestChunkText_with_only_delimiters_produces_nothing(t *testing.T) {
 	}
 }
 
+func TestChunkText_with_delimiter_longer_than_content_keeps_whole_content(t *testing.T) {
+	got := chunkText("ab", 10, 2, "@@@@@")
+	assertChunkSpans(t, got, []chunkSpan{{"ab", 0, 2}})
+}
+
+func TestChunkText_with_absent_delimiter_and_oversize_content_uses_fixed_window(t *testing.T) {
+	got := chunkText(strings.Repeat("x", 12), 8, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{strings.Repeat("x", 8), 0, 8}, {strings.Repeat("x", 6), 6, 12}})
+}
+
+func TestChunkText_with_multibyte_text_before_ascii_delimiter_keeps_rune_offsets(t *testing.T) {
+	content := "中文段落@@English"
+	got := chunkText(content, 20, 2, "@@")
+	assertChunkSpans(t, got, []chunkSpan{{"中文段落", 0, 4}, {"English", 6, 13}})
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
 func TestChunkText_with_mixed_content_anchors_map_to_original(t *testing.T) {
 	content := "标题\n\n" + strings.Repeat("正文", 9) + "\n\n\n\n尾段 tail"
 	assertAnchorsMapToOriginal(t, content, chunkText(content, 5, 1, defaultChunkDelimiter))
@@ -531,6 +548,21 @@ func TestDocumentUsecase_ingest_with_custom_delimiter_override_splits_on_it(t *t
 	}
 	if len(store.added) != 3 || store.added[2].Content != "c" {
 		t.Fatalf("added = %d chunks, want three", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_ingest_with_oversize_delimiter_override_falls_back_to_default(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	oversize := strings.Repeat("|", maxChunkDelimiterRunes+1)
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "para one\n\npara two", ChunkDelimiter: &oversize}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 2 || store.added[1].Content != "para two" {
+		t.Fatalf("added = %d chunks, want two default-delimiter chunks", len(store.added))
 	}
 }
 

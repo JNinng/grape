@@ -70,6 +70,15 @@ function renderPage() {
   )
 }
 
+// createPayload / updatePayload 是库表单在未改动其他字段时的完整提交体。
+function createPayload(overrides: Record<string, unknown>) {
+  return { status: 1, name: '财务', chunkSize: 800, chunkOverlap: 100, ...overrides }
+}
+
+function updatePayload(overrides: Record<string, unknown>) {
+  return { id: '100', status: 1, name: '人事', chunkSize: 800, chunkOverlap: 100, ...overrides }
+}
+
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText('人事', { selector: 'span' })
   await user.click(screen.getByRole('button', { name: '新建' }))
@@ -90,7 +99,7 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     const dialog = await openCreateDialog(user)
     await user.type(within(dialog).getByLabelText('名称'), '财务')
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
-    expect(mockCreateLibrary).toHaveBeenCalledWith(expect.objectContaining({ name: '财务', chunkDelimiter: '\n\n' }))
+    expect(mockCreateLibrary).toHaveBeenCalledWith(createPayload({ chunkDelimiter: '\n\n' }))
   })
 
   it('create_with_cleared_delimiter_submits_empty_string', async () => {
@@ -100,7 +109,7 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     await user.type(within(dialog).getByLabelText('名称'), '财务')
     await user.clear(within(dialog).getByLabelText('区分串'))
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
-    expect(mockCreateLibrary).toHaveBeenCalledWith(expect.objectContaining({ chunkDelimiter: '' }))
+    expect(mockCreateLibrary).toHaveBeenCalledWith(createPayload({ chunkDelimiter: '' }))
   })
 
   it('edit_dialog_shows_existing_empty_delimiter_and_submits_it_unchanged', async () => {
@@ -112,7 +121,7 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByLabelText('区分串')).toHaveValue('')
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
-    expect(mockUpdateLibrary).toHaveBeenCalledWith(expect.objectContaining({ id: '100', chunkDelimiter: '' }))
+    expect(mockUpdateLibrary).toHaveBeenCalledWith(updatePayload({ chunkDelimiter: '' }))
   })
 
   it('edit_dialog_treats_missing_delimiter_as_default', async () => {
@@ -125,6 +134,17 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     expect(within(dialog).getByLabelText('区分串')).toHaveValue('\\n\\n')
   })
 
+  it('edit_with_missing_delimiter_submits_default', async () => {
+    mockLibraries([library({ chunkDelimiter: undefined })])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('人事', { selector: 'span' })
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockUpdateLibrary).toHaveBeenCalledWith(updatePayload({ chunkDelimiter: '\n\n' }))
+  })
+
   it('custom_escaped_delimiter_is_decoded_on_submit', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -134,7 +154,7 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     await user.clear(field)
     await user.type(field, '##\\t')
     await user.click(within(dialog).getByRole('button', { name: '保存' }))
-    expect(mockCreateLibrary).toHaveBeenCalledWith(expect.objectContaining({ chunkDelimiter: '##\t' }))
+    expect(mockCreateLibrary).toHaveBeenCalledWith(createPayload({ chunkDelimiter: '##\t' }))
   })
 
   it('library_summary_shows_disabled_delimiter', async () => {

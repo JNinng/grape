@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -103,13 +104,16 @@ func TestCreateLibrary_with_empty_delimiter_persists_empty(t *testing.T) {
 	}
 }
 
-func TestCreateLibrary_with_delimiter_at_rune_limit_accepted(t *testing.T) {
+func TestCreateLibrary_with_delimiter_at_rune_limit_persists_value(t *testing.T) {
 	repo := &libraryFakeRepo{}
 	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
 	atLimit := strings.Repeat("。", maxChunkDelimiterRunes)
 
 	if _, err := uc.CreateLibrary(ingestCtx(), libraryAuth(), &KnowledgeLibrary{Name: "hr", Status: KnowledgeStatusUnspecified, ChunkDelimiter: &atLimit}); err != nil {
 		t.Fatalf("CreateLibrary(32 runes) = %v, want accepted", err)
+	}
+	if got := *repo.created.ChunkDelimiter; got != atLimit {
+		t.Fatalf("persisted delimiter = %q, want the 32-rune value unchanged", got)
 	}
 }
 
@@ -160,16 +164,17 @@ func TestUpdateLibrary_without_delimiter_for_missing_library_returns_not_found(t
 	}
 }
 
-func TestReindexDocument_uses_library_delimiter_for_chunking(t *testing.T) {
+func TestReindexDocument_uses_library_delimiter_value_for_chunking(t *testing.T) {
 	for name, tc := range map[string]struct {
-		delimiter  string
-		wantChunks int
+		delimiter string
+		want      []string
 	}{
-		"default delimiter splits paragraphs": {"\n\n", 2},
-		"empty delimiter keeps fixed window":  {"", 1},
+		"custom delimiter splits on it":       {"|", []string{"甲\n\n乙", "丙"}},
+		"default delimiter splits paragraphs": {"\n\n", []string{"甲", "乙|丙"}},
+		"empty delimiter keeps fixed window":  {"", []string{"甲\n\n乙|丙"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			content := "第一段\n\n第二段"
+			content := "甲\n\n乙|丙"
 			store := &mockVectorStore{}
 			repo := &libraryFakeRepo{
 				existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100, ChunkDelimiter: &tc.delimiter},
@@ -180,8 +185,12 @@ func TestReindexDocument_uses_library_delimiter_for_chunking(t *testing.T) {
 			if _, err := uc.ReindexDocument(ingestCtx(), libraryAuth(), 2); err != nil {
 				t.Fatalf("ReindexDocument: %v", err)
 			}
-			if len(store.added) != tc.wantChunks {
-				t.Fatalf("chunks = %d, want %d", len(store.added), tc.wantChunks)
+			got := make([]string, 0, len(store.added))
+			for _, d := range store.added {
+				got = append(got, d.Content)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("chunk contents = %q, want %q", got, tc.want)
 			}
 		})
 	}

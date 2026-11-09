@@ -105,15 +105,17 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 - **kb_library.chunk_delimiter（91_knowledge.sql）**：已有 `kb_library` 的历史库
   以表 owner 手工追加列。先以空串默认追加（存量库回填空串，保持纯固定窗口
   切分行为不变），再把默认改为段落空行（之后新建的库启用区分串切分），
-  最后补长度约束与列注释（注释原文取 91_knowledge.sql）：
+  最后补长度约束与列注释（与 91_knowledge.sql 逐字一致）：
 
   ```sql
   ALTER TABLE public.kb_library ADD COLUMN chunk_delimiter text NOT NULL DEFAULT '';
   ALTER TABLE public.kb_library ALTER COLUMN chunk_delimiter SET DEFAULT E'\n\n';
   ALTER TABLE public.kb_library
       ADD CONSTRAINT kb_library_chunk_delimiter_chk CHECK (char_length(chunk_delimiter) <= 32);
+  COMMENT ON COLUMN public.kb_library.chunk_delimiter IS '切分区分串：非空时先按该字符串切出段落块（区分串不入块），超过 chunk_size 的段落块再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。新建库缺省为两个换行（段落空行），至多 32 字符；历史库升级回填空串保持原行为 [@dynamic: exact @updatable: set]';
   ```
 
+  新版本二进制的知识库查询依赖该列，历史库须先执行上述升级再部署。
   存量库要改用区分串切分时，经管理页编辑库的区分串后对条目执行重建索引。
 - **98_model_write.sql**：历史库追加对象，以部署超级用户执行；只含
   `CREATE OR REPLACE FUNCTION`，可重复。平台模型写端点（`sys:model:platform:*`）

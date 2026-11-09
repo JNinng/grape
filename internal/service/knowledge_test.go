@@ -130,6 +130,7 @@ func TestSearchDocuments_without_identity_returns_401(t *testing.T) {
 func TestSearchDocuments_invalid_argument_returns_400(t *testing.T) {
 	for name, req := range map[string]*knowledgev1.SearchDocumentsRequest{
 		"blank query":      {Query: "   "},
+		"oversize query":   {Query: strings.Repeat("q", 513)},
 		"negative top_k":   {Query: "q", TopK: -1},
 		"negative library": {Query: "q", LibraryId: -2},
 	} {

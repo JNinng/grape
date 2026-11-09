@@ -111,12 +111,16 @@ func TestKnowledgeSearch_invalid_input_returns_invalid_argument(t *testing.T) {
 	}
 }
 
-func TestKnowledgeSearch_query_at_rune_limit_is_accepted(t *testing.T) {
-	store := &recordingSearchStore{}
-	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4})
+func TestKnowledgeSearch_query_at_rune_limit_embeds_full_text(t *testing.T) {
+	embedder := &stubEmbedder{dims: 4}
+	uc := newSearchUsecaseForTest(t, &recordingSearchStore{}, embedder, &stubResolver{space: testEmbedderSpace, dim: 4})
+	query := strings.Repeat("检", MaxKnowledgeSearchQueryRunes)
 
-	if _, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: strings.Repeat("检", MaxKnowledgeSearchQueryRunes)}); err != nil {
+	if _, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: query}); err != nil {
 		t.Fatalf("Search(512 runes) = %v, want accepted", err)
+	}
+	if !reflect.DeepEqual(embedder.calls, []string{query}) {
+		t.Fatalf("embedded %d texts, want the full 512-rune query once", len(embedder.calls))
 	}
 }
 
@@ -127,6 +131,7 @@ func TestKnowledgeSearch_top_k_maps_to_positive_clamped_limit(t *testing.T) {
 		want int
 	}{
 		{"omitted uses default", 0, DefaultKnowledgeSearchTopK},
+		{"minimum kept", 1, 1},
 		{"within range kept", 7, 7},
 		{"at max kept", MaxKnowledgeSearchTopK, MaxKnowledgeSearchTopK},
 		{"above max clamped", MaxKnowledgeSearchTopK + 1, MaxKnowledgeSearchTopK},

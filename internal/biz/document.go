@@ -269,27 +269,32 @@ func chunkMetadata(doc *Document, index, total int, c chunk) map[string]any {
 }
 
 // chunkText 是切分实现（可替换点）。delimiter 为空时按 rune 固定窗口滑过
-// 全文；非空时先按区分串（rune 序列匹配）切出段落块——区分串本身不入块，
-// 全空白块（含连续区分串之间的空块）丢弃——超过 size 的段落块再按固定
-// 窗口二次切分。相邻窗口重叠 overlap 个 rune 保住边界语义；锚点始终是
-// 原文 rune 闭开区间。替换为递归/结构化切分时保持「内容 + 原文锚点」
-// 产出形状即可，管线其余环节无感。
+// 全文；非空时先按区分串切出段落块——区分串本身不入块，全空白块（含连续
+// 区分串之间的空块）丢弃——超过 size 的段落块再按固定窗口二次切分。相邻
+// 窗口重叠 overlap 个 rune 保住边界语义；锚点始终是原文 rune 闭开区间。
+// 替换为递归/结构化切分时保持「内容 + 原文锚点」产出形状即可，管线其余
+// 环节无感。
+//
+// 区分串按字节查找：合法 UTF-8 自同步，字节匹配必落在 rune 边界上，与
+// rune 序列匹配等价（正文与区分串均来自 proto string，已是合法 UTF-8）。
 func chunkText(content string, size, overlap int, delimiter string) []chunk {
 	runes := []rune(content)
 	if delimiter == "" {
 		return windowChunks(nil, runes, 0, len(runes), size, overlap)
 	}
-	sep := []rune(delimiter)
+	delimiterRunes := utf8.RuneCountInString(delimiter)
 	var out []chunk
 	segStart := 0
-	for i := 0; i <= len(runes)-len(sep); {
-		if !runesHavePrefix(runes[i:], sep) {
-			i++
-			continue
+	rest := content
+	for {
+		idx := strings.Index(rest, delimiter)
+		if idx < 0 {
+			break
 		}
-		out = segmentChunks(out, runes, segStart, i, size, overlap)
-		i += len(sep)
-		segStart = i
+		segEnd := segStart + utf8.RuneCountInString(rest[:idx])
+		out = segmentChunks(out, runes, segStart, segEnd, size, overlap)
+		segStart = segEnd + delimiterRunes
+		rest = rest[idx+len(delimiter):]
 	}
 	return segmentChunks(out, runes, segStart, len(runes), size, overlap)
 }
@@ -297,11 +302,15 @@ func chunkText(content string, size, overlap int, delimiter string) []chunk {
 // segmentChunks 产出段落块 runes[from:to)：全空白丢弃，不超 size 整块产出，
 // 超长按固定窗口二次切分。
 func segmentChunks(out []chunk, runes []rune, from, to, size, overlap int) []chunk {
-	if from >= to || strings.TrimSpace(string(runes[from:to])) == "" {
+	if from >= to {
+		return out
+	}
+	text := string(runes[from:to])
+	if strings.TrimSpace(text) == "" {
 		return out
 	}
 	if to-from <= size {
-		return append(out, chunk{content: string(runes[from:to]), start: from, end: to})
+		return append(out, chunk{content: text, start: from, end: to})
 	}
 	return windowChunks(out, runes, from, to, size, overlap)
 }
@@ -323,17 +332,4 @@ func windowChunks(out []chunk, runes []rune, from, to, size, overlap int) []chun
 		}
 	}
 	return out
-}
-
-// runesHavePrefix 判断 s 是否以 prefix 开头（rune 序列比较）。
-func runesHavePrefix(s, prefix []rune) bool {
-	if len(s) < len(prefix) {
-		return false
-	}
-	for i, r := range prefix {
-		if s[i] != r {
-			return false
-		}
-	}
-	return true
 }

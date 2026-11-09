@@ -189,6 +189,25 @@ func TestKnowledgeRepo_library_chunk_delimiter_round_trips(t *testing.T) {
 	}
 }
 
+func TestKnowledgeRepo_library_custom_chunk_delimiter_round_trips(t *testing.T) {
+	d := setupTestDB(t)
+	repo := NewKnowledgeRepo(d)
+	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
+	ctx := context.Background()
+
+	lib := knowledgeTestLibrary("自定义区分串")
+	custom := "——\t。"
+	lib.ChunkDelimiter = &custom
+	created, err := repo.CreateLibrary(ctx, auth, lib)
+	if err != nil {
+		t.Fatalf("create library: %v", err)
+	}
+	got, err := repo.GetLibrary(ctx, auth, created.ID)
+	if err != nil || *got.ChunkDelimiter != custom {
+		t.Fatalf("get library delimiter = (%v, %v), want %q", got, err, custom)
+	}
+}
+
 func TestKnowledgeRepo_library_oversize_chunk_delimiter_rejected_by_check(t *testing.T) {
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)

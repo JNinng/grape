@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { ArrowLeftIcon, FileTextIcon, SearchIcon } from 'lucide-react'
 import {
   getDocument,
@@ -21,7 +21,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 // KnowledgeSearchDialog 是知识库管理页的检索面板：查询文本 + 可选库过滤 +
 // top_k，命中展示分数/来源/锚点/正文摘要，可经来源条目 ID 查看条目原文。
-// 命中正文与条目原文都是不可信文本，一律以 React 文本节点渲染。
+// 命中正文与条目原文都是不可信文本，一律以 React 文本节点渲染。展示中的
+// 命中恒对应当前输入的检索条件：条件一变即清空旧结果，迟到的旧请求响应
+// 按请求序号丢弃。
 
 const ALL_LIBRARIES = '__all__'
 const DEFAULT_TOP_K = '5'
@@ -57,6 +59,15 @@ export function KnowledgeSearchDialog({
   const [error, setError] = useState<string | null>(null)
   const [viewing, setViewing] = useState<DocumentDTO | null>(null)
   const [viewError, setViewError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  const resetResults = () => {
+    requestSeq.current += 1
+    setHits(null)
+    setError(null)
+    setViewError(null)
+    setPending(false)
+  }
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -64,6 +75,7 @@ export function KnowledgeSearchDialog({
     if (!text) {
       return
     }
+    const seq = ++requestSeq.current
     setPending(true)
     setError(null)
     setViewError(null)
@@ -74,12 +86,18 @@ export function KnowledgeSearchDialog({
         libraryId: libraryId === ALL_LIBRARIES ? undefined : libraryId,
         topK: Number.isInteger(k) && k > 0 ? k : undefined,
       })
-      setHits(result.items)
+      if (seq === requestSeq.current) {
+        setHits(result.items)
+      }
     } catch (err) {
-      setHits(null)
-      setError(errorHint(err, 'search failed'))
+      if (seq === requestSeq.current) {
+        setHits(null)
+        setError(errorHint(err, '检索失败'))
+      }
     } finally {
-      setPending(false)
+      if (seq === requestSeq.current) {
+        setPending(false)
+      }
     }
   }
 
@@ -88,7 +106,7 @@ export function KnowledgeSearchDialog({
     try {
       setViewing(await getDocument(hit.sourceId))
     } catch (err) {
-      setViewError(errorHint(err, 'load document failed'))
+      setViewError(errorHint(err, '加载条目原文失败'))
     }
   }
 
@@ -122,12 +140,12 @@ export function KnowledgeSearchDialog({
             <form className="grid gap-3" onSubmit={(e) => void submit(e)}>
               <div className="grid gap-1.5">
                 <Label htmlFor="kb-search-query">查询</Label>
-                <Input id="kb-search-query" value={query} maxLength={512} onChange={(e) => setQuery(e.target.value)} />
+                <Input id="kb-search-query" value={query} maxLength={512} onChange={(e) => { setQuery(e.target.value); resetResults() }} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1.5">
                   <Label htmlFor="kb-search-library">知识库</Label>
-                  <Select value={libraryId} onValueChange={setLibraryId}>
+                  <Select value={libraryId} onValueChange={(value) => { setLibraryId(value); resetResults() }}>
                     <SelectTrigger id="kb-search-library" aria-label="知识库">
                       <SelectValue placeholder="全部知识库" />
                     </SelectTrigger>
@@ -143,7 +161,7 @@ export function KnowledgeSearchDialog({
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="kb-search-topk">返回条数（最多 20）</Label>
-                  <Input id="kb-search-topk" type="number" min={1} max={20} value={topK} onChange={(e) => setTopK(e.target.value)} />
+                  <Input id="kb-search-topk" type="number" min={1} max={20} value={topK} onChange={(e) => { setTopK(e.target.value); resetResults() }} />
                 </div>
               </div>
               <div className="flex justify-end">

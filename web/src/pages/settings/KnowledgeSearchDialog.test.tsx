@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDocument, searchDocuments, type LibraryDTO, type SearchHitDTO } from '@/api/knowledge'
@@ -47,6 +47,15 @@ function renderDialog() {
   return { onClose, dialog: screen.getByRole('dialog') }
 }
 
+// searchAndFindResults 以缺省条件检索一次并返回结果列表。
+async function searchAndFindResults() {
+  const user = userEvent.setup()
+  const { dialog } = renderDialog()
+  await user.type(within(dialog).getByLabelText('查询'), '年假')
+  await user.click(within(dialog).getByRole('button', { name: '检索' }))
+  return within(dialog).findByRole('list', { name: '检索结果' })
+}
+
 beforeEach(() => {
   mockSearchDocuments.mockResolvedValue({ items: [hit()], total: 1 })
 })
@@ -83,16 +92,90 @@ describe('KnowledgeSearchDialog', () => {
     expect(mockSearchDocuments).toHaveBeenCalledWith({ query: '报销', libraryId: '101', topK: 12 })
   })
 
-  it('hits_render_score_source_anchor_and_content', async () => {
+  it.each(['0', '-3', '2.5'])('invalid_top_k_%s_blocks_search', async (value) => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    const topK = within(dialog).getByLabelText('返回条数（最多 20）')
+    await user.clear(topK)
+    await user.type(topK, value)
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(mockSearchDocuments).not.toHaveBeenCalled()
+  })
+
+  it('cleared_top_k_is_omitted_for_server_default', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.clear(within(dialog).getByLabelText('返回条数（最多 20）'))
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    expect(mockSearchDocuments).toHaveBeenCalledWith({ query: '年假', libraryId: undefined, topK: undefined })
+  })
+
+  it('hit_renders_source_name', async () => {
+    const results = await searchAndFindResults()
+    expect(within(results).getByText('员工手册')).toBeInTheDocument()
+  })
+
+  it('hit_renders_anchor', async () => {
+    const results = await searchAndFindResults()
+    expect(within(results).getByText(/runes 0-12/)).toBeInTheDocument()
+  })
+
+  it('hit_renders_score_with_three_decimals', async () => {
+    const results = await searchAndFindResults()
+    expect(within(results).getByText('相似度 0.912')).toBeInTheDocument()
+  })
+
+  it('hit_renders_content', async () => {
+    const results = await searchAndFindResults()
+    expect(within(results).getByText('年假 5 天')).toBeInTheDocument()
+  })
+
+  it('changing_library_after_search_clears_results', async () => {
     const user = userEvent.setup()
     const { dialog } = renderDialog()
     await user.type(within(dialog).getByLabelText('查询'), '年假')
     await user.click(within(dialog).getByRole('button', { name: '检索' }))
-    const results = await within(dialog).findByRole('list', { name: '检索结果' })
-    expect(within(results).getByText('员工手册')).toBeInTheDocument()
-    expect(within(results).getByText(/runes 0-12/)).toBeInTheDocument()
-    expect(within(results).getByText('相似度 0.912')).toBeInTheDocument()
-    expect(within(results).getByText('年假 5 天')).toBeInTheDocument()
+    await within(dialog).findByRole('list', { name: '检索结果' })
+    await user.click(within(dialog).getByRole('combobox', { name: '知识库' }))
+    await user.click(await screen.findByRole('option', { name: '财务' }))
+    expect(within(dialog).queryByRole('list', { name: '检索结果' })).toBeNull()
+  })
+
+  it('changing_top_k_after_search_clears_results', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    await within(dialog).findByRole('list', { name: '检索结果' })
+    await user.type(within(dialog).getByLabelText('返回条数（最多 20）'), '0')
+    expect(within(dialog).queryByRole('list', { name: '检索结果' })).toBeNull()
+  })
+
+  it('changing_query_after_search_clears_results', async () => {
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    await within(dialog).findByRole('list', { name: '检索结果' })
+    await user.type(within(dialog).getByLabelText('查询'), '天数')
+    expect(within(dialog).queryByRole('list', { name: '检索结果' })).toBeNull()
+  })
+
+  it('late_response_for_previous_conditions_is_discarded', async () => {
+    let resolveSearch: (value: { items: SearchHitDTO[]; total: number }) => void = () => {}
+    mockSearchDocuments.mockReturnValue(new Promise((resolve) => { resolveSearch = resolve }))
+    const user = userEvent.setup()
+    const { dialog } = renderDialog()
+    await user.type(within(dialog).getByLabelText('查询'), '年假')
+    await user.click(within(dialog).getByRole('button', { name: '检索' }))
+    await user.click(within(dialog).getByRole('combobox', { name: '知识库' }))
+    await user.click(await screen.findByRole('option', { name: '财务' }))
+    await act(async () => {
+      resolveSearch({ items: [hit()], total: 1 })
+    })
+    expect(within(dialog).queryByRole('list', { name: '检索结果' })).toBeNull()
   })
 
   it('markup_in_hit_content_renders_as_text', async () => {
