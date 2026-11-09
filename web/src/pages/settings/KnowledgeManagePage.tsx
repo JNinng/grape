@@ -5,6 +5,7 @@ import {
   createLibrary,
   deleteDocument,
   deleteLibrary,
+  getDocument,
   listLibraries,
   listLibraryDocuments,
   listModelOptions,
@@ -663,6 +664,40 @@ function DocumentDialog({
   const [validTo, setValidTo] = useState(toLocalInput(document?.validTo))
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 列表行不含正文：编辑时按 id 点查条目详情回填，加载完成前禁止编辑正文与
+  // 保存，避免在空白正文上误改而整篇替换原文。
+  const [detailLoading, setDetailLoading] = useState(Boolean(document))
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const documentId = document?.id
+
+  useEffect(() => {
+    if (!documentId) {
+      return
+    }
+    let cancelled = false
+    void getDocument(documentId)
+      .then((detail) => {
+        if (cancelled) {
+          return
+        }
+        setTitle(detail.title)
+        setContent(detail.content ?? '')
+        setSourceName(detail.sourceName ?? '')
+        setStatus(detail.status === 1)
+        setValidFrom(toLocalInput(detail.validFrom))
+        setValidTo(toLocalInput(detail.validTo))
+        setDetailLoading(false)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setDetailError(`加载条目正文失败：${errorHint(err, 'load document failed')}`)
+          setDetailLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [documentId])
 
   const submit = async () => {
     setPending(true)
@@ -673,7 +708,7 @@ function DocumentDialog({
           id: document.id,
           status: status ? 1 : 0,
           title: title.trim(),
-          content: content.trim() ? content : undefined,
+          content,
           sourceName: sourceName.trim() || undefined,
           validFrom: fromLocalInput(validFrom),
           validTo: fromLocalInput(validTo),
@@ -700,7 +735,7 @@ function DocumentDialog({
     }
   }
 
-  const requiresContent = !document
+  const detailReady = !detailLoading && !detailError
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -717,13 +752,18 @@ function DocumentDialog({
             <Input id="doc-title" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="doc-content">正文{document ? '（留空保持不变）' : ''}</Label>
+            <Label htmlFor="doc-content">正文</Label>
             <Textarea
               id="doc-content"
               className="min-h-40"
               value={content}
+              disabled={!detailReady}
+              placeholder={detailLoading ? '正文加载中…' : undefined}
               onChange={(e) => setContent(e.target.value)}
             />
+            {document ? (
+              <p className="text-xs text-muted-foreground">正文未改动时保存不会重新向量化。</p>
+            ) : null}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="doc-source">来源名</Label>
@@ -743,13 +783,14 @@ function DocumentDialog({
             <Switch id="doc-status" checked={status} onCheckedChange={setStatus} />
             <Label htmlFor="doc-status">启用</Label>
           </div>
+          {detailError ? <p className="text-sm text-destructive">{detailError}</p> : null}
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
         <DialogFooter>
           <Button variant="outline" disabled={pending} onClick={onClose}>
             取消
           </Button>
-          <Button disabled={pending || !title.trim() || (requiresContent && !content.trim())} onClick={() => void submit()}>
+          <Button disabled={pending || !detailReady || !title.trim() || !content.trim()} onClick={() => void submit()}>
             保存
           </Button>
         </DialogFooter>

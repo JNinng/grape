@@ -3,12 +3,16 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createLibrary,
+  getDocument,
   listLibraries,
   listLibraryDocuments,
   listModelOptions,
+  updateDocument,
   updateLibrary,
+  type DocumentDTO,
   type LibraryDTO,
 } from '@/api/knowledge'
+import { ApiError } from '@/api/toApiError'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import { KnowledgeManagePage } from './KnowledgeManagePage'
 
@@ -19,6 +23,8 @@ vi.mock('@/api/knowledge', async (importOriginal) => ({
   listModelOptions: vi.fn(),
   createLibrary: vi.fn(),
   updateLibrary: vi.fn(),
+  getDocument: vi.fn(),
+  updateDocument: vi.fn(),
 }))
 
 const mockListLibraries = vi.mocked(listLibraries)
@@ -26,6 +32,8 @@ const mockListLibraryDocuments = vi.mocked(listLibraryDocuments)
 const mockListModelOptions = vi.mocked(listModelOptions)
 const mockCreateLibrary = vi.mocked(createLibrary)
 const mockUpdateLibrary = vi.mocked(updateLibrary)
+const mockGetDocument = vi.mocked(getDocument)
+const mockUpdateDocument = vi.mocked(updateDocument)
 
 function library(overrides: Partial<LibraryDTO> = {}): LibraryDTO {
   return {
@@ -42,6 +50,24 @@ function library(overrides: Partial<LibraryDTO> = {}): LibraryDTO {
   }
 }
 
+function documentRow(overrides: Partial<DocumentDTO> = {}): DocumentDTO {
+  return {
+    id: '200',
+    libraryId: '100',
+    kind: 'text',
+    title: '退款政策',
+    status: 1,
+    createdBy: '7',
+    updatedBy: '7',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
+
+function documentDetail(overrides: Partial<DocumentDTO> = {}): DocumentDTO {
+  return documentRow({ content: '30 天内全额退款', sourceName: '客服手册', ...overrides })
+}
+
 function mockLibraries(items: LibraryDTO[]) {
   mockListLibraries.mockResolvedValue({ items, total: String(items.length), hasMore: false, nextCursor: '', page: 1 })
 }
@@ -53,6 +79,8 @@ beforeEach(() => {
   mockListModelOptions.mockResolvedValue({ items: [] })
   mockCreateLibrary.mockResolvedValue(library())
   mockUpdateLibrary.mockResolvedValue(library())
+  mockGetDocument.mockResolvedValue(documentDetail())
+  mockUpdateDocument.mockResolvedValue(documentDetail())
 })
 
 afterEach(() => {
@@ -174,5 +202,84 @@ describe('KnowledgeManagePage search entry', () => {
     expect(within(dialog).getByText('检索知识库')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('combobox', { name: '知识库' }))
     expect(await screen.findByRole('option', { name: '人事' })).toBeInTheDocument()
+  })
+})
+
+describe('KnowledgeManagePage edit document', () => {
+  beforeEach(() => {
+    mockListLibraryDocuments.mockResolvedValue({ items: [documentRow()], total: '1', hasMore: false, nextCursor: '', page: 1 })
+  })
+
+  // openEditDocument 打开条目行的编辑弹窗（列表行不含正文）。
+  async function openEditDocument(user: ReturnType<typeof userEvent.setup>) {
+    const row = (await screen.findByText('退款政策')).closest('tr')
+    if (!row) {
+      throw new Error('document row not found')
+    }
+    await user.click(within(row).getByRole('button', { name: '编辑' }))
+    return screen.findByRole('dialog')
+  }
+
+  it('edit_document_loads_detail_by_id', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await openEditDocument(user)
+    expect(mockGetDocument).toHaveBeenCalledWith('200')
+  })
+
+  it('edit_document_fills_content_from_detail', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    expect(await within(dialog).findByDisplayValue('30 天内全额退款')).toBeInTheDocument()
+  })
+
+  it('edit_document_while_detail_loading_disables_content_and_save', async () => {
+    mockGetDocument.mockReturnValue(new Promise(() => {}))
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    expect(within(dialog).getByLabelText('正文')).toBeDisabled()
+    expect(within(dialog).getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('edit_document_detail_failure_shows_error', async () => {
+    mockGetDocument.mockRejectedValue(new ApiError('knowledge document not found', 'DOCUMENT_NOT_FOUND'))
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    expect(await within(dialog).findByText('加载条目正文失败：knowledge document not found')).toBeInTheDocument()
+  })
+
+  it('edit_document_detail_failure_keeps_save_disabled', async () => {
+    mockGetDocument.mockRejectedValue(new ApiError('knowledge document not found', 'DOCUMENT_NOT_FOUND'))
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    await within(dialog).findByText(/加载条目正文失败/)
+    expect(within(dialog).getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('edit_document_save_submits_loaded_content', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    await within(dialog).findByDisplayValue('30 天内全额退款')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockUpdateDocument).toHaveBeenCalledWith({
+      id: '200',
+      status: 1,
+      title: '退款政策',
+      content: '30 天内全额退款',
+      sourceName: '客服手册',
+    })
+  })
+
+  it('edit_document_with_cleared_content_disables_save', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openEditDocument(user)
+    await user.clear(await within(dialog).findByDisplayValue('30 天内全额退款'))
+    expect(within(dialog).getByRole('button', { name: '保存' })).toBeDisabled()
   })
 })
