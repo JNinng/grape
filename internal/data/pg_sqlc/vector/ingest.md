@@ -7,12 +7,13 @@
 ## 入库链路
 
 ```
-service/knowledge.go（CreateDocument / UpdateDocument / ReindexDocument）
+service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ ReindexDocument）
   → KnowledgeUsecase.reindex（[../../../biz/knowledge.go](../../../biz/knowledge.go)）
       组装 effectiveChunkMetadata（库/条目状态取与、有效期交集）
   → DocumentUsecase.Ingest（[../../../biz/document.go](../../../biz/document.go)）
       1. 入参校验（ID ≤96 字节、正文非空）
-      2. 切分 chunkText（库级 ChunkSize/ChunkOverlap 覆盖缺省 800/100）
+      2. 切分 chunkText（库级 ChunkSize/ChunkOverlap/ChunkDelimiter 覆盖
+         缺省 800/100/段落空行）
       3. 空间解析（库级 embedding_model_key 优先，否则默认空间）
       4. 逐块 embed.Embed（响应长度与维度声明一致性复核）
       5. DeleteByFilter(source_id)（跨空间清除旧切片）
@@ -22,10 +23,15 @@ service/knowledge.go（CreateDocument / UpdateDocument / ReindexDocument）
 
 ## 切分与切片 ID
 
-- **固定长度切分**（[chunkText](../../../biz/document.go)）：rune 窗口滑过
-  原文，相邻块重叠 `ChunkOverlap` 个 rune 保住边界语义；全空白块跳过、
-  编号连续、锚点仍指原文位置。可替换点：换递归/结构化切分时保持
-  「内容 + 原文锚点」产出形状，管线其余环节无感。
+- **区分串切分**（[chunkText](../../../biz/document.go)）：缺省区分串是
+  段落空行（`\n\n`），先按区分串切出段落块——区分串本身不入块、全空白
+  块丢弃——超过 `ChunkSize` 的段落块再按 rune 固定窗口二次切分，相邻
+  窗口重叠 `ChunkOverlap` 个 rune 保住边界语义；区分串置空（空串是合法
+  覆盖）即纯固定窗口。切分参数按调用方覆盖构造期缺省 800/100/段落空行
+  （知识摄取取库级值，非法已在目录层拒绝），管线级覆盖值非法（重叠不
+  小于块大小、区分串超 32 rune）静默回落缺省。块编号连续、锚点始终指
+  原文 rune 闭开区间。可替换点：换递归/结构化切分时保持「内容 + 原文
+  锚点」产出形状，管线其余环节无感。
 - **切片 ID 确定性派生**：`"<sourceID>#<index>"`。来源 ID 上限 96 字节，
   为后缀留出 `agent_document.id` 列宽（varchar(128)）余量；确定性保证
   重摄的覆盖语义（同来源重摄写同一批 ID）。
