@@ -19,16 +19,21 @@ export interface ToolConfirmationPayload {
   live?: boolean
 }
 
-// MessageItem 是按 arrive 顺序渲染的文本消息。
+// MessageItem 是按 arrive 顺序渲染的文本消息。startedAt 是起始时间
+// （毫秒时间戳），只有 /history 快照能提供：快照 rawEvent 按 messageId
+// 索引事件起始时间，转换时回填；实时流事件不带该事实。
 export interface MessageItem {
   kind: 'message'
   id: string
   role: 'user' | 'assistant' | 'system' | 'developer'
   content: string
+  startedAt?: number
 }
 
 // ToolCallItem 是一次工具调用的完整视图：参数增量累积，结果在
-// TOOL_CALL_RESULT 到达后填充；结果与参数一律视为不可信文本。
+// TOOL_CALL_RESULT 到达后填充；结果与参数一律视为不可信文本。startedAt
+// 是工具调用起始时间，来源同 MessageItem.startedAt——快照 rawEvent 按
+// toolCallId 索引。
 export interface ToolCallItem {
   kind: 'tool'
   toolCallId: string
@@ -36,6 +41,7 @@ export interface ToolCallItem {
   argsText: string
   result: string | null
   done: boolean
+  startedAt?: number
 }
 
 export type ChatItem = MessageItem | ToolCallItem
@@ -205,11 +211,27 @@ function upsertConfirmation(
   return [...rest, payload]
 }
 
+// SnapshotSourceMetadata 是 /history 快照 rawEvent 内按消息 ID 与工具调用
+// ID 索引的来源时间事实（框架 WithEventSourceMetadataEnabled 的输出）；
+// 只取复现视图需要的起始时间，其余字段忽略。
+export interface SnapshotSourceMetadata {
+  messages?: Record<string, { timestamp?: number } | undefined>
+  toolCalls?: Record<string, { timestamp?: number } | undefined>
+}
+
+// startedAtOf 从来源索引取起始时间：非有限数字或非正数视为缺失（不渲染
+// 伪时间），缺失返回 undefined 交给展示端降级。
+function startedAtOf(index: Record<string, { timestamp?: number } | undefined> | undefined, key: string): number | undefined {
+  const ts = index?.[key]?.timestamp
+  return typeof ts === 'number' && Number.isFinite(ts) && ts > 0 ? ts : undefined
+}
+
 // messagesToItems 把 /agui/history 快照回放的消息列表折叠为渲染项：
 // user/assistant 文本直映；assistant.toolCalls 展开为工具项；tool 消息
 // 按 toolCallId 合并进既有工具项的结果，孤儿结果单独成项（与流式
-// reducer 的 TOOL_CALL_RESULT 语义一致）。
-export function messagesToItems(messages: Message[]): ChatItem[] {
+// reducer 的 TOOL_CALL_RESULT 语义一致）。source 非空时按 messageId /
+// toolCallId 回填起始时间，缺失即不设该字段。
+export function messagesToItems(messages: Message[], source?: SnapshotSourceMetadata): ChatItem[] {
   const items: ChatItem[] = []
   const toolIndex = new Map<string, ToolCallItem>()
   const appendTool = (item: ToolCallItem) => {
@@ -223,12 +245,19 @@ export function messagesToItems(messages: Message[]): ChatItem[] {
         id: message.id,
         role: 'user',
         content: contentToText(message.content),
+        startedAt: startedAtOf(source?.messages, message.id),
       })
       continue
     }
     if (message.role === 'assistant') {
       if (message.content) {
-        items.push({ kind: 'message', id: message.id, role: 'assistant', content: message.content })
+        items.push({
+          kind: 'message',
+          id: message.id,
+          role: 'assistant',
+          content: message.content,
+          startedAt: startedAtOf(source?.messages, message.id),
+        })
       }
       for (const call of message.toolCalls ?? []) {
         appendTool({
@@ -238,6 +267,7 @@ export function messagesToItems(messages: Message[]): ChatItem[] {
           argsText: call.function.arguments,
           result: null,
           done: true,
+          startedAt: startedAtOf(source?.toolCalls, call.id),
         })
       }
       continue
@@ -255,6 +285,7 @@ export function messagesToItems(messages: Message[]): ChatItem[] {
           argsText: '',
           result,
           done: true,
+          startedAt: startedAtOf(source?.toolCalls, message.toolCallId),
         })
       }
     }

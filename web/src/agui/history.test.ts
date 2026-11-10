@@ -68,6 +68,53 @@ describe('fetchHistorySnapshot snapshot replay', () => {
     ])
   })
 
+  it('attaches_start_timestamps_from_snapshot_raw_event_index', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse(
+        'data: {"type":"MESSAGES_SNAPSHOT","rawEvent":{"messages":{' +
+          '"u-1":{"timestamp":1767225600000},"a-1":{"timestamp":1767225601500}},' +
+          '"toolCalls":{"call-1":{"timestamp":1767225600800}}},' +
+          '"messages":[{"id":"u-1","role":"user","content":"hi"},' +
+          '{"id":"a-1","role":"assistant","toolCalls":[' +
+          '{"id":"call-1","type":"function","function":{"name":"echo","arguments":"{}"}}]},' +
+          '{"id":"t-1","role":"tool","content":"ok","toolCallId":"call-1"}]}\n\n',
+      ),
+    )
+
+    const items = await fetchHistorySnapshot('thread-1')
+
+    expect(items).toEqual([
+      { kind: 'message', id: 'u-1', role: 'user', content: 'hi', startedAt: 1767225600000 },
+      {
+        kind: 'tool',
+        toolCallId: 'call-1',
+        name: 'echo',
+        argsText: '{}',
+        result: 'ok',
+        done: true,
+        startedAt: 1767225600800,
+      },
+    ])
+  })
+
+  it('omits_started_at_when_raw_event_carries_no_or_invalid_timestamp', async () => {
+    fetchMock.mockResolvedValue(
+      sseResponse(
+        'data: {"type":"MESSAGES_SNAPSHOT","rawEvent":{"messages":{' +
+          '"u-1":{"timestamp":0},"a-1":{}},"toolCalls":{}},' +
+          '"messages":[{"id":"u-1","role":"user","content":"hi"},' +
+          '{"id":"a-1","role":"assistant","content":"hello"}]}\n\n',
+      ),
+    )
+
+    const items = await fetchHistorySnapshot('thread-1')
+
+    expect(items).toEqual([
+      { kind: 'message', id: 'u-1', role: 'user', content: 'hi' },
+      { kind: 'message', id: 'a-1', role: 'assistant', content: 'hello' },
+    ])
+  })
+
   it('returns_empty_items_when_the_stream_has_no_snapshot', async () => {
     fetchMock.mockResolvedValue(sseResponse('data: {"type":"RUN_STARTED","threadId":"t","runId":"r"}\n\n'))
 

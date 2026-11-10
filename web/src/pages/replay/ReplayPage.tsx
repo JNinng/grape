@@ -57,6 +57,49 @@ function formatTime(iso: string): string {
   return Number.isNaN(t.getTime()) ? iso : t.toLocaleString()
 }
 
+// formatEpochMs 渲染毫秒时间戳为本地时间（秒级精度已足够对账）；缺失
+// 或非法值给占位，不伪造时间。
+function formatEpochMs(ms: number | null | undefined): string {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) {
+    return '—'
+  }
+  return new Date(ms).toLocaleString()
+}
+
+// startInfo 汇总回放项的起始时间与相对本轮用户的耗时：耗时是「本条
+// 事件起始时间 − 所在交互的用户消息起始时间」，用于回答「响应慢」时
+// 工具与回复各自何时开始、等了多久。任一端缺失时整段不呈现。
+function startInfo(startedAt: number | undefined, turnStart: number | undefined): {
+  time: string
+  latency: string
+} {
+  const started = typeof startedAt === 'number' && Number.isFinite(startedAt) && startedAt > 0 ? startedAt : undefined
+  const latency =
+    started !== undefined && typeof turnStart === 'number' && started >= turnStart
+      ? `用时 ${((started - turnStart) / 1000).toFixed(1)}s`
+      : ''
+  return { time: formatEpochMs(started), latency }
+}
+
+// turnStarts 计算回放流每一项所在交互的起点：以用户消息为界，段内
+// 后续项（工具调用与助手回复）归属该用户消息的起始时间。用户消息自身
+// 不作为自己的锚（用时只对段内后续项有意义），段首缺失起始时间时该段
+// 无锚点，不计算耗时。
+function turnStarts(items: ChatItem[]): Map<string, number | undefined> {
+  const starts = new Map<string, number | undefined>()
+  let current: number | undefined
+  for (const item of items) {
+    const key = item.kind === 'message' ? item.id : item.toolCallId
+    if (item.kind === 'message' && item.role === 'user') {
+      current = item.startedAt
+      starts.set(key, undefined)
+      continue
+    }
+    starts.set(key, current)
+  }
+  return starts
+}
+
 // decisionChipClass 按决定方向约定区分确认行配色：approved / auto /
 // `*_auto` 走 success 软色对（放行方向），denied / auto_deny / `*_deny`
 // 走 danger 软色对（拒绝方向）；词表外取值 fail-closed 显 danger（决定
@@ -226,6 +269,7 @@ function ReplayToolCall({
   threadId,
   highlighted,
   dimmed,
+  turnStart,
   audits,
   confirmations,
   onPickTrace,
@@ -234,10 +278,14 @@ function ReplayToolCall({
   threadId: string
   highlighted: boolean
   dimmed: boolean
+  // turnStart 是所在交互的用户消息起点，仅用于算「用时」；缺失时只显示
+  // 起始时间。展示值在本组件内派生，父级不传渲染对象。
+  turnStart?: number
   audits: ToolCallAudit[]
   confirmations: ConfirmationAudit[]
   onPickTrace: (traceId: string | null) => void
 }) {
+  const start = startInfo(item.startedAt, turnStart)
   return (
     <Collapsible
       data-tool-call-id={item.toolCallId}
@@ -250,6 +298,8 @@ function ReplayToolCall({
       <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors select-none hover:bg-soft">
         <WrenchIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
         {`工具 ${item.name || '(未知)'}`}
+        <span className="text-xs tabular-nums">始于 {start.time}</span>
+        {start.latency && <span className="text-xs tabular-nums">{start.latency}</span>}
         {highlighted && (
           <Badge className="bg-brand-soft-strong text-brand-text">当前链路</Badge>
         )}
@@ -323,12 +373,17 @@ function ReplayMessage({
   item,
   threadId,
   dimmed,
+  turnStart,
 }: {
   item: MessageItem
   threadId: string
   dimmed: boolean
+  // turnStart 语义同 ReplayToolCall：用户消息自身为段首，调用方不传锚，
+  // 因此只显示起始时间。
+  turnStart?: number
 }) {
   const refs = useMemo(() => detectCompactionRefs(item.content), [item.content])
+  const start = startInfo(item.startedAt, turnStart)
   const isUser = item.role === 'user'
   return (
     <article
@@ -337,7 +392,11 @@ function ReplayMessage({
         dimmed ? 'opacity-40' : ''
       }`}
     >
-      <span className="mb-1 px-1 text-xs text-muted-foreground">{isUser ? '你' : item.role}</span>
+      <span className="mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        {isUser ? '你' : item.role}
+        <span className="tabular-nums">始于 {start.time}</span>
+        {start.latency && <span className="tabular-nums">{start.latency}</span>}
+      </span>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap ${
           isUser
@@ -451,6 +510,8 @@ export function ReplayPage() {
   const relatedToolIds = useMemo(() => relatedToolCallIds(facets, traceFilter), [facets, traceFilter])
   const relatedItemIds = useMemo(() => relatedChatItemIds(items, relatedToolIds), [items, relatedToolIds])
   const dimStream = traceFilter !== null && relatedItemIds.size > 0
+  // 每项所在交互的用户消息起点：回放项与工具的「用时」以它为锚。
+  const itemTurnStarts = useMemo(() => turnStarts(items), [items])
 
   const pickTrace = (traceId: string | null) => {
     setTraceFilter((current) => (current === traceId ? null : traceId))
@@ -571,10 +632,18 @@ export function ReplayPage() {
                           <EmptyNote>该会话暂无快照消息。</EmptyNote>
                         ))}
                       {items.map((item) => {
-                        const related = relatedItemIds.has(item.kind === 'message' ? item.id : item.toolCallId)
+                        const itemKey = item.kind === 'message' ? item.id : item.toolCallId
+                        const related = relatedItemIds.has(itemKey)
                         const dimmed = dimStream && !related
+                        const turnStart = itemTurnStarts.get(itemKey)
                         return item.kind === 'message' ? (
-                          <ReplayMessage key={item.id} item={item} threadId={threadId} dimmed={dimmed} />
+                          <ReplayMessage
+                            key={item.id}
+                            item={item}
+                            threadId={threadId}
+                            dimmed={dimmed}
+                            turnStart={turnStart}
+                          />
                         ) : (
                           <ReplayToolCall
                             key={item.toolCallId}
@@ -582,6 +651,7 @@ export function ReplayPage() {
                             threadId={threadId}
                             highlighted={related}
                             dimmed={dimmed}
+                            turnStart={turnStart}
                             audits={toolCallAuditsFor(toolCalls, item.toolCallId)}
                             confirmations={confirmationsForToolCall(confirmations, item.toolCallId)}
                             onPickTrace={pickTrace}

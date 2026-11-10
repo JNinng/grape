@@ -193,6 +193,10 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		// /history tail follow：快照响应尾部持续输出新持久化的 track
 		// 事件；agui.New 的同名选项会被下方 runner 工厂丢弃，必须在此同步。
 		aguirunner.WithMessagesSnapshotFollowEnabled(true),
+		// 源元数据：快照按 messageId/toolCallId 索引事件事实（含起始
+		// 时间），复现视图据此呈现每条消息与每次工具调用的起点；同在
+		// 实时流事件上附带 rawEvent，README 声明该出口可被运维发现。
+		aguirunner.WithEventSourceMetadataEnabled(true),
 	)
 	// Bind 把同一 AG-UI runner 注入恢复路径：重启后的孤儿确认经网关
 	// Decide 由它拉起续跑运行。未 Bind 则孤儿决定返回 ErrNotBound（500），
@@ -212,6 +216,9 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		// TrackService，track 事件持久化进 agent_session_track_events。
 		agui.WithMessagesSnapshotEnabled(true),
 		agui.WithMessagesSnapshotFollowEnabled(true),
+		// 与上方 aguirunner.New 保持一致（工厂会丢弃聚合出的 runner 级
+		// 选项，这里同样显式声明意图）。
+		agui.WithEventSourceMetadataEnabled(true),
 		// 复用上面带完整选项的 AG-UI runner：网关 Bind 的实例必须正是
 		// 服务请求的实例，不得改为工厂内新建。工厂会静默丢弃 agui.New 聚合
 		// 出的 runner 级选项，相关选项须与上面的 aguirunner.New 保持一致。

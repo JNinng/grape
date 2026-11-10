@@ -82,6 +82,11 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   投影规则与占位符 `event_id` 见
   [replay.md](../../replay.md#会话事件流)。事件窗口端点按锚点取
   before/after（各上限 50）回查原文。
+- 源元数据（`WithEventSourceMetadataEnabled`）开启：快照事件的
+  `rawEvent` 按 messageId / toolCallId 索引消息与工具调用的源事实，其中
+  `timestamp`（毫秒）是复现视图呈现起始时间的唯一来源。时间取自持久化
+  track 事件，重启后仍可回放；只描述消息级与工具调用级的起点，流式
+  分块不逐块记时。实时流事件同样携带 `rawEvent`，前端不消费。
 - track follow 的同毫秒丢事件缺陷以快照回放兜底，修复判断见
   [operations.md](../../operations.md#框架升级检查单)，本层不重复治理。
 - 运行门控按 userKey 限制在途 chat 运行数，超限 429、身份缺失 401，只

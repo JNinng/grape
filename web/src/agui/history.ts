@@ -1,5 +1,5 @@
 import { authFetch } from '../api/http'
-import { messagesToItems, type ChatItem } from './events'
+import { messagesToItems, type ChatItem, type SnapshotSourceMetadata } from './events'
 import type { Message } from '@ag-ui/client'
 import { newId } from './ids'
 
@@ -13,6 +13,8 @@ const historyPath = '/agui/history'
 
 // fetchHistorySnapshot 拉取一个会话的历史并折叠为渲染项。快照缺失
 // （后端未开启或空会话）返回空数组；网络或协议错误抛出由调用方展示。
+// 快照 rawEvent 是后端开启源元数据时的来源索引，随消息一并折叠，回放
+// 项因此携带起始时间；索引缺失即按无时间渲染。
 export async function fetchHistorySnapshot(threadId: string): Promise<ChatItem[]> {
   const res = await authFetch(historyPath, {
     method: 'POST',
@@ -31,21 +33,27 @@ export async function fetchHistorySnapshot(threadId: string): Promise<ChatItem[]
   if (res.body === null) {
     return []
   }
-  const messages = await collectSnapshotMessages(res.body)
-  return messagesToItems(messages)
+  const snapshot = await collectSnapshotMessages(res.body)
+  return messagesToItems(snapshot.messages, snapshot.source)
+}
+
+// snapshotPayload 是快照事件中本端关心的字段：消息列表与来源索引。
+interface snapshotPayload {
+  messages: Message[]
+  source?: SnapshotSourceMetadata
 }
 
 // collectSnapshotMessages 解析 SSE 流：只关心 data 行的 JSON 载荷，拿到
 // 首个 MESSAGES_SNAPSHOT 即取消读取（reader.cancel）并返回——历史立即
 // 渲染，不等快照流关闭；其后的事件对快照回放没有意义。
-async function collectSnapshotMessages(body: ReadableStream<Uint8Array>): Promise<Message[]> {
+async function collectSnapshotMessages(body: ReadableStream<Uint8Array>): Promise<snapshotPayload> {
   const reader = body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   for (;;) {
     const { done, value } = await reader.read()
     if (done) {
-      return []
+      return { messages: [] }
     }
     buffer += decoder.decode(value, { stream: true })
     let newline = buffer.indexOf('\n')
@@ -55,9 +63,8 @@ async function collectSnapshotMessages(body: ReadableStream<Uint8Array>): Promis
       if (line.startsWith('data:')) {
         const event = parseDataLine(line.slice(5).trim())
         if (event !== null && event.type === 'MESSAGES_SNAPSHOT') {
-          const messages = event.messages ?? []
           await cancelQuietly(reader)
-          return messages
+          return { messages: event.messages ?? [], source: event.rawEvent }
         }
       }
       newline = buffer.indexOf('\n')
@@ -76,12 +83,14 @@ async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): P
 }
 
 // parseDataLine 解析单条 data 载荷；非 JSON 行（心跳注释等）忽略。
-function parseDataLine(raw: string): { type: string; messages?: Message[] } | null {
+function parseDataLine(
+  raw: string,
+): { type: string; messages?: Message[]; rawEvent?: SnapshotSourceMetadata } | null {
   if (raw === '') {
     return null
   }
   try {
-    return JSON.parse(raw) as { type: string; messages?: Message[] }
+    return JSON.parse(raw) as { type: string; messages?: Message[]; rawEvent?: SnapshotSourceMetadata }
   } catch {
     return null
   }

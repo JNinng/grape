@@ -241,6 +241,57 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
   })
 
+  it('renders_start_time_and_turn_latency_for_replay_items', async () => {
+    // 回放项带起始时间时摘要行呈现「始于 时间」，工具与回复另给相对本轮
+    // 用户消息的用时，回答「响应慢」时先看工具与回复何时开始。
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'm-1', role: 'user', content: 'hello', startedAt: 1767225600000 },
+      {
+        kind: 'tool',
+        toolCallId: 'call-1',
+        name: 'search_internal_docs',
+        argsText: '{"query":"grape"}',
+        result: '{"document_id":"doc-1"}',
+        done: true,
+        startedAt: 1767225603000,
+      },
+      { kind: 'message', id: 'm-2', role: 'assistant', content: 'answer', startedAt: 1767225609000 },
+    ])
+    renderReplay()
+    expect(await screen.findByText('answer')).toBeInTheDocument()
+
+    const toolItem = screen.getByLabelText('工具调用 search_internal_docs')
+    expect(within(toolItem).getByText('用时 3.0s')).toBeInTheDocument()
+    const assistantArticle = screen.getByText('answer').closest('article')
+    expect(assistantArticle?.textContent).toContain('用时 9.0s')
+    // 用户消息是段首，不以自己为锚：只给起始时间，不显示 0.0s 用时。
+    const userArticle = screen.getByText('hello').closest('article')
+    expect(userArticle?.textContent).toContain('始于')
+    expect(userArticle?.textContent).not.toContain('用时')
+  })
+
+  it('renders_without_crashing_when_a_message_item_lacks_started_at', async () => {
+    // 组件从 item 自身派生展示值，缺起始时间是正常降级路径，不能因
+    // 缺字段抛错（历史会话与索引缺失都走这里）。
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'm-1', role: 'user', content: 'hello' },
+      { kind: 'message', id: 'm-2', role: 'assistant', content: 'answer' },
+    ])
+    renderReplay()
+    expect(await screen.findByText('answer')).toBeInTheDocument()
+    expect(screen.getByText('hello')).toBeInTheDocument()
+  })
+
+  it('shows_start_placeholder_without_latency_when_timestamps_are_absent', async () => {
+    // 快照来源索引缺失（历史会话或后端未开启源元数据）时只给占位，
+    // 不伪造时间，也不计算无锚点的用时。
+    renderReplay()
+    expect(await screen.findByText('answer')).toBeInTheDocument()
+    const toolItem = screen.getByLabelText('工具调用 search_internal_docs')
+    expect(within(toolItem).getByText(/始于/)).toBeInTheDocument()
+    expect(within(toolItem).queryByText(/用时/)).not.toBeInTheDocument()
+  })
+
   it('keeps_all_evidence_rows_visible_and_dims_misses_when_a_trace_is_selected', async () => {
     // 链路选中只做高亮对比，不隐藏数据：命中行（trace-b 的 echo）品牌紫
     // 高亮，未命中行（trace-a 的工具审计 / 授权确认 / 检索留痕）灰显但仍

@@ -684,6 +684,91 @@ func TestPGSession_when_history_requested_snapshot_replays_and_survives_restart(
 	}
 }
 
+// TestPGSession_when_history_requested_snapshot_carries_source_timestamps
+// 验证快照源时间：/history 快照的 rawEvent.messages / rawEvent.toolCalls
+// 按 messageId / toolCallId 索引事件起始时间（毫秒整数），复现视图据此
+// 呈现每条消息与每次工具调用的起点。时间来自持久化的 AG-UI track 事件，
+// 不依赖实时流。
+func TestPGSession_when_history_requested_snapshot_carries_source_timestamps(t *testing.T) {
+	dsn := sessionSetupDatabase(t)
+	const (
+		threadID = "thread-history-src-ts"
+		reply    = "source-ts-reply"
+		toolCall = "call-ts-1"
+	)
+
+	scripted := acktest.NewScriptedModel("stub",
+		acktest.Step{ToolCalls: []acktest.ToolCallSpec{{ID: toolCall, Name: "echo", Args: `{"text":"hi"}`}}},
+		acktest.Step{Text: reply},
+	)
+	svc, cleanupSvc := sessionSvcUnderTest(t, dsn, 0)
+	defer cleanupSvc()
+	stack, err := NewStackWithOptions(sessionStackConf(nil), nil, svc, NewVectorStore(nil),
+		biz.NewUserUsecase(testsupport.NewFakeUserRepo()), testsupport.NewStackKnowledgeSearch(), nil, WithModelOverride(scripted))
+	if err != nil {
+		t.Fatalf("build stack: %v", err)
+	}
+	defer stack.Close()
+	h := sessionIdentityHandler(stack.Handler())
+
+	sessionHasEvent(t, sessionEventTypes(t, sessionRunChat(t, h, threadID, "run-src-ts", "hi")), "RUN_FINISHED")
+	snapshot := sessionWaitHistoryPoll(t, h, threadID, reply)
+
+	raw := sessionReadSnapshotRawEvent(t, snapshot)
+	call, ok := raw.ToolCalls[toolCall]
+	if !ok || call.Timestamp == nil || *call.Timestamp <= 0 {
+		t.Fatalf("snapshot rawEvent.toolCalls[%s] timestamp missing: %+v", toolCall, raw.ToolCalls)
+	}
+	stamped := 0
+	for _, meta := range raw.Messages {
+		if meta.Timestamp != nil && *meta.Timestamp > 0 {
+			stamped++
+		}
+	}
+	if stamped == 0 {
+		t.Fatalf("snapshot rawEvent.messages carry no timestamps: %+v", raw.Messages)
+	}
+}
+
+// sessionSourceTimestamp 是快照 rawEvent 索引项中复现视图依赖的时间字段。
+type sessionSourceTimestamp struct {
+	Timestamp *int64 `json:"timestamp"`
+}
+
+// sessionSnapshotRawEvent 是快照 rawEvent 的字段子集：按消息 ID 与工具
+// 调用 ID 索引的事件事实。
+type sessionSnapshotRawEvent struct {
+	Messages  map[string]sessionSourceTimestamp `json:"messages"`
+	ToolCalls map[string]sessionSourceTimestamp `json:"toolCalls"`
+}
+
+// sessionSnapshotRawEvent 取 SSE 响应内首个 MESSAGES_SNAPSHOT 事件的
+// rawEvent 索引。
+func sessionReadSnapshotRawEvent(t *testing.T, body string) sessionSnapshotRawEvent {
+	t.Helper()
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var evt struct {
+			Type     string                   `json:"type"`
+			RawEvent *sessionSnapshotRawEvent `json:"rawEvent"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &evt); err != nil {
+			t.Fatalf("parse sse event %q: %v", line, err)
+		}
+		if evt.Type != "MESSAGES_SNAPSHOT" {
+			continue
+		}
+		if evt.RawEvent == nil {
+			t.Fatalf("snapshot event carries no rawEvent source metadata:\n%s", body)
+		}
+		return *evt.RawEvent
+	}
+	t.Fatalf("history snapshot contains no MESSAGES_SNAPSHOT event:\n%s", body)
+	return sessionSnapshotRawEvent{}
+}
+
 // TestPGSession_when_cancel_requested_blocked_run_terminates 验证 cancel
 // 生效：阻塞中的运行收到 /agui/cancel 后及时终止并落终态事件，不挂死
 // 到模型超时（框架对显式取消以 RUN_FINISHED 结算，异常路径为
