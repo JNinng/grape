@@ -127,4 +127,14 @@ describe('fetchPendingConfirmations polling contract', () => {
 
     expect(items).toEqual([])
   })
+
+  it('treats_the_owner_guard_404_as_no_pending_items', async () => {
+    // 归属守卫对「不在调用者名下或尚未建档」的会话回 404；新会话在首次
+    // 运行建档前轮询必然命中，语义是「还没有」，不是故障。
+    fetchMock.mockResolvedValue(jsonResponse(404, { error: 'session not found' }))
+
+    const items = await fetchPendingConfirmations('thread-new')
+
+    expect(items).toEqual([])
+  })
 })
