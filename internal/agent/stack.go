@@ -350,9 +350,10 @@ func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmage
 		llmagent.WithTools(tools),
 		llmagent.WithInstruction(defaultInstruction),
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream:      true,
-			MaxTokens:   ptr(defaultMaxTokens),
-			Temperature: ptr(defaultTemperature),
+			Stream:          true,
+			MaxTokens:       ptr(defaultMaxTokens),
+			Temperature:     ptr(defaultTemperature),
+			ThinkingEnabled: ptr(false),
 		}),
 		// 防风暴：单次运行内模型发起工具调用的轮数上限；
 		// 拒绝后模型若无视「不得重试」约束循环重试，由它终止运行。

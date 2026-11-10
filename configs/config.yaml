@@ -49,7 +49,7 @@ agent:
   llm:
     # provider：OpenAI 兼容变体（openai / deepseek / qwen / minimax / kimi）；
     # base_url 留空时由框架按变体取内置默认端点。
-    provider: openai
+    provider: deepseek
     base_url: ${AGENT_LLM_BASE_URL:https://api.deepseek.com}
     # api_key 只经环境变量注入，不落默认配置。
     api_key: ${AGENT_LLM_API_KEY:}
