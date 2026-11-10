@@ -191,7 +191,7 @@ func newCorsTestServer(t *testing.T, confServer *conf.Server) *agentTestServer {
 	}
 	t.Cleanup(closeSessions)
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, agent.WithModelOverride(acktest.NewScriptedModel("stub")))
+		biz.NewUserUsecase(&agentStubUserRepo{}), agentStubSearchUsecase(), nil, agent.WithModelOverride(acktest.NewScriptedModel("stub")))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

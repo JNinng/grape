@@ -25,16 +25,19 @@ var (
 )
 
 // 检索入参边界：查询限短（embedding 输入无必要过长）；top_k 缺省 5，
-// 服务端统一上限 20（与 agent 向量适配器的 maxSearchTopK 同值，适配器
-// 钳制保留为模型面第二道防线）。检索质量参数属代码级默认，不进 conf。
+// 服务端统一上限 20（agent 检索与前端检索都经本用例，上限在此钳制；
+// 框架适配器的 maxSearchTopK 是同值兜底，只约束框架侧直接消费方）。
+// 检索质量参数属代码级默认，不进 conf。
 const (
 	DefaultKnowledgeSearchTopK   = 5
 	MaxKnowledgeSearchTopK       = 20
 	MaxKnowledgeSearchQueryRunes = 512
 )
 
-// KnowledgeSearchQuery 是检索入参。LibraryID 大于 0 时收窄到该库，0 检索
-// 租户内全部知识库，负值非法；TopK 为 0 取缺省，负值非法，超上限钳制。
+// KnowledgeSearchQuery 是检索入参。LibraryID 为 0 时检索调用方可见的全部
+// 知识库，大于 0 时收窄到该库（必须命中可见库集合，否则按
+// ErrLibraryNotFound 拒绝——不可见与不存在不区分），负值非法；TopK 为 0
+// 取缺省，负值非法，超上限钳制。
 type KnowledgeSearchQuery struct {
 	Query     string
 	LibraryID int64
@@ -54,19 +57,30 @@ type KnowledgeSearchHit struct {
 	Content    string
 }
 
-// KnowledgeSearchUsecase 是租户内知识检索用例：入参校验、默认空间解析、
-// 查询向量化、固定检索条件组装后直调 VectorStore 契约。租户隔离由契约
-// 实现从认证 ctx 强制；留痕由 data 层装饰器完成，本用例只经 ctx 声明
-// 查询文本与来源（console）。
-type KnowledgeSearchUsecase struct {
-	store    VectorStore
-	embedder Embedder
-	resolver EmbedderResolver
-	now      func() time.Time
+// KnowledgeLibraryDirectory 是可见库集合的解析接缝：*KnowledgeUsecase
+// 实现（存储层按调用方身份求交 fn_accessible_* 三件套）。检索用例与 agent
+// 列库工具共用同一实现，避免「列得出、查不到」的口径漂移。
+type KnowledgeLibraryDirectory interface {
+	// VisibleLibraries 返回调用方数据范围内可见的未软删知识库。
+	VisibleLibraries(ctx context.Context, auth Identity) ([]*KnowledgeLibrary, error)
 }
 
-// NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖）。
-func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver) (*KnowledgeSearchUsecase, error) {
+// KnowledgeSearchUsecase 是租户内知识检索用例：入参校验、可见库集合现场
+// 解析、默认空间解析、查询向量化、固定检索条件组装后直调 VectorStore
+// 契约。租户隔离由契约实现从认证 ctx 强制；库级可见性由本用例解析可见
+// 库集合并注入 kb_id IN 条件。留痕由 data 层装饰器完成，本用例只经 ctx
+// 声明查询文本与来源（缺省 console，工具链路可先声明 tool）。
+type KnowledgeSearchUsecase struct {
+	store     VectorStore
+	embedder  Embedder
+	resolver  EmbedderResolver
+	libraries KnowledgeLibraryDirectory
+	now       func() time.Time
+}
+
+// NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖，
+// 另加可见库解析接缝）。
+func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, libraries KnowledgeLibraryDirectory) (*KnowledgeSearchUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a vector store")
 	}
@@ -76,19 +90,32 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 	if resolver == nil {
 		return nil, errors.New("biz: knowledge search usecase requires an embedder resolver")
 	}
-	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, now: time.Now}, nil
+	if libraries == nil {
+		return nil, errors.New("biz: knowledge search usecase requires a library directory")
+	}
+	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, libraries: libraries, now: time.Now}, nil
 }
 
-// Search 在默认嵌入空间内检索，按相似度降序返回至多 top_k 条命中；无命中
-// 返回空切片。身份缺失 fail-closed；设施未启用的错误原样透传（不降级为
-// 空结果）。
+// Search 在默认嵌入空间内检索调用方可见的知识库，按相似度降序返回至多
+// top_k 条命中；无可见库或无命中返回空切片。可见库集合每次检索现场解析
+// （权限运行时可变，不做长生命周期缓存）；身份缺失 fail-closed；设施未
+// 启用的错误原样透传（不降级为空结果）。
 func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchHit, error) {
-	if _, ok := IdentityFromContext(ctx); !ok {
+	auth, ok := IdentityFromContext(ctx)
+	if !ok {
 		return nil, ErrSessionInvalid
 	}
 	query, topK, err := normalizeKnowledgeSearch(q)
 	if err != nil {
 		return nil, err
+	}
+	libraryIDs, err := uc.searchLibraryIDs(ctx, auth, q.LibraryID)
+	if err != nil {
+		return nil, err
+	}
+	if len(libraryIDs) == 0 {
+		// 无可见库：检索结果必然为空，不触达嵌入与向量设施。
+		return []*KnowledgeSearchHit{}, nil
 	}
 	space, dimension, err := uc.resolver.ResolveDefaultEmbedder(ctx)
 	if err != nil {
@@ -99,11 +126,13 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		return nil, fmt.Errorf("biz: embed search query: %w", err)
 	}
 	ctx = WithRetrievalQuery(ctx, query)
-	ctx = WithRetrievalSource(ctx, RetrievalSourceConsole)
+	if RetrievalSourceFromContext(ctx) == "" {
+		ctx = WithRetrievalSource(ctx, RetrievalSourceConsole)
+	}
 	results, err := uc.store.Search(ctx, vector, &VectorFilter{
 		Embedder:   space,
 		Dimension:  dimension,
-		Conditions: knowledgeRetrievalConditions(q.LibraryID, uc.now()),
+		Conditions: knowledgeRetrievalConditions(libraryIDs, uc.now()),
 		Limit:      topK,
 	})
 	if err != nil {
@@ -124,6 +153,45 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		})
 	}
 	return hits, nil
+}
+
+// VisibleLibraries 返回调用方可见的知识库（agent 列库工具与检索过滤共用
+// 同一解析实现）；身份缺失 fail-closed。
+func (uc *KnowledgeSearchUsecase) VisibleLibraries(ctx context.Context) ([]*KnowledgeLibrary, error) {
+	auth, ok := IdentityFromContext(ctx)
+	if !ok {
+		return nil, ErrSessionInvalid
+	}
+	libs, err := uc.libraries.VisibleLibraries(ctx, auth)
+	if err != nil {
+		return nil, fmt.Errorf("biz: resolve visible libraries: %w", err)
+	}
+	return libs, nil
+}
+
+// searchLibraryIDs 解析本次检索的库范围：libraryID 为 0 取全部可见库；
+// 大于 0 时必须命中可见集合，不可见与不存在统一 ErrLibraryNotFound
+// （不区分存在性、不泄露有无）。返回切片恒非 nil，空即无可见库。
+func (uc *KnowledgeSearchUsecase) searchLibraryIDs(ctx context.Context, auth Identity, libraryID int64) ([]int64, error) {
+	visible, err := uc.libraries.VisibleLibraries(ctx, auth)
+	if err != nil {
+		return nil, fmt.Errorf("biz: resolve visible libraries for search: %w", err)
+	}
+	if libraryID > 0 {
+		for _, lib := range visible {
+			if lib != nil && lib.ID == libraryID {
+				return []int64{libraryID}, nil
+			}
+		}
+		return nil, ErrLibraryNotFound
+	}
+	ids := make([]int64, 0, len(visible))
+	for _, lib := range visible {
+		if lib != nil {
+			ids = append(ids, lib.ID)
+		}
+	}
+	return ids, nil
 }
 
 // normalizeKnowledgeSearch 校验并归一入参，返回去空白后的查询文本与生效
@@ -151,22 +219,21 @@ func normalizeKnowledgeSearch(q *KnowledgeSearchQuery) (string, int, error) {
 }
 
 // knowledgeRetrievalConditions 组装检索固定条件：条目参与（库与条目状态
-// 取与后写入 chunk metadata 的 doc_status）且 now 落在有效期 [from, to)
-// 内；指定知识库时追加 kb_id 等值。时间为秒级 unix，与摄取侧
-// effectiveChunkMetadata 的写入口径一致。
-func knowledgeRetrievalConditions(libraryID int64, now time.Time) []MetadataCondition {
+// 取与后写入 chunk metadata）且 now 落在有效期 [from, to) 内；库范围
+// 恒以 kb_id IN 收窄到可见库集合（调用方保证非空）。时间为秒级 unix，
+// 与摄取侧 effectiveChunkMetadata 的写入口径一致。
+func knowledgeRetrievalConditions(libraryIDs []int64, now time.Time) []MetadataCondition {
 	unix := now.Unix()
-	conditions := []MetadataCondition{
+	ids := make([]any, 0, len(libraryIDs))
+	for _, id := range libraryIDs {
+		ids = append(ids, strconv.FormatInt(id, 10))
+	}
+	return []MetadataCondition{
 		{Key: "doc_status", Op: VectorMetadataEq, Values: []any{int(KnowledgeStatusEnabled)}},
 		{Key: "valid_from_unix", Op: VectorMetadataLte, Values: []any{unix}},
 		{Key: "valid_to_unix", Op: VectorMetadataGt, Values: []any{unix}},
+		{Key: "kb_id", Op: VectorMetadataIn, Values: ids},
 	}
-	if libraryID > 0 {
-		conditions = append(conditions, MetadataCondition{
-			Key: "kb_id", Op: VectorMetadataEq, Values: []any{strconv.FormatInt(libraryID, 10)},
-		})
-	}
-	return conditions
 }
 
 // metadataText 安全读取切片 metadata 的字符串键：缺失或类型不符返回空串

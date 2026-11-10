@@ -34,7 +34,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 模型目录解析：文本模型与嵌入空间选键（租户配置 > 全局配置 > conf），按租户行 > 平台行 > conf 找端点 |
 | [pg_sqlc/model_manage.go](pg_sqlc/model_manage.go) | 模型目录仓储：租户行普通 DML、平台行经受控函数、密钥密文落库 |
 | [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | AES-256-GCM 密钥加解密（`GRAPE_MODEL_SECRET_KEY`，`v1:` 前缀） |
-| [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页） |
+| [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页）；kb_library 的库级可见性经 `@scope` / `fn_check_visible` / `fn_can_operate_row` 强制，可见库枚举供检索用例与列库工具共用 |
 | [pg_sqlc/session_repo.go](pg_sqlc/session_repo.go) | 会话仓储兼介质维护：过期清理与 token_hash 索引 REINDEX 判定 |
 | [pg_sqlc/tenant_admin.go](pg_sqlc/tenant_admin.go) | 租户树管理、平台租户判定与删除前置受控计数 |
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
@@ -100,9 +100,9 @@ RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原�
 `NewLoggedVectorStore`），装饰器位于仓储之上、框架适配器与摄取管线之下。
 
 - 留痕点：Search 记 query、请求/生效 top_k、过滤摘要、命中、耗时、
-  来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例声明
-  `console`，未声明即工具链路 `tool`）；Add/Update/DeleteByFilter 记摄取
-  侧、来源 `pipeline`；
+  来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例缺省声明
+  `console`，agent 工具链路显式声明 `tool`）；Add/Update/DeleteByFilter
+  记摄取侧、来源 `pipeline`；
   Get/Delete/Count/GetMetadata/List 不留痕（点读与枚举不构成召回证据）。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
   留痕失败只记日志，不中断业务。
@@ -128,8 +128,9 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
 - `VectorFilter.Conditions` 支持 eq/ne/in/lt/lte/gt/gte 六类 metadata
   比较：键与值都走占位符，数值比较显式 `::bigint`；`UpdateMetadata` 以
   `metadata || patch` 合并，空过滤拒绝（用于知识库状态/有效期同步）。
-- 检索工具在 ctx 上携带固定条件（`doc_status` / `valid_from_unix` /
-  `valid_to_unix` / 可选 `kb_id`），适配器并入 VectorFilter。
+- 框架适配器路径在 ctx 上携带固定条件（`doc_status` / `valid_from_unix` /
+  `valid_to_unix` / 可选 `kb_id`），适配器并入 VectorFilter；知识检索用例
+  路径直接把固定条件放进 `VectorFilter.Conditions`，不经 ctx 载体。
 
 ## 文本向量化设施
 

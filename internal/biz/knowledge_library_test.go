@@ -11,6 +11,137 @@ import (
 // 知识库切分区分串的用例测试：库级字段的缺省、显式空串、更新保持与长度
 // 校验，以及重建索引时库级区分串透传到摄取管线。
 
+// TestGetDocument_invisible_library_maps_to_document_not_found 验证条目读面
+// 随所属库可见性收窄：库不可见与条目不存在对外同一形态（不泄露条目存在性）。
+func TestGetDocument_invisible_library_maps_to_document_not_found(t *testing.T) {
+	uc := newLibraryUsecaseForTest(t, &libraryFakeRepo{doc: chunkDoc(2)}, &mockVectorStore{})
+
+	if _, err := uc.GetDocument(context.Background(), libraryAuth(), 2); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("GetDocument with invisible library = %v, want ErrDocumentNotFound", err)
+	}
+}
+
+// recordingMetadataStore 记录 chunk metadata 同步与按条件删除的调用次数：
+// 用于断言可见性判定发生在副作用之前。
+type recordingMetadataStore struct {
+	mockVectorStore
+	metadataCalls int
+	deleteCalls   int
+}
+
+func (s *recordingMetadataStore) UpdateMetadata(context.Context, *VectorFilter, map[string]any) (int64, error) {
+	s.metadataCalls++
+	return 0, nil
+}
+
+func (s *recordingMetadataStore) DeleteByFilter(context.Context, *VectorFilter) (int64, error) {
+	s.deleteCalls++
+	return 0, nil
+}
+
+// visibilityFakeRepo 在 libraryFakeRepo 之上模拟写路径的可见性判定边界：
+// 记录库内条目枚举与更新调用，UpdateLibrary 模拟仓储写前锁定对不可见库
+// 返回 NotFound。用于断言不可见库不会先产生 chunk 副作用再被拒绝。
+type visibilityFakeRepo struct {
+	libraryFakeRepo
+	docs         []*KnowledgeDocument
+	listDocCalls int
+	updateCalls  int
+	count        int64
+	countCalls   int
+}
+
+func (r *visibilityFakeRepo) ListDocumentsByLibrary(context.Context, Identity, int64, int32, int32) (*KnowledgeDocumentPage, error) {
+	r.listDocCalls++
+	return &KnowledgeDocumentPage{Items: r.docs}, nil
+}
+
+func (r *visibilityFakeRepo) UpdateLibrary(context.Context, Identity, *KnowledgeLibrary) (*KnowledgeLibrary, error) {
+	r.updateCalls++
+	return nil, ErrLibraryNotFound
+}
+
+func (r *visibilityFakeRepo) CountDocumentsByLibrary(context.Context, Identity, int64) (int64, error) {
+	r.countCalls++
+	return r.count, nil
+}
+
+// TestUpdateLibrary_when_library_invisible_rejects_before_chunk_sync 验证显式
+// 携带切分区分串也不能绕过可见性：不可见库在 chunk metadata 同步之前即
+// 按 NotFound 拒绝。
+func TestUpdateLibrary_when_library_invisible_rejects_before_chunk_sync(t *testing.T) {
+	repo := &visibilityFakeRepo{
+		libraryFakeRepo: libraryFakeRepo{}, // existing 为空：库不可见
+		docs:            []*KnowledgeDocument{chunkDoc(2)},
+	}
+	store := &recordingMetadataStore{}
+	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+	uc.store = store
+	delimiter := "|"
+
+	_, err := uc.UpdateLibrary(ingestCtx(), libraryAuth(), &KnowledgeLibrary{
+		ID: 9, Name: "hr", Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkDelimiter: &delimiter,
+	})
+	if !errors.Is(err, ErrLibraryNotFound) {
+		t.Fatalf("UpdateLibrary(invisible) = %v, want ErrLibraryNotFound", err)
+	}
+	if repo.listDocCalls != 0 || store.metadataCalls != 0 {
+		t.Fatalf("list/metadata calls = %d/%d, want 0/0 (rejected before side effects)",
+			repo.listDocCalls, store.metadataCalls)
+	}
+}
+
+// TestDeleteLibrary_when_library_invisible_rejects_before_count_and_chunk_clear
+// 验证删除前置：不可见库不做条目计数与 chunk 清理（避免 409/404 探测与
+// 越权清理）。
+func TestDeleteLibrary_when_library_invisible_rejects_before_count_and_chunk_clear(t *testing.T) {
+	repo := &visibilityFakeRepo{libraryFakeRepo: libraryFakeRepo{}, count: 3}
+	store := &recordingMetadataStore{}
+	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+	uc.store = store
+
+	err := uc.DeleteLibrary(ingestCtx(), libraryAuth(), 9)
+	if !errors.Is(err, ErrLibraryNotFound) {
+		t.Fatalf("DeleteLibrary(invisible) = %v, want ErrLibraryNotFound (not ErrLibraryHasDocuments)", err)
+	}
+	if repo.countCalls != 0 || store.deleteCalls != 0 {
+		t.Fatalf("count/delete calls = %d/%d, want 0/0 (rejected before side effects)",
+			repo.countCalls, store.deleteCalls)
+	}
+}
+
+// TestUpdateDocument_when_library_invisible_rejects_before_field_validation 验证
+// 条目写面：不可见库统一 DocumentNotFound，先于请求字段校验，避免用
+// 400/404 差异探测不可见库中的条目。
+func TestUpdateDocument_when_library_invisible_rejects_before_field_validation(t *testing.T) {
+	uc := newLibraryUsecaseForTest(t, &libraryFakeRepo{doc: chunkDoc(2)}, &mockVectorStore{})
+
+	// 请求自带不匹配的 library_id：可见库时应为参数非法，不可见库时必须是
+	// NotFound（校验顺序不能泄露条目存在性）。
+	_, err := uc.UpdateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+		ID: 2, LibraryID: 999, Kind: "text", Title: "t", Status: KnowledgeStatusEnabled,
+	})
+	if !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("UpdateDocument(invisible library) = %v, want ErrDocumentNotFound", err)
+	}
+}
+
+// TestDeleteDocument_when_library_invisible_rejects_before_chunk_clear 验证
+// 条目删除：库不可见时不清理 chunk。
+func TestDeleteDocument_when_library_invisible_rejects_before_chunk_clear(t *testing.T) {
+	store := &recordingMetadataStore{}
+	uc := newLibraryUsecaseForTest(t, &libraryFakeRepo{doc: chunkDoc(2)}, &mockVectorStore{})
+	uc.store = store
+
+	err := uc.DeleteDocument(ingestCtx(), libraryAuth(), 2)
+	if !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("DeleteDocument(invisible library) = %v, want ErrDocumentNotFound", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Fatalf("chunk clear calls = %d, want 0", store.deleteCalls)
+	}
+}
+
 // libraryFakeRepo 是知识库用例单测的仓储替身：记录写入的库，读取返回
 // 预置的库与条目；未覆盖的方法沿用嵌入接口零值（触达即 panic）。
 type libraryFakeRepo struct {

@@ -55,12 +55,15 @@ Agent 设施面（`agent` schema，如向量表 `agent.agent_document`）不走 
 - 三个归属全空的数据只有全租户角色可见；
 - 用户无效什么都看不到。
 
-`@scope` 挂在两类表上：有归属三元组（`owner_user_id` / `owner_dept_id` /
-`owner_user_group_id`）的 `basic` 与 `sys_user`（守卫取
-`fn_accessible_*` 三件套），以及 `sys_role`（守卫取
-`fn_visible_role_ids`，与写侧 `fn_can_see_role` 共用 A AND G 口径）；
+`@scope` 挂在两类推导上：有归属三元组（`owner_user_id` / `owner_dept_id` /
+`owner_user_group_id`）的表取 `fn_accessible_*` 三件套守卫——`basic`、
+`sys_user` 与 `kb_library`（知识库的租户内可见性；创建人缺省为归属人，
+检索可见库集合与动态 List 共用该口径）；`sys_role` 取
+`fn_visible_role_ids`（与写侧 `fn_can_see_role` 共用 A AND G 口径）；
 其余表租户内全可见。修改推导口径时，列表守卫、单行判定、写前判定三处
-必须同改。
+必须同改。`kb_library` 的可见集合枚举（检索用）走
+`ListVisibleKbLibraries`（`fn_check_visible` 掩码 7），单行读与写前锁定分别
+走 `GetKbLibraryPermitted` / `LockKbLibraryPermitted`。
 
 角色可见性（A AND G）：A=目标角色在 `sys_role_allowed_dept` 的有效映射
 部门集合（M）为空恒真；M 非空时操作人为全租户（O_d 为 NULL）或
@@ -182,8 +185,12 @@ M ∩ 操作人可见部门集合 ≠ ∅；命中口径
 列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`。
 
 知识库与条目共用 `sys:knowledge:query/create/update/delete`（重建索引并入
-`:update`；模型选项端点 `ListModelOptions` 也用 `:query`，避免知识库管理员
-被迫持有 `sys:model:query`）。模型目录租户行用 `sys:model:query/create/
+`:update`；前端检索端点 `SearchDocuments` 并入 `:query`；模型选项端点
+`ListModelOptions` 也用 `:query`，避免知识库管理员被迫持有
+`sys:model:query`）。agent 检索/列库工具不设功能码：工具面按认证身份 +
+可见库集合收敛（工具授权走 ack 分级与 `agent_tool_grant`），否则普通对话
+用户无法检索；可见库集合由检索用例现场解析（`KnowledgeSearchUsecase`），
+列库清单与检索过滤同源。模型目录租户行用 `sys:model:query/create/
 update/delete`；平台行写面另设 `sys:model:platform:create/update/delete`，
 只应由平台管理员持有。`sys_model` 的平台行读面对所有租户开放（RLS 读策略
 `tenant_id='' OR 本租户`），平台写只能经受控 SECURITY DEFINER 函数。

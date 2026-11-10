@@ -345,7 +345,8 @@ func (s *KnowledgeService) ReindexDocument(ctx context.Context, req *knowledgev1
 	return toProtoDocument(out), nil
 }
 
-// SearchDocuments 在租户内知识库做向量检索。
+// SearchDocuments 在调用方可见的知识库内做向量检索（可见库集合与检索条件
+// 由检索用例现场解析；指定不可见库按 404 拒绝）。
 func (s *KnowledgeService) SearchDocuments(ctx context.Context, req *knowledgev1.SearchDocumentsRequest) (*knowledgev1.SearchDocumentsReply, error) {
 	if _, err := authOf(ctx); err != nil {
 		return nil, err

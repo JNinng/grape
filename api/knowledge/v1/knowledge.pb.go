@@ -1436,7 +1436,9 @@ type SearchDocumentsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 查询文本，去除首尾空白后 1–512 字符。
 	Query string `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	// 知识库 ID：大于 0 时收窄到该库，0 或省略检索全部知识库，负值拒绝。
+	// 知识库 ID：大于 0 时收窄到该库（必须命中调用方可见库集合，不可见与
+	// 不存在统一按 LIBRARY_NOT_FOUND 拒绝）；0 或省略检索全部可见知识库；
+	// 负值拒绝。
 	LibraryId int64 `protobuf:"varint,2,opt,name=library_id,json=libraryId,proto3" json:"library_id,omitempty"`
 	// 返回条数：省略或 0 取缺省 5，负值拒绝，超过 20 按 20 返回。
 	TopK          int32 `protobuf:"varint,3,opt,name=top_k,json=topK,proto3" json:"top_k,omitempty"`

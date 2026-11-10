@@ -71,8 +71,8 @@
 | [embedder.go](embedder.go) | 文本向量化与默认空间解析契约；嵌入空间经 ctx 载体传给框架适配器。 |
 | [document.go](document.go) | 摄取管线：区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分、逐块 embed、按来源覆盖写入；重摄即迁移路径。 |
 | [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件与批量更新、枚举读面 `List`/`GetMetadata`）。 |
-| [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验、切分参数（大小/重叠/区分串）与嵌入模型选择、chunk metadata 同步、删除清理与重建索引、条目实际分片枚举（按分片序，取自向量存储）。 |
-| [knowledge_search.go](knowledge_search.go) | 知识检索用例（前端检索入口）：入参校验与 top_k 钳制、默认空间向量化、检索固定条件（状态/有效期/可选库）、来源 console 留痕声明。 |
+| [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验、切分参数（大小/重叠/区分串）与嵌入模型选择、chunk metadata 同步、删除清理与重建索引、条目实际分片枚举（按分片序，取自向量存储）、可见库集合解析（`VisibleLibraries`，检索与列库工具共用；条目读面随所属库可见性收窄）。 |
+| [knowledge_search.go](knowledge_search.go) | 知识检索用例（前端与 agent 的统一入口）：入参校验与 top_k 钳制、可见库集合现场解析（`library_id` 不可见/不存在统一 `ErrLibraryNotFound`）、默认空间向量化、固定检索条件（状态/有效期 + `kb_id IN` 可见库集合）、来源缺省 console 留痕声明（调用方已声明时保留）。 |
 | [model.go](model.go) | 文本模型目录与密钥加解密契约；嵌入空间形状与模型类别/维度常量。 |
 | [model_manage.go](model_manage.go) | 模型目录用例：租户/平台行 CRUD、密钥只写不读、embedding 维度 1024 与 model_key 白名单校验。 |
 | [maintenance.go](maintenance.go) | 设施无关的诊断/维护契约；ops 与 task 只认契约。 |

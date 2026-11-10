@@ -28,7 +28,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 7 | schema/70_audit.sql | 登录日志与操作日志（append-only） |
 | 8 | schema/80_session.sql | 会话/令牌表（仅存哈希）与过期清理函数 |
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
-| 10 | schema/91_knowledge.sql | kb_library 知识库与 kb_document 条目（租户表，RLS 在 rls.sql） |
+| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`）与 kb_document 条目（租户表，RLS 在 rls.sql） |
 | 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
 | 12 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
 | 13 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
@@ -423,10 +423,11 @@ status 校验收在 biz 用例。
 
 | 查询 | 类型 | 参数 → 返回 | 作用 |
 | --- | --- | --- | --- |
-| GetKbLibraryByID | :one | id → KbLibrary | 读未软删知识库 |
-| LockKbLibraryByID | :one | id → KbLibrary | 锁定知识库（FOR UPDATE） |
-| InsertKbLibrary | :one | 字段 + 操作者 → KbLibrary | 插入（含切分区分串）；租户取会话，名称冲突映射 AlreadyExists |
-| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段（含切分区分串） |
+| GetKbLibraryPermitted | :one | 操作者 + id → KbLibrary | 读数据范围内可见的未软删知识库（`fn_check_visible` 掩码 7）；不可见与不存在统一无行 |
+| LockKbLibraryPermitted | :one | 操作者 + id → KbLibrary | 锁定数据范围内可操作的知识库（`fn_can_operate_row` + FOR UPDATE） |
+| ListVisibleKbLibraries | :many | 操作者 → 行集 | 枚举数据范围内可见的未软删知识库（检索可见集合与列库工具共用） |
+| InsertKbLibrary | :one | 字段 + 归属 + 操作者 → KbLibrary | 插入（含切分区分串，创建人缺省为归属人）；租户取会话，名称冲突映射 AlreadyExists |
+| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段（含切分区分串；归属不变） |
 | CountKbDocumentsByLibrary | :one | library_id → 行数 | 库下未删除条目数（删除前置） |
 | SoftDeleteKbLibrary | :execrows | 操作者 + id → 行数 | 软删知识库 |
 
@@ -443,6 +444,10 @@ status 校验收在 biz 用例。
 | CountKbDocumentsByLibraryList | :one | library_id → 行数 | 与 List 同条件计数 |
 | SoftDeleteKbDocument | :execrows | 操作者 + id → 行数 | 软删条目 |
 | MarkKbDocumentIndexed | :one | indexed_embedder + 操作者 + id → KbDocument | 回写最近一次成功摄取时间与空间键 |
+
+条目动态 List（`ParseKbDocumentQuery` 生成物）在仓储解析后把 `libraryId in`
+与可见库集合求交（List/Count 同条件），条目读面随所属库可见性收窄——
+kb_document 无独立归属，不设 `@scope`。
 
 ### sys_model.sql（模型目录固定 CRUD）
 
@@ -565,6 +570,9 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 `sys_config` 无租户列，不设 RLS。
 
 `kb_library` / `kb_document` 为普通租户表（ENABLE + FORCE，单一策略）。
+`kb_library` 另有归属三元组与 `@scope` 守卫（租户内的库级可见性，单行读与
+写前锁定走 `fn_check_visible` / `fn_can_operate_row`）；`kb_document` 无
+归属，随库的管理面走。
 `sys_model` 是双态表：读策略 `sys_model_read` 放行「平台行（tenant_id=''）+ 本
 租户行」，写策略 `sys_model_write` 只放行本租户行；平台行只能经
 `98_model_write.sql` 的 SECURITY DEFINER 函数（属主绕过 RLS）写入。

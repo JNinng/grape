@@ -118,8 +118,9 @@ func WithRunObserver(observer biz.AgentRunObserver) StackOption {
 // NewStackWithOptions 按 conf 与注入依赖装配 Agent 骨架：模型 → 工具 →
 // ack 网关 → LLMAgent → core runner → AG-UI runner → AG-UI server →
 // 外层 ServeMux，任一环失败即拒绝启动。grants 非 nil 时接入许可存储；
-// embedder / resolver 在向量设施未启用时为禁用占位，nil 属装配错误。
-func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, resolver biz.EmbedderResolver, opts ...StackOption) (*Stack, error) {
+// 知识检索经检索用例（可见库集合与检索条件在 biz 收口），依赖 nil 均属
+// 装配错误。
+func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, search *biz.KnowledgeSearchUsecase, grants *biz.GrantUsecase, opts ...StackOption) (*Stack, error) {
 	o := &stackOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -136,11 +137,8 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 	if users == nil {
 		return nil, fmt.Errorf("agent: user usecase is required")
 	}
-	if embedder == nil {
-		return nil, fmt.Errorf("agent: embedder is required")
-	}
-	if resolver == nil {
-		return nil, fmt.Errorf("agent: embedder resolver is required")
+	if search == nil {
+		return nil, fmt.Errorf("agent: knowledge search usecase is required")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -151,10 +149,10 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		return nil, err
 	}
 
-	// echo 打通框架链路；业务工具经 biz 用户用例访问数据；
-	// 检索工具经向量适配器访问向量。
+	// echo 打通框架链路；业务工具经 biz 用户用例访问数据；检索与列库
+	// 工具共用检索用例（可见库集合与检索条件在 biz 收口，两工具同源）。
 	tools := append([]tool.Tool{agenttools.NewEchoTool()}, agenttools.NewUserTools(users)...)
-	tools = append(tools, agenttools.NewSearchTool(embedder, resolver, vectors))
+	tools = append(tools, agenttools.NewSearchTool(search), agenttools.NewKnowledgeLibrariesTool(search))
 	// 挂点或观测契约非 nil 时给全量工具清单包一层 wrapper（echo 同样留
 	// 痕）：同一包装点同时服务审计与观测，且随清单进入 ack 网关，恢复
 	// 路径代执行同样被覆盖。
@@ -253,7 +251,8 @@ func (s *Stack) Close() {
 // 的方法分发在 mux 内完成，外层只需前缀整体入 Kratos 链。
 func (s *Stack) Handler() nethttp.Handler { return s.handler }
 
-// Vectors 返回框架向量存储适配器：检索工具的唯一取用点。适配器
+// Vectors 返回框架向量存储适配器：框架侧 knowledge/vectorstore 面的形状
+// 出口（知识检索工具与前端检索已统一走 biz 用例，不经适配器）。适配器
 // 在数据侧装配期已过维度探针；设施未启用时其方法按设施缺失拒绝。
 func (s *Stack) Vectors() vectorstore.VectorStore { return s.vectors }
 

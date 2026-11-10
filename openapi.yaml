@@ -778,7 +778,7 @@ paths:
         post:
             tags:
                 - DocumentService
-            description: CreateDocument 创建文本条目并摄取到向量存储。
+            description: CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
             operationId: DocumentService_CreateDocument
             requestBody:
                 content:
@@ -797,7 +797,9 @@ paths:
         post:
             tags:
                 - DocumentService
-            description: ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+            description: |-
+                ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+                 返回正文）。
             operationId: DocumentService_ListDocuments
             requestBody:
                 content:
@@ -817,9 +819,10 @@ paths:
             tags:
                 - DocumentService
             description: |-
-                SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-                 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-                 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+                SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+                 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+                 sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+                 文本处理。
             operationId: DocumentService_SearchDocuments
             requestBody:
                 content:
@@ -840,7 +843,7 @@ paths:
                 - DocumentService
             description: |-
                 UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-                 有效期限）；正文变更时重新摄取。
+                 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
             operationId: DocumentService_UpdateDocument
             requestBody:
                 content:
@@ -859,7 +862,7 @@ paths:
         get:
             tags:
                 - DocumentService
-            description: GetDocument 按 id 查询条目（含正文）。
+            description: GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
             operationId: DocumentService_GetDocument
             parameters:
                 - name: id
@@ -877,7 +880,7 @@ paths:
         delete:
             tags:
                 - DocumentService
-            description: DeleteDocument 软删除条目并清理其 chunk。
+            description: DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
             operationId: DocumentService_DeleteDocument
             parameters:
                 - name: id
@@ -940,7 +943,7 @@ paths:
         post:
             tags:
                 - LibraryService
-            description: CreateLibrary 创建知识库。
+            description: CreateLibrary 创建知识库（创建人缺省为归属人）。
             operationId: LibraryService_CreateLibrary
             requestBody:
                 content:
@@ -959,7 +962,7 @@ paths:
         post:
             tags:
                 - LibraryService
-            description: ListLibraries 按动态查询协议返回一页知识库。
+            description: ListLibraries 按动态查询协议返回一页调用方可见的知识库。
             operationId: LibraryService_ListLibraries
             requestBody:
                 content:
@@ -980,7 +983,8 @@ paths:
                 - LibraryService
             description: |-
                 UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-                 chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+                 chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+                 不可见与不存在统一 404。
             operationId: LibraryService_UpdateLibrary
             requestBody:
                 content:
@@ -999,7 +1003,7 @@ paths:
         get:
             tags:
                 - LibraryService
-            description: GetLibrary 按 id 查询知识库。
+            description: GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
             operationId: LibraryService_GetLibrary
             parameters:
                 - name: id
@@ -1017,7 +1021,9 @@ paths:
         delete:
             tags:
                 - LibraryService
-            description: DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+            description: |-
+                DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+                 统一 404。
             operationId: LibraryService_DeleteLibrary
             parameters:
                 - name: id
@@ -1035,7 +1041,8 @@ paths:
                 - DocumentService
             description: |-
                 ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-                 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+                 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+                 统一 404）。
             operationId: DocumentService_ListLibraryDocuments
             parameters:
                 - name: id
@@ -3523,7 +3530,10 @@ components:
                     description: 查询文本，去除首尾空白后 1–512 字符。
                 libraryId:
                     type: string
-                    description: 知识库 ID：大于 0 时收窄到该库，0 或省略检索全部知识库，负值拒绝。
+                    description: |-
+                        知识库 ID：大于 0 时收窄到该库（必须命中调用方可见库集合，不可见与
+                         不存在统一按 LIBRARY_NOT_FOUND 拒绝）；0 或省略检索全部可见知识库；
+                         负值拒绝。
                 topK:
                     type: integer
                     description: 返回条数：省略或 0 取缺省 5，负值拒绝，超过 20 按 20 返回。
@@ -5073,7 +5083,8 @@ tags:
       description: |-
         DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
          进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
-         自动删除。
+         自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
+         404，不泄露条目存在性。
     - name: FeatureFlagService
       description: |-
         FeatureFlagService 提供功能开关（sys_feature_flag）的管理。功能开关是
@@ -5091,9 +5102,11 @@ tags:
     - name: LibraryService
       description: |-
         LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
-         租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-         全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
-         参数。列表走动态查询协议。
+         租户边界由数据库 RLS 强制；租户内的库级可见性按归属三元组与调用方
+         数据范围推导（不可见与不存在统一 404，不泄露存在性）。库级
+         embedding_model_key 为空时跟随租户/全局默认嵌入模型；chunk_size/
+         chunk_overlap/chunk_delimiter 决定条目切分参数。列表走动态查询协议，
+         同样按数据范围过滤。
     - name: MenuService
       description: |-
         MenuService 提供菜单/权限点树的管理。sys_menu 承载功能权限码链的

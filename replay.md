@@ -122,18 +122,18 @@ session_id（会话）
 ### 检索留痕
 
 - 装饰器位于向量仓储与框架适配器之间，同时覆盖检索工具、前端检索与摄取
-  管线：`Search` 记来源取 ctx 声明——知识检索用例（管理页检索）声明
-  `console`，未声明即检索工具 `tool`；`Add`/`Update`/`DeleteByFilter` 记
-  来源 `pipeline`；点读、点删、枚举统计不留痕。
+  管线：`Search` 记来源取 ctx 声明——知识检索用例缺省声明 `console`（前端
+  检索链路），agent 工具链路在调用前显式声明 `tool`；`Add`/`Update`/
+  `DeleteByFilter` 记来源 `pipeline`；点读、点删、枚举统计不留痕。
 - `Search` 记查询文本、`requested_top_k`/`effective_top_k`、过滤摘要、命中
   （`document_id`/`score`/`anchor`）与耗时；摄取记作用文档（单元素命中，
   锚点取切片元数据）与条件摘要。
 - 查询文本与会话 ID 由检索执行现场放入 ctx 事实载体（工具链路在 agent
   层、前端检索在知识检索用例）；事实缺失如实留空（前端检索与摄取管线无
   会话事实，`session_id` 为 NULL；摄取管线 `query_text` 亦为 NULL）。
-- `requested_top_k` 是存储契约收到的请求值（20 硬上限在其上游：工具链路
-  在框架适配器、前端检索在知识检索用例），`effective_top_k` 是实际 LIMIT
-  （非正时默认 10）。console 行没有工具调用可对账。
+- `requested_top_k` 是存储契约收到的请求值（20 硬上限在其上游：两条检索
+  链路都在知识检索用例统一钳制），`effective_top_k` 是实际 LIMIT（非正时
+  默认 10）。console 行没有工具调用可对账。
 - 命中上限 50 条，仅存标识与数值，不含正文；rerank 两列预留，当前恒 NULL。
 - 无论成败都记一行（`status` 区分）；写入独立于被装饰操作，失败只记日志；
   表为 append-only。装饰器实现与阈值见

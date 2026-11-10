@@ -28,6 +28,11 @@ func (s *chunkListStore) List(_ context.Context, filter *VectorFilter) ([]*Vecto
 
 func newChunkListUsecase(t *testing.T, repo KnowledgeRepo, store VectorStore) *KnowledgeUsecase {
 	t.Helper()
+	// 分片查询先判条目所在库可见（库级可见性）：替身未预置库时补一个
+	// 与本测试条目同库的可见库，保持用例聚焦分片排序与过滤。
+	if fake, ok := repo.(*libraryFakeRepo); ok && fake.existing == nil {
+		fake.existing = &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled}
+	}
 	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
 	uc.store = store
 	return uc
@@ -57,6 +62,22 @@ func TestListDocumentChunks_returns_chunks_ordered_by_index(t *testing.T) {
 	}
 	if !reflect.DeepEqual(chunks, want) {
 		t.Fatalf("chunks = %+v, want index order %+v", chunks, want)
+	}
+}
+
+// TestListDocumentChunks_when_library_invisible_returns_document_not_found 验证
+// 分片读面随所属库可见性收窄：库不可见时不触达向量枚举，统一 NotFound。
+func TestListDocumentChunks_when_library_invisible_returns_document_not_found(t *testing.T) {
+	store := &chunkListStore{}
+	uc := newLibraryUsecaseForTest(t, &libraryFakeRepo{doc: chunkDoc(2)}, &mockVectorStore{})
+	uc.store = store
+
+	_, err := uc.ListDocumentChunks(ingestCtx(), libraryAuth(), 2)
+	if !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("ListDocumentChunks(invisible library) = %v, want ErrDocumentNotFound", err)
+	}
+	if store.calls != 0 {
+		t.Fatalf("chunk enumeration calls = %d, want 0", store.calls)
 	}
 }
 

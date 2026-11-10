@@ -10,9 +10,11 @@ import (
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
-// knowledgeRepo 是 biz.KnowledgeRepo 的 PostgreSQL 实现。知识库与条目都是
-// 租户表（RLS ENABLE + FORCE，表无 @scope），租户边界由会话变量承担；
-// 动态 List 消费 dynq 协议，固定分页用于库内条目子列表。
+// knowledgeRepo 是 biz.KnowledgeRepo 的 PostgreSQL 实现。两表都是租户表
+// （RLS ENABLE + FORCE）：租户边界由会话变量承担；kb_library 带归属三元组
+// 与 @scope 守卫，租户内的库级可见性由单行读 fn_check_visible、写前
+// fn_can_operate_row 与动态 List 的 Scope 三处同一口径（fn_accessible_*）
+// 强制。动态 List 消费 dynq 协议，固定分页用于库内条目子列表。
 type knowledgeRepo struct {
 	data *Data
 }
@@ -71,11 +73,11 @@ func toBizDocument(po *gen.KbDocument) *biz.KnowledgeDocument {
 	}
 }
 
-// GetLibrary 按 id 读取未软删知识库。
+// GetLibrary 按 id 读取未软删知识库；不可见与不存在统一 NotFound。
 func (r *knowledgeRepo) GetLibrary(ctx context.Context, auth biz.Identity, id int64) (*biz.KnowledgeLibrary, error) {
 	var out *biz.KnowledgeLibrary
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		row, err := s.Q().GetKbLibraryByID(ctx, id)
+		row, err := s.Q().GetKbLibraryPermitted(ctx, gen.GetKbLibraryPermittedParams{ID: id, Operator: auth.UserID})
 		if err != nil {
 			return err
 		}
@@ -88,7 +90,29 @@ func (r *knowledgeRepo) GetLibrary(ctx context.Context, auth biz.Identity, id in
 	return out, nil
 }
 
-// ListLibraries 解析动态查询协议并返回分页信封。
+// ListVisibleLibraries 枚举调用方数据范围内可见的未软删库：检索用例的
+// 可见库集合与 agent 列库工具共用本方法（单一解析点）。
+func (r *knowledgeRepo) ListVisibleLibraries(ctx context.Context, auth biz.Identity) ([]*biz.KnowledgeLibrary, error) {
+	var out []*biz.KnowledgeLibrary
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		rows, err := s.Q().ListVisibleKbLibraries(ctx, auth.UserID)
+		if err != nil {
+			return err
+		}
+		out = make([]*biz.KnowledgeLibrary, 0, len(rows))
+		for i := range rows {
+			out = append(out, toBizLibrary(&rows[i]))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, mapStorageError(err, biz.ErrLibraryNotFound, biz.ErrLibraryInvalidArgument, biz.ErrLibraryAlreadyExists)
+	}
+	return out, nil
+}
+
+// ListLibraries 解析动态查询协议并返回分页信封；@scope 守卫 fail-closed
+// （Scope 未注入即报错，不静默退化为全量可见）。
 func (r *knowledgeRepo) ListLibraries(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.KnowledgeLibraryList, error) {
 	var out *biz.KnowledgeLibraryList
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -96,6 +120,7 @@ func (r *knowledgeRepo) ListLibraries(ctx context.Context, auth biz.Identity, q 
 		if err != nil {
 			return err
 		}
+		params.Scope = s.KbLibraryScope()
 		res, err := gen.ListKbLibrary(ctx, s.Tx(), params)
 		if err != nil {
 			return err
@@ -126,8 +151,10 @@ func (r *knowledgeRepo) ListLibraries(ctx context.Context, auth biz.Identity, q 
 	return out, nil
 }
 
-// CreateLibrary 创建知识库；租户取会话，名称冲突映射 AlreadyExists。
+// CreateLibrary 创建知识库：租户取会话，创建人缺省为归属人，名称冲突
+// 映射 AlreadyExists。
 func (r *knowledgeRepo) CreateLibrary(ctx context.Context, auth biz.Identity, l *biz.KnowledgeLibrary) (*biz.KnowledgeLibrary, error) {
+	ownerUserID := auth.UserID
 	var out *biz.KnowledgeLibrary
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		row, err := s.Q().InsertKbLibrary(ctx, gen.InsertKbLibraryParams{
@@ -141,6 +168,7 @@ func (r *knowledgeRepo) CreateLibrary(ctx context.Context, auth biz.Identity, l 
 			ChunkDelimiter:    stringOrEmpty(l.ChunkDelimiter),
 			ValidFrom:         timeToTS(l.ValidFrom),
 			ValidTo:           timeToTS(l.ValidTo),
+			OwnerUserID:       &ownerUserID,
 			CreatedBy:         auth.UserID,
 			UpdatedBy:         auth.UserID,
 		})
@@ -156,11 +184,12 @@ func (r *knowledgeRepo) CreateLibrary(ctx context.Context, auth biz.Identity, l 
 	return out, nil
 }
 
-// UpdateLibrary 覆盖可变字段：先锁目标行（未命中 NotFound）再更新。
+// UpdateLibrary 覆盖可变字段：先按可见性锁目标行（不可见与未命中同为
+// NotFound）再更新。
 func (r *knowledgeRepo) UpdateLibrary(ctx context.Context, auth biz.Identity, l *biz.KnowledgeLibrary) (*biz.KnowledgeLibrary, error) {
 	var out *biz.KnowledgeLibrary
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().LockKbLibraryByID(ctx, l.ID); err != nil {
+		if _, err := s.Q().LockKbLibraryPermitted(ctx, gen.LockKbLibraryPermittedParams{ID: l.ID, Operator: auth.UserID}); err != nil {
 			return err
 		}
 		row, err := s.Q().UpdateKbLibrary(ctx, gen.UpdateKbLibraryParams{
@@ -188,10 +217,11 @@ func (r *knowledgeRepo) UpdateLibrary(ctx context.Context, auth biz.Identity, l 
 	return out, nil
 }
 
-// SoftDeleteLibrary 软删除知识库；条目校验由用例在调用前完成。
+// SoftDeleteLibrary 软删除知识库：先按可见性锁目标行（不可见与未命中同为
+// NotFound），条目校验由用例在调用前完成。
 func (r *knowledgeRepo) SoftDeleteLibrary(ctx context.Context, auth biz.Identity, id int64) error {
 	return mapStorageError(r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
-		if _, err := s.Q().LockKbLibraryByID(ctx, id); err != nil {
+		if _, err := s.Q().LockKbLibraryPermitted(ctx, gen.LockKbLibraryPermittedParams{ID: id, Operator: auth.UserID}); err != nil {
 			return err
 		}
 		rows, err := s.Q().SoftDeleteKbLibrary(ctx, gen.SoftDeleteKbLibraryParams{UpdatedBy: auth.UserID, ID: id})
@@ -236,13 +266,29 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, auth biz.Identity, id i
 	return out, nil
 }
 
-// ListDocuments 解析动态查询协议并返回分页信封。
+// ListDocuments 解析动态查询协议并返回分页信封；条目按所属库的可见性
+// 收窄（库级可见性与库列表/检索同一口径），不可见库的条目不出现在列表与
+// 计数中。
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.KnowledgeDocumentList, error) {
 	var out *biz.KnowledgeDocumentList
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		params, err := gen.ParseKbDocumentQuery(q)
 		if err != nil {
 			return err
+		}
+		visibleIDs, err := visibleLibraryIDs(ctx, s, auth)
+		if err != nil {
+			return err
+		}
+		params.LibraryIDIn = intersectLibraryIDs(params.LibraryIDIn, visibleIDs)
+		if len(params.LibraryIDIn) == 0 {
+			list := &biz.KnowledgeDocumentList{Items: make([]*biz.KnowledgeDocument, 0)}
+			if dynq.IncludeTotalOf(q.Pagination) {
+				var total int64
+				list.Total = &total
+			}
+			out = list
+			return nil
 		}
 		res, err := gen.ListKbDocument(ctx, s.Tx(), params)
 		if err != nil {
@@ -272,6 +318,39 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, auth biz.Identity, q 
 		return nil, mapStorageError(err, biz.ErrDocumentNotFound, biz.ErrDocumentInvalidArgument, biz.ErrDocumentInvalidArgument)
 	}
 	return out, nil
+}
+
+// visibleLibraryIDs 在调用方事务内枚举可见库 ID（与单行读/检索同一
+// fn_check_visible 口径）。
+func visibleLibraryIDs(ctx context.Context, s *IdentityTx, auth biz.Identity) ([]int64, error) {
+	rows, err := s.Q().ListVisibleKbLibraries(ctx, auth.UserID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(rows))
+	for i := range rows {
+		ids = append(ids, rows[i].ID)
+	}
+	return ids, nil
+}
+
+// intersectLibraryIDs 把调用方声明的库过滤与可见集合求交；未声明时直接
+// 取可见集合（空即无可见库）。
+func intersectLibraryIDs(requested, visible []int64) []int64 {
+	if requested == nil {
+		return visible
+	}
+	allowed := make(map[int64]struct{}, len(visible))
+	for _, id := range visible {
+		allowed[id] = struct{}{}
+	}
+	out := make([]int64, 0, len(requested))
+	for _, id := range requested {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // ListDocumentsByLibrary 固定 offset 分页返回库内条目与总数。

@@ -33,20 +33,24 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
-// 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-// 全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
-// 参数。列表走动态查询协议。
+// 租户边界由数据库 RLS 强制；租户内的库级可见性按归属三元组与调用方
+// 数据范围推导（不可见与不存在统一 404，不泄露存在性）。库级
+// embedding_model_key 为空时跟随租户/全局默认嵌入模型；chunk_size/
+// chunk_overlap/chunk_delimiter 决定条目切分参数。列表走动态查询协议，
+// 同样按数据范围过滤。
 type LibraryServiceClient interface {
-	// CreateLibrary 创建知识库。
+	// CreateLibrary 创建知识库（创建人缺省为归属人）。
 	CreateLibrary(ctx context.Context, in *CreateLibraryRequest, opts ...grpc.CallOption) (*Library, error)
-	// GetLibrary 按 id 查询知识库。
+	// GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
 	GetLibrary(ctx context.Context, in *GetLibraryRequest, opts ...grpc.CallOption) (*Library, error)
-	// ListLibraries 按动态查询协议返回一页知识库。
+	// ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(ctx context.Context, in *ListLibrariesRequest, opts ...grpc.CallOption) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+	// 不可见与不存在统一 404。
 	UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...grpc.CallOption) (*Library, error)
-	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+	// 统一 404。
 	DeleteLibrary(ctx context.Context, in *DeleteLibraryRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
@@ -126,20 +130,24 @@ func (c *libraryServiceClient) ListModelOptions(ctx context.Context, in *ListMod
 // for forward compatibility.
 //
 // LibraryService 管理租户内知识库与模型选项：知识库是条目的归类容器，
-// 租户边界由数据库 RLS 强制。库级 embedding_model_key 为空时跟随租户/
-// 全局默认嵌入模型；chunk_size/chunk_overlap/chunk_delimiter 决定条目切分
-// 参数。列表走动态查询协议。
+// 租户边界由数据库 RLS 强制；租户内的库级可见性按归属三元组与调用方
+// 数据范围推导（不可见与不存在统一 404，不泄露存在性）。库级
+// embedding_model_key 为空时跟随租户/全局默认嵌入模型；chunk_size/
+// chunk_overlap/chunk_delimiter 决定条目切分参数。列表走动态查询协议，
+// 同样按数据范围过滤。
 type LibraryServiceServer interface {
-	// CreateLibrary 创建知识库。
+	// CreateLibrary 创建知识库（创建人缺省为归属人）。
 	CreateLibrary(context.Context, *CreateLibraryRequest) (*Library, error)
-	// GetLibrary 按 id 查询知识库。
+	// GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
 	GetLibrary(context.Context, *GetLibraryRequest) (*Library, error)
-	// ListLibraries 按动态查询协议返回一页知识库。
+	// ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(context.Context, *ListLibrariesRequest) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+	// 不可见与不存在统一 404。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
-	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+	// 统一 404。
 	DeleteLibrary(context.Context, *DeleteLibraryRequest) (*emptypb.Empty, error)
 	// ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
@@ -355,30 +363,34 @@ const (
 //
 // DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
-// 自动删除。
+// 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
+// 404，不泄露条目存在性。
 type DocumentServiceClient interface {
-	// CreateDocument 创建文本条目并摄取到向量存储。
+	// CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
 	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(ctx context.Context, in *ListDocumentChunksRequest, opts ...grpc.CallOption) (*DocumentChunkSet, error)
-	// GetDocument 按 id 查询条目（含正文）。
+	// GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	// ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+	// ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+	// 返回正文）。
 	ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...grpc.CallOption) (*DocumentSet, error)
 	// ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+	// 统一 404）。
 	ListLibraryDocuments(ctx context.Context, in *ListLibraryDocumentsRequest, opts ...grpc.CallOption) (*DocumentSet, error)
 	// UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-	// 有效期限）；正文变更时重新摄取。
+	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
 	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	// DeleteDocument 软删除条目并清理其 chunk。
+	// DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(ctx context.Context, in *ReindexDocumentRequest, opts ...grpc.CallOption) (*Document, error)
-	// SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	// SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+	// 文本处理。
 	SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...grpc.CallOption) (*SearchDocumentsReply, error)
 }
 
@@ -486,30 +498,34 @@ func (c *documentServiceClient) SearchDocuments(ctx context.Context, in *SearchD
 //
 // DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
-// 自动删除。
+// 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
+// 404，不泄露条目存在性。
 type DocumentServiceServer interface {
-	// CreateDocument 创建文本条目并摄取到向量存储。
+	// CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
 	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error)
-	// GetDocument 按 id 查询条目（含正文）。
+	// GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
-	// ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+	// ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+	// 返回正文）。
 	ListDocuments(context.Context, *ListDocumentsRequest) (*DocumentSet, error)
 	// ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+	// 统一 404）。
 	ListLibraryDocuments(context.Context, *ListLibraryDocumentsRequest) (*DocumentSet, error)
 	// UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-	// 有效期限）；正文变更时重新摄取。
+	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
 	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
-	// DeleteDocument 软删除条目并清理其 chunk。
+	// DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	// ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
-	// SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	// SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+	// 文本处理。
 	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	mustEmbedUnimplementedDocumentServiceServer()
 }

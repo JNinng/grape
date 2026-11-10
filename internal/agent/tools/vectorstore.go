@@ -16,11 +16,11 @@ import (
 // 显式拒绝优于静默降级或猜测。
 var errVectorUnsupported = errors.New("agent: vector store operation not supported")
 
-// maxSearchTopK 是向量检索的 top_k 适配器上限：模型侧可指定
-// 的返回条数在适配器统一收敛，检索工具（tool_search.go）只经本适配器
-// 访问向量、无法绕过；存储层语义（Limit 非正取默认页大小）在其下保持
-// 不变。默认页大小与上限不进 conf：上限是防滥用的代码级约束，conf 化
-// 反而给了绕过面。
+// maxSearchTopK 是向量检索的 top_k 适配器上限：框架侧消费方经本适配器
+// 访问向量时统一收敛；存储层语义（Limit 非正取默认页大小）在其下保持
+// 不变。知识检索工具不再经本适配器（改由 KnowledgeSearchUsecase 直调
+// 契约，同一上限在用例内钳制）。默认页大小与上限不进 conf：上限是防滥用
+// 的代码级约束，conf 化反而给了绕过面。
 const maxSearchTopK = 20
 
 // vectorStoreAdapter 把 biz.VectorStore 契约适配为框架
@@ -28,6 +28,8 @@ const maxSearchTopK = 20
 // 器：框架 pgvector store 自建连接池、启动建表建索引且无法接 grape 的
 // pgx 池与身份事务，不引入；租户隔离由 biz 契约的 data 实现从认证 ctx
 // 强制，本适配器只做形状映射，不自行取用身份（避免第二套隔离逻辑）。
+// 它是框架 `knowledge/vectorstore` 面的形状出口；知识检索工具与前端检索
+// 统一走 biz.KnowledgeSearchUsecase，不经本适配器。
 type vectorStoreAdapter struct {
 	store biz.VectorStore
 }
@@ -36,8 +38,7 @@ var _ vectorstore.VectorStore = (*vectorStoreAdapter)(nil)
 
 // NewVectorStoreAdapter 把 biz 向量契约适配为框架向量存储形状：租户隔离
 // 的强制应用层适配器。契约实现与启动维度探针在 data 层装配，本构造函数
-// 只做形状转换；适配器随根包骨架进入 Stack（provider 的 NewVectorStore
-// 与检索工具共用同一实例）。
+// 只做形状转换；适配器随根包骨架进入 Stack，供框架侧消费方使用。
 func NewVectorStoreAdapter(store biz.VectorStore) vectorstore.VectorStore {
 	return &vectorStoreAdapter{store: store}
 }
@@ -51,10 +52,10 @@ func (a *vectorStoreAdapter) requireStore() (biz.VectorStore, error) {
 	return a.store, nil
 }
 
-// requireEmbedderSpace 从 ctx 事实读取嵌入空间（键 + 维度成对，检索
-// 工具在调用现场经 biz.WithEmbedderSpace 注入）：框架的 document/
-// SearchQuery 类型不携带空间概念，本适配器是事实到契约的翻译点——
-// 缺失即拒绝（fail-closed），不猜测空间（跨空间混排会破坏相似度语义）。
+// requireEmbedderSpace 从 ctx 事实读取嵌入空间（键 + 维度成对，调用方经
+// biz.WithEmbedderSpace 注入）：框架的 document/SearchQuery 类型不携带
+// 空间概念，本适配器是事实到契约的翻译点——缺失即拒绝（fail-closed），
+// 不猜测空间（跨空间混排会破坏相似度语义）。
 func requireEmbedderSpace(ctx context.Context) (string, int, error) {
 	embedder, dimension, ok := biz.EmbedderSpaceFromContext(ctx)
 	if !ok {

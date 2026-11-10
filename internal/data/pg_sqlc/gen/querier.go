@@ -128,11 +128,15 @@ type Querier interface {
 	// 动态协议整型过滤值的 JSON number 精度限制）。
 	// 按 id 读取未软删条目（租户边界由 RLS 承担）
 	GetKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
-	// 知识库固定 CRUD（kb_library）。知识库是租户内资源：表无 @scope，
-	// 租户边界由 RLS 承担；动态查询能力由 schema/91_knowledge.sql 的列注释
-	// DSL 声明（ParseKbLibraryQuery 等为生成物）。本文件只写固定命名查询。
-	// 按 id 读取未软删知识库（租户边界由 RLS 承担）
-	GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error)
+	// 知识库固定 CRUD（kb_library）。知识库是租户表，租户边界由 RLS 承担；
+	// 租户内的库级可见性由归属三元组 + @scope 守护（表注释见
+	// schema/91_knowledge.sql），单行读与写前锁定走 fn_check_visible /
+	// fn_can_operate_row，与动态 List 的 @scope 守卫同一口径（fn_accessible_*）。
+	// 动态查询能力由 schema/91_knowledge.sql 的列注释 DSL 声明
+	// （ParseKbLibraryQuery 等为生成物）。本文件只写固定命名查询。
+	// 按 id 读取数据范围内可见的未软删知识库；不可见与不存在统一无行
+	// （NotFound，不泄露存在性）
+	GetKbLibraryPermitted(ctx context.Context, arg GetKbLibraryPermittedParams) (KbLibrary, error)
 	// 个人中心专用：读取本人口令哈希（仅供用例内当前口令校验）
 	GetMyPasswordHash(ctx context.Context, id int64) (string, error)
 	// 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
@@ -310,8 +314,8 @@ type Querier interface {
 	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
 	// 插入知识条目；租户取会话 app.tenant_id
 	InsertKbDocument(ctx context.Context, arg InsertKbDocumentParams) (KbDocument, error)
-	// 插入知识库记录；租户取会话 app.tenant_id，租户内未删除库间 name 唯一
-	// 冲突映射 AlreadyExists
+	// 插入知识库记录；租户取会话 app.tenant_id，创建人缺省为归属人；
+	// 租户内未删除库间 name 唯一冲突映射 AlreadyExists
 	InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams) (KbLibrary, error)
 	// 新建全局配置：调用受控写函数 fn_config_create（SECURITY DEFINER 固定
 	// 口径：函数内校验认证事务纪律并落审计列）；运行角色无 sys_config 直写
@@ -433,10 +437,14 @@ type Querier interface {
 	// 读取用户的全部活跃角色映射（含停用/软删角色的残留映射；已撤销的
 	// 软删行排除），升序稳定排序；供当前集合与 locked 差集计算
 	ListUserRoleIDs(ctx context.Context, userID int64) ([]int64, error)
+	// 枚举数据范围内可见的未软删知识库：检索用例的可见库集合解析与列库工具
+	// 共用本查询（单一实现，避免「列得出、查不到」的口径漂移）
+	ListVisibleKbLibraries(ctx context.Context, operator int64) ([]KbLibrary, error)
 	// 按 id 锁定未软删条目（更新/删除/重摄取路径先锁后写）
 	LockKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
-	// 按 id 锁定未软删知识库（更新/删除路径先锁后写）
-	LockKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error)
+	// 按 id 锁定数据范围内可操作的知识库（更新/删除路径先锁后写）；
+	// 不可见与不存在统一无行
+	LockKbLibraryPermitted(ctx context.Context, arg LockKbLibraryPermittedParams) (KbLibrary, error)
 	// 按 id 锁定未软删的部门（FOR UPDATE，写路径先锁后写；行级无 @scope，
 	// 租户边界由 RLS 承担）
 	LockSysDeptByID(ctx context.Context, id int64) (SysDept, error)
@@ -501,7 +509,8 @@ type Querier interface {
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
 	// 置位 deleted_at 软删除条目（chunk 清理由用例经向量存储完成）
 	SoftDeleteKbDocument(ctx context.Context, arg SoftDeleteKbDocumentParams) (int64, error)
-	// 置位 deleted_at 软删除知识库；活跃条目校验由调用方在同一事务内先行完成
+	// 置位 deleted_at 软删除知识库；活跃条目校验与可见性锁定由调用方在同一
+	// 事务内先行完成
 	SoftDeleteKbLibrary(ctx context.Context, arg SoftDeleteKbLibraryParams) (int64, error)
 	// 置位 deleted_at 软删除全局配置：调用受控写函数 fn_config_delete；
 	// 返回删除行数，0 即目标未命中（映射 NotFound）
@@ -546,7 +555,8 @@ type Querier interface {
 	// 更新条目的状态与有效期（不重嵌，只影响检索过滤与 chunk metadata 同步）
 	UpdateKbDocumentStatus(ctx context.Context, arg UpdateKbDocumentStatusParams) (KbDocument, error)
 	// 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
-	// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新
+	// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新；
+	// 归属不可经本查询变更（写入路径先经 LockKbLibraryPermitted 锁定）
 	UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error)
 	// 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
 	// 目标恒取 auth.UserID，不判行级归属

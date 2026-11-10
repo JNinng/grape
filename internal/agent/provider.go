@@ -85,10 +85,11 @@ func NewVectorStore(store biz.VectorStore) vectorstore.VectorStore {
 
 // NewStack 构造 Agent 骨架装配物，server 层经 service 取其 Handler 唯一
 // 挂载：业务工具经用户用例访问数据，许可源经授权用例落 agent_tool_grant，
-// 检索经向量适配器、embedder 与默认空间解析器，观测与审计经注入契约接入；
-// cleanup 释放框架资源。测试注入替身走 NewStackWithOptions。
-func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, grants *biz.GrantUsecase, embedder biz.Embedder, resolver biz.EmbedderResolver, catalog biz.TextModelCatalog, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
-	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, grants, embedder, resolver,
+// 检索与列库工具共用检索用例（可见库集合与检索条件在 biz 收口），观测与
+// 审计经注入契约接入；cleanup 释放框架资源。测试注入替身走
+// NewStackWithOptions。
+func NewStack(c *conf.Agent, logger *slog.Logger, sessions session.Service, vectors vectorstore.VectorStore, users *biz.UserUsecase, search *biz.KnowledgeSearchUsecase, grants *biz.GrantUsecase, catalog biz.TextModelCatalog, observer biz.AgentRunObserver, audit *biz.AuditUsecase) (*Stack, func(), error) {
+	st, err := NewStackWithOptions(c, logger, sessions, vectors, users, search, grants,
 		WithAuditHook(audit), WithRunObserver(observer), WithTextModelCatalog(catalog))
 	if err != nil {
 		return nil, nil, err

@@ -50,9 +50,25 @@ func (searchFakeResolver) ResolveEmbeddingSpace(context.Context, string) (biz.Em
 	return biz.EmbeddingSpace{Key: "space@v1", Dimension: 2}, nil
 }
 
+// searchFakeLibraries 是可见库集合替身：固定返回库列表。
+type searchFakeLibraries struct {
+	libraries []*biz.KnowledgeLibrary
+}
+
+func (l searchFakeLibraries) VisibleLibraries(context.Context, biz.Identity) ([]*biz.KnowledgeLibrary, error) {
+	return l.libraries, nil
+}
+
 func newSearchTestService(t *testing.T, store biz.VectorStore, embedder biz.Embedder) *KnowledgeService {
 	t.Helper()
-	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{})
+	return newSearchTestServiceWithLibraries(t, store, embedder, searchFakeLibraries{
+		libraries: []*biz.KnowledgeLibrary{{ID: 3}},
+	})
+}
+
+func newSearchTestServiceWithLibraries(t *testing.T, store biz.VectorStore, embedder biz.Embedder, libraries biz.KnowledgeLibraryDirectory) *KnowledgeService {
+	t.Helper()
+	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{}, libraries)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}
@@ -103,9 +119,16 @@ func TestSearchDocuments_request_fields_reach_store_filter(t *testing.T) {
 		t.Fatalf("SearchDocuments: %v", err)
 	}
 	last := store.filter.Conditions[len(store.filter.Conditions)-1]
-	if store.filter.Limit != 4 || last.Key != "kb_id" || last.Values[0] != "3" {
-		t.Fatalf("filter = %+v, want limit 4 and kb_id 3", store.filter)
+	if store.filter.Limit != 4 || last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || last.Values[0] != "3" {
+		t.Fatalf("filter = %+v, want limit 4 and kb_id IN [3]", store.filter)
 	}
+}
+
+func TestSearchDocuments_invisible_library_returns_404(t *testing.T) {
+	svc := newSearchTestService(t, &searchFakeStore{}, searchFakeEmbedder{})
+
+	_, err := svc.SearchDocuments(searchIdentityCtx(), &knowledgev1.SearchDocumentsRequest{Query: "q", LibraryId: 99})
+	assertKratosError(t, err, http.StatusNotFound, knowledgev1.ErrorReason_LIBRARY_NOT_FOUND.String())
 }
 
 func TestSearchDocuments_no_hits_returns_empty_items(t *testing.T) {

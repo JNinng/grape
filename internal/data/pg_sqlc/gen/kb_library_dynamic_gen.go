@@ -4,6 +4,7 @@
 //
 //	table kb_library: [@default_sort: updated_at DESC]
 //	table kb_library: [@pk: id]
+//	table kb_library: [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int)]
 //	table kb_library: [@filter: deleted_at is_null]
 //	column kb_library.id: [@dynamic: eq, neq, in, not_in]
 //	column kb_library.status: [@dynamic: sort, eq, neq, in, not_in @updatable: set]
@@ -21,6 +22,9 @@
 //	column kb_library.updated_at: [@dynamic: eq, neq, in, not_in, gt, gte, lt, lte, between]
 //	column kb_library.deleted_at: [@internal]
 //	column kb_library.tenant_id: [@internal]
+//	column kb_library.owner_user_id: [@dynamic: eq, neq, in, not_in]
+//	column kb_library.owner_dept_id: [@dynamic: eq, neq, in, not_in]
+//	column kb_library.owner_user_group_id: [@dynamic: eq, neq, in, not_in]
 //
 // UI 元数据(label / desc / order / visibility / options / api):sqlc.yaml 的 codegen.options.ui
 //
@@ -220,6 +224,39 @@ var kb_libraryRegistry = dynq.TableMeta{
 			Sortable: false,
 			Hidden:   true,
 		},
+		{
+			Key:        "ownerUserId",
+			Column:     "owner_user_id",
+			Label:      "owner_user_id",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "ownerDeptId",
+			Column:     "owner_dept_id",
+			Label:      "owner_dept_id",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "ownerUserGroupId",
+			Column:     "owner_user_group_id",
+			Label:      "owner_user_group_id",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpIn, dynq.OpNotIn},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
 	},
 	DefaultSort: []dynq.OrderBy{
 		{Field: "updatedAt", Desc: true},
@@ -247,6 +284,9 @@ var kb_libraryFieldIndex = map[dynq.FieldName]int{
 	"updatedAt":         13,
 	"deletedAt":         14,
 	"tenantId":          15,
+	"ownerUserId":       16,
+	"ownerDeptId":       17,
+	"ownerUserGroupId":  18,
 }
 
 // KbLibraryField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
@@ -266,6 +306,9 @@ var KbLibraryField = struct {
 	CreatedAt         dynq.FieldName
 	UpdatedBy         dynq.FieldName
 	UpdatedAt         dynq.FieldName
+	OwnerUserID       dynq.FieldName
+	OwnerDeptID       dynq.FieldName
+	OwnerUserGroupID  dynq.FieldName
 }{
 	ID:                "id",
 	Status:            "status",
@@ -281,6 +324,16 @@ var KbLibraryField = struct {
 	CreatedAt:         "createdAt",
 	UpdatedBy:         "updatedBy",
 	UpdatedAt:         "updatedAt",
+	OwnerUserID:       "ownerUserId",
+	OwnerDeptID:       "ownerDeptId",
+	OwnerUserGroupID:  "ownerUserGroupId",
+}
+
+// KbLibraryScope 是 @scope 守卫函数的参数载体:字段为全部守卫声明的标识符参数并集
+// (字面量参数已内联进谓词,不占用字段)。协议门结构性无法设置该字段;
+// 缺省时 List/Count fail-closed 报错(Kind=scope),不静默退化为全量可见。
+type KbLibraryScope struct {
+	UserID int64
 }
 
 // ListKbLibraryParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -292,74 +345,91 @@ var KbLibraryField = struct {
 //   - 模糊匹配字段为零值 "" 时,该条件不参与过滤;
 //   - IsNull/NotNull 为 false 时不参与,二者同时为 true 非法。
 type ListKbLibraryParams struct {
-	ID                   *int64
-	IDNeq                *int64
-	IDIn                 []int64
-	IDNotIn              []int64
-	Status               *int64
-	StatusNeq            *int64
-	StatusIn             []int64
-	StatusNotIn          []int64
-	Name                 *string
-	NameNeq              *string
-	NameContains         string
-	NamePrefix           string
-	NameSuffix           string
-	RemarkContains       string
-	RemarkPrefix         string
-	RemarkSuffix         string
-	EmbeddingModelKey    *string
-	EmbeddingModelKeyNeq *string
-	ChunkSize            *int64
-	ChunkSizeNeq         *int64
-	ChunkSizeGt          *int64
-	ChunkSizeGte         *int64
-	ChunkSizeLt          *int64
-	ChunkSizeLte         *int64
-	ChunkOverlap         *int64
-	ChunkOverlapNeq      *int64
-	ChunkOverlapGt       *int64
-	ChunkOverlapGte      *int64
-	ChunkOverlapLt       *int64
-	ChunkOverlapLte      *int64
-	ChunkDelimiter       *string
-	ChunkDelimiterNeq    *string
-	ValidFrom            *time.Time
-	ValidFromNeq         *time.Time
-	ValidFromGt          *time.Time
-	ValidFromGte         *time.Time
-	ValidFromLt          *time.Time
-	ValidFromLte         *time.Time
-	ValidTo              *time.Time
-	ValidToNeq           *time.Time
-	ValidToGt            *time.Time
-	ValidToGte           *time.Time
-	ValidToLt            *time.Time
-	ValidToLte           *time.Time
-	CreatedBy            *int64
-	CreatedByNeq         *int64
-	CreatedByIn          []int64
-	CreatedByNotIn       []int64
-	CreatedAt            *time.Time
-	CreatedAtNeq         *time.Time
-	CreatedAtIn          []time.Time
-	CreatedAtNotIn       []time.Time
-	CreatedAtGt          *time.Time
-	CreatedAtGte         *time.Time
-	CreatedAtLt          *time.Time
-	CreatedAtLte         *time.Time
-	UpdatedBy            *int64
-	UpdatedByNeq         *int64
-	UpdatedByIn          []int64
-	UpdatedByNotIn       []int64
-	UpdatedAt            *time.Time
-	UpdatedAtNeq         *time.Time
-	UpdatedAtIn          []time.Time
-	UpdatedAtNotIn       []time.Time
-	UpdatedAtGt          *time.Time
-	UpdatedAtGte         *time.Time
-	UpdatedAtLt          *time.Time
-	UpdatedAtLte         *time.Time
+	ID                    *int64
+	IDNeq                 *int64
+	IDIn                  []int64
+	IDNotIn               []int64
+	Status                *int64
+	StatusNeq             *int64
+	StatusIn              []int64
+	StatusNotIn           []int64
+	Name                  *string
+	NameNeq               *string
+	NameContains          string
+	NamePrefix            string
+	NameSuffix            string
+	RemarkContains        string
+	RemarkPrefix          string
+	RemarkSuffix          string
+	EmbeddingModelKey     *string
+	EmbeddingModelKeyNeq  *string
+	ChunkSize             *int64
+	ChunkSizeNeq          *int64
+	ChunkSizeGt           *int64
+	ChunkSizeGte          *int64
+	ChunkSizeLt           *int64
+	ChunkSizeLte          *int64
+	ChunkOverlap          *int64
+	ChunkOverlapNeq       *int64
+	ChunkOverlapGt        *int64
+	ChunkOverlapGte       *int64
+	ChunkOverlapLt        *int64
+	ChunkOverlapLte       *int64
+	ChunkDelimiter        *string
+	ChunkDelimiterNeq     *string
+	ValidFrom             *time.Time
+	ValidFromNeq          *time.Time
+	ValidFromGt           *time.Time
+	ValidFromGte          *time.Time
+	ValidFromLt           *time.Time
+	ValidFromLte          *time.Time
+	ValidTo               *time.Time
+	ValidToNeq            *time.Time
+	ValidToGt             *time.Time
+	ValidToGte            *time.Time
+	ValidToLt             *time.Time
+	ValidToLte            *time.Time
+	CreatedBy             *int64
+	CreatedByNeq          *int64
+	CreatedByIn           []int64
+	CreatedByNotIn        []int64
+	CreatedAt             *time.Time
+	CreatedAtNeq          *time.Time
+	CreatedAtIn           []time.Time
+	CreatedAtNotIn        []time.Time
+	CreatedAtGt           *time.Time
+	CreatedAtGte          *time.Time
+	CreatedAtLt           *time.Time
+	CreatedAtLte          *time.Time
+	UpdatedBy             *int64
+	UpdatedByNeq          *int64
+	UpdatedByIn           []int64
+	UpdatedByNotIn        []int64
+	UpdatedAt             *time.Time
+	UpdatedAtNeq          *time.Time
+	UpdatedAtIn           []time.Time
+	UpdatedAtNotIn        []time.Time
+	UpdatedAtGt           *time.Time
+	UpdatedAtGte          *time.Time
+	UpdatedAtLt           *time.Time
+	UpdatedAtLte          *time.Time
+	OwnerUserID           *int64
+	OwnerUserIDNeq        *int64
+	OwnerUserIDIn         []int64
+	OwnerUserIDNotIn      []int64
+	OwnerDeptID           *int64
+	OwnerDeptIDNeq        *int64
+	OwnerDeptIDIn         []int64
+	OwnerDeptIDNotIn      []int64
+	OwnerUserGroupID      *int64
+	OwnerUserGroupIDNeq   *int64
+	OwnerUserGroupIDIn    []int64
+	OwnerUserGroupIDNotIn []int64
+	// Scope 是数据权限上下文(表级 @scope 声明的资源必填,fail-closed):
+	// 与业务槽位"零值=条件不参与"不同,Scope 为 nil 时 List/Count 直接报错。
+	// 协议门(Parse)无法设置该字段——客户端请求不构成注入通道;
+	// 注入方式:params.Scope = dynq.ScopeFromContext[KbLibraryScope](ctx) 或直接构造。
+	Scope *KbLibraryScope
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -1222,6 +1292,141 @@ func ParseKbLibraryQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListKbLibrary
 				out.UpdatedAtGte = &lv
 				out.UpdatedAtLte = &rv
 			}
+		case "ownerUserId":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("ownerUserId.eq", i, "ownerUserId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				out.OwnerUserID = &v
+			case dynq.OpNeq:
+				if err := slots.Take("ownerUserId.neq", i, "ownerUserId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				out.OwnerUserIDNeq = &v
+			case dynq.OpIn:
+				if err := slots.Take("ownerUserId.in", i, "ownerUserId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				out.OwnerUserIDIn = vs
+			case dynq.OpNotIn:
+				if err := slots.Take("ownerUserId.not_in", i, "ownerUserId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerUserId")
+				}
+				out.OwnerUserIDNotIn = vs
+			}
+		case "ownerDeptId":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("ownerDeptId.eq", i, "ownerDeptId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				out.OwnerDeptID = &v
+			case dynq.OpNeq:
+				if err := slots.Take("ownerDeptId.neq", i, "ownerDeptId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				out.OwnerDeptIDNeq = &v
+			case dynq.OpIn:
+				if err := slots.Take("ownerDeptId.in", i, "ownerDeptId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				out.OwnerDeptIDIn = vs
+			case dynq.OpNotIn:
+				if err := slots.Take("ownerDeptId.not_in", i, "ownerDeptId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerDeptId")
+				}
+				out.OwnerDeptIDNotIn = vs
+			}
+		case "ownerUserGroupId":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("ownerUserGroupId.eq", i, "ownerUserGroupId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				out.OwnerUserGroupID = &v
+			case dynq.OpNeq:
+				if err := slots.Take("ownerUserGroupId.neq", i, "ownerUserGroupId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				out.OwnerUserGroupIDNeq = &v
+			case dynq.OpIn:
+				if err := slots.Take("ownerUserGroupId.in", i, "ownerUserGroupId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				out.OwnerUserGroupIDIn = vs
+			case dynq.OpNotIn:
+				if err := slots.Take("ownerUserGroupId.not_in", i, "ownerUserGroupId"); err != nil {
+					return out, err
+				}
+				vs, cerr := dynq.AsInt64Slice(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				if err := budget.Add(len(vs)); err != nil {
+					return out, dynq.AsError(err).At(dynq.KindWhere, i, "ownerUserGroupId")
+				}
+				out.OwnerUserGroupIDNotIn = vs
+			}
 		}
 	}
 
@@ -1258,7 +1463,8 @@ func ParseKbLibraryQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListKbLibrary
 }
 
 // validateKbLibraryParams 校验 params 在当前 opts 下的合法性,List 与 Count 共用。
-// 禁用字段携带非零值、IsNull 与 NotNull 同时为真均显式报错,不做静默剔除。
+// 禁用字段携带非零值、IsNull 与 NotNull 同时为真均显式报错,不做静默剔除;
+// 声明 @scope 的资源缺省 Scope 时 fail-closed 报错。
 //
 // 参数:
 //   - params: 待复核的查询参数。
@@ -1267,6 +1473,11 @@ func ParseKbLibraryQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListKbLibrary
 // 返回值:
 //   - error: 复核通过返回 nil,否则返回结构化错误。
 func validateKbLibraryParams(params ListKbLibraryParams, cfg *dynq.QueryConfig) error {
+	// 数据权限 fail-closed:声明 @scope 的表缺省 Scope 时显式报错,
+	// 宁可拒绝服务也不静默退化为全量可见。
+	if params.Scope == nil {
+		return dynq.ErrScopeRequired()
+	}
 	if cfg.WhereDisabled("id") && (params.ID != nil || params.IDNeq != nil || params.IDIn != nil || params.IDNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "id", "field disabled in this context", -1)
 	}
@@ -1309,13 +1520,24 @@ func validateKbLibraryParams(params ListKbLibraryParams, cfg *dynq.QueryConfig) 
 	if cfg.WhereDisabled("updatedAt") && (params.UpdatedAt != nil || params.UpdatedAtNeq != nil || params.UpdatedAtIn != nil || params.UpdatedAtNotIn != nil || params.UpdatedAtGt != nil || params.UpdatedAtGte != nil || params.UpdatedAtLt != nil || params.UpdatedAtLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "updatedAt", "field disabled in this context", -1)
 	}
+	if cfg.WhereDisabled("ownerUserId") && (params.OwnerUserID != nil || params.OwnerUserIDNeq != nil || params.OwnerUserIDIn != nil || params.OwnerUserIDNotIn != nil) {
+		return dynq.NewErr(dynq.KindWhere, "ownerUserId", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("ownerDeptId") && (params.OwnerDeptID != nil || params.OwnerDeptIDNeq != nil || params.OwnerDeptIDIn != nil || params.OwnerDeptIDNotIn != nil) {
+		return dynq.NewErr(dynq.KindWhere, "ownerDeptId", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("ownerUserGroupId") && (params.OwnerUserGroupID != nil || params.OwnerUserGroupIDNeq != nil || params.OwnerUserGroupIDIn != nil || params.OwnerUserGroupIDNotIn != nil) {
+		return dynq.NewErr(dynq.KindWhere, "ownerUserGroupId", "field disabled in this context", -1)
+	}
 	return dynq.ValidateTypedSelectFields(params.SelectFields, cfg, kb_libraryRegistry)
 }
 
 // buildKbLibraryWhere 构建过滤 WHERE 条件,List 与 Count 共用,过滤结果一致。
 // 所有值均经占位符参数化,列名与操作符为白名单字面量;
 // 声明 @filter 的表头部附加服务端固定不变量(协议不可见、调用方不可控),
-// List 与 Count 共用,过滤视图天然一致。
+// List 与 Count 共用,过滤视图天然一致;
+// 声明 @scope 的表头部注入数据权限谓词(守卫函数名同为生成期白名单字面量),
+// 与业务条件 AND 组合,total 与 items 的权限视图天然一致
 //
 // 参数:
 //   - params: 已通过 validate 形态复核的查询参数。
@@ -1328,6 +1550,15 @@ func buildKbLibraryWhere(params ListKbLibraryParams) []sq.Sqlizer {
 	// 与后续条件 AND;字面量经分词器校验后作为 Go 字面量经占位符传入,
 	// 不拼进 SQL 文本,零注入面。
 	conds = append(conds, sq.Expr("deleted_at IS NULL"))
+	// 数据权限谓词(@scope):多守卫 OR 组合,与业务条件 AND;列名/操作符/
+	// 守卫函数名/字面量参数为生成期白名单字面量,标识符参数经占位符参数化;
+	// IN-子查询与不相关标量函数在单条语句内只求值一次;params.Scope 非 nil
+	// 已由 validate 保证。
+	conds = append(conds, sq.Or{
+		sq.Expr("(fn_accessible_user_ids(?) IS NULL OR owner_user_id = ANY(fn_accessible_user_ids(?)))", params.Scope.UserID, params.Scope.UserID),
+		sq.Expr("(fn_accessible_dept_ids(?) IS NULL OR owner_dept_id = ANY(fn_accessible_dept_ids(?)))", params.Scope.UserID, params.Scope.UserID),
+		sq.Expr("(fn_accessible_group_ids(?) IS NULL OR owner_user_group_id = ANY(fn_accessible_group_ids(?)))", params.Scope.UserID, params.Scope.UserID),
+	})
 	if params.ID != nil {
 		conds = append(conds, sq.Eq{"id": *params.ID})
 	}
@@ -1531,6 +1762,42 @@ func buildKbLibraryWhere(params ListKbLibraryParams) []sq.Sqlizer {
 	}
 	if params.UpdatedAtLte != nil {
 		conds = append(conds, sq.LtOrEq{"updated_at": *params.UpdatedAtLte})
+	}
+	if params.OwnerUserID != nil {
+		conds = append(conds, sq.Eq{"owner_user_id": *params.OwnerUserID})
+	}
+	if params.OwnerUserIDNeq != nil {
+		conds = append(conds, sq.NotEq{"owner_user_id": *params.OwnerUserIDNeq})
+	}
+	if params.OwnerUserIDIn != nil {
+		conds = append(conds, sq.Eq{"owner_user_id": params.OwnerUserIDIn})
+	}
+	if params.OwnerUserIDNotIn != nil {
+		conds = append(conds, sq.NotEq{"owner_user_id": params.OwnerUserIDNotIn})
+	}
+	if params.OwnerDeptID != nil {
+		conds = append(conds, sq.Eq{"owner_dept_id": *params.OwnerDeptID})
+	}
+	if params.OwnerDeptIDNeq != nil {
+		conds = append(conds, sq.NotEq{"owner_dept_id": *params.OwnerDeptIDNeq})
+	}
+	if params.OwnerDeptIDIn != nil {
+		conds = append(conds, sq.Eq{"owner_dept_id": params.OwnerDeptIDIn})
+	}
+	if params.OwnerDeptIDNotIn != nil {
+		conds = append(conds, sq.NotEq{"owner_dept_id": params.OwnerDeptIDNotIn})
+	}
+	if params.OwnerUserGroupID != nil {
+		conds = append(conds, sq.Eq{"owner_user_group_id": *params.OwnerUserGroupID})
+	}
+	if params.OwnerUserGroupIDNeq != nil {
+		conds = append(conds, sq.NotEq{"owner_user_group_id": *params.OwnerUserGroupIDNeq})
+	}
+	if params.OwnerUserGroupIDIn != nil {
+		conds = append(conds, sq.Eq{"owner_user_group_id": params.OwnerUserGroupIDIn})
+	}
+	if params.OwnerUserGroupIDNotIn != nil {
+		conds = append(conds, sq.NotEq{"owner_user_group_id": params.OwnerUserGroupIDNotIn})
 	}
 	return conds
 }
@@ -1941,7 +2208,7 @@ func UpdateKbLibraryReturning(ctx context.Context, db DBTX, opts ...KbLibraryUpd
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
+	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return nil, err
@@ -1998,7 +2265,7 @@ func UpdateKbLibraryReturningByPk(ctx context.Context, db DBTX, pk int64, opts .
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
+	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return KbLibrary{}, err

@@ -157,7 +157,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	knowledgeUsecase := biz.NewKnowledgeUsecase(knowledgeRepo, modelRepo, vectorStore, documentUsecase)
-	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver)
+	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver, knowledgeUsecase)
 	if err != nil {
 		cleanup7()
 		cleanup6()
@@ -189,7 +189,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	runtimeMetrics := ops.NewRuntimeMetrics()
 	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
 	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
-	stack, cleanup9, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, grantUsecase, embedder, modelResolver, modelResolver, runtimeMetrics, auditUsecase)
+	stack, cleanup9, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, knowledgeSearchUsecase, grantUsecase, modelResolver, runtimeMetrics, auditUsecase)
 	if err != nil {
 		cleanup8()
 		cleanup7()

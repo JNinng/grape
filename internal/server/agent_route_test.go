@@ -84,6 +84,32 @@ func (*agentStubEmbedderResolver) ResolveEmbeddingSpace(context.Context, string)
 	return biz.EmbeddingSpace{Key: "bge-m3@v1", Dimension: 4}, nil
 }
 
+// agentStubVectorStore 是检索用例的向量存储占位：检索恒无命中，其余方法
+// 由嵌入的 nil 契约承担（路由用例不触达检索）。
+type agentStubVectorStore struct{ biz.VectorStore }
+
+func (agentStubVectorStore) Search(context.Context, []float32, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	return nil, nil
+}
+
+// agentStubLibraryDirectory 是可见库集合占位：恒无可见库。
+type agentStubLibraryDirectory struct{}
+
+func (agentStubLibraryDirectory) VisibleLibraries(context.Context, biz.Identity) ([]*biz.KnowledgeLibrary, error) {
+	return nil, nil
+}
+
+// agentStubSearchUsecase 构造路由测试的检索用例：骨架装配要求非 nil，
+// 路由用例不触达检索。
+func agentStubSearchUsecase() *biz.KnowledgeSearchUsecase {
+	uc, err := biz.NewKnowledgeSearchUsecase(
+		agentStubVectorStore{}, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, agentStubLibraryDirectory{})
+	if err != nil {
+		panic("server test: build knowledge search usecase: " + err.Error())
+	}
+	return uc
+}
+
 // agentStubUserRepo 是路由冒烟用的用户仓储占位：agent 骨架装配要求业务
 // 用例非 nil（业务工具的依赖），但路由用例不触发工具执行，任何方法
 // 被调用都属用例越界，按非法入参失败暴露。
@@ -156,7 +182,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 	}
 	// 向量存储以未配置适配器占位：路由冒烟不触检索。
 	stack, err := agent.NewStackWithOptions(agentConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(&agentStubUserRepo{}), nil, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, agent.WithModelOverride(llm))
+		biz.NewUserUsecase(&agentStubUserRepo{}), agentStubSearchUsecase(), nil, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build agent stack: %v", err)
 	}

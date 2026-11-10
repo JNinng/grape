@@ -27,7 +27,7 @@ type ErrorReason int32
 const (
 	// 缺省值，不使用。
 	ErrorReason_KNOWLEDGE_UNSPECIFIED ErrorReason = 0
-	// 目标知识库不存在（含跨租户不可见）。
+	// 目标知识库不存在或不在调用方数据范围内（二者不区分，不泄露存在性）。
 	ErrorReason_LIBRARY_NOT_FOUND ErrorReason = 1
 	// 知识库请求参数非法（名称/切分参数/有效期等）。
 	ErrorReason_LIBRARY_INVALID_ARGUMENT ErrorReason = 2

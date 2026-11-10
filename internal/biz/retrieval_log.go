@@ -17,12 +17,11 @@ import (
 // 也不回传原文）。
 
 // 留痕行的领域取值：
-//   - source：检索来源。tool-检索工具链路（经框架适配器访问 Search，
-//     ctx 未声明来源时的缺省）；console-前端主动检索（知识库检索用例直调
-//     Search，经 WithRetrievalSource 声明）；pipeline-摄取管线（Add/
-//     Update/DeleteByFilter）；管理面（索引重建/过滤策略调整，super 路径
-//     占位）的扩展取值与触发点见 sqlc/schema/97_agent_retrieval_log.sql
-//     的头注释；
+//   - source：检索来源。tool-agent 检索工具链路（调用检索用例前经
+//     WithRetrievalSource 显式声明）；console-前端主动检索（检索用例在
+//     调用方未声明时的缺省）；pipeline-摄取管线（Add/Update/DeleteByFilter）；
+//     管理面（索引重建/过滤策略调整，super 路径占位）的扩展取值与触发点见
+//     sqlc/schema/97_agent_retrieval_log.sql 的头注释；
 //   - status：操作终态，成功 / 失败（失败行同样留痕——尝试即证据，
 //     与工具调用审计的终态口径一致）。
 const (
@@ -240,9 +239,9 @@ func RetrievalQueryFromContext(ctx context.Context) string {
 
 type retrievalSourceKey struct{}
 
-// WithRetrievalSource 声明本次检索的来源（RetrievalSource* 常量）。工具
-// 链路不声明（装饰器缺省记 tool），直调 Search 的其他链路必须声明，否则
-// 被误记为工具检索。
+// WithRetrievalSource 声明本次检索的来源（RetrievalSource* 常量）。检索
+// 用例在调用方未声明时缺省记 console（前端链路），agent 工具链路在调用
+// 前显式声明 tool——否则会被误记为前端检索。
 func WithRetrievalSource(ctx context.Context, source string) context.Context {
 	if strings.TrimSpace(source) == "" {
 		return ctx

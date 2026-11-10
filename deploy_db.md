@@ -117,6 +117,33 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 
   新版本二进制的知识库查询依赖该列，历史库须先执行上述升级再部署。
   存量库要改用区分串切分时，经管理页编辑库的区分串后对条目执行重建索引。
+- **kb_library 归属三元组与 `@scope`（91_knowledge.sql）**：历史库以表 owner
+  手工追加三列、索引与注释（与 91_knowledge.sql 逐字一致）：
+
+  ```sql
+  ALTER TABLE public.kb_library ADD COLUMN owner_user_id int8 NULL;
+  ALTER TABLE public.kb_library ADD COLUMN owner_dept_id int8 NULL;
+  ALTER TABLE public.kb_library ADD COLUMN owner_user_group_id int8 NULL;
+  CREATE INDEX kb_library_owner_user_idx ON public.kb_library USING btree (owner_user_id);
+  CREATE INDEX kb_library_owner_dept_idx ON public.kb_library USING btree (owner_dept_id);
+  CREATE INDEX kb_library_owner_group_idx ON public.kb_library USING btree (owner_user_group_id);
+  COMMENT ON TABLE public.kb_library IS '知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
+  COMMENT ON COLUMN public.kb_library.owner_user_id IS '归属用户 ID（创建人缺省归属，NULL=无该归属） [@dynamic: exact, membership]';
+  COMMENT ON COLUMN public.kb_library.owner_dept_id IS '归属部门 ID（NULL=无该归属） [@dynamic: exact, membership]';
+  COMMENT ON COLUMN public.kb_library.owner_user_group_id IS '归属用户组 ID（NULL=无该归属） [@dynamic: exact, membership]';
+  ```
+
+  存量行归属为 NULL，按数据范围口径只有全租户角色可见（含其创建人，若其
+  没有全租户角色）。如需保持「创建人可见」的平滑口径，追加列后回填一次：
+
+  ```sql
+  UPDATE public.kb_library
+  SET owner_user_id = created_by
+  WHERE owner_user_id IS NULL AND owner_dept_id IS NULL AND owner_user_group_id IS NULL;
+  ```
+
+  新版本二进制的知识库读面（单行读、动态 List、检索可见库集合）依赖该
+  三元组，历史库须先升级再部署。`@scope` 只影响生成代码，不改 DDL。
 - **98_model_write.sql**：历史库追加对象，以部署超级用户执行；只含
   `CREATE OR REPLACE FUNCTION`，可重复。平台模型写端点（`sys:model:platform:*`）
   与模型管理页菜单（279–286）依赖 `050_sys_menu.sql` / `060_sys_role_menu.sql`

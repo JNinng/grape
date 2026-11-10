@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -19,7 +20,8 @@ import (
 )
 
 var (
-	// ErrLibraryNotFound 表示目标知识库不存在（含跨租户不可见）。
+	// ErrLibraryNotFound 表示目标知识库不存在或不在调用方数据范围内（含跨
+	// 租户不可见）；二者不区分，不泄露存在性。检索指定不可见库同样复用本错误。
 	ErrLibraryNotFound = kratoserrors.NotFound(knowledgev1.ErrorReason_LIBRARY_NOT_FOUND.String(), "knowledge library not found")
 	// ErrLibraryInvalidArgument 表示知识库请求参数非法。
 	ErrLibraryInvalidArgument = kratoserrors.BadRequest(knowledgev1.ErrorReason_LIBRARY_INVALID_ARGUMENT.String(), "invalid knowledge library argument")
@@ -27,7 +29,8 @@ var (
 	ErrLibraryAlreadyExists = kratoserrors.Conflict(knowledgev1.ErrorReason_LIBRARY_ALREADY_EXISTS.String(), "knowledge library already exists")
 	// ErrLibraryHasDocuments 表示库内仍有未删除条目，禁止删除。
 	ErrLibraryHasDocuments = kratoserrors.Conflict(knowledgev1.ErrorReason_LIBRARY_HAS_DOCUMENTS.String(), "knowledge library has documents")
-	// ErrDocumentNotFound 表示目标条目不存在（含跨租户不可见）。
+	// ErrDocumentNotFound 表示目标条目不存在、跨租户不可见，或所属库不在
+	// 调用方数据范围内；三者不区分，不泄露条目存在性。
 	ErrDocumentNotFound = kratoserrors.NotFound(knowledgev1.ErrorReason_DOCUMENT_NOT_FOUND.String(), "knowledge document not found")
 	// ErrDocumentInvalidArgument 表示条目请求参数非法。
 	ErrDocumentInvalidArgument = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_INVALID_ARGUMENT.String(), "invalid knowledge document argument")
@@ -118,10 +121,12 @@ type KnowledgeDocumentPage struct {
 }
 
 // KnowledgeRepo 是知识库与条目的仓储接口。两者都是租户表，租户边界由
-// RLS 承担；动态 List 消费 dynq 协议。更新路径先锁定目标行再写入。
+// RLS 承担，kb_library 的租户内可见性由 @scope / 单行判定强制；动态 List
+// 消费 dynq 协议。更新路径先锁定目标行再写入。
 type KnowledgeRepo interface {
 	GetLibrary(ctx context.Context, auth Identity, id int64) (*KnowledgeLibrary, error)
 	ListLibraries(ctx context.Context, auth Identity, q *dynq.Query) (*KnowledgeLibraryList, error)
+	ListVisibleLibraries(ctx context.Context, auth Identity) ([]*KnowledgeLibrary, error)
 	CreateLibrary(ctx context.Context, auth Identity, l *KnowledgeLibrary) (*KnowledgeLibrary, error)
 	UpdateLibrary(ctx context.Context, auth Identity, l *KnowledgeLibrary) (*KnowledgeLibrary, error)
 	SoftDeleteLibrary(ctx context.Context, auth Identity, id int64) error
@@ -163,6 +168,13 @@ func (uc *KnowledgeUsecase) ListLibraries(ctx context.Context, auth Identity, q 
 	return uc.repo.ListLibraries(ctx, auth, q)
 }
 
+// VisibleLibraries 返回调用方数据范围内可见的未软删知识库（不分页）。
+// 这是可见库集合的单一解析点：检索用例按检索现场调用（结果不缓存，
+// 权限运行时可变），agent 列库工具与检索过滤共用同一结果。
+func (uc *KnowledgeUsecase) VisibleLibraries(ctx context.Context, auth Identity) ([]*KnowledgeLibrary, error) {
+	return uc.repo.ListVisibleLibraries(ctx, auth)
+}
+
 // ListModelOptions 返回知识库可用的模型选项（权限码由入口层把守）。
 func (uc *KnowledgeUsecase) ListModelOptions(ctx context.Context, auth Identity, kind string) ([]*ModelCfg, error) {
 	kind = strings.TrimSpace(kind)
@@ -186,7 +198,9 @@ func (uc *KnowledgeUsecase) CreateLibrary(ctx context.Context, auth Identity, l 
 
 // UpdateLibrary 覆盖知识库可变字段，并把新状态/有效期同步到库内全部
 // 条目的 chunk metadata（不重新嵌入）。同步失败使本次更新失败。未携带
-// 区分串时保持原值（不隐式改变存量库的切分行为）。
+// 区分串时保持原值（不隐式改变存量库的切分行为）。可见性判定前置：
+// 不可见库不得进入任何副作用（chunk metadata 同步），与「不可见即 404」
+// 同一语义。
 func (uc *KnowledgeUsecase) UpdateLibrary(ctx context.Context, auth Identity, l *KnowledgeLibrary) (*KnowledgeLibrary, error) {
 	if l == nil || l.ID <= 0 {
 		return nil, ErrLibraryInvalidArgument
@@ -194,11 +208,13 @@ func (uc *KnowledgeUsecase) UpdateLibrary(ctx context.Context, auth Identity, l 
 	if err := uc.validateLibrary(ctx, auth, l, true); err != nil {
 		return nil, err
 	}
+	// 先判可见（不可见与不存在统一 404），再做 chunk 同步等副作用；
+	// 仓储 UpdateLibrary 的写前锁定保留为并发防线。
+	existing, err := uc.repo.GetLibrary(ctx, auth, l.ID)
+	if err != nil {
+		return nil, err
+	}
 	if l.ChunkDelimiter == nil {
-		existing, err := uc.repo.GetLibrary(ctx, auth, l.ID)
-		if err != nil {
-			return nil, err
-		}
 		l.ChunkDelimiter = existing.ChunkDelimiter
 	}
 	normalizeChunking(l)
@@ -209,10 +225,14 @@ func (uc *KnowledgeUsecase) UpdateLibrary(ctx context.Context, auth Identity, l 
 }
 
 // DeleteLibrary 软删除知识库：存在未删除条目时拒绝；无条目时清理库内
-// 全部 chunk（含残留）后软删。
+// 全部 chunk（含残留）后软删。可见性判定前置：不可见库的计数与清理都不
+// 执行，避免用 409/404 差异探测存在性、也避免越权清理 chunk。
 func (uc *KnowledgeUsecase) DeleteLibrary(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrLibraryInvalidArgument
+	}
+	if _, err := uc.repo.GetLibrary(ctx, auth, id); err != nil {
+		return err
 	}
 	count, err := uc.repo.CountDocumentsByLibrary(ctx, auth, id)
 	if err != nil {
@@ -240,14 +260,15 @@ type KnowledgeChunk struct {
 }
 
 // ListDocumentChunks 返回条目的实际分片（按分片序），供管理页核对切分
-// 结果。条目不存在按 NotFound 拒绝；分片只经 VectorStore 枚举——切分实现
-// 与存量数据可能不一致（改过区分串/切分参数而未重建），回放切分算法得到
-// 的不是「实际」分片。设施未启用的错误原样透传，不降级为空列表。
+// 结果。条目不存在或所属库不可见按 NotFound 拒绝；分片只经 VectorStore
+// 枚举——切分实现与存量数据可能不一致（改过区分串/切分参数而未重建），
+// 回放切分算法得到的不是「实际」分片。设施未启用的错误原样透传，不降级
+// 为空列表。
 func (uc *KnowledgeUsecase) ListDocumentChunks(ctx context.Context, auth Identity, id int64) ([]*KnowledgeChunk, error) {
 	if id <= 0 {
 		return nil, ErrDocumentInvalidArgument
 	}
-	if _, err := uc.repo.GetDocument(ctx, auth, id); err != nil {
+	if _, err := uc.GetDocument(ctx, auth, id); err != nil {
 		return nil, err
 	}
 	docs, err := uc.store.List(ctx, &VectorFilter{Conditions: []MetadataCondition{
@@ -299,12 +320,34 @@ func chunkIndexOf(id string, metadata map[string]any) int {
 	return 0
 }
 
-// GetDocument 按 id 查询条目。
+// GetDocument 按 id 查询条目；条目不存在或所属库不在调用方数据范围内统一
+// 返回 ErrDocumentNotFound（不泄露条目存在性）。
 func (uc *KnowledgeUsecase) GetDocument(ctx context.Context, auth Identity, id int64) (*KnowledgeDocument, error) {
 	if id <= 0 {
 		return nil, ErrDocumentInvalidArgument
 	}
-	return uc.repo.GetDocument(ctx, auth, id)
+	doc, err := uc.repo.GetDocument(ctx, auth, id)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := uc.documentLibrary(ctx, auth, doc.LibraryID); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// documentLibrary 读取条目所属库，并把「库不可见」统一映射为
+// ErrDocumentNotFound：条目读面不区分「条目不存在」与「所属库不可见」，
+// 避免用条目 ID 探测不可见库。
+func (uc *KnowledgeUsecase) documentLibrary(ctx context.Context, auth Identity, libraryID int64) (*KnowledgeLibrary, error) {
+	lib, err := uc.repo.GetLibrary(ctx, auth, libraryID)
+	if err != nil {
+		if errors.Is(err, ErrLibraryNotFound) {
+			return nil, ErrDocumentNotFound
+		}
+		return nil, err
+	}
+	return lib, nil
 }
 
 // ListDocuments 动态列出租户内条目（列表形态不返回正文）。
@@ -356,12 +399,18 @@ func (uc *KnowledgeUsecase) CreateDocument(ctx context.Context, auth Identity, d
 }
 
 // UpdateDocument 覆盖条目可变字段：正文变更时重新摄取；仅状态/有效期
-// 变更时同步 chunk metadata（不重嵌）。library_id 与 kind 不可变。
+// 变更时同步 chunk metadata（不重嵌）。library_id 与 kind 不可变。可见性
+// 判定紧跟取行：不可见库统一 ErrDocumentNotFound，先于请求字段校验，
+// 避免用 400/404 差异探测不可见库中的条目。
 func (uc *KnowledgeUsecase) UpdateDocument(ctx context.Context, auth Identity, d *KnowledgeDocument) (*KnowledgeDocument, error) {
 	if d == nil || d.ID <= 0 {
 		return nil, ErrDocumentInvalidArgument
 	}
 	existing, err := uc.repo.GetDocument(ctx, auth, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	lib, err := uc.documentLibrary(ctx, auth, existing.LibraryID)
 	if err != nil {
 		return nil, err
 	}
@@ -383,10 +432,6 @@ func (uc *KnowledgeUsecase) UpdateDocument(ctx context.Context, auth Identity, d
 		d.Title = existing.Title
 	}
 	if err := validateDocument(d, true); err != nil {
-		return nil, err
-	}
-	lib, err := uc.repo.GetLibrary(ctx, auth, d.LibraryID)
-	if err != nil {
 		return nil, err
 	}
 	newHash := hashContent(d.Content)
@@ -412,12 +457,13 @@ func (uc *KnowledgeUsecase) UpdateDocument(ctx context.Context, auth Identity, d
 	return uc.repo.UpdateDocument(ctx, auth, d)
 }
 
-// DeleteDocument 软删除条目并清理其 chunk（chunk 先删，避免残留可检索行）。
+// DeleteDocument 软删除条目并清理其 chunk（chunk 先删，避免残留可检索行）；
+// 条目不存在或所属库不可见统一 NotFound。
 func (uc *KnowledgeUsecase) DeleteDocument(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrDocumentInvalidArgument
 	}
-	if _, err := uc.repo.GetDocument(ctx, auth, id); err != nil {
+	if _, err := uc.GetDocument(ctx, auth, id); err != nil {
 		return err
 	}
 	if _, err := uc.store.DeleteByFilter(ctx, &VectorFilter{Conditions: []MetadataCondition{
@@ -437,7 +483,7 @@ func (uc *KnowledgeUsecase) ReindexDocument(ctx context.Context, auth Identity, 
 	if err != nil {
 		return nil, err
 	}
-	lib, err := uc.repo.GetLibrary(ctx, auth, doc.LibraryID)
+	lib, err := uc.documentLibrary(ctx, auth, doc.LibraryID)
 	if err != nil {
 		return nil, err
 	}

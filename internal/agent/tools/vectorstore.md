@@ -8,6 +8,11 @@
 认证 ctx 强制，本适配器只做形状映射，不自行取用身份（避免第二套隔离
 逻辑）。
 
+知识检索工具与前端检索统一走 `biz.KnowledgeSearchUsecase`（可见库集合、
+固定检索条件、向量化与 top_k 钳制都在 biz 收口），**不经本适配器**；本文
+描述的是框架侧消费方（`knowledge/vectorstore` 面）经适配器访问契约的
+形状映射与同套纪律。
+
 ## 方法映射
 
 | 框架方法             | 映射                     | 说明                                                            |
@@ -24,23 +29,23 @@
 | `Close`          | —                      | 无自有资源；连接池与仓储生命周期归 data 层 cleanup                              |
 | `List`           | `store.List`           | 契约新增的枚举读面（含正文）；框架接口无对应方法，适配器不映射                       |
 
-## 检索逻辑
+## 检索逻辑（框架消费方路径）
 
 ```
-query 文本（工具层校验 ≤512 字符，top_k 缺省 5）
+query 文本（框架调用方自定入参边界）
   → resolver.ResolveDefaultEmbedder → embedder.Embed（查询向量化）
   → 适配器 Search（SearchModeVector；Limit 超限钳到 maxSearchTopK=20）
   → 契约实现 resolveSpace（空间键/维度/向量长度三方对账）
-  → 单阶段 HNSW 向量检索（无重排）→ 围栏包装出参
+  → 单阶段 HNSW 向量检索（无重排）
 ```
 
 - **单阶段检索，无重排（rerank）**：当前管线只有 HNSW 余弦向量检索一段，
   命中即出参，没有 cross-encoder 重排或分数二次校准环节。若引入重排，
-  落点在契约实现返回 `ScoredVectorDocument` 之后、检索工具围栏包装之前
-  （工具层对框架 SearchQuery 无感知，适配器不应承载重排语义）。
-- **top_k 三层收敛**：工具层缺省 5（`defaultSearchTopK`）→ 适配器硬上限
-  20（超限静默钳制，模型侧无法绕过）→ 存储层 Limit 非正取默认页大小 10
-  （正常链路到不了，是契约语义兜底）。三层均为代码级默认，不进 conf。
+  落点在契约实现返回 `ScoredVectorDocument` 之后（适配器不应承载重排语义）。
+- **top_k 收敛**：适配器硬上限 20（超限静默钳制，框架侧无法绕过）→ 存储
+  层 Limit 非正取默认页大小 10（正常链路到不了，是契约语义兜底）。知识
+  检索用例路径在同一上限（`MaxKnowledgeSearchTopK=20`）钳制，语义一致。
+  两层均为代码级默认，不进 conf。
 - **分数语义**：归一化余弦相似度 `1.0 - dist/2`，映射到 [0,1]（同向 1.0、
   正交 0.5），与框架 pgvector 实现一致；查询向量 float64 降精度 float32
   是存储语义。`MinScore > 0` 时作为 SQL WHERE 条件下推（`score >= $n`）。
@@ -52,21 +57,21 @@ query 文本（工具层校验 ≤512 字符，top_k 缺省 5）
   （空间事实）+ 固定条件（状态/有效期/可选 kb_id，经中性载体）+ IDs/
   metadata 过滤同批 AND；过滤计划见
   [vector_repo.go](../../data/pg_sqlc/vector/vector_repo.go) 的
-  `planVectorFilter`（键与值全走占位符）。
+  `planVectorFilter`（键与值全走占位符）。知识检索用例路径直接把固定条件
+  放进 `VectorFilter.Conditions`，不依赖 ctx 载体。
 
 ## 关键纪律
 
 - **嵌入空间走 ctx 事实**：框架的 document/SearchQuery 类型不携带空间
   概念，`requireEmbedderSpace` 从 `biz.EmbedderSpaceFromContext` 读取
-  （检索工具在 embed 现场经 `biz.WithEmbedderSpace` 注入），缺失即拒绝
-  （fail-closed），不猜测空间——跨空间混排破坏相似度语义。
-- **固定检索条件走中性载体**：状态/有效期/可选知识库条件由检索工具经
+  （框架侧调用方在 embed 现场经 `biz.WithEmbedderSpace` 注入），缺失即
+  拒绝（fail-closed），不猜测空间——跨空间混排破坏相似度语义。
+- **固定检索条件走中性载体**：状态/有效期/可选知识库条件由框架侧调用方经
   `biz.WithRetrievalFilter` 传入（框架 SearchQuery 不携带条件 DSL），
   适配器读出后并入契约过滤。
-- **top_k 上限在适配器强制**：模型侧可指定的返回条数统一收敛，检索工具
-  只经本适配器访问向量、无法绕过；存储层语义（Limit 非正取默认页大小）
-  在其下保持不变。上限是防滥用的代码级约束，不进 conf——conf 化反而
-  给了绕过面。
+- **top_k 上限在适配器强制**：框架侧可指定的返回条数统一收敛，无法绕过；
+  存储层语义（Limit 非正取默认页大小）在其下保持不变。上限是防滥用的
+  代码级约束，不进 conf——conf 化反而给了绕过面。
 - **显式拒绝优于静默降级**：keyword/hybrid 检索（需 tsvector 列与
   embedder 管线配合）、searchfilter 条件 DSL 翻译、DeleteAll、批量更新
   均以 `errVectorUnsupported` 报错，不静默降级成纯向量而改变检索行为。

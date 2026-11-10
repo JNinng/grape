@@ -120,6 +120,14 @@ func (s *IdentityTx) SysRoleScope() *gen.SysRoleScope {
 	return &gen.SysRoleScope{UserID: s.auth.UserID}
 }
 
+// KbLibraryScope 为 @scope 表 kb_library 构造守卫参数载体（同 BasicScope）：
+// 知识库的租户内可见性由归属三元组经 fn_accessible_* 三件套推导，与单行读
+// 的 fn_check_visible、写前的 fn_can_operate_row 同一口径。Scope 不注入时
+// 生成代码 fail-closed 报错。
+func (s *IdentityTx) KbLibraryScope() *gen.KbLibraryScope {
+	return &gen.KbLibraryScope{UserID: s.auth.UserID}
+}
+
 // IdentityTx 开启事务并注入租户会话变量（app.tenant_id），fn 内经该
 // 事务访问数据库。
 func (d *Data) IdentityTx(ctx context.Context, auth Identity, fn func(*IdentityTx) error) error {

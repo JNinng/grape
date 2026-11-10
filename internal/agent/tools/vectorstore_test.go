@@ -96,8 +96,8 @@ func (f *fakeVectorStore) List(_ context.Context, filter *biz.VectorFilter) ([]*
 	return f.listed, nil
 }
 
-// spaceCtx 是适配器单测的固定空间 ctx：检索工具在生产路径经
-// biz.WithEmbedderSpace 注入的事实形状。
+// spaceCtx 是适配器单测的固定空间 ctx：框架侧调用方在生产路径经
+// biz.WithEmbedderSpace 注入的事实形状（知识检索用例不经适配器）。
 func spaceCtx(ctx context.Context) context.Context {
 	return biz.WithEmbedderSpace(ctx, testsupport.SearchTestSpace, 4)
 }

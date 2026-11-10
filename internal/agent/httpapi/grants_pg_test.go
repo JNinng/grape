@@ -85,7 +85,7 @@ func grantUsecase(t *testing.T, grapeUDSN string) (*biz.GrantUsecase, func()) {
 func grantNewStack(t *testing.T, svc session.Service, llm *acktest.ScriptedModel, repo *testsupport.FakeUserRepo, grants *biz.GrantUsecase) *agent.Stack {
 	t.Helper()
 	stack, err := agent.NewStackWithOptions(testsupport.StackConf(), nil, svc, agent.NewVectorStore(nil),
-		biz.NewUserUsecase(repo), grants, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4}, agent.WithModelOverride(llm))
+		biz.NewUserUsecase(repo), testsupport.NewStackKnowledgeSearch(), grants, agent.WithModelOverride(llm))
 	if err != nil {
 		t.Fatalf("build stack: %v", err)
 	}

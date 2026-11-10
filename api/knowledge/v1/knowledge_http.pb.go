@@ -26,19 +26,21 @@ const OperationLibraryServiceListModelOptions = "/knowledge.v1.LibraryService/Li
 const OperationLibraryServiceUpdateLibrary = "/knowledge.v1.LibraryService/UpdateLibrary"
 
 type LibraryServiceHTTPServer interface {
-	// CreateLibrary CreateLibrary 创建知识库。
+	// CreateLibrary CreateLibrary 创建知识库（创建人缺省为归属人）。
 	CreateLibrary(context.Context, *CreateLibraryRequest) (*Library, error)
-	// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+	// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+	// 统一 404。
 	DeleteLibrary(context.Context, *DeleteLibraryRequest) (*emptypb.Empty, error)
-	// GetLibrary GetLibrary 按 id 查询知识库。
+	// GetLibrary GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
 	GetLibrary(context.Context, *GetLibraryRequest) (*Library, error)
-	// ListLibraries ListLibraries 按动态查询协议返回一页知识库。
+	// ListLibraries ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(context.Context, *ListLibrariesRequest) (*LibrarySet, error)
 	// ListModelOptions ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(context.Context, *ListModelOptionsRequest) (*ModelOptionSet, error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+	// 不可见与不存在统一 404。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
 }
 
@@ -179,19 +181,21 @@ func _LibraryService_ListModelOptions0_HTTP_Handler(srv LibraryServiceHTTPServer
 }
 
 type LibraryServiceHTTPClient interface {
-	// CreateLibrary CreateLibrary 创建知识库。
+	// CreateLibrary CreateLibrary 创建知识库（创建人缺省为归属人）。
 	CreateLibrary(ctx context.Context, req *CreateLibraryRequest, opts ...http.CallOption) (rsp *Library, err error)
-	// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+	// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+	// 统一 404。
 	DeleteLibrary(ctx context.Context, req *DeleteLibraryRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
-	// GetLibrary GetLibrary 按 id 查询知识库。
+	// GetLibrary GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
 	GetLibrary(ctx context.Context, req *GetLibraryRequest, opts ...http.CallOption) (rsp *Library, err error)
-	// ListLibraries ListLibraries 按动态查询协议返回一页知识库。
+	// ListLibraries ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(ctx context.Context, req *ListLibrariesRequest, opts ...http.CallOption) (rsp *LibrarySet, err error)
 	// ListModelOptions ListModelOptions 返回当前租户可见的启用模型选项（按 kind 过滤），
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(ctx context.Context, req *ListModelOptionsRequest, opts ...http.CallOption) (rsp *ModelOptionSet, err error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+	// 不可见与不存在统一 404。
 	UpdateLibrary(ctx context.Context, req *UpdateLibraryRequest, opts ...http.CallOption) (rsp *Library, err error)
 }
 
@@ -203,7 +207,7 @@ func NewLibraryServiceHTTPClient(client *http.Client) LibraryServiceHTTPClient {
 	return &LibraryServiceHTTPClientImpl{client}
 }
 
-// CreateLibrary CreateLibrary 创建知识库。
+// CreateLibrary CreateLibrary 创建知识库（创建人缺省为归属人）。
 func (c *LibraryServiceHTTPClientImpl) CreateLibrary(ctx context.Context, in *CreateLibraryRequest, opts ...http.CallOption) (*Library, error) {
 	var out Library
 	pattern := "/v1/knowledge/libraries/create"
@@ -221,7 +225,8 @@ func (c *LibraryServiceHTTPClientImpl) CreateLibrary(ctx context.Context, in *Cr
 	return &out, nil
 }
 
-// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝。
+// DeleteLibrary DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
+// 统一 404。
 func (c *LibraryServiceHTTPClientImpl) DeleteLibrary(ctx context.Context, in *DeleteLibraryRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
 	var out emptypb.Empty
 	pattern := "/v1/knowledge/libraries/{id}"
@@ -238,7 +243,7 @@ func (c *LibraryServiceHTTPClientImpl) DeleteLibrary(ctx context.Context, in *De
 	return &out, nil
 }
 
-// GetLibrary GetLibrary 按 id 查询知识库。
+// GetLibrary GetLibrary 按 id 查询调用方可见的知识库（不可见与不存在统一 404）。
 func (c *LibraryServiceHTTPClientImpl) GetLibrary(ctx context.Context, in *GetLibraryRequest, opts ...http.CallOption) (*Library, error) {
 	var out Library
 	pattern := "/v1/knowledge/libraries/{id}"
@@ -255,7 +260,7 @@ func (c *LibraryServiceHTTPClientImpl) GetLibrary(ctx context.Context, in *GetLi
 	return &out, nil
 }
 
-// ListLibraries ListLibraries 按动态查询协议返回一页知识库。
+// ListLibraries ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 func (c *LibraryServiceHTTPClientImpl) ListLibraries(ctx context.Context, in *ListLibrariesRequest, opts ...http.CallOption) (*LibrarySet, error) {
 	var out LibrarySet
 	pattern := "/v1/knowledge/libraries/list"
@@ -292,7 +297,8 @@ func (c *LibraryServiceHTTPClientImpl) ListModelOptions(ctx context.Context, in 
 }
 
 // UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）。
+// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
+// 不可见与不存在统一 404。
 func (c *LibraryServiceHTTPClientImpl) UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...http.CallOption) (*Library, error) {
 	var out Library
 	pattern := "/v1/knowledge/libraries/update"
@@ -321,28 +327,31 @@ const OperationDocumentServiceSearchDocuments = "/knowledge.v1.DocumentService/S
 const OperationDocumentServiceUpdateDocument = "/knowledge.v1.DocumentService/UpdateDocument"
 
 type DocumentServiceHTTPServer interface {
-	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储。
+	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
 	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
-	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk。
+	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
-	// GetDocument GetDocument 按 id 查询条目（含正文）。
+	// GetDocument GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
 	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error)
-	// ListDocuments ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+	// ListDocuments ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+	// 返回正文）。
 	ListDocuments(context.Context, *ListDocumentsRequest) (*DocumentSet, error)
 	// ListLibraryDocuments ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+	// 统一 404）。
 	ListLibraryDocuments(context.Context, *ListLibraryDocumentsRequest) (*DocumentSet, error)
 	// ReindexDocument ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
-	// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	// SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+	// 文本处理。
 	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-	// 有效期限）；正文变更时重新摄取。
+	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
 	UpdateDocument(context.Context, *UpdateDocumentRequest) (*Document, error)
 }
 
@@ -552,28 +561,31 @@ func _DocumentService_SearchDocuments0_HTTP_Handler(srv DocumentServiceHTTPServe
 }
 
 type DocumentServiceHTTPClient interface {
-	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储。
+	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
 	CreateDocument(ctx context.Context, req *CreateDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
-	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk。
+	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
-	// GetDocument GetDocument 按 id 查询条目（含正文）。
+	// GetDocument GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(ctx context.Context, req *GetDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
 	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(ctx context.Context, req *ListDocumentChunksRequest, opts ...http.CallOption) (rsp *DocumentChunkSet, err error)
-	// ListDocuments ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+	// ListDocuments ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+	// 返回正文）。
 	ListDocuments(ctx context.Context, req *ListDocumentsRequest, opts ...http.CallOption) (rsp *DocumentSet, err error)
 	// ListLibraryDocuments ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+	// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+	// 统一 404）。
 	ListLibraryDocuments(ctx context.Context, req *ListLibraryDocumentsRequest, opts ...http.CallOption) (rsp *DocumentSet, err error)
 	// ReindexDocument ReindexDocument 重建指定条目的向量（正文与当前配置重新摄取）。
 	ReindexDocument(ctx context.Context, req *ReindexDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
-	// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-	// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-	// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+	// SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+	// 文本处理。
 	SearchDocuments(ctx context.Context, req *SearchDocumentsRequest, opts ...http.CallOption) (rsp *SearchDocumentsReply, err error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-	// 有效期限）；正文变更时重新摄取。
+	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
 	UpdateDocument(ctx context.Context, req *UpdateDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
 }
 
@@ -585,7 +597,7 @@ func NewDocumentServiceHTTPClient(client *http.Client) DocumentServiceHTTPClient
 	return &DocumentServiceHTTPClientImpl{client}
 }
 
-// CreateDocument CreateDocument 创建文本条目并摄取到向量存储。
+// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
 func (c *DocumentServiceHTTPClientImpl) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...http.CallOption) (*Document, error) {
 	var out Document
 	pattern := "/v1/knowledge/documents/create"
@@ -603,7 +615,7 @@ func (c *DocumentServiceHTTPClientImpl) CreateDocument(ctx context.Context, in *
 	return &out, nil
 }
 
-// DeleteDocument DeleteDocument 软删除条目并清理其 chunk。
+// DeleteDocument DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 func (c *DocumentServiceHTTPClientImpl) DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...http.CallOption) (*emptypb.Empty, error) {
 	var out emptypb.Empty
 	pattern := "/v1/knowledge/documents/{id}"
@@ -620,7 +632,7 @@ func (c *DocumentServiceHTTPClientImpl) DeleteDocument(ctx context.Context, in *
 	return &out, nil
 }
 
-// GetDocument GetDocument 按 id 查询条目（含正文）。
+// GetDocument GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 func (c *DocumentServiceHTTPClientImpl) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...http.CallOption) (*Document, error) {
 	var out Document
 	pattern := "/v1/knowledge/documents/{id}"
@@ -655,7 +667,8 @@ func (c *DocumentServiceHTTPClientImpl) ListDocumentChunks(ctx context.Context, 
 	return &out, nil
 }
 
-// ListDocuments ListDocuments 按动态查询协议返回一页条目（列表不返回正文）。
+// ListDocuments ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
+// 返回正文）。
 func (c *DocumentServiceHTTPClientImpl) ListDocuments(ctx context.Context, in *ListDocumentsRequest, opts ...http.CallOption) (*DocumentSet, error) {
 	var out DocumentSet
 	pattern := "/v1/knowledge/documents/list"
@@ -674,7 +687,8 @@ func (c *DocumentServiceHTTPClientImpl) ListDocuments(ctx context.Context, in *L
 }
 
 // ListLibraryDocuments ListLibraryDocuments 分页返回指定库下的条目（管理面子列表；宿主 id
-// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制）。
+// 在路径参数，规避动态协议整型过滤值的 JSON number 精度限制；库不可见
+// 统一 404）。
 func (c *DocumentServiceHTTPClientImpl) ListLibraryDocuments(ctx context.Context, in *ListLibraryDocumentsRequest, opts ...http.CallOption) (*DocumentSet, error) {
 	var out DocumentSet
 	pattern := "/v1/knowledge/libraries/{id}/documents"
@@ -709,9 +723,10 @@ func (c *DocumentServiceHTTPClientImpl) ReindexDocument(ctx context.Context, in 
 	return &out, nil
 }
 
-// SearchDocuments SearchDocuments 在租户内知识库做向量检索（与 Agent 检索工具同一套
-// 固定条件：条目参与、处于有效期内），权限码 sys:knowledge:query。
-// 命中按相似度降序，正文按原文返回，渲染方按普通文本处理。
+// SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
+// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
+// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
+// 文本处理。
 func (c *DocumentServiceHTTPClientImpl) SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...http.CallOption) (*SearchDocumentsReply, error) {
 	var out SearchDocumentsReply
 	pattern := "/v1/knowledge/documents/search"
@@ -730,7 +745,7 @@ func (c *DocumentServiceHTTPClientImpl) SearchDocuments(ctx context.Context, in 
 }
 
 // UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
-// 有效期限）；正文变更时重新摄取。
+// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
 func (c *DocumentServiceHTTPClientImpl) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...http.CallOption) (*Document, error) {
 	var out Document
 	pattern := "/v1/knowledge/documents/update"

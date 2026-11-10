@@ -54,7 +54,7 @@ type AgentRetrievalLog struct {
 	TraceID *string `db:"trace_id" json:"trace_id"`
 	// Agent 会话 ID：检索工具链路经 ctx 事实载体从框架执行 ctx 提取（agent 层注入），不可得时为 NULL；前端检索（console）与摄取管线无会话事实，恒为 NULL
 	SessionID *string `db:"session_id" json:"session_id"`
-	// 检索来源：tool-检索工具链路（Search，ctx 未声明来源时的缺省）、console-前端主动检索（Search，知识库检索用例声明）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
+	// 检索来源：tool-agent 检索工具链路（调用检索用例前显式声明）、console-前端主动检索（检索用例在调用方未声明时的缺省）、pipeline-摄取管线（Add/Update/DeleteByFilter）；管理面落地时扩展取值（见本文件头注释）
 	Source string `db:"source" json:"source"`
 	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，声明为空时为 NULL；留痕面只记录事实、不做注册表对账——带未声明键的调用（含失败尝试的原始声明）原样落库留证
 	Embedder *string `db:"embedder" json:"embedder"`
@@ -204,7 +204,7 @@ type KbDocument struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 }
 
-// 知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
+// 知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
 type KbLibrary struct {
 	// 知识库 ID [@dynamic: exact, membership]
 	ID int64 `db:"id" json:"id"`
@@ -238,6 +238,12 @@ type KbLibrary struct {
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
+	// 归属用户 ID（创建人缺省归属，NULL=无该归属） [@dynamic: exact, membership]
+	OwnerUserID *int64 `db:"owner_user_id" json:"owner_user_id"`
+	// 归属部门 ID（NULL=无该归属） [@dynamic: exact, membership]
+	OwnerDeptID *int64 `db:"owner_dept_id" json:"owner_dept_id"`
+	// 归属用户组 ID（NULL=无该归属） [@dynamic: exact, membership]
+	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
 // 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]

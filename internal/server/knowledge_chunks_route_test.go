@@ -38,6 +38,12 @@ func (chunksRouteRepo) GetDocument(context.Context, biz.Identity, int64) (*biz.K
 	return &biz.KnowledgeDocument{ID: 2, LibraryID: 1, Kind: "text", Title: "refund", Content: &content, Status: biz.KnowledgeStatusEnabled}, nil
 }
 
+// GetLibrary 返回条目所属库：点查与分片查询先判库可见（库级可见性），
+// 路由用例按可见库装配。
+func (chunksRouteRepo) GetLibrary(context.Context, biz.Identity, int64) (*biz.KnowledgeLibrary, error) {
+	return &biz.KnowledgeLibrary{ID: 1, Status: biz.KnowledgeStatusEnabled}, nil
+}
+
 // newChunksRouteTestServer 装配含知识库路由的服务器。jsoncodec 与生产
 // main 同款安装，断言才是真实线上字段形态（小驼峰），而不是默认 codec 的
 // snake_case。

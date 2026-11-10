@@ -26,19 +26,30 @@ func (q *Queries) CountKbDocumentsByLibrary(ctx context.Context, libraryID int64
 	return count, err
 }
 
-const getKbLibraryByID = `-- name: GetKbLibraryByID :one
+const getKbLibraryPermitted = `-- name: GetKbLibraryPermitted :one
 
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
+  AND public.fn_check_visible($2, 7::int2,
+                              owner_user_id, owner_dept_id, owner_user_group_id)
 `
 
-// 知识库固定 CRUD（kb_library）。知识库是租户内资源：表无 @scope，
-// 租户边界由 RLS 承担；动态查询能力由 schema/91_knowledge.sql 的列注释
-// DSL 声明（ParseKbLibraryQuery 等为生成物）。本文件只写固定命名查询。
-// 按 id 读取未软删知识库（租户边界由 RLS 承担）
-func (q *Queries) GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error) {
-	row := q.db.QueryRow(ctx, getKbLibraryByID, id)
+type GetKbLibraryPermittedParams struct {
+	ID       int64 `db:"id" json:"id"`
+	Operator int64 `db:"operator" json:"operator"`
+}
+
+// 知识库固定 CRUD（kb_library）。知识库是租户表，租户边界由 RLS 承担；
+// 租户内的库级可见性由归属三元组 + @scope 守护（表注释见
+// schema/91_knowledge.sql），单行读与写前锁定走 fn_check_visible /
+// fn_can_operate_row，与动态 List 的 @scope 守卫同一口径（fn_accessible_*）。
+// 动态查询能力由 schema/91_knowledge.sql 的列注释 DSL 声明
+// （ParseKbLibraryQuery 等为生成物）。本文件只写固定命名查询。
+// 按 id 读取数据范围内可见的未软删知识库；不可见与不存在统一无行
+// （NotFound，不泄露存在性）
+func (q *Queries) GetKbLibraryPermitted(ctx context.Context, arg GetKbLibraryPermittedParams) (KbLibrary, error) {
+	row := q.db.QueryRow(ctx, getKbLibraryPermitted, arg.ID, arg.Operator)
 	var i KbLibrary
 	err := row.Scan(
 		&i.ID,
@@ -57,6 +68,9 @@ func (q *Queries) GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, er
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
 	)
 	return i, err
 }
@@ -64,13 +78,15 @@ func (q *Queries) GetKbLibraryByID(ctx context.Context, id int64) (KbLibrary, er
 const insertKbLibrary = `-- name: InsertKbLibrary :one
 INSERT INTO public.kb_library (id, tenant_id, status, "name", remark, embedding_model_key,
                                chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to,
+                               owner_user_id, owner_dept_id, owner_user_group_id,
                                created_by, updated_by)
 VALUES ($1, current_setting('app.tenant_id'), $2, $3,
         $4, $5,
         $6, $7, $8,
         $9, $10,
-        $11, $12)
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+        $11, $12, $13,
+        $14, $15)
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
 `
 
 type InsertKbLibraryParams struct {
@@ -84,12 +100,15 @@ type InsertKbLibraryParams struct {
 	ChunkDelimiter    string           `db:"chunk_delimiter" json:"chunk_delimiter"`
 	ValidFrom         pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	ValidTo           pgtype.Timestamp `db:"valid_to" json:"valid_to"`
+	OwnerUserID       *int64           `db:"owner_user_id" json:"owner_user_id"`
+	OwnerDeptID       *int64           `db:"owner_dept_id" json:"owner_dept_id"`
+	OwnerUserGroupID  *int64           `db:"owner_user_group_id" json:"owner_user_group_id"`
 	CreatedBy         int64            `db:"created_by" json:"created_by"`
 	UpdatedBy         int64            `db:"updated_by" json:"updated_by"`
 }
 
-// 插入知识库记录；租户取会话 app.tenant_id，租户内未删除库间 name 唯一
-// 冲突映射 AlreadyExists
+// 插入知识库记录；租户取会话 app.tenant_id，创建人缺省为归属人；
+// 租户内未删除库间 name 唯一冲突映射 AlreadyExists
 func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams) (KbLibrary, error) {
 	row := q.db.QueryRow(ctx, insertKbLibrary,
 		arg.ID,
@@ -102,6 +121,9 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		arg.ChunkDelimiter,
 		arg.ValidFrom,
 		arg.ValidTo,
+		arg.OwnerUserID,
+		arg.OwnerDeptID,
+		arg.OwnerUserGroupID,
 		arg.CreatedBy,
 		arg.UpdatedBy,
 	)
@@ -123,20 +145,81 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
 	)
 	return i, err
 }
 
-const lockKbLibraryByID = `-- name: LockKbLibraryByID :one
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_library
+const listVisibleKbLibraries = `-- name: ListVisibleKbLibraries :many
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
+WHERE deleted_at IS NULL
+  AND public.fn_check_visible($1, 7::int2,
+                              owner_user_id, owner_dept_id, owner_user_group_id)
+ORDER BY id
+`
+
+// 枚举数据范围内可见的未软删知识库：检索用例的可见库集合解析与列库工具
+// 共用本查询（单一实现，避免「列得出、查不到」的口径漂移）
+func (q *Queries) ListVisibleKbLibraries(ctx context.Context, operator int64) ([]KbLibrary, error) {
+	rows, err := q.db.Query(ctx, listVisibleKbLibraries, operator)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KbLibrary
+	for rows.Next() {
+		var i KbLibrary
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.Name,
+			&i.Remark,
+			&i.EmbeddingModelKey,
+			&i.ChunkSize,
+			&i.ChunkOverlap,
+			&i.ChunkDelimiter,
+			&i.ValidFrom,
+			&i.ValidTo,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedBy,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.TenantID,
+			&i.OwnerUserID,
+			&i.OwnerDeptID,
+			&i.OwnerUserGroupID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockKbLibraryPermitted = `-- name: LockKbLibraryPermitted :one
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
+  AND public.fn_can_operate_row($2,
+                                owner_user_id, owner_dept_id, owner_user_group_id)
 FOR UPDATE
 `
 
-// 按 id 锁定未软删知识库（更新/删除路径先锁后写）
-func (q *Queries) LockKbLibraryByID(ctx context.Context, id int64) (KbLibrary, error) {
-	row := q.db.QueryRow(ctx, lockKbLibraryByID, id)
+type LockKbLibraryPermittedParams struct {
+	ID       int64 `db:"id" json:"id"`
+	Operator int64 `db:"operator" json:"operator"`
+}
+
+// 按 id 锁定数据范围内可操作的知识库（更新/删除路径先锁后写）；
+// 不可见与不存在统一无行
+func (q *Queries) LockKbLibraryPermitted(ctx context.Context, arg LockKbLibraryPermittedParams) (KbLibrary, error) {
+	row := q.db.QueryRow(ctx, lockKbLibraryPermitted, arg.ID, arg.Operator)
 	var i KbLibrary
 	err := row.Scan(
 		&i.ID,
@@ -155,6 +238,9 @@ func (q *Queries) LockKbLibraryByID(ctx context.Context, id int64) (KbLibrary, e
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
 	)
 	return i, err
 }
@@ -171,7 +257,8 @@ type SoftDeleteKbLibraryParams struct {
 	ID        int64 `db:"id" json:"id"`
 }
 
-// 置位 deleted_at 软删除知识库；活跃条目校验由调用方在同一事务内先行完成
+// 置位 deleted_at 软删除知识库；活跃条目校验与可见性锁定由调用方在同一
+// 事务内先行完成
 func (q *Queries) SoftDeleteKbLibrary(ctx context.Context, arg SoftDeleteKbLibraryParams) (int64, error) {
 	result, err := q.db.Exec(ctx, softDeleteKbLibrary, arg.UpdatedBy, arg.ID)
 	if err != nil {
@@ -194,7 +281,7 @@ SET "name"              = $1,
     updated_by          = $10
 WHERE id = $11
   AND deleted_at IS NULL
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
 `
 
 type UpdateKbLibraryParams struct {
@@ -212,7 +299,8 @@ type UpdateKbLibraryParams struct {
 }
 
 // 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
-// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新
+// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新；
+// 归属不可经本查询变更（写入路径先经 LockKbLibraryPermitted 锁定）
 func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error) {
 	row := q.db.QueryRow(ctx, updateKbLibrary,
 		arg.Name,
@@ -245,6 +333,9 @@ func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams
 		&i.UpdatedAt,
 		&i.DeletedAt,
 		&i.TenantID,
+		&i.OwnerUserID,
+		&i.OwnerDeptID,
+		&i.OwnerUserGroupID,
 	)
 	return i, err
 }

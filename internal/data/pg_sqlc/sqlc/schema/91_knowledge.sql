@@ -7,7 +7,9 @@
 -- 两表均为租户表：RLS ENABLE + FORCE，业务写路径走普通 DML。
 --
 -- 列注释 DSL 口径同其他业务表：tenant_id/deleted_at 为 [@internal]，
--- 动态查询能力按列声明；当前无归属三元组（表无 @scope，租户内全可见）。
+-- 动态查询能力按列声明。kb_library 带归属三元组与 @scope 守卫（租户内的
+-- 库级可见性），kb_document 无归属——条目随库的管理面走，检索侧的可见性
+-- 由所属库决定。
 
 -- kb_library — 知识库
 CREATE TABLE public.kb_library
@@ -28,6 +30,9 @@ CREATE TABLE public.kb_library
     updated_at          timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
     deleted_at          timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id           varchar(16)                                            NOT NULL,
+    owner_user_id       int8                                                   NULL,
+    owner_dept_id       int8                                                   NULL,
+    owner_user_group_id int8                                                   NULL,
     CONSTRAINT kb_library_pkey PRIMARY KEY (id),
     CONSTRAINT kb_library_status_chk CHECK (status IN (0, 1)),
     CONSTRAINT kb_library_chunk_chk CHECK (chunk_size > 0 AND chunk_overlap >= 0 AND chunk_overlap < chunk_size),
@@ -36,7 +41,11 @@ CREATE TABLE public.kb_library
 );
 CREATE UNIQUE INDEX kb_library_tenant_name_un ON public.kb_library USING btree (tenant_id, "name") WHERE deleted_at IS NULL;
 CREATE INDEX kb_library_tenant_status_idx ON public.kb_library USING btree (tenant_id, status);
-COMMENT ON TABLE public.kb_library IS '知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
+-- 归属三元组索引：data_scope 行级过滤与可见库枚举的高频路径
+CREATE INDEX kb_library_owner_user_idx ON public.kb_library USING btree (owner_user_id);
+CREATE INDEX kb_library_owner_dept_idx ON public.kb_library USING btree (owner_dept_id);
+CREATE INDEX kb_library_owner_group_idx ON public.kb_library USING btree (owner_user_group_id);
+COMMENT ON TABLE public.kb_library IS '知识库表：租户内知识条目的归类与管理面，条目正文切分后的向量落 agent.agent_document [@scope: owner_user_id in_any fn_accessible_user_ids(user_id:int) owner_dept_id in_any fn_accessible_dept_ids(user_id:int) owner_user_group_id in_any fn_accessible_group_ids(user_id:int) @default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 COMMENT ON COLUMN public.kb_library.id IS '知识库 ID [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.kb_library.status IS '数据状态，0：禁用、1：启用 [@dynamic: exact, membership, sort @updatable: set]';
@@ -54,6 +63,9 @@ COMMENT ON COLUMN public.kb_library.updated_by IS '更新人 [@dynamic: exact, m
 COMMENT ON COLUMN public.kb_library.updated_at IS '更新时间 [@dynamic: exact, membership, range]';
 COMMENT ON COLUMN public.kb_library.deleted_at IS '删除时间 [@internal]';
 COMMENT ON COLUMN public.kb_library.tenant_id IS '租户 ID [@internal]';
+COMMENT ON COLUMN public.kb_library.owner_user_id IS '归属用户 ID（创建人缺省归属，NULL=无该归属） [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.kb_library.owner_dept_id IS '归属部门 ID（NULL=无该归属） [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.kb_library.owner_user_group_id IS '归属用户组 ID（NULL=无该归属） [@dynamic: exact, membership]';
 
 
 -- kb_document — 知识条目（本期文本；file 只留字段，接口拒绝创建）

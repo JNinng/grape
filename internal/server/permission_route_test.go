@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -146,8 +148,15 @@ func TestPermissionRoute_granted_request_reaches_permission_service(t *testing.T
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200\n%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Body.String(); !strings.Contains(got, `"codes":["sys:user:query","sys:user:create"]`) {
-		t.Fatalf("body = %s, want sorted codes array", got)
+	// protojson 的输出空白随构建变化（detrand），按结构断言而非字节比较。
+	var body struct {
+		Codes []string `json:"codes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v\n%s", err, rec.Body.String())
+	}
+	if !reflect.DeepEqual(body.Codes, []string{"sys:user:query", "sys:user:create"}) {
+		t.Fatalf("codes = %v, want sorted codes array\n%s", body.Codes, rec.Body.String())
 	}
 	if repo.hasPermCalls != 0 {
 		t.Fatalf("has-permission calls = %d, want 0 (ungated operation)", repo.hasPermCalls)
