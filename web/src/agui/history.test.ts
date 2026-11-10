@@ -93,6 +93,8 @@ describe('fetchHistorySnapshot snapshot replay', () => {
         result: 'ok',
         done: true,
         startedAt: 1767225600800,
+        // 发起该调用的助手消息 ID；用量事实按它挂到工具卡片上。
+        parentMessageId: 'a-1',
       },
     ])
   })

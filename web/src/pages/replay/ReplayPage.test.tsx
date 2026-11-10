@@ -19,10 +19,14 @@ vi.mock('../../api/agentAudit', () => ({
 vi.mock('../../api/agentRetrievalLogs', () => ({
   fetchRetrievalLogs: vi.fn(),
 }))
+vi.mock('../../api/agentSessionUsage', () => ({
+  fetchSessionUsage: vi.fn(),
+}))
 
 import { fetchAgentSessions } from '../../api/agentSessions'
 import { fetchConfirmationAudits, fetchToolCallAudits } from '../../api/agentAudit'
 import { fetchRetrievalLogs } from '../../api/agentRetrievalLogs'
+import { fetchSessionUsage } from '../../api/agentSessionUsage'
 import { fetchHistorySnapshot } from '../../agui/history'
 import { ThemeProvider } from '../../components/theme-provider'
 import { ReplayPage } from './ReplayPage'
@@ -32,6 +36,7 @@ const mockFetchHistory = vi.mocked(fetchHistorySnapshot)
 const mockFetchToolCalls = vi.mocked(fetchToolCallAudits)
 const mockFetchConfirmations = vi.mocked(fetchConfirmationAudits)
 const mockFetchRetrievals = vi.mocked(fetchRetrievalLogs)
+const mockFetchSessionUsage = vi.mocked(fetchSessionUsage)
 
 function loginReply(): LoginReply {
   return {
@@ -57,6 +62,7 @@ beforeEach(() => {
       argsText: '{"query":"grape"}',
       result: '{"document_id":"doc-1","content":"excerpt"}',
       done: true,
+      parentMessageId: 'chatcmpl-tool',
     },
     { kind: 'message', id: 'm-2', role: 'assistant', content: 'answer' },
   ]
@@ -159,6 +165,26 @@ beforeEach(() => {
       path: 'live',
       decidedBy: 't-1:7',
       decidedAt: '2026-01-01T00:00:10Z',
+    },
+  ])
+  mockFetchSessionUsage.mockResolvedValue([
+    {
+      messageId: 'chatcmpl-tool',
+      invocationId: 'inv-1',
+      model: 'qwen3:8b',
+      usage: { prompt: 1973, completion: 145, total: 2118, cached: 1972, reasoning: 60 },
+      reasoningMs: 2648,
+      firstTokenMs: 143,
+      createdAt: '2026-01-01T00:00:01Z',
+    },
+    {
+      messageId: 'm-2',
+      invocationId: 'inv-1',
+      model: 'qwen3:8b',
+      usage: { prompt: 2066, completion: 287, total: 2353 },
+      reasoningMs: 2648,
+      firstTokenMs: 143,
+      createdAt: '2026-01-01T00:00:02Z',
     },
   ])
   mockFetchRetrievals.mockResolvedValue([
@@ -268,6 +294,40 @@ describe('ReplayPage four-facet evidence view', () => {
     const userArticle = screen.getByText('hello').closest('article')
     expect(userArticle?.textContent).toContain('始于')
     expect(userArticle?.textContent).not.toContain('用时')
+  })
+
+  it('renders_model_tokens_and_timing_facts_for_assistant_and_tool_items', async () => {
+    // 模型调用事实按 messageId 桥接：助手回复取自身 ID，工具调用取发起它
+    // 的助手消息 ID（决策轮通常没有正文）。工具卡片的事实放在折叠区之外，
+    // 收起时即可见。
+    renderReplay()
+    expect(await screen.findByText('answer')).toBeInTheDocument()
+
+    const toolItem = screen.getByLabelText('工具调用 search_internal_docs')
+    // 折叠区未展开（参数等正文未挂载），token 事实仍可见。
+    expect(within(toolItem).queryByText('参数')).not.toBeInTheDocument()
+    expect(within(toolItem).getByText('模型 qwen3:8b')).toBeInTheDocument()
+    expect(within(toolItem).getByText('tokens 2118（输入 1973 / 输出 145 · 缓存 1972（99.95%） · 思考 60）')).toBeInTheDocument()
+    // 首字与思考是流程级事实，只在本轮首条调用上呈现。
+    expect(within(toolItem).getByText('本轮思考 2.6s')).toBeInTheDocument()
+    expect(within(toolItem).getByText('本轮首字 143ms')).toBeInTheDocument()
+
+    const assistantArticle = screen.getByText('answer').closest('article')
+    expect(assistantArticle?.textContent).toContain('模型 qwen3:8b')
+    expect(assistantArticle?.textContent).toContain('tokens 2353（输入 2066 / 输出 287）')
+    // 同一轮的第二条调用不再重复同一数值（框架把它们复制到每条调用）。
+    expect(assistantArticle?.textContent).not.toContain('本轮首字')
+    expect(assistantArticle?.textContent).not.toContain('本轮思考')
+  })
+
+  it('omits_model_and_token_facts_when_usage_is_unavailable', async () => {
+    // 用量端点缺失（旧会话或会话不可见）时页面照常回放，不呈现伪 token。
+    mockFetchSessionUsage.mockResolvedValue([])
+    renderReplay()
+    expect(await screen.findByText('answer')).toBeInTheDocument()
+    const assistantArticle = screen.getByText('answer').closest('article')
+    expect(assistantArticle?.textContent).not.toContain('tokens')
+    expect(assistantArticle?.textContent).not.toContain('模型 qwen3:8b')
   })
 
   it('renders_without_crashing_when_a_message_item_lacks_started_at', async () => {

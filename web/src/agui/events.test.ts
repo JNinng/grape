@@ -183,7 +183,15 @@ describe('messagesToItems history snapshot mapping', () => {
     expect(items).toEqual([
       { kind: 'message', id: 'u-1', role: 'user', content: 'ping please' },
       { kind: 'message', id: 'a-1', role: 'assistant', content: 'calling echo' },
-      { kind: 'tool', toolCallId: 'call-1', name: 'echo', argsText: '{"text":"ping"}', result: 'ping', done: true },
+      {
+        kind: 'tool',
+        toolCallId: 'call-1',
+        name: 'echo',
+        argsText: '{"text":"ping"}',
+        result: 'ping',
+        done: true,
+        parentMessageId: 'a-1',
+      },
     ])
   })
 

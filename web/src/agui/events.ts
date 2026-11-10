@@ -33,7 +33,10 @@ export interface MessageItem {
 // ToolCallItem 是一次工具调用的完整视图：参数增量累积，结果在
 // TOOL_CALL_RESULT 到达后填充；结果与参数一律视为不可信文本。startedAt
 // 是工具调用起始时间，来源同 MessageItem.startedAt——快照 rawEvent 按
-// toolCallId 索引。
+// toolCallId 索引。parentMessageId 是发起该调用的助手消息 ID（快照折叠
+// 时由 assistant.toolCalls 的所属消息给出），用于把模型调用事实（模型
+// 型号与 token 用量）挂到工具卡片上：工具决策轮通常没有正文，助手消息
+// 不单独成项。
 export interface ToolCallItem {
   kind: 'tool'
   toolCallId: string
@@ -42,6 +45,7 @@ export interface ToolCallItem {
   result: string | null
   done: boolean
   startedAt?: number
+  parentMessageId?: string
 }
 
 export type ChatItem = MessageItem | ToolCallItem
@@ -268,6 +272,7 @@ export function messagesToItems(messages: Message[], source?: SnapshotSourceMeta
           result: null,
           done: true,
           startedAt: startedAtOf(source?.toolCalls, call.id),
+          parentMessageId: message.id,
         })
       }
       continue

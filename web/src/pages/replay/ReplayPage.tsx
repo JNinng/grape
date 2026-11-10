@@ -9,6 +9,7 @@ import {
   type ToolCallAudit,
 } from '../../api/agentAudit'
 import { fetchRetrievalLogs, type RetrievalLog } from '../../api/agentRetrievalLogs'
+import { fetchSessionUsage, type SessionUsageFact } from '../../api/agentSessionUsage'
 import { useNavigate } from 'react-router'
 import {
   ArrowLeftIcon,
@@ -79,6 +80,66 @@ function startInfo(startedAt: number | undefined, turnStart: number | undefined)
       ? `用时 ${((started - turnStart) / 1000).toFixed(1)}s`
       : ''
   return { time: formatEpochMs(started), latency }
+}
+
+// usageSummary 汇总一次模型调用的事实片段：模型型号与 token 用量（含缓存
+// 与思考细分 token），以及流程级的首字与思考时长。缺项不呈现——「未上报」
+// 不能读成「为零」；事实缺失（旧会话或未开启记录）返回空数组，调用方跳过
+// 整行。
+//
+// includeRunTiming 控制流程级两项：框架只在一次运行的首个模型调用上测量
+// 首字与思考时长，并复制到后续调用的用量里，逐条呈现会重复同一数值。故只
+// 在该运行的首条事实上展示，并明确标注「本轮」。
+function usageSummary(fact: SessionUsageFact | undefined, includeRunTiming: boolean): string[] {
+  if (fact === undefined) {
+    return []
+  }
+  const parts: string[] = []
+  if (fact.model) {
+    parts.push(`模型 ${fact.model}`)
+  }
+  const usage = fact.usage
+  if (usage) {
+    let text = `tokens ${usage.total}（输入 ${usage.prompt} / 输出 ${usage.completion}`
+    if (usage.cached) {
+      text += ` · 缓存 ${usage.cached}`
+      // 缓存率由前端按输入侧口径计算：命中缓存的输入 token / 输入 token。
+      // 输入为 0（provider 未上报）时不呈现，避免伪造 0.00%。
+      if (usage.prompt > 0) {
+        text += `（${((usage.cached / usage.prompt) * 100).toFixed(2)}%）`
+      }
+    }
+    if (usage.reasoning) {
+      text += ` · 思考 ${usage.reasoning}`
+    }
+    parts.push(`${text}）`)
+  }
+  if (includeRunTiming) {
+    if (typeof fact.reasoningMs === 'number' && fact.reasoningMs > 0) {
+      parts.push(`本轮思考 ${(fact.reasoningMs / 1000).toFixed(1)}s`)
+    }
+    if (typeof fact.firstTokenMs === 'number' && fact.firstTokenMs > 0) {
+      parts.push(`本轮首字 ${fact.firstTokenMs}ms`)
+    }
+  }
+  return parts
+}
+
+// runFirstFactIds 找出每次运行（invocationId）的首条模型调用事实：流程级
+// 耗时只在这一条上呈现，避免同一次运行内每条调用都重复同一数值。缺失
+// invocationId 的事实在后端不可达，前端按自成一组的 messageId 兜底。
+function runFirstFactIds(facts: SessionUsageFact[]): Set<string> {
+  const seen = new Set<string>()
+  const firsts = new Set<string>()
+  for (const fact of facts) {
+    const run = fact.invocationId ?? fact.messageId
+    if (seen.has(run)) {
+      continue
+    }
+    seen.add(run)
+    firsts.add(fact.messageId)
+  }
+  return firsts
 }
 
 // turnStarts 计算回放流每一项所在交互的起点：以用户消息为界，段内
@@ -270,6 +331,8 @@ function ReplayToolCall({
   highlighted,
   dimmed,
   turnStart,
+  fact,
+  showRunTiming,
   audits,
   confirmations,
   onPickTrace,
@@ -281,11 +344,18 @@ function ReplayToolCall({
   // turnStart 是所在交互的用户消息起点，仅用于算「用时」；缺失时只显示
   // 起始时间。展示值在本组件内派生，父级不传渲染对象。
   turnStart?: number
+  // fact 是发起该调用的那次模型调用的用量事实（模型型号与 token）。
+  // 工具决策轮通常没有正文，助手消息不单独成项，事实经 parentMessageId
+  // 挂到工具卡片上。
+  fact?: SessionUsageFact
+  // showRunTiming 决定是否呈现流程级首字与思考时长（仅本轮首条调用）。
+  showRunTiming: boolean
   audits: ToolCallAudit[]
   confirmations: ConfirmationAudit[]
   onPickTrace: (traceId: string | null) => void
 }) {
   const start = startInfo(item.startedAt, turnStart)
+  const usage = useMemo(() => usageSummary(fact, showRunTiming), [fact, showRunTiming])
   return (
     <Collapsible
       data-tool-call-id={item.toolCallId}
@@ -310,6 +380,17 @@ function ReplayToolCall({
           className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
         />
       </CollapsibleTrigger>
+      {/* 模型与 token 事实放在折叠区之外：收起时也可见，便于快速判断这次
+          工具调用背后的模型开销；展开后不再重复呈现。 */}
+      {usage.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 pb-2.5 text-xs text-muted-foreground">
+          {usage.map((part) => (
+            <span key={part} className="tabular-nums">
+              {part}
+            </span>
+          ))}
+        </p>
+      )}
       <CollapsibleContent>
         <div className="space-y-3 border-t px-3.5 py-3">
           {item.argsText !== '' && (
@@ -374,6 +455,8 @@ function ReplayMessage({
   threadId,
   dimmed,
   turnStart,
+  fact,
+  showRunTiming,
 }: {
   item: MessageItem
   threadId: string
@@ -381,9 +464,14 @@ function ReplayMessage({
   // turnStart 语义同 ReplayToolCall：用户消息自身为段首，调用方不传锚，
   // 因此只显示起始时间。
   turnStart?: number
+  // fact 是产出该条回复的模型调用事实（模型型号、token 与耗时）。
+  fact?: SessionUsageFact
+  // showRunTiming 语义同 ReplayToolCall：流程级耗时只在本轮首条调用呈现。
+  showRunTiming: boolean
 }) {
   const refs = useMemo(() => detectCompactionRefs(item.content), [item.content])
   const start = startInfo(item.startedAt, turnStart)
+  const usage = useMemo(() => usageSummary(fact, showRunTiming), [fact, showRunTiming])
   const isUser = item.role === 'user'
   return (
     <article
@@ -406,6 +494,15 @@ function ReplayMessage({
       >
         {item.content}
       </div>
+      {usage.length > 0 && (
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground">
+          {usage.map((part) => (
+            <span key={part} className="tabular-nums">
+              {part}
+            </span>
+          ))}
+        </p>
+      )}
       {refs.map((ref, index) => (
         <CompactionRefPanel key={`${ref.eventId ?? ref.kind}-${index}`} compactionRef={ref} threadId={threadId} />
       ))}
@@ -427,6 +524,7 @@ export function ReplayPage() {
   const [toolCalls, setToolCalls] = useState<ToolCallAudit[]>([])
   const [confirmations, setConfirmations] = useState<ConfirmationAudit[]>([])
   const [retrievals, setRetrievals] = useState<RetrievalLog[]>([])
+  const [usageFacts, setUsageFacts] = useState<SessionUsageFact[]>([])
   const [traceFilter, setTraceFilter] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -440,13 +538,15 @@ export function ReplayPage() {
     setError(null)
     setHistoryUnavailable(false)
     try {
-      // /history 快照独立降级：无 track 事件的会话上游快照运行会 500；
-      // 回放只是四联证据之一，缺失按空态提示降级，其余证据面照常装载。
-      const [history, auditToolCalls, auditConfirmations, retrievalLogs] = await Promise.all([
+      // /history 快照与模型用量事实独立降级：无 track 事件的会话上游快照
+      // 运行会 500，用量端点也可能因会话无事件而空；两者都是回放证据的
+      // 附属面，缺失不阻断其余证据装载。
+      const [history, auditToolCalls, auditConfirmations, retrievalLogs, usage] = await Promise.all([
         fetchHistorySnapshot(tid).catch(() => null),
         fetchToolCallAudits(tid),
         fetchConfirmationAudits(tid),
         fetchRetrievalLogs(tid),
+        fetchSessionUsage(tid).catch(() => []),
       ])
       if (seq !== loadSeq.current) {
         return
@@ -456,6 +556,7 @@ export function ReplayPage() {
       setToolCalls(auditToolCalls)
       setConfirmations(auditConfirmations)
       setRetrievals(retrievalLogs)
+      setUsageFacts(usage)
     } catch (err) {
       if (seq !== loadSeq.current) {
         return
@@ -512,6 +613,14 @@ export function ReplayPage() {
   const dimStream = traceFilter !== null && relatedItemIds.size > 0
   // 每项所在交互的用户消息起点：回放项与工具的「用时」以它为锚。
   const itemTurnStarts = useMemo(() => turnStarts(items), [items])
+  // 模型调用事实按 messageId 索引：助手回复取自身 ID，工具调用取发起它的
+  // 助手消息 ID（决策轮通常没有正文，助手消息不单独成项）。
+  const usageByMessageId = useMemo(
+    () => new Map(usageFacts.map((fact) => [fact.messageId, fact])),
+    [usageFacts],
+  )
+  // 流程级耗时（首字/思考）只在每次运行的首条模型调用上呈现。
+  const runFirstFacts = useMemo(() => runFirstFactIds(usageFacts), [usageFacts])
 
   const pickTrace = (traceId: string | null) => {
     setTraceFilter((current) => (current === traceId ? null : traceId))
@@ -636,6 +745,10 @@ export function ReplayPage() {
                         const related = relatedItemIds.has(itemKey)
                         const dimmed = dimStream && !related
                         const turnStart = itemTurnStarts.get(itemKey)
+                        const fact = usageByMessageId.get(
+                          item.kind === 'message' ? item.id : item.parentMessageId ?? '',
+                        )
+                        const showRunTiming = fact !== undefined && runFirstFacts.has(fact.messageId)
                         return item.kind === 'message' ? (
                           <ReplayMessage
                             key={item.id}
@@ -643,6 +756,8 @@ export function ReplayPage() {
                             threadId={threadId}
                             dimmed={dimmed}
                             turnStart={turnStart}
+                            fact={fact}
+                            showRunTiming={showRunTiming}
                           />
                         ) : (
                           <ReplayToolCall
@@ -652,6 +767,8 @@ export function ReplayPage() {
                             highlighted={related}
                             dimmed={dimmed}
                             turnStart={turnStart}
+                            fact={fact}
+                            showRunTiming={showRunTiming}
                             audits={toolCallAuditsFor(toolCalls, item.toolCallId)}
                             confirmations={confirmationsForToolCall(confirmations, item.toolCallId)}
                             onPickTrace={pickTrace}
