@@ -11,7 +11,7 @@
 
 | 证据面 | 事实粒度 | 介质 | 写入点 |
 | --- | --- | --- | --- |
-| 会话事件流 | 会话内消息与工具事件 | 框架六表 `agent.agent_session_*` | 框架 `session/postgres` |
+| 会话事件流 | 会话内消息与工具事件；每次模型调用的模型型号与 token 用量（首字/思考为本轮口径） | 框架六表 `agent.agent_session_*` | 框架 `session/postgres` |
 | 工具调用审计 | 一次工具调用的终态 | `public.agent_tool_call_log` | 工具执行审计包装器（含恢复路径代执行） |
 | 授权确认审计 | 一次授权终态（人工或系统决定，互斥） | `public.agent_confirmation_log` | ack 决定路由审计面 + 授权终态观察挂点 |
 | 检索留痕 | 一次检索或摄取操作 | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器 |
@@ -119,9 +119,9 @@ session_id（会话）
   调用 ID 的重复授权行由唯一索引收编、写入失败按旁路纪律放弃，不伪造第二
   次授权行。
 
-### 时间事实
+### 时间与用量事实
 
-内容证据面的耗时事实各自独立，不可互相替代：
+内容证据面的时间与用量事实各自独立，不可互相替代：
 
 - 工具：审计行 `duration_ms` 是本次调用墙钟耗时，`called_at` 是调用终态
   落库时间（不是起始时间）。
@@ -132,9 +132,20 @@ session_id（会话）
   回答「文字与工具何时开始」的唯一证据，只到消息级与工具调用级，流式
   分块与思考过程不逐块记时。回复的生成耗时由下一条事件或该轮终态的
   `called_at` / 运行终态时间推算，属推理口径，不作落库事实。
-- 三者相互对照即可拆出「用户在等什么」：用户消息起点 → 工具起点 → 工具
-  耗时（`duration_ms`）→ 回复起点。来源索引缺失（后端未开启源元数据或
-  会话早于该口径）时起始时间为空，不补采、不伪造。
+- 以上事实相互对照即可拆出「用户在等什么」：用户消息起点 → 工具起点 →
+  工具耗时（`duration_ms`）→ 回复起点。来源索引缺失（后端未开启源元数据
+  或会话早于该口径）时起始时间为空，不补采、不伪造。
+- 模型调用事实（模型型号、`prompt`/`completion`/`total` token、缓存与思考
+  细分 token）取自会话事件 `response` 部分的 `model` 与 `usage`，按响应 ID
+  （即 AG-UI 消息 ID）对账；一次调用一条，不重复落库。工具决策轮通常没有
+  正文，其事实经「发起该调用的助手消息 ID」挂到工具卡片上。provider 未
+  上报的字段留空，不按 0 呈现；缓存率是展示侧派生值（缓存输入 token ÷
+  输入 token，两位小数），不落库、不参与对账。
+- 首字时长与思考时长是**流程级**事实：框架只在一次运行的首个模型调用上
+  测量，随后把同一个值复制进该运行后续调用的 `usage.timing_info`。因此
+  同一 `invocationId` 的各条事实取值相同，复现视图只在每次运行的首条
+  调用上标注「本轮首字」「本轮思考」，逐条呈现会把同一个数值误读成多次
+  测量的巧合。两者都不按调用次数累加。
 
 ### 检索留痕
 
@@ -207,6 +218,7 @@ session_id（会话）
 | `GET /agui/sessions` | 列出本人会话元数据 | offset/limit 默认 20、上限 100 |
 | `POST /agui/history` | 会话消息快照回放（SSE） | 按 threadId；前端以快照回放，不依赖 follow |
 | `GET /agui/event-window` | 锚点事件窗口 | threadId/eventId/before/after，前后各上限 50 |
+| `GET /agui/session-usage` | 每次模型调用的模型型号与 token；首字/思考为本轮口径 | 按 threadId；按响应 ID 去重，随会话事件保留期 |
 | `GET /v1/agent/audit/tool-calls` | 工具调用审计列表或点查 | session_id 或 tool_call_id；默认 20、上限 200 |
 | `GET /v1/agent/audit/confirmations` | 授权确认审计列表或点查 | session_id 或 confirmation_id；默认 20、上限 200 |
 | `GET /v1/agent/retrieval-logs` | 检索留痕列表 | session_id/source；默认 20、上限 200 |
@@ -235,7 +247,8 @@ session_id（会话）
    高亮。live 路径的确认行与工具行 trace 不同，看到确认行但工具面为空时
    按 `confirmation_id`/`tool_call_id` 对账。
 4. 读事实：工具行看状态、耗时、参数与结果摘要；确认行看决定、记住作用域
-   与 live/recovery 路径；检索行看查询、top_k、过滤、命中与耗时。
+   与 live/recovery 路径；检索行看查询、top_k、过滤、命中与耗时；回放项的
+   模型调用事实看模型型号、token 用量、思考与首字时长。
 5. 反查原文：压缩占位符经 `event-window` 按 `event_id` 取原文；检索命中经
    `document_id` 反查 `agent.agent_document`；工具参数与结果原文以会话事件
    为准。
@@ -250,7 +263,7 @@ session_id（会话）
 | 参数或结果与预期不符 | 工具审计参数/结果摘要；会话事件原文（含压缩对照） |
 | 回答引用不实或召回缺失 | 检索留痕的 query/top_k/filter/hits；document 反查 |
 | 确认未生效或疑似重复执行 | 确认审计的 decision/remember/path；对应工具行与 ack 路径；无确认卡时对照 `agent_tool_grant` 许可 |
-| 响应慢 | 回放流的起始时间与段内用时、工具/检索耗时、OTel span；`/metrics` 聚合 |
+| 响应慢 | 回放流的起始时间与段内用时、模型调用事实（模型型号/token/思考与首字时长）、工具/检索耗时、OTel span；`/metrics` 聚合 |
 | 审计行缺失 | 写入失败日志、调用 ID 缺失警告、保留期与采集开关 |
 
 ## 已知边界与降级

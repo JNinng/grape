@@ -41,7 +41,7 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | [identity/](identity/) | userKey 编解码、`UserKeyFromContext`、`ErrMissingIdentity`；身份的单一代码点。 |
 | [tools/](tools/README.md) | 业务工具（echo / 用户 / 检索 / 列库）、检索 ctx 事实接线（会话 + 查询 + 来源）、biz 向量契约的框架适配器（top_k 20 硬上限，当前仅框架侧面保留）。 |
 | [audit/](audit/) | 审计挂点 `Hook`、工具终态 wrapper、恢复路径代执行归集器、自动授权终态转写器、共用写入纪律 `WriteAudit`。 |
-| [httpapi/](httpapi/) | 会话列表、事件窗口、授权管理、许可源适配器，以及 ack 归属守卫与决定审计拦截器。 |
+| [httpapi/](httpapi/) | 会话列表、事件窗口、会话模型用量（模型型号与 token 用量；首字/思考为本轮口径）、授权管理、许可源适配器，以及 ack 归属守卫与决定审计拦截器。 |
 | [internal/testsupport/](internal/testsupport/) | 各包共享的替身与夹具；只允许 `_test.go` 导入，且不 import agent 树的生产包（否则成环）。 |
 
 ## 关键约束
@@ -82,6 +82,10 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   投影规则与占位符 `event_id` 见
   [replay.md](../../replay.md#会话事件流)。事件窗口端点按锚点取
   before/after（各上限 50）回查原文。
+- 会话用量端点（`GET {base_path}/session-usage`）读同一 session.Service
+  的事件流，按响应 ID 投影每次模型调用的模型型号与 token 用量，以及每次
+  运行首条调用的思考与首字时长（框架只在首条调用测量并复制到后续调用，
+  属流程级事实）；只投影事实、不额外落库，缺失字段留空而不记 0。
 - 源元数据（`WithEventSourceMetadataEnabled`）开启：快照事件的
   `rawEvent` 按 messageId / toolCallId 索引消息与工具调用的源事实，其中
   `timestamp`（毫秒）是复现视图呈现起始时间的唯一来源。时间取自持久化
@@ -90,9 +94,9 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 - track follow 的同毫秒丢事件缺陷以快照回放兜底，修复判断见
   [operations.md](../../operations.md#框架升级检查单)，本层不重复治理。
 - 运行门控按 userKey 限制在途 chat 运行数，超限 429、身份缺失 401，只
-  作用于前缀根的 POST；`/history`、`/cancel`、`/sessions`、事件窗口与
-  ack 路由不受限。计数是进程内内存态，多实例下为每实例上限，取舍见
-  [operations.md](../../operations.md#运行并发限流)。
+  作用于前缀根的 POST；`/history`、`/cancel`、`/sessions`、事件窗口、
+  会话用量与 ack 路由不受限。计数是进程内内存态，多实例下为每实例上限，
+  取舍见 [operations.md](../../operations.md#运行并发限流)。
 - 框架 postgres 实现不接受外部连接池、内部自建池，故复用
   `data.database.master` 同一 DSN（同实例同库同角色 `grape_u`），运行期
   存在业务池与会话池两条，生命周期各归各 cleanup。
@@ -160,8 +164,9 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 事件窗口的路由守卫在同目录测试中。覆盖主题：
 
 - 身份与归属：身份缺失 fail-closed；ack 守卫的 threadId 取值源对齐
-  （POST 体 / GET 查询）与尾随数据处理，跨用户会话统一 404；会话列表与
-  事件窗口的 userKey 可见性、分页与窗口跨度边界。
+  （POST 体 / GET 查询）与尾随数据处理，跨用户会话统一 404；会话列表的
+  分页、事件窗口的窗口跨度、会话用量的响应 ID 去重，三者都守 userKey
+  可见性。
 - 授权与审计：live 与 recovery 的工具行/确认行组合、未结算不审计、挂点
   失败不反噬主流程；许可 remember / 吊销 / 作用域 / 重启存活 / 权限码
   边界；自动授权行的 RLS 边界。
