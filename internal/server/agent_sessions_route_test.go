@@ -88,7 +88,7 @@ func newAgentSessionsTestServer(t *testing.T) (*kratoshttp.Server, *inmemory.Ses
 		nil,
 		nil,
 		nil,
-		nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
+		nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}
@@ -179,6 +179,31 @@ func TestAgentSessionsReturnsOnlyCallerSessions(t *testing.T) {
 		if strings.Contains(id, "theirs") {
 			t.Fatalf("sessions %v leak another user's session %q", ids, id)
 		}
+	}
+}
+
+// TestAgentSessionUsageRouteMountedWithinAgentPrefix 守卫会话用量端点的
+// 注册顺序：精确路径必须排在 /agui 前缀通配之前，否则请求被 AG-UI 子树
+// 吞并。以完整挂载链下的真实请求命中用量响应形状为判据。
+func TestAgentSessionUsageRouteMountedWithinAgentPrefix(t *testing.T) {
+	srv, memory, _ := newAgentSessionsTestServer(t)
+	seedAgentSession(t, memory, "t-1:7", "usage-1")
+
+	rec := agentDo(t, srv, http.MethodGet, "/agui/session-usage?threadId=usage-1", "token-1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session-usage status = %d, want 200\n%s", rec.Code, rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `"sessionId":"usage-1"`) {
+		t.Fatalf("session-usage body = %q, want usage reply for usage-1", body)
+	}
+
+	// 归属：他人会话统一 404，不泄露存在性；threadId 缺失 400。
+	seedAgentSession(t, memory, "t-1:8", "usage-foreign")
+	if rec := agentDo(t, srv, http.MethodGet, "/agui/session-usage?threadId=usage-foreign", "token-1", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("foreign session-usage status = %d, want 404\n%s", rec.Code, rec.Body.String())
+	}
+	if rec := agentDo(t, srv, http.MethodGet, "/agui/session-usage", "token-1", ""); rec.Code != http.StatusBadRequest {
+		t.Fatalf("session-usage without threadId status = %d, want 400\n%s", rec.Code, rec.Body.String())
 	}
 }
 

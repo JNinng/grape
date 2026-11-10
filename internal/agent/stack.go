@@ -74,8 +74,11 @@ type Stack struct {
 	vectors     vectorstore.VectorStore
 	sessions    *httpapi.SessionList
 	eventWindow *httpapi.EventWindow
-	audit       audit.Hook
-	gate        *runGate
+	// usage 是会话模型用量端点（模型型号与 token 用量等调用事实）的
+	// 装配物，与事件窗口共用同一 session.Service 与 userKey 编码。
+	usage *httpapi.SessionUsage
+	audit audit.Hook
+	gate  *runGate
 }
 
 // StackOption 定制骨架装配，供测试注入替身（如 stub 模型）。
@@ -239,6 +242,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		vectors:     vectors,
 		sessions:    httpapi.NewSessionList(sessions, c.GetAppName()),
 		eventWindow: httpapi.NewEventWindow(sessions, c.GetAppName()),
+		usage:       httpapi.NewSessionUsage(sessions, c.GetAppName()),
 		audit:       o.audit,
 		gate:        gate,
 	}, nil
@@ -278,6 +282,13 @@ func (s *Stack) SessionsHandler() nethttp.Handler { return s.sessions }
 // session.Service（需 WindowService 能力）、app 名与 userKey 编码。路由
 // 注册与入链归 service，且必须先于 agent 前缀通配。
 func (s *Stack) EventWindowHandler() nethttp.Handler { return s.eventWindow }
+
+// SessionUsageHandler 返回会话模型用量端点（GET {BasePath}/session-usage）
+// 的 HTTP 形态：按认证身份读本人会话事件流，投影每次模型调用的模型型号与
+// token 用量（首字/思考为流程级事实，见 httpapi.SessionUsage）。与事件窗口
+// 共用同一 session.Service 与 userKey 编码；路由注册与入链归 service，且
+// 必须先于 agent 前缀通配。
+func (s *Stack) SessionUsageHandler() nethttp.Handler { return s.usage }
 
 // newMux 构造外层 ServeMux：AG-UI 子树按前缀挂载，ackhttp 挂更深前缀，
 // 授权管理端点以方法+路径模式先命中；ack 子树外套会话归属守卫，audit
