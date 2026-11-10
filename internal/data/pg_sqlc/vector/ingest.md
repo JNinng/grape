@@ -9,11 +9,12 @@
 ```
 service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ ReindexDocument）
   → KnowledgeUsecase.reindex（[../../../biz/knowledge.go](../../../biz/knowledge.go)）
-      组装 effectiveChunkMetadata（库/条目状态取与、有效期交集）
+      组装 effectiveChunkMetadata（库/条目状态取与、有效期交集），条目 kind 透传
   → DocumentUsecase.Ingest（[../../../biz/document.go](../../../biz/document.go)）
-      1. 入参校验（ID ≤96 字节、正文非空）
-      2. 切分 chunkText（库级 ChunkSize/ChunkOverlap/ChunkDelimiter 覆盖
-         缺省 800/100/段落空行）
+      1. 入参校验（ID ≤96 字节、正文非空、kind 未知拒绝）
+      2. 按 kind 分派切分（chunkByKind）：text 走 chunkText，markdown /
+         file 走 chunkMarkdown（库级 ChunkSize/ChunkOverlap 两种切分共用，
+         ChunkDelimiter 仅对 text 生效；缺省 800/100/段落空行）
       3. 空间解析（库级 embedding_model_key 优先，否则默认空间）
       4. 逐块 embed.Embed（响应长度与维度声明一致性复核）
       5. DeleteByFilter(source_id)（跨空间清除旧切片）
@@ -23,15 +24,35 @@ service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ Rei
 
 ## 切分与切片 ID
 
-- **区分串切分**（[chunkText](../../../biz/document.go)）：缺省区分串是
-  段落空行（`\n\n`），先按区分串切出段落块——区分串本身不入块、全空白
-  块丢弃——超过 `ChunkSize` 的段落块再按 rune 固定窗口二次切分，相邻
+kind 是切分策略的分派依据（`chunkByKind`）：`text` 走区分串/固定窗口，
+`markdown` / `file` 走标题切分（file 的正文是解析产物 markdown，摄取入口
+由文件解析摄取小节放开）；未知 kind 在摄取时显式拒绝，不静默回落。
+
+- **区分串切分**（[chunkText](../../../biz/document.go)，text 条目）：缺省
+  区分串是段落空行（`\n\n`），先按区分串切出段落块——区分串本身不入块、
+  全空白块丢弃——超过 `ChunkSize` 的段落块再按 rune 固定窗口二次切分，相邻
   窗口重叠 `ChunkOverlap` 个 rune 保住边界语义；区分串置空（空串是合法
   覆盖）即纯固定窗口。切分参数按调用方覆盖构造期缺省 800/100/段落空行
   （知识摄取取库级值，非法已在目录层拒绝），管线级覆盖值非法（重叠不
-  小于块大小、区分串超 32 rune）静默回落缺省。块编号连续、锚点始终指
-  原文 rune 闭开区间。可替换点：换递归/结构化切分时保持「内容 + 原文
-  锚点」产出形状，管线其余环节无感。
+  小于块大小、区分串超 32 rune）静默回落缺省。
+- **标题切分**（[chunkMarkdown](../../../biz/document.go)，markdown /
+  file 条目）：按标题层级切节——ATX（`#`–`######`）与 Setext（`===` 一级 /
+  `---` 二级下划线行）都识别，节含节头标题行、止于下一标题行，首个标题
+  之前的内容自成一节。节全文不超过 `ChunkSize` 时整节一块；超长节回退
+  块级二次切分：段落等普通块按块边界装箱（块间空白属原文、随装箱区间
+  保留），围栏代码块与表格块保持原子不跨块截断，单个块自身超过
+  `ChunkSize` 时再按固定窗口切开（嵌入输入上限优先于原子性，此处
+  `ChunkOverlap` 生效）。`ChunkDelimiter` 不参与标题切分。识别口径按
+  CommonMark 简化：Setext 下划线挂到紧邻的非空行段（多行段落的标题文本
+  以空格拼接），不排除列表/引用容器；表格按「表头含 `|` 且下一行是列数
+  一致的分隔行」识别、连续含 `|` 的非空行为表格行；制表符缩进与 4 空格
+  缩进不构成标题/围栏。
+- **heading_path**：标题切分的每块 metadata 附 `heading_path`（标题链按
+  `" > "` 拼接，如 `部署 > 数据库 > 升级`；首个标题之前的内容为空串）。
+  metadata 是 jsonb，`MetadataCondition` 可按该键过滤，等于获得「按章节
+  过滤」；text 切片不带该键，metadata 形状不变。两实现产出同一「内容 +
+  原文 rune 锚点」形状，切片正文恒等于原文对应 rune 区间，管线其余环节
+  无感。
 - **切片 ID 确定性派生**：`"<sourceID>#<index>"`。来源 ID 上限 96 字节，
   为后缀留出 `agent_document.id` 列宽（varchar(128)）余量；确定性保证
   重摄的覆盖语义（同来源重摄写同一批 ID）。
@@ -53,6 +74,7 @@ service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ Rei
 | 键 | 写入方 | 语义 |
 | --- | --- | --- |
 | `source_id` / `source_name` / `chunk_index` / `chunk_total` / `anchor` | 管线保留键（[chunkMetadata](../../../biz/document.go)） | 来源标识与原文锚点（rune 区间），引用可追溯；以服务端产出覆盖调用方同名键 |
+| `heading_path` | 管线保留键（仅 markdown / file 条目） | 标题链（`" > "` 拼接，节前内容为空串），支撑按章节过滤与整节聚合 |
 | `kb_id` / `document_id` / `doc_status` / `valid_from_unix` / `valid_to_unix` | 库过滤事实（[effectiveChunkMetadata](../../../biz/knowledge.go)） | 库与条目状态取与（0/1）、有效期取交集（NULL 视为无界） |
 | 调用方自定义键 | 原样保留 | — |
 

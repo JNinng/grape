@@ -361,12 +361,14 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
+// DocumentService 管理知识条目（text / markdown；file 的摄取入口留给文件
+// 解析摄取）。条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
 // 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
 // 404，不泄露条目存在性。
 type DocumentServiceClient interface {
-	// CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
+	// CreateDocument 创建条目（text / markdown）并摄取到向量存储（所属库必须
+	// 可见）。
 	CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
@@ -496,12 +498,14 @@ func (c *documentServiceClient) SearchDocuments(ctx context.Context, in *SearchD
 // All implementations must embed UnimplementedDocumentServiceServer
 // for forward compatibility.
 //
-// DocumentService 管理知识条目（本期文本）。条目正文经切分、向量化后
+// DocumentService 管理知识条目（text / markdown；file 的摄取入口留给文件
+// 解析摄取）。条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
 // 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
 // 404，不泄露条目存在性。
 type DocumentServiceServer interface {
-	// CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
+	// CreateDocument 创建条目（text / markdown）并摄取到向量存储（所属库必须
+	// 可见）。
 	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。

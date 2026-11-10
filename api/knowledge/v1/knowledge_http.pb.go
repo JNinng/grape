@@ -327,7 +327,8 @@ const OperationDocumentServiceSearchDocuments = "/knowledge.v1.DocumentService/S
 const OperationDocumentServiceUpdateDocument = "/knowledge.v1.DocumentService/UpdateDocument"
 
 type DocumentServiceHTTPServer interface {
-	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
+	// CreateDocument CreateDocument 创建条目（text / markdown）并摄取到向量存储（所属库必须
+	// 可见）。
 	CreateDocument(context.Context, *CreateDocumentRequest) (*Document, error)
 	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
@@ -561,7 +562,8 @@ func _DocumentService_SearchDocuments0_HTTP_Handler(srv DocumentServiceHTTPServe
 }
 
 type DocumentServiceHTTPClient interface {
-	// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
+	// CreateDocument CreateDocument 创建条目（text / markdown）并摄取到向量存储（所属库必须
+	// 可见）。
 	CreateDocument(ctx context.Context, req *CreateDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
 	// DeleteDocument DeleteDocument 软删除条目并清理其 chunk；所属库不可见与不存在统一 404。
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
@@ -597,7 +599,8 @@ func NewDocumentServiceHTTPClient(client *http.Client) DocumentServiceHTTPClient
 	return &DocumentServiceHTTPClientImpl{client}
 }
 
-// CreateDocument CreateDocument 创建文本条目并摄取到向量存储（所属库必须可见）。
+// CreateDocument CreateDocument 创建条目（text / markdown）并摄取到向量存储（所属库必须
+// 可见）。
 func (c *DocumentServiceHTTPClientImpl) CreateDocument(ctx context.Context, in *CreateDocumentRequest, opts ...http.CallOption) (*Document, error) {
 	var out Document
 	pattern := "/v1/knowledge/documents/create"

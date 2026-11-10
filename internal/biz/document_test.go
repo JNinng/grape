@@ -593,3 +593,301 @@ func TestDocumentUsecase_ingest_with_only_delimiters_rejected(t *testing.T) {
 		t.Fatalf("Ingest = %v, want chunks to nothing rejection", err)
 	}
 }
+
+// markdownPaths 折叠切分产物为 (content, headingPath) 序列，便于断言标题链。
+func markdownPaths(chunks []chunk) []string {
+	out := make([]string, 0, len(chunks))
+	for _, c := range chunks {
+		out = append(out, c.headingPath)
+	}
+	return out
+}
+
+func TestChunkMarkdown_splits_atx_sections_with_heading_path(t *testing.T) {
+	content := "# 部署\n\n前言\n\n## 数据库\n\n正文一\n\n## 数据库升级\n\n正文二\n\n### 升级注意\n\n正文三"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 4 {
+		t.Fatalf("chunks = %d, want 4", len(got))
+	}
+	wantPaths := []string{"部署", "部署 > 数据库", "部署 > 数据库升级", "部署 > 数据库升级 > 升级注意"}
+	if !reflect.DeepEqual(markdownPaths(got), wantPaths) {
+		t.Fatalf("heading paths = %v, want %v", markdownPaths(got), wantPaths)
+	}
+	// 节含节头标题行；锚点切回原文。
+	if got[0].content != "# 部署\n\n前言" || got[0].start != 0 {
+		t.Fatalf("chunk 0 = %q [%d,%d), want heading section from document head", got[0].content, got[0].start, got[0].end)
+	}
+	if !strings.HasPrefix(got[1].content, "## 数据库") || strings.Contains(got[1].content, "前言") {
+		t.Fatalf("chunk 1 = %q, want section with own heading and no previous content", got[1].content)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_recognizes_setext_headings(t *testing.T) {
+	// 单行文本 + ===（一级）/ ---（二级）下划线；标题行与下划线都留在节内，
+	// --- 作为二级标题挂到上一级标题链之后。
+	content := "概述\n=====\n\n正文\n\n步骤说明\n---\n\n尾段"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 2 {
+		t.Fatalf("chunks = %d, want 2", len(got))
+	}
+	if !reflect.DeepEqual(markdownPaths(got), []string{"概述", "概述 > 步骤说明"}) {
+		t.Fatalf("heading paths = %v, want 概述 / 概述 > 步骤说明", markdownPaths(got))
+	}
+	if !strings.HasPrefix(got[0].content, "概述\n=====") {
+		t.Fatalf("chunk 0 = %q, want setext heading lines kept in section", got[0].content)
+	}
+	if !strings.HasPrefix(got[1].content, "步骤说明\n---") {
+		t.Fatalf("chunk 1 = %q, want setext level-2 heading lines kept", got[1].content)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_multiline_paragraph_becomes_setext_heading(t *testing.T) {
+	// 多行段落 + 下划线：整段为标题文本，段内行以空格拼接。
+	content := "foo\nbar\n===\n\nbody"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 1 || got[0].headingPath != "foo bar" {
+		t.Fatalf("chunks = %+v, want single section with path 'foo bar'", markdownPaths(got))
+	}
+}
+
+func TestChunkMarkdown_crlf_input_recognizes_setext_headings(t *testing.T) {
+	// CRLF 行尾不破坏 Setext 判定：下划线行的 '\r' 不入行文本，===/---
+	// 识别与 LF 输入一致；标题行与下划线行留在节内，'\r' 不入行区间。
+	content := "概述\r\n=====\r\n\r\n正文\r\n\r\n步骤说明\r\n---\r\n\r\n尾段"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 2 || !reflect.DeepEqual(markdownPaths(got), []string{"概述", "概述 > 步骤说明"}) {
+		t.Fatalf("chunks = %d paths = %v, want 概述 / 概述 > 步骤说明 under CRLF", len(got), markdownPaths(got))
+	}
+	if !strings.HasPrefix(got[0].content, "概述\r\n=====") {
+		t.Fatalf("chunk 0 = %q, want setext heading lines kept in section", got[0].content)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_underline_without_preceding_paragraph_stays_text(t *testing.T) {
+	// 标题行后直接跟下划线、或下划线在文档开头：不构成 Setext，按普通正文。
+	content := "# A\n===\n\ntail"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 1 || got[0].headingPath != "A" {
+		t.Fatalf("chunks = %+v, want single section A with === as plain text", markdownPaths(got))
+	}
+	if !strings.Contains(got[0].content, "===") {
+		t.Fatalf("chunk content = %q, want === kept", got[0].content)
+	}
+}
+
+func TestChunkMarkdown_content_before_first_heading_gets_empty_path(t *testing.T) {
+	content := "\n\n开场白\n\n# A\n\n正文"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 2 {
+		t.Fatalf("chunks = %d, want 2", len(got))
+	}
+	if got[0].headingPath != "" || !strings.Contains(got[0].content, "开场白") {
+		t.Fatalf("chunk 0 = %q path %q, want pre-heading section with empty path", got[0].content, got[0].headingPath)
+	}
+	if got[1].headingPath != "A" {
+		t.Fatalf("chunk 1 path = %q, want A", got[1].headingPath)
+	}
+}
+
+func TestChunkMarkdown_without_headings_keeps_single_pathless_section(t *testing.T) {
+	content := "甲\n\n乙"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 1 || got[0].content != "甲\n\n乙" || got[0].headingPath != "" {
+		t.Fatalf("chunks = %+v, want one pathless section", got)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_oversize_section_repacks_at_block_boundaries(t *testing.T) {
+	// 超长节回退块级装箱：块边界切分、不重叠，每块不超过窗口；锚点为原文区间。
+	para := strings.Repeat("x", 10)
+	content := "# A\n\n" + para + "\n\n" + para + "\n\n" + para + "\n\n" + para
+	got := chunkMarkdown(content, 16, 4)
+	if len(got) < 3 {
+		t.Fatalf("chunks = %d, want repacked blocks", len(got))
+	}
+	for i, c := range got {
+		if c.end-c.start > 16 {
+			t.Fatalf("chunk %d spans %d runes, want <= size", i, c.end-c.start)
+		}
+		if c.headingPath != "A" {
+			t.Fatalf("chunk %d path = %q, want A", i, c.headingPath)
+		}
+	}
+	// 块边界切分不重叠：相邻块切片互不重叠。
+	for i := 1; i < len(got); i++ {
+		if got[i].start < got[i-1].end {
+			t.Fatalf("chunk %d [%d,%d) overlaps previous [%d,%d)", i, got[i].start, got[i].end, got[i-1].start, got[i-1].end)
+		}
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_keeps_fenced_code_block_atomic(t *testing.T) {
+	// 节超长但代码块不超过窗口：代码块整体装箱，不被从中间切开。
+	code := "```\nline one\n\nline two\n```"
+	content := "# A\n\n" + code + "\n\n" + strings.Repeat("y", 30)
+	got := chunkMarkdown(content, 40, 4)
+	whole := false
+	for _, c := range got {
+		if strings.Contains(c.content, code) {
+			whole = true
+		}
+	}
+	if !whole {
+		t.Fatalf("chunks = %+v, want fenced block kept whole in one chunk", got)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_ignores_headings_inside_fences(t *testing.T) {
+	content := "# A\n\n```md\n# not a heading\n```\n\ntail"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 1 || got[0].headingPath != "A" {
+		t.Fatalf("chunks = %+v, want single section A (fenced # not a heading)", markdownPaths(got))
+	}
+}
+
+func TestChunkMarkdown_crlf_input_closes_fenced_code_block(t *testing.T) {
+	// CRLF 围栏闭行（``` + 行尾 '\r'）可闭合围栏：其后标题恢复识别，
+	// 不被未闭合围栏吞掉。
+	content := "# A\r\n\r\n```md\r\n# not a heading\r\n```\r\n\r\n## B\r\n\r\ntail"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 2 || !reflect.DeepEqual(markdownPaths(got), []string{"A", "A > B"}) {
+		t.Fatalf("chunks = %d paths = %v, want sections A / A > B (fence closed under CRLF)", len(got), markdownPaths(got))
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_keeps_table_atomic(t *testing.T) {
+	table := "| a | b |\n|---|---|\n| 1 | 2 |"
+	content := "# T\n\n" + table + "\n\n" + strings.Repeat("z", 30)
+	got := chunkMarkdown(content, 40, 4)
+	whole := false
+	for _, c := range got {
+		if strings.Contains(c.content, table) {
+			whole = true
+		}
+	}
+	if !whole {
+		t.Fatalf("chunks = %+v, want table kept whole in one chunk", got)
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_windows_oversize_atomic_block(t *testing.T) {
+	// 原子块自身超过窗口：回退固定窗口切开（嵌入输入上限优先于原子性），
+	// 窗口重叠 overlap 个 rune。
+	code := "```\n" + strings.Repeat("c", 30) + "\n```"
+	content := "# A\n\n" + code
+	got := chunkMarkdown(content, 12, 3)
+	if len(got) < 3 {
+		t.Fatalf("chunks = %d, want windows over the oversize fence", len(got))
+	}
+	for i, c := range got {
+		if c.end-c.start > 12 {
+			t.Fatalf("chunk %d spans %d runes, want <= size", i, c.end-c.start)
+		}
+		if c.headingPath != "A" {
+			t.Fatalf("chunk %d path = %q, want A", i, c.headingPath)
+		}
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkMarkdown_multibyte_anchors_map_to_original(t *testing.T) {
+	content := "# 中文标题\n\n中文段落一\n\n## 子标题\n\n中文段落二\n\n```\n代码块中文\n```"
+	assertAnchorsMapToOriginal(t, content, chunkMarkdown(content, 5, 1))
+}
+
+func TestChunkMarkdown_crlf_input_anchors_map_to_original(t *testing.T) {
+	// CRLF 全要素（ATX/Setext/围栏/表格 + 超长节重装箱）下锚点不变式：
+	// 每块 content 恒等于原文按锚点区间的 rune 切片。
+	content := "# 标题\r\n\r\n" + strings.Repeat("段落", 10) + "\r\n\r\n概述\r\n=====\r\n\r\n```go\r\ncode\r\n```\r\n\r\n| a | b |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n尾段"
+	assertAnchorsMapToOriginal(t, content, chunkMarkdown(content, 12, 3))
+}
+
+func TestChunkMarkdown_empty_atx_heading_skipped_in_heading_path(t *testing.T) {
+	// 空 ATX 标题（###### 后无文字）只切节、不入标题链：路径无悬空
+	// " > " 分隔符，节跟随外层标题链。
+	content := "# A\n\n######\n\nbody\n\n## B\n\ntail"
+	got := chunkMarkdown(content, 800, 100)
+	if len(got) != 3 || !reflect.DeepEqual(markdownPaths(got), []string{"A", "A", "A > B"}) {
+		t.Fatalf("chunks = %d paths = %v, want paths A / A / A > B without dangling separator", len(got), markdownPaths(got))
+	}
+	assertAnchorsMapToOriginal(t, content, got)
+}
+
+func TestChunkByKind_dispatches_by_document_kind(t *testing.T) {
+	content := "# A\n\nbody"
+	md, err := chunkByKind(DocumentKindMarkdown, content, 800, 100, "\n\n")
+	if err != nil {
+		t.Fatalf("chunkByKind(markdown): %v", err)
+	}
+	if len(md) != 1 || md[0].headingPath != "A" || md[0].content != content {
+		t.Fatalf("markdown chunks = %+v, want single headed section", md)
+	}
+	// text（含空值）走区分串切分，锚点同形。
+	for _, kind := range []string{"", DocumentKindText} {
+		text, err := chunkByKind(kind, "para one\n\npara two", 800, 100, "\n\n")
+		if err != nil {
+			t.Fatalf("chunkByKind(%q): %v", kind, err)
+		}
+		if len(text) != 2 || text[0].content != "para one" || text[0].headingPath != "" {
+			t.Fatalf("text chunks = %+v, want paragraph split without heading path", text)
+		}
+	}
+	// file 的正文是解析产物 markdown，切分口径同 markdown。
+	file, err := chunkByKind(DocumentKindFile, content, 800, 100, "\n\n")
+	if err != nil {
+		t.Fatalf("chunkByKind(file): %v", err)
+	}
+	if len(file) != 1 || file[0].headingPath != "A" {
+		t.Fatalf("file chunks = %+v, want markdown-shaped chunks", file)
+	}
+	if _, err := chunkByKind("html", content, 800, 100, "\n\n"); err == nil || !strings.Contains(err.Error(), "unknown document kind") {
+		t.Fatalf("chunkByKind(html) = %v, want unknown kind rejection", err)
+	}
+}
+
+func TestDocumentUsecase_markdown_ingest_carries_heading_path_metadata(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{
+		ID:      "kb-1",
+		Kind:    DocumentKindMarkdown,
+		Name:    "handbook",
+		Content: "# 部署\n\n前言\n\n## 数据库\n\n正文",
+	}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 2 {
+		t.Fatalf("chunks = %d, want 2", len(store.added))
+	}
+	if store.added[0].Metadata["heading_path"] != "部署" || store.added[1].Metadata["heading_path"] != "部署 > 数据库" {
+		t.Fatalf("heading paths = %v / %v, want 部署 / 部署 > 数据库",
+			store.added[0].Metadata["heading_path"], store.added[1].Metadata["heading_path"])
+	}
+}
+
+func TestDocumentUsecase_text_ingest_keeps_metadata_without_heading_path(t *testing.T) {
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "para one\n\npara two"}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	for i, doc := range store.added {
+		if _, ok := doc.Metadata["heading_path"]; ok {
+			t.Fatalf("chunk %d carries heading_path, want text metadata shape unchanged", i)
+		}
+	}
+}

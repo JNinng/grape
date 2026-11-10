@@ -99,9 +99,13 @@ export interface UpdateLibraryInput {
   validTo?: string
 }
 
+// 知识条目 kind：text 按区分串/固定窗口切分，markdown 按标题层级切分；
+// file 的摄取入口暂未开放。创建可省略（缺省 text），创建后不可变。
+export type DocumentKind = 'text' | 'markdown'
+
 export interface CreateDocumentInput {
   libraryId: string
-  kind?: string
+  kind?: DocumentKind
   title: string
   content: string
   sourceName?: string

@@ -68,7 +68,8 @@ COMMENT ON COLUMN public.kb_library.owner_dept_id IS '归属部门 ID（NULL=无
 COMMENT ON COLUMN public.kb_library.owner_user_group_id IS '归属用户组 ID（NULL=无该归属） [@dynamic: exact, membership]';
 
 
--- kb_document — 知识条目（本期文本；file 只留字段，接口拒绝创建）
+-- kb_document — 知识条目（kind 分派切分策略与摄取形态：text / markdown /
+-- file；file 的摄取入口由文件解析摄取小节放开）
 CREATE TABLE public.kb_document
 (
     id               int8                                                   NOT NULL,
@@ -90,8 +91,8 @@ CREATE TABLE public.kb_document
     deleted_at       timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     tenant_id        varchar(16)                                            NOT NULL,
     CONSTRAINT kb_document_pkey PRIMARY KEY (id),
-    CONSTRAINT kb_document_kind_chk CHECK (kind IN ('text', 'file')),
-    CONSTRAINT kb_document_text_chk CHECK (kind <> 'text' OR (content IS NOT NULL AND btrim(content) <> '')),
+    CONSTRAINT kb_document_kind_chk CHECK (kind IN ('text', 'markdown', 'file')),
+    CONSTRAINT kb_document_text_chk CHECK (kind = 'file' OR (content IS NOT NULL AND btrim(content) <> '')),
     CONSTRAINT kb_document_status_chk CHECK (status IN (0, 1)),
     CONSTRAINT kb_document_valid_chk CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to > valid_from)
 );
@@ -101,9 +102,9 @@ COMMENT ON TABLE public.kb_document IS '知识条目表：正文经切分、向�
 
 COMMENT ON COLUMN public.kb_document.id IS '条目 ID [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.kb_document.library_id IS '所属知识库 ID（库存在且同租户由用例校验） [@dynamic: exact, membership]';
-COMMENT ON COLUMN public.kb_document.kind IS '条目类型：text（本期可用）/file（预留，创建接口拒绝） [@dynamic: exact]';
+COMMENT ON COLUMN public.kb_document.kind IS '条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，解析产物走标题切分；摄取入口暂未开放） [@dynamic: exact]';
 COMMENT ON COLUMN public.kb_document.title IS '条目标题 [@dynamic: fuzzy, exact, sort @updatable: set]';
-COMMENT ON COLUMN public.kb_document.content IS '条目正文（text 类型必填非空白；向量化来源）';
+COMMENT ON COLUMN public.kb_document.content IS '条目正文（text / markdown 必填非空白；file 解析成功前可空；向量化来源）';
 COMMENT ON COLUMN public.kb_document.source_name IS '来源名，缺省取标题 [@dynamic: fuzzy, exact @updatable: set]';
 COMMENT ON COLUMN public.kb_document.content_hash IS '正文摘要（变更检测与重嵌判断，不参与检索） [@internal]';
 COMMENT ON COLUMN public.kb_document.status IS '数据状态，0：禁用、1：启用；与所属库状态取与参与检索 [@dynamic: exact, membership, sort @updatable: set]';

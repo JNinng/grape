@@ -13,6 +13,7 @@ import {
   updateDocument,
   updateLibrary,
   type DocumentDTO,
+  type DocumentKind,
   type LibraryDTO,
   type ModelOptionDTO,
 } from '@/api/knowledge'
@@ -675,6 +676,7 @@ function DocumentDialog({
   onClose: () => void
   onSaved: () => Promise<void> | void
 }) {
+  const [kind, setKind] = useState<DocumentKind>(document?.kind === 'markdown' ? 'markdown' : 'text')
   const [title, setTitle] = useState(document?.title ?? '')
   const [content, setContent] = useState(document?.content ?? '')
   const [sourceName, setSourceName] = useState(document?.sourceName ?? '')
@@ -736,7 +738,7 @@ function DocumentDialog({
       } else {
         await createDocument({
           libraryId: library.id,
-          kind: 'text',
+          kind,
           title: title.trim(),
           content,
           sourceName: sourceName.trim() || undefined,
@@ -762,10 +764,27 @@ function DocumentDialog({
         <DialogHeader>
           <DialogTitle>{document ? '编辑条目' : '新建条目'}</DialogTitle>
           <DialogDescription>
-            文本条目保存后自动切分、向量化；停用或超出有效期的条目不出现在检索结果。
+            条目保存后自动切分、向量化：纯文本按区分串切分，Markdown 按标题层级切分；停用或超出有效期的条目不出现在检索结果。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="doc-kind">类型</Label>
+            <Select
+              value={kind}
+              disabled={Boolean(document)}
+              onValueChange={(value) => setKind(value === 'markdown' ? 'markdown' : 'text')}
+            >
+              <SelectTrigger id="doc-kind">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="text">纯文本（区分串切分）</SelectItem>
+                <SelectItem value="markdown">Markdown（标题切分）</SelectItem>
+              </SelectContent>
+            </Select>
+            {document ? <p className="text-xs text-muted-foreground">类型创建后不可变。</p> : null}
+          </div>
           <div className="grid gap-1.5">
             <Label htmlFor="doc-title">标题</Label>
             <Input id="doc-title" value={title} onChange={(e) => setTitle(e.target.value)} />

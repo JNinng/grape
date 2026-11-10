@@ -39,7 +39,8 @@ const (
 	ErrorReason_DOCUMENT_NOT_FOUND ErrorReason = 5
 	// 条目请求参数非法（标题/正文/有效期等）。
 	ErrorReason_DOCUMENT_INVALID_ARGUMENT ErrorReason = 6
-	// 本期只支持文本条目，file 类型被拒绝。
+	// 条目 kind 不被创建接口支持（当前接受 text / markdown，file 留给文件
+	// 解析摄取放开）。
 	ErrorReason_DOCUMENT_KIND_UNSUPPORTED ErrorReason = 7
 	// 摄取/重建索引失败（嵌入端点或向量存储错误）。
 	ErrorReason_DOCUMENT_INDEX_FAILED ErrorReason = 8

@@ -117,6 +117,22 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 
   新版本二进制的知识库查询依赖该列，历史库须先执行上述升级再部署。
   存量库要改用区分串切分时，经管理页编辑库的区分串后对条目执行重建索引。
+- **kb_document kind 取值（91_knowledge.sql）**：历史库以表 owner 手工替换
+  kind 与正文两条约束、刷新列注释（与 91_knowledge.sql 逐字一致）。存量行
+  只有 text/file，天然满足新约束，无数据迁移：
+
+  ```sql
+  ALTER TABLE public.kb_document DROP CONSTRAINT kb_document_kind_chk;
+  ALTER TABLE public.kb_document ADD CONSTRAINT kb_document_kind_chk CHECK (kind IN ('text', 'markdown', 'file'));
+  ALTER TABLE public.kb_document DROP CONSTRAINT kb_document_text_chk;
+  ALTER TABLE public.kb_document ADD CONSTRAINT kb_document_text_chk CHECK (kind = 'file' OR (content IS NOT NULL AND btrim(content) <> ''));
+  COMMENT ON COLUMN public.kb_document.kind IS '条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，解析产物走标题切分；摄取入口暂未开放） [@dynamic: exact]';
+  COMMENT ON COLUMN public.kb_document.content IS '条目正文（text / markdown 必填非空白；file 解析成功前可空；向量化来源）';
+  ```
+
+  旧版本二进制不产出 markdown 条目，不受旧约束影响；新版二进制写入的
+  markdown 条目会被存量库的旧 `kb_document_kind_chk` 拒绝，历史库须先执行
+  上述约束升级再部署新版二进制。
 - **kb_library 归属三元组与 `@scope`（91_knowledge.sql）**：历史库以表 owner
   手工追加三列、索引与注释（与 91_knowledge.sql 逐字一致）：
 

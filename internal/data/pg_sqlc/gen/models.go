@@ -170,11 +170,11 @@ type KbDocument struct {
 	ID int64 `db:"id" json:"id"`
 	// 所属知识库 ID（库存在且同租户由用例校验） [@dynamic: exact, membership]
 	LibraryID int64 `db:"library_id" json:"library_id"`
-	// 条目类型：text（本期可用）/file（预留，创建接口拒绝） [@dynamic: exact]
+	// 条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，解析产物走标题切分；摄取入口暂未开放） [@dynamic: exact]
 	Kind string `db:"kind" json:"kind"`
 	// 条目标题 [@dynamic: fuzzy, exact, sort @updatable: set]
 	Title string `db:"title" json:"title"`
-	// 条目正文（text 类型必填非空白；向量化来源）
+	// 条目正文（text / markdown 必填非空白；file 解析成功前可空；向量化来源）
 	Content *string `db:"content" json:"content"`
 	// 来源名，缺省取标题 [@dynamic: fuzzy, exact @updatable: set]
 	SourceName *string `db:"source_name" json:"source_name"`

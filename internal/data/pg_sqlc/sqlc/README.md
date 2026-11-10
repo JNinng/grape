@@ -28,7 +28,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 7 | schema/70_audit.sql | 登录日志与操作日志（append-only） |
 | 8 | schema/80_session.sql | 会话/令牌表（仅存哈希）与过期清理函数 |
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
-| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`）与 kb_document 条目（租户表，RLS 在 rls.sql） |
+| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`）与 kb_document 条目（kind：text / markdown / file；租户表，RLS 在 rls.sql） |
 | 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
 | 12 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
 | 13 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |

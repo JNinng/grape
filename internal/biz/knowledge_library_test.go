@@ -142,14 +142,15 @@ func TestDeleteDocument_when_library_invisible_rejects_before_chunk_clear(t *tes
 	}
 }
 
-// libraryFakeRepo 是知识库用例单测的仓储替身：记录写入的库，读取返回
+// libraryFakeRepo 是知识库用例单测的仓储替身：记录写入的库与条目，读取返回
 // 预置的库与条目；未覆盖的方法沿用嵌入接口零值（触达即 panic）。
 type libraryFakeRepo struct {
 	KnowledgeRepo
-	existing *KnowledgeLibrary
-	doc      *KnowledgeDocument
-	created  *KnowledgeLibrary
-	updated  *KnowledgeLibrary
+	existing   *KnowledgeLibrary
+	doc        *KnowledgeDocument
+	created    *KnowledgeLibrary
+	updated    *KnowledgeLibrary
+	createdDoc *KnowledgeDocument
 }
 
 func (r *libraryFakeRepo) GetLibrary(context.Context, Identity, int64) (*KnowledgeLibrary, error) {
@@ -180,7 +181,18 @@ func (r *libraryFakeRepo) GetDocument(context.Context, Identity, int64) (*Knowle
 	return r.doc, nil
 }
 
+func (r *libraryFakeRepo) CreateDocument(_ context.Context, _ Identity, d *KnowledgeDocument) (*KnowledgeDocument, error) {
+	r.createdDoc = d
+	if d.ID == 0 {
+		d.ID = 2
+	}
+	return d, nil
+}
+
 func (r *libraryFakeRepo) MarkDocumentIndexed(context.Context, Identity, int64, string) (*KnowledgeDocument, error) {
+	if r.createdDoc != nil {
+		return r.createdDoc, nil
+	}
 	return r.doc, nil
 }
 
@@ -327,5 +339,106 @@ func TestReindexDocument_uses_library_delimiter_value_for_chunking(t *testing.T)
 				t.Fatalf("chunk contents = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// kind 校验矩阵：创建接受 text / markdown（缺省 text，markdown 切片带
+// heading_path），file 与未知取值拒绝；更新路径 kind 不可变。
+
+func TestCreateDocument_accepts_text_markdown_and_defaults_text(t *testing.T) {
+	for name, tc := range map[string]struct {
+		kind     string
+		wantKind string
+	}{
+		"empty defaults to text": {"", DocumentKindText},
+		"text accepted":          {DocumentKindText, DocumentKindText},
+		"markdown accepted":      {DocumentKindMarkdown, DocumentKindMarkdown},
+	} {
+		t.Run(name, func(t *testing.T) {
+			content := "# 标题\n\n正文"
+			store := &mockVectorStore{}
+			repo := &libraryFakeRepo{
+				existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+			}
+			uc := newLibraryUsecaseForTest(t, repo, store)
+
+			created, err := uc.CreateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+				LibraryID: 1, Kind: tc.kind, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+			})
+			if err != nil {
+				t.Fatalf("CreateDocument(kind=%q): %v", tc.kind, err)
+			}
+			if created.Kind != tc.wantKind {
+				t.Fatalf("created kind = %q, want %q", created.Kind, tc.wantKind)
+			}
+			if repo.createdDoc.Kind != tc.wantKind {
+				t.Fatalf("persisted kind = %q, want %q", repo.createdDoc.Kind, tc.wantKind)
+			}
+			// markdown 条目切片带 heading_path，text 条目保持既有 metadata 形状。
+			_, hasPath := store.added[0].Metadata["heading_path"]
+			if tc.wantKind == DocumentKindMarkdown && !hasPath {
+				t.Fatalf("markdown chunk metadata = %v, want heading_path", store.added[0].Metadata)
+			}
+			if tc.wantKind == DocumentKindText && hasPath {
+				t.Fatalf("text chunk metadata = %v, want no heading_path", store.added[0].Metadata)
+			}
+		})
+	}
+}
+
+func TestCreateDocument_with_file_or_unknown_kind_rejected(t *testing.T) {
+	for _, kind := range []string{DocumentKindFile, "html"} {
+		repo := &libraryFakeRepo{
+			existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+		}
+		uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+
+		content := "c"
+		_, err := uc.CreateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+			LibraryID: 1, Kind: kind, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+		})
+		if !errors.Is(err, ErrDocumentKindUnsupported) {
+			t.Fatalf("CreateDocument(kind=%q) = %v, want ErrDocumentKindUnsupported", kind, err)
+		}
+		if repo.createdDoc != nil {
+			t.Fatalf("repo written despite unsupported kind %q", kind)
+		}
+	}
+}
+
+func TestUpdateDocument_with_changed_kind_rejected(t *testing.T) {
+	content := "c"
+	repo := &libraryFakeRepo{
+		existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+		doc: &KnowledgeDocument{
+			ID: 2, LibraryID: 1, Kind: DocumentKindText, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+		},
+	}
+	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+
+	_, err := uc.UpdateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+		ID: 2, Kind: DocumentKindMarkdown, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+	})
+	if !errors.Is(err, ErrDocumentInvalidArgument) {
+		t.Fatalf("UpdateDocument(kind changed) = %v, want ErrDocumentInvalidArgument", err)
+	}
+}
+
+func TestReindexDocument_markdown_doc_chunks_carry_heading_path(t *testing.T) {
+	content := "# 部署\n\n数据库正文"
+	store := &mockVectorStore{}
+	repo := &libraryFakeRepo{
+		existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+		doc: &KnowledgeDocument{
+			ID: 2, LibraryID: 1, Kind: DocumentKindMarkdown, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+		},
+	}
+	uc := newLibraryUsecaseForTest(t, repo, store)
+
+	if _, err := uc.ReindexDocument(ingestCtx(), libraryAuth(), 2); err != nil {
+		t.Fatalf("ReindexDocument: %v", err)
+	}
+	if len(store.added) != 1 || store.added[0].Metadata["heading_path"] != "部署" {
+		t.Fatalf("chunks = %+v, want one chunk with heading_path 部署", store.added)
 	}
 }

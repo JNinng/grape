@@ -34,8 +34,9 @@ var (
 	ErrDocumentNotFound = kratoserrors.NotFound(knowledgev1.ErrorReason_DOCUMENT_NOT_FOUND.String(), "knowledge document not found")
 	// ErrDocumentInvalidArgument 表示条目请求参数非法。
 	ErrDocumentInvalidArgument = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_INVALID_ARGUMENT.String(), "invalid knowledge document argument")
-	// ErrDocumentKindUnsupported 表示本期只支持文本条目。
-	ErrDocumentKindUnsupported = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_KIND_UNSUPPORTED.String(), "only text documents are supported")
+	// ErrDocumentKindUnsupported 表示创建接口只接受 text / markdown 条目
+	// （file 由文件解析摄取小节放开）。
+	ErrDocumentKindUnsupported = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_KIND_UNSUPPORTED.String(), "only text and markdown documents are supported")
 	// ErrDocumentIndexFailed 表示摄取/重建索引失败。
 	ErrDocumentIndexFailed = kratoserrors.InternalServer(knowledgev1.ErrorReason_DOCUMENT_INDEX_FAILED.String(), "knowledge document indexing failed")
 	// ErrDocumentChunksUnavailable 表示分片查询能力缺失（向量设施未启用）。
@@ -49,6 +50,14 @@ const (
 	KnowledgeStatusDisabled    int32 = 0
 	KnowledgeStatusEnabled     int32 = 1
 	KnowledgeStatusUnspecified int32 = -1
+)
+
+// 条目 kind 取值（与存储层 kb_document_kind_chk、摄取管线 DocumentKind*
+// 对齐）。file 的摄取入口由文件解析摄取小节放开，创建接口暂不接受。
+const (
+	DocumentKindText     = "text"
+	DocumentKindMarkdown = "markdown"
+	DocumentKindFile     = "file"
 )
 
 // 有效期缺省边界：无限期失效时间写 253402300799（9999-12-31T23:59:59Z），
@@ -366,16 +375,19 @@ func (uc *KnowledgeUsecase) ListDocumentsByLibrary(ctx context.Context, auth Ide
 	return uc.repo.ListDocumentsByLibrary(ctx, auth, libraryID, limit, offset)
 }
 
-// CreateDocument 创建文本条目并摄取：目录行先落库（获得 id），摄取完成后
+// CreateDocument 创建条目并摄取：目录行先落库（获得 id），摄取完成后
 // 回写 indexed_at/indexed_embedder。摄取失败时目录行保留，管理页可重建索引。
+// kind 缺省 text；file 暂不接受（ErrDocumentKindUnsupported）。
 func (uc *KnowledgeUsecase) CreateDocument(ctx context.Context, auth Identity, d *KnowledgeDocument) (*KnowledgeDocument, error) {
 	if d == nil {
 		return nil, ErrDocumentInvalidArgument
 	}
-	if d.Kind != "" && d.Kind != "text" {
+	if d.Kind != "" && d.Kind != DocumentKindText && d.Kind != DocumentKindMarkdown {
 		return nil, ErrDocumentKindUnsupported
 	}
-	d.Kind = "text"
+	if d.Kind == "" {
+		d.Kind = DocumentKindText
+	}
 	if d.Status == KnowledgeStatusUnspecified {
 		d.Status = KnowledgeStatusEnabled
 	}
@@ -503,6 +515,7 @@ func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *Kno
 	}
 	result, err := uc.ingest.Ingest(ctx, &Document{
 		ID:             idString(doc.ID),
+		Kind:           doc.Kind,
 		Name:           sourceName,
 		Content:        *doc.Content,
 		Metadata:       metadata,

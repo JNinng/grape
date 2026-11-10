@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  createDocument,
   createLibrary,
   getDocument,
   listLibraries,
@@ -26,6 +27,7 @@ vi.mock('@/api/knowledge', async (importOriginal) => ({
   updateLibrary: vi.fn(),
   getDocument: vi.fn(),
   updateDocument: vi.fn(),
+  createDocument: vi.fn(),
   listDocumentChunks: vi.fn(),
 }))
 
@@ -36,6 +38,7 @@ const mockCreateLibrary = vi.mocked(createLibrary)
 const mockUpdateLibrary = vi.mocked(updateLibrary)
 const mockGetDocument = vi.mocked(getDocument)
 const mockUpdateDocument = vi.mocked(updateDocument)
+const mockCreateDocument = vi.mocked(createDocument)
 const mockListDocumentChunks = vi.mocked(listDocumentChunks)
 
 function library(overrides: Partial<LibraryDTO> = {}): LibraryDTO {
@@ -84,6 +87,7 @@ beforeEach(() => {
   mockUpdateLibrary.mockResolvedValue(library())
   mockGetDocument.mockResolvedValue(documentDetail())
   mockUpdateDocument.mockResolvedValue(documentDetail())
+  mockCreateDocument.mockResolvedValue(documentDetail())
   mockListDocumentChunks.mockResolvedValue({
     items: [{ index: 0, chunkId: '200#0', anchor: 'runes 0-11', content: '30 天内全额退款', embedder: 'space@v1' }],
     total: 1,
@@ -330,5 +334,75 @@ describe('KnowledgeManagePage document title styling', () => {
     const title = await screen.findByRole('button', { name: '退款政策' })
     expect(title).toHaveClass('text-primary')
     expect(title).toHaveClass('cursor-pointer')
+  })
+})
+
+describe('KnowledgeManagePage document kind', () => {
+  beforeEach(() => {
+    mockListLibraryDocuments.mockResolvedValue({ items: [documentRow()], total: '1', hasMore: false, nextCursor: '', page: 1 })
+  })
+
+  // openCreateDocument 打开条目新建弹窗。
+  async function openCreateDocument(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByText('人事', { selector: 'span' })
+    await user.click(screen.getByRole('button', { name: '新建条目' }))
+    return screen.findByRole('dialog')
+  }
+
+  async function submitDocument(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+    await user.type(within(dialog).getByLabelText('标题'), '新条目')
+    await user.type(within(dialog).getByLabelText('正文'), '# 正文')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+  }
+
+  it('create_document_defaults_kind_to_text_and_submits_it', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openCreateDocument(user)
+    await submitDocument(user, dialog)
+    expect(mockCreateDocument).toHaveBeenCalledWith({
+      libraryId: '100',
+      kind: 'text',
+      title: '新条目',
+      content: '# 正文',
+      sourceName: undefined,
+      status: 1,
+      validFrom: undefined,
+      validTo: undefined,
+    })
+  })
+
+  it('create_document_with_markdown_kind_submits_markdown', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openCreateDocument(user)
+    await user.click(within(dialog).getByRole('combobox', { name: '类型' }))
+    await user.click(await screen.findByRole('option', { name: 'Markdown（标题切分）' }))
+    await submitDocument(user, dialog)
+    expect(mockCreateDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'markdown', title: '新条目' }),
+    )
+  })
+
+  it('edit_document_renders_kind_readonly', async () => {
+    mockListLibraryDocuments.mockResolvedValue({
+      items: [documentRow({ kind: 'markdown' })],
+      total: '1',
+      hasMore: false,
+      nextCursor: '',
+      page: 1,
+    })
+    mockGetDocument.mockResolvedValue(documentDetail({ kind: 'markdown' }))
+    const user = userEvent.setup()
+    renderPage()
+    const row = (await screen.findByText('退款政策')).closest('tr')
+    if (!row) {
+      throw new Error('document row not found')
+    }
+    await user.click(within(row).getByRole('button', { name: '编辑' }))
+    const dialog = await screen.findByRole('dialog')
+    const trigger = await within(dialog).findByRole('combobox', { name: '类型' })
+    expect(trigger).toBeDisabled()
+    expect(trigger).toHaveTextContent('Markdown（标题切分）')
   })
 })

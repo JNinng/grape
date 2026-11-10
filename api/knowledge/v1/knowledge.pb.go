@@ -51,7 +51,8 @@ type Library struct {
 	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	DeletedAt *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
 	// 切分区分串：非空时先按该字符串切出段落块，超过 chunk_size 的段落块
-	// 再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。创建时省略
+	// 再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。仅对 text
+	// 条目生效，markdown 按标题层级切分。创建时省略
 	// 取缺省区分串 "\n\n"（段落空行），更新时省略保持原值；至多 32 字符。
 	ChunkDelimiter *string `protobuf:"bytes,15,opt,name=chunk_delimiter,json=chunkDelimiter,proto3,oneof" json:"chunk_delimiter,omitempty"`
 	unknownFields  protoimpl.UnknownFields
@@ -276,11 +277,13 @@ type Document struct {
 	Id    int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	// 所属知识库 ID。创建后不可变。
 	LibraryId int64 `protobuf:"varint,2,opt,name=library_id,json=libraryId,proto3" json:"library_id,omitempty"`
-	// 条目类型：text（本期）/file（预留，创建接口拒绝）。
+	// 条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/
+	// file（文件解析条目，摄取入口暂未开放）。创建可省略（缺省 text）；创建
+	// 后不可变。
 	Kind string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	// 条目标题。
 	Title string `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	// 条目正文（text 必填非空白；列表响应中省略）。
+	// 条目正文（text / markdown 必填非空白；列表响应中省略）。
 	Content *string `protobuf:"bytes,5,opt,name=content,proto3,oneof" json:"content,omitempty"`
 	// 来源名，缺省取标题。
 	SourceName *string `protobuf:"bytes,6,opt,name=source_name,json=sourceName,proto3,oneof" json:"source_name,omitempty"`
