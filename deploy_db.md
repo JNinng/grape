@@ -133,6 +133,17 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   旧版本二进制不产出 markdown 条目，不受旧约束影响；新版二进制写入的
   markdown 条目会被存量库的旧 `kb_document_kind_chk` 拒绝，历史库须先执行
   上述约束升级再部署新版二进制。
+- **kb_library.contextual_chunking（91_knowledge.sql）**：已有 `kb_library`
+  的历史库以表 owner 手工追加列与列注释（与 91_knowledge.sql 逐字一致）。
+  存量库回填缺省 false（不启用上下文前缀，摄取行为不变）：
+
+  ```sql
+  ALTER TABLE public.kb_library ADD COLUMN contextual_chunking boolean NOT NULL DEFAULT false;
+  COMMENT ON COLUMN public.kb_library.contextual_chunking IS '上下文检索开关：开启后摄取在切分之后、向量化之前为每块生成上下文前缀（本文出处 + 本块要旨），前缀只拼入向量输入，不改变切片正文与锚点；前缀生成失败按质量增强降级为无前缀继续摄取 [@dynamic: exact @updatable: set]';
+  ```
+
+  新版本二进制的知识库写面依赖该列，历史库须先执行上述升级再部署。
+  开启开关的库对条目执行重建索引后生效（存量切片的向量输入不带前缀）。
 - **kb_library 归属三元组与 `@scope`（91_knowledge.sql）**：历史库以表 owner
   手工追加三列、索引与注释（与 91_knowledge.sql 逐字一致）：
 

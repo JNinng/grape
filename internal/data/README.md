@@ -13,6 +13,7 @@
 | [pg_sqlc/vector](pg_sqlc/vector/) | 向量存储介质与检索留痕装饰器 |
 | [pg_sqlc/deploy](pg_sqlc/deploy/) | 声明资产部署面：执行清单、口令占位替换、跨进程锁，不依赖运行期门面 |
 | [openaiembedder](openaiembedder/) | 文本向量化设施（OpenAI 兼容端点） |
+| [openaicompleter](openaicompleter/) | 单次文本生成设施（OpenAI 兼容 chat completions） |
 
 `data` 是存储后端选择点：[provider.go](provider.go) 聚合各能力
 ProviderSet 与设施诊断面/维护面，当前静态选定 `pg_sqlc` 关系存储。
@@ -42,6 +43,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/vector/retrieval_log.go](pg_sqlc/vector/retrieval_log.go) | 检索留痕装饰器与 wire 供给包装 `VectorStoreSupply` |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位 |
+| [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存 |
 
 ## 事务门面
 
@@ -141,6 +143,15 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
 `vector.enabled=false` 返回禁用占位；每次 Embed 响应按解析出的空间维度
 复核，未知空间按 `ErrEmbedderUnknown` 拒绝。
 
+## 单次文本生成设施
+
+[openaicompleter](openaicompleter/) 实现 `biz.Completer`（单次文本生成，
+摄取管线上下文前缀的生成点）：每次 Complete 经
+`biz.TextModelCatalog.ResolveTextModel` 按当前身份解析租户文本模型端点，
+单轮 user message 调用 OpenAI 兼容 chat completions；不设独立设施开关，
+租户未配置文本模型时 Complete 按 `ErrTextModelUnavailable` 拒绝，由消费方
+按质量增强降级处理（见 ingest.md）。
+
 ## 会话介质维护
 
 [session_repo.go](pg_sqlc/session_repo.go) 同时实现
@@ -191,7 +202,7 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   运行角色直写。
 - **设施与介质**：诊断样本采集、会话清理与 REINDEX 判定、向量空间对账
   与索引命中、检索留痕装饰器的转发/失败不中断/脱敏/兜底；embedding 的
-  多空间路由与维度漂移。
+  多空间路由与维度漂移、文本生成的请求形状与错误映射。
 - **装配与部署**：连接槽位校验、debug 参数脱敏、部署清单与测试种子的
   追加关系。
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 )
@@ -22,15 +23,25 @@ var ErrDocumentSourceTooLong = errors.New("biz: document source id too long")
 //   - defaultChunkSize/defaultChunkOverlap 是固定窗口切分的缺省（rune
 //     计），与主流 embedding 模型的输入窗口量级匹配；
 //   - defaultChunkDelimiter 是分隔符切分的缺省区分串：段落空行是文档最
-//     普遍的结构边界，切出的块语义完整度最高（单换行过碎）；空串表示不按
+//     普通的结构边界，切出的块语义完整度最高（单换行过碎）；空串表示不按
 //     分隔符切分。maxChunkDelimiterRunes 与 kb_library 的长度 CHECK 同值。
-//     替换为其他语义切分时改 DocumentOption 注入，接口面不变。
+//     替换为其他语义切分时改 DocumentOption 注入，接口面不变；
+//   - maxContextDocRunes 截断进摘要 prompt 的文档正文（上下文前缀生成的
+//     唯一全量读点，截断在 rune 边界），maxContextPrefixRunes 截断每块
+//     前缀输出，两个上限共同把前缀压在 50–100 token 量级（模型输出长度
+//     不可强约束，靠 prompt 指示 + 硬截断兜底）。
 const (
 	maxSourceIDChars       = 96
 	defaultChunkSize       = 800
 	defaultChunkOverlap    = 100
 	defaultChunkDelimiter  = "\n\n"
 	maxChunkDelimiterRunes = 32
+	maxContextDocRunes     = 4000
+	maxContextPrefixRunes  = 400
+
+	// contextPrefixSeparator 是前缀拼进 embed 输入的分隔：与区分串缺省
+	// 同为段落空行，前缀与块正文在 embedding 输入里保持独立段落。
+	contextPrefixSeparator = "\n\n"
 )
 
 // Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部网页
@@ -43,7 +54,9 @@ const (
 // Embedder 非空时指定摄取空间（知识库级 embedding_model_key）；空值走
 // 默认空间解析。ChunkSize/ChunkOverlap 非零时覆盖管线缺省（知识库级切分
 // 参数），零值取构造期缺省。ChunkDelimiter 非 nil 时覆盖管线缺省区分串
-// （空串即关闭分隔符切分），nil 取构造期缺省。
+// （空串即关闭分隔符切分），nil 取构造期缺省。Contextual 开启上下文前缀
+// 生成（知识库级开关）：前缀只拼进 embed 输入，块正文/锚点/metadata
+// 不变；生成失败降级为无前缀继续摄取。
 type Document struct {
 	ID             string
 	Kind           string
@@ -54,6 +67,7 @@ type Document struct {
 	ChunkSize      int
 	ChunkOverlap   int
 	ChunkDelimiter *string
+	Contextual     bool
 }
 
 // IngestResult 是摄取结果：Chunks 为本次写入的切片数，Replaced 为覆盖
@@ -101,10 +115,13 @@ func WithChunkDelimiter(delimiter string) DocumentOption {
 // 租户过滤由 VectorStore 实现强制，管线不接触存储细节、不直连 SQL；身份
 // 从认证 ctx 提取（管线由受权入口驱动），缺失 fail-closed。嵌入空间在
 // 每次 Ingest 现场解析，默认空间切换即迁移路径（见 README「关键文件导览」）。
+// completer 是上下文前缀生成的可选依赖（质量增强，非正确性依赖）：nil
+// 等价于「生成能力缺失」，开关开启时也零调用直接降级。
 type DocumentUsecase struct {
 	store          VectorStore
 	embedder       Embedder
 	resolver       EmbedderResolver
+	completer      Completer
 	chunkSize      int
 	chunkOverlap   int
 	chunkDelimiter string
@@ -114,7 +131,8 @@ type DocumentUsecase struct {
 // → DDL 索引）的中间一环改在写路径逐次对账：解析出的默认空间必须能
 // 取到维度声明，且每次 Embed 响应长度与之一致（Embedder 实现自身亦
 // 复核），存储层再按注册表对账——声明与实际向量三方一致才落库。
-func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, opts ...DocumentOption) (*DocumentUsecase, error) {
+// completer 可为 nil（上下文前缀能力缺失，开关开启时按降级处理）。
+func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, completer Completer, opts ...DocumentOption) (*DocumentUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: document usecase requires a vector store")
 	}
@@ -141,6 +159,7 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 		store:          store,
 		embedder:       embedder,
 		resolver:       resolver,
+		completer:      completer,
 		chunkSize:      o.chunkSize,
 		chunkOverlap:   o.chunkOverlap,
 		chunkDelimiter: o.chunkDelimiter,
@@ -199,11 +218,18 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		}
 	}
 
+	// 上下文前缀在空间解析之后、逐块向量化之前生成：文档级摘要只调用一次
+	// 模型，逐块前缀共享这份文档上下文（不逐块全量调用）。质量增强非正确
+	// 性依赖——生成失败降级为无前缀继续摄取，记服务日志，不整体失败；
+	// 摄取留痕行照常由装饰器写入。
+	prefixes := u.contextPrefixes(ctx, doc, chunks)
+
 	// 逐块向量化在删除旧行之前完成：embed 失败（端点故障、维度漂移）
-	// 时不破坏存量数据，重摄即可补偿。
+	// 时不破坏存量数据，重摄即可补偿。前缀只拼进 embed 输入，落库的
+	// 切片正文/锚点/metadata 保持切分产物原样。
 	docs := make([]*VectorDocument, 0, len(chunks))
 	for i, c := range chunks {
-		embedding, err := u.embedder.Embed(ctx, space, c.content)
+		embedding, err := u.embedder.Embed(ctx, space, embedInput(prefixes, i, c.content))
 		if err != nil {
 			return nil, fmt.Errorf("biz: embed chunk %d of document %s: %w", i, sourceID, err)
 		}
@@ -233,6 +259,96 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		}
 	}
 	return &IngestResult{DocumentID: sourceID, Chunks: len(docs), Replaced: replaced, Embedder: space}, nil
+}
+
+// contextPrefixes 生成每块的上下文前缀（本文出处 + 本块要旨）：文档级
+// 摘要只生成一次，逐块前缀共享这份摘要（每次补块正文，不做全量文档
+// 调用）。开关关闭、completer 缺失或任一次生成失败/产出为空时整篇降级
+// 为无前缀（nil），失败记服务日志——前缀是检索质量增强，降级不影响
+// 摄取正确性。返回值与 chunks 等长对齐。
+func (u *DocumentUsecase) contextPrefixes(ctx context.Context, doc *Document, chunks []chunk) []string {
+	if !doc.Contextual || u.completer == nil {
+		return nil
+	}
+	summary := sanitizeContextText(u.completerComplete(ctx, documentSummaryPrompt(doc), doc), maxContextDocRunes)
+	if summary == "" {
+		return nil
+	}
+	prefixes := make([]string, len(chunks))
+	for i, c := range chunks {
+		prefix := sanitizeContextText(u.completerComplete(ctx, chunkContextPrompt(doc, summary, c.content), doc), maxContextPrefixRunes)
+		if prefix == "" {
+			return nil
+		}
+		prefixes[i] = prefix
+	}
+	return prefixes
+}
+
+// completerComplete 调用一次文本生成并把失败折叠进降级语义：错误记服务
+// 日志后以空串返回（调用方以空串判降级），prompt 概要进日志供排障。
+func (u *DocumentUsecase) completerComplete(ctx context.Context, prompt string, doc *Document) string {
+	text, err := u.completer.Complete(ctx, prompt)
+	if err != nil {
+		slog.WarnContext(ctx, "contextual prefix generation failed; ingest continues without prefix",
+			slog.String("document_id", strings.TrimSpace(doc.ID)),
+			slog.String("prompt_head", truncateRunes(prompt, 128)),
+			slog.Any("error", err))
+		return ""
+	}
+	return text
+}
+
+// embedInput 组装第 i 块的 embed 输入：有前缀时前缀与块正文以段落空行
+// 相接，无前缀时保持块正文原样。这是前缀唯一的作用点。
+func embedInput(prefixes []string, i int, content string) string {
+	if i < len(prefixes) && prefixes[i] != "" {
+		return prefixes[i] + contextPrefixSeparator + content
+	}
+	return content
+}
+
+// documentSummaryPrompt 组装文档级摘要 prompt：让模型产出一段供检索
+// 系统使用的文档背景说明，指示只输出说明本身并限定篇幅；文档正文超长
+// 时按 rune 截断（摘要不必逐字覆盖全文）。
+func documentSummaryPrompt(doc *Document) string {
+	var b strings.Builder
+	b.WriteString("你在为检索系统概括一篇文档。请根据文档标题与正文写一段背景说明：这篇文档是什么、主题是什么、涵盖哪些内容，用于帮助检索系统理解文档中的片段。")
+	b.WriteString("只输出说明文本本身，不要小标题、列表或任何解释；不超过 150 字；使用与文档正文相同的语言。\n\n")
+	b.WriteString("文档标题：" + strings.TrimSpace(doc.Name) + "\n")
+	b.WriteString("文档正文：\n" + truncateRunes(doc.Content, maxContextDocRunes))
+	return b.String()
+}
+
+// chunkContextPrompt 组装块级前缀 prompt：以共享的文档摘要交代出处，
+// 补该块正文概括要点。篇幅指示与硬截断共同把前缀压在 50–100 token 量级。
+func chunkContextPrompt(doc *Document, summary string, content string) string {
+	var b strings.Builder
+	b.WriteString("你在为检索系统准备一个文本片段的上下文前缀。下面给出该片段所属文档的背景说明与片段正文，请写一段上下文：交代该片段的出处（所属文档与主题）并概括其要点，用于提升该片段被检索命中的效果。")
+	b.WriteString("只输出上下文文本本身，不要小标题、列表或任何解释；不超过 100 字；使用与文档正文相同的语言。\n\n")
+	b.WriteString("文档标题：" + strings.TrimSpace(doc.Name) + "\n")
+	b.WriteString("文档背景说明：" + summary + "\n")
+	b.WriteString("片段正文：\n" + content)
+	return b.String()
+}
+
+// sanitizeContextText 收敛模型产出的前缀/摘要文本：去首尾空白与首尾
+// 引号类包裹字符、内部换行折叠为空格（前缀是单段散文），超长按 rune
+// 边界截断。清洗后为空按降级处理。
+func sanitizeContextText(text string, maxRunes int) string {
+	cleaned := strings.TrimSpace(text)
+	cleaned = strings.Trim(cleaned, "\"“”「」『』'")
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	return truncateRunes(cleaned, maxRunes)
+}
+
+// truncateRunes 按 rune 边界截断文本。
+func truncateRunes(text string, maxRunes int) string {
+	runes := []rune(text)
+	if len(runes) <= maxRunes {
+		return text
+	}
+	return string(runes[:maxRunes])
 }
 
 // docChunking 合并管线缺省与文档级切分参数：文档值为 0 时取缺省；非法

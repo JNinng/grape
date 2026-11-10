@@ -99,7 +99,7 @@ func newIngestRouteTestServer(t *testing.T, embeddingTimeout time.Duration, stor
 	if err != nil {
 		t.Fatalf("build trace middleware: %v", err)
 	}
-	ingest, err := biz.NewDocumentUsecase(store, ingestRouteSlowEmbedder{}, ingestRouteResolver{})
+	ingest, err := biz.NewDocumentUsecase(store, ingestRouteSlowEmbedder{}, ingestRouteResolver{}, nil)
 	if err != nil {
 		t.Fatalf("build ingest usecase: %v", err)
 	}

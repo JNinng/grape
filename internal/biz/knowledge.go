@@ -66,23 +66,25 @@ const unixInfinite = int64(253402300799)
 
 // KnowledgeLibrary 是知识库领域模型。ChunkDelimiter 是切分区分串：写入
 // 侧 nil 表示未设置（创建落缺省区分串、更新保持原值），空串表示关闭
-// 区分串切分；读出恒非 nil。
+// 区分串切分；读出恒非 nil。ContextualChunking 是上下文检索开关：开启后
+// 摄取为每块生成上下文前缀（只影响向量输入），对条目重建索引后生效。
 type KnowledgeLibrary struct {
-	ID                int64
-	Status            int32
-	Name              string
-	Remark            *string
-	EmbeddingModelKey *string
-	ChunkSize         int32
-	ChunkOverlap      int32
-	ChunkDelimiter    *string
-	ValidFrom         *time.Time
-	ValidTo           *time.Time
-	CreatedBy         int64
-	UpdatedBy         int64
-	CreatedAt         time.Time
-	UpdatedAt         *time.Time
-	DeletedAt         *time.Time
+	ID                 int64
+	Status             int32
+	Name               string
+	Remark             *string
+	EmbeddingModelKey  *string
+	ChunkSize          int32
+	ChunkOverlap       int32
+	ChunkDelimiter     *string
+	ContextualChunking bool
+	ValidFrom          *time.Time
+	ValidTo            *time.Time
+	CreatedBy          int64
+	UpdatedBy          int64
+	CreatedAt          time.Time
+	UpdatedAt          *time.Time
+	DeletedAt          *time.Time
 }
 
 // KnowledgeLibraryList 是知识库动态列表信封。
@@ -523,6 +525,7 @@ func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *Kno
 		ChunkSize:      int(lib.ChunkSize),
 		ChunkOverlap:   int(lib.ChunkOverlap),
 		ChunkDelimiter: lib.ChunkDelimiter,
+		Contextual:     lib.ContextualChunking,
 	})
 	if err != nil {
 		// 客户端只收到统一的 DOCUMENT_INDEX_FAILED；底层原因（嵌入端点不可用、

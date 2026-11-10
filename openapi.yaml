@@ -985,8 +985,8 @@ paths:
                 - LibraryService
             description: |-
                 UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-                 chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-                 不可见与不存在统一 404。
+                 chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+                 省略时保持原值）；不可见与不存在统一 404。
             operationId: LibraryService_UpdateLibrary
             requestBody:
                 content:
@@ -3465,6 +3465,13 @@ components:
                          再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。仅对 text
                          条目生效，markdown 按标题层级切分。创建时省略
                          取缺省区分串 "\n\n"（段落空行），更新时省略保持原值；至多 32 字符。
+                contextualChunking:
+                    type: boolean
+                    description: |-
+                        上下文检索开关：开启后摄取在切分之后、向量化之前为每块生成上下文
+                         前缀（本文出处 + 本块要旨），前缀只拼入向量输入，不改变切片正文与
+                         锚点。创建可省略（缺省关闭）；更新按请求值覆盖。开启后对条目执行
+                         重建索引生效。
             description: Library 是知识库的规范表示。审计列与时间戳只读。
         knowledge.v1.LibrarySet:
             type: object

@@ -555,8 +555,9 @@ type Querier interface {
 	// 更新条目的状态与有效期（不重嵌，只影响检索过滤与 chunk metadata 同步）
 	UpdateKbDocumentStatus(ctx context.Context, arg UpdateKbDocumentStatusParams) (KbDocument, error)
 	// 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
-	// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新；
-	// 归属不可经本查询变更（写入路径先经 LockKbLibraryPermitted 锁定）
+	// chunk_overlap/chunk_delimiter/contextual_chunking/valid_from/valid_to）；
+	// updated_at 由触发器刷新；归属不可经本查询变更（写入路径先经
+	// LockKbLibraryPermitted 锁定）
 	UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error)
 	// 个人中心专用：覆盖本人可编辑资料（昵称/邮箱/手机号/备注/语言）；
 	// 目标恒取 auth.UserID，不判行级归属

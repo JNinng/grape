@@ -40,15 +40,16 @@ func (s *KnowledgeService) CreateLibrary(ctx context.Context, req *knowledgev1.C
 		return nil, biz.ErrLibraryInvalidArgument
 	}
 	out, err := s.uc.CreateLibrary(ctx, auth, &biz.KnowledgeLibrary{
-		Status:            normalizeKnowledgeStatus(in.Status),
-		Name:              in.GetName(),
-		Remark:            optionalString(in.Remark),
-		EmbeddingModelKey: optionalString(in.EmbeddingModelKey),
-		ChunkSize:         in.GetChunkSize(),
-		ChunkOverlap:      in.GetChunkOverlap(),
-		ChunkDelimiter:    in.ChunkDelimiter,
-		ValidFrom:         pbToTimePtr(in.GetValidFrom()),
-		ValidTo:           pbToTimePtr(in.GetValidTo()),
+		Status:             normalizeKnowledgeStatus(in.Status),
+		Name:               in.GetName(),
+		Remark:             optionalString(in.Remark),
+		EmbeddingModelKey:  optionalString(in.EmbeddingModelKey),
+		ChunkSize:          in.GetChunkSize(),
+		ChunkOverlap:       in.GetChunkOverlap(),
+		ChunkDelimiter:     in.ChunkDelimiter,
+		ContextualChunking: in.GetContextualChunking(),
+		ValidFrom:          pbToTimePtr(in.GetValidFrom()),
+		ValidTo:            pbToTimePtr(in.GetValidTo()),
 	})
 	if err != nil {
 		return nil, err
@@ -107,16 +108,17 @@ func (s *KnowledgeService) UpdateLibrary(ctx context.Context, req *knowledgev1.U
 		return nil, biz.ErrLibraryInvalidArgument
 	}
 	out, err := s.uc.UpdateLibrary(ctx, auth, &biz.KnowledgeLibrary{
-		ID:                in.GetId(),
-		Status:            *in.Status,
-		Name:              in.GetName(),
-		Remark:            optionalString(in.Remark),
-		EmbeddingModelKey: optionalString(in.EmbeddingModelKey),
-		ChunkSize:         in.GetChunkSize(),
-		ChunkOverlap:      in.GetChunkOverlap(),
-		ChunkDelimiter:    in.ChunkDelimiter,
-		ValidFrom:         pbToTimePtr(in.GetValidFrom()),
-		ValidTo:           pbToTimePtr(in.GetValidTo()),
+		ID:                 in.GetId(),
+		Status:             *in.Status,
+		Name:               in.GetName(),
+		Remark:             optionalString(in.Remark),
+		EmbeddingModelKey:  optionalString(in.EmbeddingModelKey),
+		ChunkSize:          in.GetChunkSize(),
+		ChunkOverlap:       in.GetChunkOverlap(),
+		ChunkDelimiter:     in.ChunkDelimiter,
+		ContextualChunking: in.GetContextualChunking(),
+		ValidFrom:          pbToTimePtr(in.GetValidFrom()),
+		ValidTo:            pbToTimePtr(in.GetValidTo()),
 	})
 	if err != nil {
 		return nil, err
@@ -391,21 +393,22 @@ func knowledgeSearchError(ctx context.Context, err error) error {
 
 func toProtoLibrary(l *biz.KnowledgeLibrary) *knowledgev1.Library {
 	return &knowledgev1.Library{
-		Id:                l.ID,
-		Status:            &l.Status,
-		Name:              l.Name,
-		Remark:            l.Remark,
-		EmbeddingModelKey: l.EmbeddingModelKey,
-		ChunkSize:         l.ChunkSize,
-		ChunkOverlap:      l.ChunkOverlap,
-		ChunkDelimiter:    l.ChunkDelimiter,
-		ValidFrom:         tsPBPtr(l.ValidFrom),
-		ValidTo:           tsPBPtr(l.ValidTo),
-		CreatedBy:         l.CreatedBy,
-		UpdatedBy:         l.UpdatedBy,
-		CreatedAt:         timestamppb.New(l.CreatedAt),
-		UpdatedAt:         tsPBPtr(l.UpdatedAt),
-		DeletedAt:         tsPBPtr(l.DeletedAt),
+		Id:                 l.ID,
+		Status:             &l.Status,
+		Name:               l.Name,
+		Remark:             l.Remark,
+		EmbeddingModelKey:  l.EmbeddingModelKey,
+		ChunkSize:          l.ChunkSize,
+		ChunkOverlap:       l.ChunkOverlap,
+		ChunkDelimiter:     l.ChunkDelimiter,
+		ContextualChunking: l.ContextualChunking,
+		ValidFrom:          tsPBPtr(l.ValidFrom),
+		ValidTo:            tsPBPtr(l.ValidTo),
+		CreatedBy:          l.CreatedBy,
+		UpdatedBy:          l.UpdatedBy,
+		CreatedAt:          timestamppb.New(l.CreatedAt),
+		UpdatedAt:          tsPBPtr(l.UpdatedAt),
+		DeletedAt:          tsPBPtr(l.DeletedAt),
 	}
 }
 

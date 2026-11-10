@@ -200,7 +200,7 @@ func strPtr(s string) *string { return &s }
 
 func newLibraryUsecaseForTest(t *testing.T, repo KnowledgeRepo, store *mockVectorStore) *KnowledgeUsecase {
 	t.Helper()
-	ingest, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4})
+	ingest, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -440,5 +440,41 @@ func TestReindexDocument_markdown_doc_chunks_carry_heading_path(t *testing.T) {
 	}
 	if len(store.added) != 1 || store.added[0].Metadata["heading_path"] != "部署" {
 		t.Fatalf("chunks = %+v, want one chunk with heading_path 部署", store.added)
+	}
+}
+
+// TestReindexDocument_contextual_flag_drives_prefix_generation 验证库级
+// 上下文检索开关透传到摄取管线：开启时重建索引触发文档摘要与块级前缀
+// 调用（前缀生效的必要条件），关闭时零调用。
+func TestReindexDocument_contextual_flag_drives_prefix_generation(t *testing.T) {
+	content := "甲\n\n乙|丙"
+	for name, tc := range map[string]struct {
+		contextual bool
+		wantCalls  int
+	}{
+		"library switch on generates prefixes": {true, 3},
+		"library switch off makes zero calls":  {false, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := &mockVectorStore{}
+			repo := &libraryFakeRepo{
+				existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100, ChunkDelimiter: strPtr("\n\n"), ContextualChunking: tc.contextual},
+				doc:      &KnowledgeDocument{ID: 2, LibraryID: 1, Title: "t", Content: &content, Status: KnowledgeStatusEnabled},
+			}
+			completer := &stubCompleter{text: "文档摘要"}
+			ingest, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, completer)
+			if err != nil {
+				t.Fatalf("NewDocumentUsecase: %v", err)
+			}
+			uc := NewKnowledgeUsecase(repo, nil, store, ingest)
+
+			if _, err := uc.ReindexDocument(ingestCtx(), libraryAuth(), 2); err != nil {
+				t.Fatalf("ReindexDocument: %v", err)
+			}
+			// 内容切 2 块：一次摘要 + 两次块级前缀；开关关闭时零调用。
+			if len(completer.prompts) != tc.wantCalls {
+				t.Fatalf("%s: completer calls = %d, want %d", name, len(completer.prompts), tc.wantCalls)
+			}
+		})
 	}
 }

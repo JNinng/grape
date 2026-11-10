@@ -191,11 +191,13 @@ func TestSearchDocuments_store_failure_returns_500_without_detail(t *testing.T) 
 }
 
 // libraryFakeRepo 是知识库端点单测的仓储替身：写入原样回显，读取返回
-// 预置行；未覆盖的方法沿用嵌入接口零值。
+// 预置行；未覆盖的方法沿用嵌入接口零值。onUpdate 非空时在更新回显前
+// 捕获入库参数，供断言用例侧字段映射。
 type libraryFakeRepo struct {
 	biz.KnowledgeRepo
 	existing *biz.KnowledgeLibrary
 	doc      *biz.KnowledgeDocument
+	onUpdate func(*biz.KnowledgeLibrary)
 }
 
 func (r *libraryFakeRepo) GetDocument(context.Context, biz.Identity, int64) (*biz.KnowledgeDocument, error) {
@@ -214,6 +216,9 @@ func (r *libraryFakeRepo) CreateLibrary(_ context.Context, _ biz.Identity, l *bi
 }
 
 func (r *libraryFakeRepo) UpdateLibrary(_ context.Context, _ biz.Identity, l *biz.KnowledgeLibrary) (*biz.KnowledgeLibrary, error) {
+	if r.onUpdate != nil {
+		r.onUpdate(l)
+	}
 	return l, nil
 }
 
@@ -349,5 +354,46 @@ func TestListDocumentChunks_store_failure_returns_500_without_detail(t *testing.
 	assertKratosError(t, err, http.StatusInternalServerError, knowledgev1.ErrorReason_DOCUMENT_CHUNKS_FAILED.String())
 	if e := kratoserrors.FromError(err); e.Message != "knowledge document chunks failed" {
 		t.Fatalf("message = %q, want fixed text without storage detail", e.Message)
+	}
+}
+
+func TestCreateLibrary_with_contextual_flag_round_trips(t *testing.T) {
+	svc := newLibraryTestService(&libraryFakeRepo{})
+	out, err := svc.CreateLibrary(searchIdentityCtx(), &knowledgev1.CreateLibraryRequest{
+		Library: &knowledgev1.Library{Name: "hr", ContextualChunking: true},
+	})
+	if err != nil {
+		t.Fatalf("CreateLibrary: %v", err)
+	}
+	if !out.GetContextualChunking() {
+		t.Fatal("created library contextual chunking = false, want true round trip")
+	}
+}
+
+func TestCreateLibrary_without_contextual_flag_defaults_off(t *testing.T) {
+	svc := newLibraryTestService(&libraryFakeRepo{})
+	out, err := svc.CreateLibrary(searchIdentityCtx(), &knowledgev1.CreateLibraryRequest{
+		Library: &knowledgev1.Library{Name: "hr"},
+	})
+	if err != nil {
+		t.Fatalf("CreateLibrary: %v", err)
+	}
+	if out.GetContextualChunking() {
+		t.Fatal("created library contextual chunking = true, want default off")
+	}
+}
+
+func TestUpdateLibrary_maps_contextual_flag_to_usecase(t *testing.T) {
+	var captured bool
+	repo := &libraryFakeRepo{existing: &biz.KnowledgeLibrary{ID: 9, Status: biz.KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100, ChunkDelimiter: libraryDelimiter("\n\n")},
+		onUpdate: func(l *biz.KnowledgeLibrary) { captured = l.ContextualChunking }}
+	svc := newLibraryTestService(repo)
+	if _, err := svc.UpdateLibrary(searchIdentityCtx(), &knowledgev1.UpdateLibraryRequest{
+		Library: &knowledgev1.Library{Id: 9, Status: libraryStatus(1), Name: "hr", ChunkSize: 800, ContextualChunking: true},
+	}); err != nil {
+		t.Fatalf("UpdateLibrary: %v", err)
+	}
+	if !captured {
+		t.Fatal("update usecase received contextual chunking = false, want true")
 	}
 }

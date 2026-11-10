@@ -111,11 +111,11 @@ function renderPage() {
 
 // createPayload / updatePayload 是库表单在未改动其他字段时的完整提交体。
 function createPayload(overrides: Record<string, unknown>) {
-  return { status: 1, name: '财务', chunkSize: 800, chunkOverlap: 100, ...overrides }
+  return { status: 1, name: '财务', chunkSize: 800, chunkOverlap: 100, contextualChunking: false, ...overrides }
 }
 
 function updatePayload(overrides: Record<string, unknown>) {
-  return { id: '100', status: 1, name: '人事', chunkSize: 800, chunkOverlap: 100, ...overrides }
+  return { id: '100', status: 1, name: '人事', chunkSize: 800, chunkOverlap: 100, contextualChunking: false, ...overrides }
 }
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
@@ -200,6 +200,58 @@ describe('KnowledgeManagePage library chunk delimiter', () => {
     mockLibraries([library({ chunkDelimiter: '' })])
     renderPage()
     expect(await screen.findByText(/不按区分串/)).toBeInTheDocument()
+  })
+})
+
+describe('KnowledgeManagePage library contextual chunking', () => {
+  it('create_dialog_defaults_contextual_switch_to_off_and_submits_false', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openCreateDialog(user)
+    expect(within(dialog).getByRole('switch', { name: '上下文前缀' })).not.toBeChecked()
+    await user.type(within(dialog).getByLabelText('名称'), '财务')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockCreateLibrary).toHaveBeenCalledWith(createPayload({ chunkDelimiter: '\n\n' }))
+  })
+
+  it('create_with_switch_on_submits_true', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const dialog = await openCreateDialog(user)
+    await user.type(within(dialog).getByLabelText('名称'), '财务')
+    await user.click(within(dialog).getByRole('switch', { name: '上下文前缀' }))
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockCreateLibrary).toHaveBeenCalledWith(createPayload({ chunkDelimiter: '\n\n', contextualChunking: true }))
+  })
+
+  it('edit_dialog_shows_existing_switch_on_and_submits_true_unchanged', async () => {
+    mockLibraries([library({ contextualChunking: true })])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('人事', { selector: 'span' })
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('switch', { name: '上下文前缀' })).toBeChecked()
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockUpdateLibrary).toHaveBeenCalledWith(updatePayload({ chunkDelimiter: '\n\n', contextualChunking: true }))
+  })
+
+  it('edit_with_switch_on_can_be_turned_off_and_submits_false', async () => {
+    mockLibraries([library({ contextualChunking: true })])
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('人事', { selector: 'span' })
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('switch', { name: '上下文前缀' }))
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(mockUpdateLibrary).toHaveBeenCalledWith(updatePayload({ chunkDelimiter: '\n\n', contextualChunking: false }))
+  })
+
+  it('library_summary_shows_contextual_state', async () => {
+    mockLibraries([library({ contextualChunking: true })])
+    renderPage()
+    expect(await screen.findByText(/上下文前缀开/)).toBeInTheDocument()
   })
 })
 

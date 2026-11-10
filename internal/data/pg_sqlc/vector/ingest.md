@@ -9,18 +9,43 @@
 ```
 service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ ReindexDocument）
   → KnowledgeUsecase.reindex（[../../../biz/knowledge.go](../../../biz/knowledge.go)）
-      组装 effectiveChunkMetadata（库/条目状态取与、有效期交集），条目 kind 透传
+      组装 effectiveChunkMetadata（库/条目状态取与、有效期交集），条目 kind 透传，
+      库级上下文检索开关（contextual_chunking）透传
   → DocumentUsecase.Ingest（[../../../biz/document.go](../../../biz/document.go)）
       1. 入参校验（ID ≤96 字节、正文非空、kind 未知拒绝）
       2. 按 kind 分派切分（chunkByKind）：text 走 chunkText，markdown /
          file 走 chunkMarkdown（库级 ChunkSize/ChunkOverlap 两种切分共用，
          ChunkDelimiter 仅对 text 生效；缺省 800/100/段落空行）
       3. 空间解析（库级 embedding_model_key 优先，否则默认空间）
-      4. 逐块 embed.Embed（响应长度与维度声明一致性复核）
-      5. DeleteByFilter(source_id)（跨空间清除旧切片）
-      6. 逐块 store.Add（经本目录契约实现落库 + 留痕装饰器）
+      4. 上下文前缀生成（开关开启时，见下节）
+      5. 逐块 embed.Embed（输入 = 前缀 + 块正文（有前缀时）；响应长度与
+         维度声明一致性复核）
+      6. DeleteByFilter(source_id)（跨空间清除旧切片）
+      7. 逐块 store.Add（经本目录契约实现落库 + 留痕装饰器）
   → MarkDocumentIndexed 回写最近摄取时间与空间键（kb_document 行）
 ```
+
+## 上下文前缀（Contextual Retrieval）
+
+库级开关 `kb_library.contextual_chunking`（管理面贯通 proto `Library.contextual_chunking`
+与前端库表单）开启时，摄取在切分之后、逐块向量化之前为每块生成上下文前缀
+（本文出处 + 本块要旨，50–100 token 量级）：
+
+- **成本控制**：文档级摘要只调用一次模型，逐块前缀共享这份摘要（prompt 补
+  各块正文，不做逐块全量文档调用）。进摘要 prompt 的文档正文按 rune 截断
+  （`maxContextDocRunes`），前缀输出再按 rune 硬截断（`maxContextPrefixRunes`）。
+- **生成实现**：经 biz.Completer 契约由
+  [openaicompleter](../../openaicompleter/) 单轮调用租户文本模型
+  （OpenAI 兼容 chat completions，按当前身份解析端点）；prompt 在 biz
+  管线组装，实现不感知业务语义。
+- **作用点唯一**：前缀只以段落空行拼进 embed 输入——块正文、锚点
+  （anchor）、metadata、目录正文全部不变，落库正文与切分产物逐字一致。
+- **失败降级**：前缀是质量增强非正确性依赖——模型失败、端点未配置
+  （租户未配置文本模型）或产出清洗后为空时，整篇降级为无前缀继续摄取，
+  服务日志记 WARN（document_id + prompt 概要 + 错误），不整体失败；摄取
+  留痕行照常由装饰器写入。
+- **生效时机**：开关在摄取现场读取，对条目执行重建索引后生效；存量切片
+  的向量输入不带前缀，不自动重嵌。
 
 ## 切分与切片 ID
 

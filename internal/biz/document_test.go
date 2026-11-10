@@ -113,7 +113,7 @@ func newDocumentUsecaseForTest(store VectorStore, embedder Embedder) (*DocumentU
 	if err != nil {
 		return nil, err
 	}
-	return NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: dim})
+	return NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: dim}, nil)
 }
 
 func ingestCtx() context.Context {
@@ -125,23 +125,23 @@ func TestDocumentUsecase_when_constructed_with_missing_dependency_fails(t *testi
 	// 逐次执行（解析空间 → embedder 声明 → 存储注册表三方一致才落库）。
 	for name, fn := range map[string]func() error{
 		"nil store": func() error {
-			_, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4})
+			_, err := NewDocumentUsecase(nil, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil)
 			return err
 		},
 		"nil embedder": func() error {
-			_, err := NewDocumentUsecase(&mockVectorStore{}, nil, &stubResolver{space: testEmbedderSpace, dim: 4})
+			_, err := NewDocumentUsecase(&mockVectorStore{}, nil, &stubResolver{space: testEmbedderSpace, dim: 4}, nil)
 			return err
 		},
 		"nil resolver": func() error {
-			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, nil)
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, nil, nil)
 			return err
 		},
 		"bad chunking": func() error {
-			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(10, 10))
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, WithChunking(10, 10))
 			return err
 		},
 		"oversize delimiter": func() error {
-			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunkDelimiter(strings.Repeat("-", maxChunkDelimiterRunes+1)))
+			_, err := NewDocumentUsecase(&mockVectorStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, WithChunkDelimiter(strings.Repeat("-", maxChunkDelimiterRunes+1)))
 			return err
 		},
 	} {
@@ -155,7 +155,7 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 	store := &mockVectorStore{}
 	embedder := &stubEmbedder{dims: 8}
 	// 小块切分：20 rune 内容按 size 8 / overlap 2 切 3 块。
-	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 8}, WithChunking(8, 2))
+	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 8}, nil, WithChunking(8, 2))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestDocumentUsecase_when_resolver_fails_ingest_rejected_and_store_untouched
 	store := &mockVectorStore{}
 	embedder := &stubEmbedder{dims: 4}
 	resolver := &stubResolver{err: ErrEmbedderDisabled}
-	u, err := NewDocumentUsecase(store, embedder, resolver)
+	u, err := NewDocumentUsecase(store, embedder, resolver, nil)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestDocumentUsecase_when_embed_dimension_drifts_ingest_rejected(t *testing.
 	// 显式报错（端点维度漂移不落库）。
 	store := &mockVectorStore{}
 	embedder := &stubEmbedder{dims: 8}
-	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4})
+	u, err := NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4}, nil)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestDocumentUsecase_when_embed_fails_keeps_store_untouched(t *testing.T) {
 func TestDocumentUsecase_when_add_fails_midway_reports(t *testing.T) {
 	store := &mockVectorStore{addErrAt: 2}
 	// 小块切分保证多块写入，第 2 次 Add 失败。
-	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunking(4, 1))
+	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -571,7 +571,7 @@ func TestDocumentUsecase_ingest_with_oversize_delimiter_override_falls_back_to_d
 
 func TestDocumentUsecase_constructed_with_empty_delimiter_uses_fixed_window(t *testing.T) {
 	store := &mockVectorStore{}
-	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, WithChunkDelimiter(""))
+	u, err := NewDocumentUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, WithChunkDelimiter(""))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -889,5 +889,214 @@ func TestDocumentUsecase_text_ingest_keeps_metadata_without_heading_path(t *test
 		if _, ok := doc.Metadata["heading_path"]; ok {
 			t.Fatalf("chunk %d carries heading_path, want text metadata shape unchanged", i)
 		}
+	}
+}
+
+// stubCompleter 是管线单测的替身补全器：记录每次 prompt 调用，按固定
+// 文本应答或注入错误/空白产出（验证降级路径）。failFrom 指定从第几次
+// （1 起）调用开始报错，0 表示只要 err 非空就次次报错，用于模拟中途失败。
+type stubCompleter struct {
+	text     string
+	err      error
+	failFrom int
+	prompts  []string
+}
+
+func (s *stubCompleter) Complete(_ context.Context, prompt string) (string, error) {
+	s.prompts = append(s.prompts, prompt)
+	if s.err != nil && (s.failFrom <= 0 || len(s.prompts) >= s.failFrom) {
+		return "", s.err
+	}
+	return s.text, nil
+}
+
+func newContextualUsecaseForTest(store VectorStore, embedder Embedder, completer Completer) (*DocumentUsecase, error) {
+	return NewDocumentUsecase(store, embedder, &stubResolver{space: testEmbedderSpace, dim: 8}, completer, WithChunking(8, 2))
+}
+
+func TestDocumentUsecase_when_contextual_enabled_embeds_prefixed_input_only(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	completer := &stubCompleter{text: "部署手册章节"}
+	u, err := newContextualUsecaseForTest(store, embedder, completer)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	content := strings.Repeat("字", 20)
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Name: "handbook", Content: content, Contextual: true})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if result.Chunks != 3 {
+		t.Fatalf("chunks = %d, want 3", result.Chunks)
+	}
+	// 成本控制：文档级摘要一次，逐块前缀共享（1 + N 次调用）。
+	if len(completer.prompts) != 4 {
+		t.Fatalf("completer calls = %d, want 4 (1 summary + 3 chunks)", len(completer.prompts))
+	}
+	if !strings.Contains(completer.prompts[0], "handbook") || !strings.Contains(completer.prompts[0], content) {
+		t.Fatalf("summary prompt = %q, want document name and content", completer.prompts[0])
+	}
+	if !strings.Contains(completer.prompts[1], "部署手册章节") {
+		t.Fatalf("chunk prompt = %q, want shared document summary", completer.prompts[1])
+	}
+	// 前缀只拼进 embed 输入：向量化输入带前缀，落库正文/锚点保持切分原样。
+	for i, doc := range store.added {
+		if !strings.HasPrefix(embedder.calls[i], "部署手册章节\n\n") || !strings.HasSuffix(embedder.calls[i], doc.Content) {
+			t.Fatalf("embed input %d = %q, want prefix + raw chunk %q", i, embedder.calls[i], doc.Content)
+		}
+		if doc.Content == embedder.calls[i] || strings.Contains(doc.Content, "部署手册章节") {
+			t.Fatalf("stored content %d = %q, want raw chunk without prefix", i, doc.Content)
+		}
+		anchor, _ := doc.Metadata["anchor"].(string)
+		if !strings.HasPrefix(anchor, "runes ") {
+			t.Fatalf("chunk %d anchor = %v, want rune range unchanged", i, doc.Metadata["anchor"])
+		}
+	}
+}
+
+func TestDocumentUsecase_when_completer_fails_ingest_degrades_without_prefix(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	completer := &stubCompleter{err: errors.New("endpoint down")}
+	u, err := newContextualUsecaseForTest(store, embedder, completer)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Name: "handbook", Content: strings.Repeat("字", 20), Contextual: true})
+	if err != nil {
+		t.Fatalf("Ingest with failing completer = %v, want degraded success", err)
+	}
+	if result.Chunks != 3 || len(store.added) != 3 {
+		t.Fatalf("degraded ingest = %d chunks, want 3", result.Chunks)
+	}
+	// 摘要失败即整篇降级：不再发起逐块调用。
+	if len(completer.prompts) != 1 {
+		t.Fatalf("completer calls = %d, want 1 (summary only)", len(completer.prompts))
+	}
+	for i, doc := range store.added {
+		if doc.Content != embedder.calls[i] {
+			t.Fatalf("chunk %d embed input %q != stored content %q, want raw content without prefix", i, embedder.calls[i], doc.Content)
+		}
+	}
+}
+
+func TestDocumentUsecase_when_chunk_prefix_call_fails_whole_document_degrades_without_prefix(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	// 第 1 次（摘要）成功应答，第 2 次起的块级调用一律报错。
+	completer := &stubCompleter{text: "部署手册章节", err: errors.New("chunk endpoint down"), failFrom: 2}
+	u, err := newContextualUsecaseForTest(store, embedder, completer)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Name: "handbook", Content: strings.Repeat("字", 20), Contextual: true})
+	if err != nil {
+		t.Fatalf("Ingest with chunk-level completer failure = %v, want degraded success", err)
+	}
+	if result.Chunks != 3 || len(store.added) != 3 {
+		t.Fatalf("degraded ingest = %d chunks, want 3", result.Chunks)
+	}
+	// 块级失败同样整篇降级：不再发起后续块级调用（1 次摘要 + 1 次首个块级调用）。
+	if len(completer.prompts) != 2 {
+		t.Fatalf("completer calls = %d, want 2 (1 summary + 1 chunk before abort)", len(completer.prompts))
+	}
+	for i, doc := range store.added {
+		if doc.Content != embedder.calls[i] {
+			t.Fatalf("chunk %d embed input %q != stored content %q, want raw content without prefix", i, embedder.calls[i], doc.Content)
+		}
+	}
+}
+
+func TestDocumentUsecase_when_contextual_disabled_completer_not_called(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	// 用必失败的替身守卫：开关关闭时任何补全调用都会留下痕迹。
+	completer := &stubCompleter{err: errors.New("must not be called")}
+	u, err := newContextualUsecaseForTest(store, embedder, completer)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: strings.Repeat("字", 20)}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(completer.prompts) != 0 {
+		t.Fatalf("completer calls = %d, want 0 when switch is off", len(completer.prompts))
+	}
+	if len(embedder.calls) != 3 {
+		t.Fatalf("embeds = %d, want 3", len(embedder.calls))
+	}
+}
+
+func TestDocumentUsecase_when_completer_missing_degrades_silently(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	u, err := newContextualUsecaseForTest(store, embedder, nil)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: strings.Repeat("字", 20), Contextual: true})
+	if err != nil {
+		t.Fatalf("Ingest without completer = %v, want degraded success", err)
+	}
+	if result.Chunks != 3 {
+		t.Fatalf("chunks = %d, want 3", result.Chunks)
+	}
+	for i, doc := range store.added {
+		if doc.Content != embedder.calls[i] {
+			t.Fatalf("chunk %d embed input carries prefix, want raw content", i)
+		}
+	}
+}
+
+func TestDocumentUsecase_when_completer_returns_blank_degrades_without_prefix(t *testing.T) {
+	store := &mockVectorStore{}
+	embedder := &stubEmbedder{dims: 8}
+	completer := &stubCompleter{text: "   \n  "}
+	u, err := newContextualUsecaseForTest(store, embedder, completer)
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: strings.Repeat("字", 20), Contextual: true})
+	if err != nil {
+		t.Fatalf("Ingest with blank completion = %v, want degraded success", err)
+	}
+	if result.Chunks != 3 {
+		t.Fatalf("chunks = %d, want 3", result.Chunks)
+	}
+	for i, doc := range store.added {
+		if doc.Content != embedder.calls[i] {
+			t.Fatalf("chunk %d embed input %q != raw content %q", i, embedder.calls[i], doc.Content)
+		}
+	}
+}
+
+func TestSanitizeContextText_trims_folds_and_caps_runes(t *testing.T) {
+	// 首尾空白与配对引号剥离、内部换行折叠为单空格。
+	got := sanitizeContextText("  “第一行\n第二行”  ", 100)
+	if got != "第一行 第二行" {
+		t.Fatalf("sanitize = %q, want folded single-line text", got)
+	}
+	// 超长按 rune 边界截断，多字节字符不被劈开。
+	long := strings.Repeat("中", 50)
+	if got := sanitizeContextText(long, 10); got != strings.Repeat("中", 10) {
+		t.Fatalf("truncate = %q, want 10 runes", got)
+	}
+	// 纯空白产出按降级口径折叠为空串。
+	if got := sanitizeContextText("\n\t ", 10); got != "" {
+		t.Fatalf("blank sanitize = %q, want empty", got)
+	}
+}
+
+func TestDocumentSummaryPrompt_truncates_document_body(t *testing.T) {
+	prompt := documentSummaryPrompt(&Document{ID: "kb-1", Name: "handbook", Content: strings.Repeat("字", maxContextDocRunes+50)})
+	if !strings.Contains(prompt, "handbook") {
+		t.Fatalf("prompt = %q, want document name", prompt)
+	}
+	if strings.Contains(prompt, strings.Repeat("字", maxContextDocRunes+50)) {
+		t.Fatalf("prompt carries untruncated body, want capped at %d runes", maxContextDocRunes)
+	}
+	if !strings.Contains(prompt, strings.Repeat("字", maxContextDocRunes)) {
+		t.Fatalf("prompt = %q, want truncated body present", prompt)
 	}
 }

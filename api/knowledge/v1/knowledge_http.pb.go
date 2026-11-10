@@ -39,8 +39,8 @@ type LibraryServiceHTTPServer interface {
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(context.Context, *ListModelOptionsRequest) (*ModelOptionSet, error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-	// 不可见与不存在统一 404。
+	// chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+	// 省略时保持原值）；不可见与不存在统一 404。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
 }
 
@@ -194,8 +194,8 @@ type LibraryServiceHTTPClient interface {
 	// 权限码 sys:knowledge:query（知识库管理员无需 sys:model:query）。
 	ListModelOptions(ctx context.Context, req *ListModelOptionsRequest, opts ...http.CallOption) (rsp *ModelOptionSet, err error)
 	// UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-	// 不可见与不存在统一 404。
+	// chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+	// 省略时保持原值）；不可见与不存在统一 404。
 	UpdateLibrary(ctx context.Context, req *UpdateLibraryRequest, opts ...http.CallOption) (rsp *Library, err error)
 }
 
@@ -297,8 +297,8 @@ func (c *LibraryServiceHTTPClientImpl) ListModelOptions(ctx context.Context, in 
 }
 
 // UpdateLibrary UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-// 不可见与不存在统一 404。
+// chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+// 省略时保持原值）；不可见与不存在统一 404。
 func (c *LibraryServiceHTTPClientImpl) UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...http.CallOption) (*Library, error) {
 	var out Library
 	pattern := "/v1/knowledge/libraries/update"

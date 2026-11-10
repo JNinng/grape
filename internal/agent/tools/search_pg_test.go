@@ -90,11 +90,11 @@ func searchIdentityContext(id biz.Identity) context.Context {
 // 替身 embedder 驱动的摄取管线与库句柄（RLS 场景断言直查 pg_catalog 用）。
 // 两个租户各有一个知识库，摄取 metadata 携带所属库 ID。
 type searchFixture struct {
-	data       *pg_sqlc.Data
-	grapeUDSN  string
-	store      biz.VectorStore
-	pipeline   *biz.DocumentUsecase
-	tool       interface {
+	data      *pg_sqlc.Data
+	grapeUDSN string
+	store     biz.VectorStore
+	pipeline  *biz.DocumentUsecase
+	tool      interface {
 		Call(ctx context.Context, jsonArgs []byte) (any, error)
 	}
 	librariesTool interface {
@@ -120,7 +120,7 @@ func searchNewFixture(t *testing.T) *searchFixture {
 	}
 	t.Cleanup(cleanup)
 	embedder := &keywordEmbedder{dims: searchDimension}
-	pipeline, err := biz.NewDocumentUsecase(store, embedder, keywordSpaceResolver{})
+	pipeline, err := biz.NewDocumentUsecase(store, embedder, keywordSpaceResolver{}, nil)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -328,7 +328,7 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 	f := searchNewFixture(t)
 	ctx := searchIdentityContext(searchTenantA)
 	// 小块切分制造多块场景（默认切块下单文档单块）。
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, biz.WithChunking(4, 1))
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, nil, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
@@ -367,7 +367,7 @@ func TestPGDocumentSearch_dimension_drift_rejects_at_ingest(t *testing.T) {
 	// 替身 embedder 产出维度与解析器声明不一致：写路径逐次对账在调用点
 	// 显式拒绝，存量数据不破坏（与存储注册表对账共同封住维度链路）。
 	drifted := &keywordEmbedder{dims: 8}
-	pipeline, err := biz.NewDocumentUsecase(f.store, drifted, keywordSpaceResolver{})
+	pipeline, err := biz.NewDocumentUsecase(f.store, drifted, keywordSpaceResolver{}, nil)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestPGDocumentSearch_dimension_drift_rejects_at_ingest(t *testing.T) {
 func TestPGDocumentSearch_oversized_top_k_bounded_by_usecase_cap(t *testing.T) {
 	f := searchNewFixture(t)
 	ctx := searchIdentityContext(searchTenantA)
-	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, biz.WithChunking(4, 1))
+	pipeline, err := biz.NewDocumentUsecase(f.store, f.embedder, keywordSpaceResolver{}, nil, biz.WithChunking(4, 1))
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}

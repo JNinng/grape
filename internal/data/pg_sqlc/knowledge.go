@@ -30,21 +30,22 @@ func toBizLibrary(po *gen.KbLibrary) *biz.KnowledgeLibrary {
 	}
 	delimiter := po.ChunkDelimiter
 	return &biz.KnowledgeLibrary{
-		ID:                po.ID,
-		Status:            int32(po.Status),
-		Name:              po.Name,
-		Remark:            po.Remark,
-		EmbeddingModelKey: po.EmbeddingModelKey,
-		ChunkSize:         po.ChunkSize,
-		ChunkOverlap:      po.ChunkOverlap,
-		ChunkDelimiter:    &delimiter,
-		ValidFrom:         tsToTimePtr(po.ValidFrom),
-		ValidTo:           tsToTimePtr(po.ValidTo),
-		CreatedBy:         po.CreatedBy,
-		UpdatedBy:         po.UpdatedBy,
-		CreatedAt:         tsToTime(po.CreatedAt),
-		UpdatedAt:         tsToTimePtr(po.UpdatedAt),
-		DeletedAt:         tsToTimePtr(po.DeletedAt),
+		ID:                 po.ID,
+		Status:             int32(po.Status),
+		Name:               po.Name,
+		Remark:             po.Remark,
+		EmbeddingModelKey:  po.EmbeddingModelKey,
+		ChunkSize:          po.ChunkSize,
+		ChunkOverlap:       po.ChunkOverlap,
+		ChunkDelimiter:     &delimiter,
+		ContextualChunking: po.ContextualChunking,
+		ValidFrom:          tsToTimePtr(po.ValidFrom),
+		ValidTo:            tsToTimePtr(po.ValidTo),
+		CreatedBy:          po.CreatedBy,
+		UpdatedBy:          po.UpdatedBy,
+		CreatedAt:          tsToTime(po.CreatedAt),
+		UpdatedAt:          tsToTimePtr(po.UpdatedAt),
+		DeletedAt:          tsToTimePtr(po.DeletedAt),
 	}
 }
 
@@ -158,19 +159,20 @@ func (r *knowledgeRepo) CreateLibrary(ctx context.Context, auth biz.Identity, l 
 	var out *biz.KnowledgeLibrary
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		row, err := s.Q().InsertKbLibrary(ctx, gen.InsertKbLibraryParams{
-			ID:                newID(),
-			Status:            int16(l.Status),
-			Name:              l.Name,
-			Remark:            l.Remark,
-			EmbeddingModelKey: l.EmbeddingModelKey,
-			ChunkSize:         l.ChunkSize,
-			ChunkOverlap:      l.ChunkOverlap,
-			ChunkDelimiter:    stringOrEmpty(l.ChunkDelimiter),
-			ValidFrom:         timeToTS(l.ValidFrom),
-			ValidTo:           timeToTS(l.ValidTo),
-			OwnerUserID:       &ownerUserID,
-			CreatedBy:         auth.UserID,
-			UpdatedBy:         auth.UserID,
+			ID:                 newID(),
+			Status:             int16(l.Status),
+			Name:               l.Name,
+			Remark:             l.Remark,
+			EmbeddingModelKey:  l.EmbeddingModelKey,
+			ChunkSize:          l.ChunkSize,
+			ChunkOverlap:       l.ChunkOverlap,
+			ChunkDelimiter:     stringOrEmpty(l.ChunkDelimiter),
+			ContextualChunking: l.ContextualChunking,
+			ValidFrom:          timeToTS(l.ValidFrom),
+			ValidTo:            timeToTS(l.ValidTo),
+			OwnerUserID:        &ownerUserID,
+			CreatedBy:          auth.UserID,
+			UpdatedBy:          auth.UserID,
 		})
 		if err != nil {
 			return err
@@ -193,17 +195,18 @@ func (r *knowledgeRepo) UpdateLibrary(ctx context.Context, auth biz.Identity, l 
 			return err
 		}
 		row, err := s.Q().UpdateKbLibrary(ctx, gen.UpdateKbLibraryParams{
-			Name:              l.Name,
-			Status:            int16(l.Status),
-			Remark:            l.Remark,
-			EmbeddingModelKey: l.EmbeddingModelKey,
-			ChunkSize:         l.ChunkSize,
-			ChunkOverlap:      l.ChunkOverlap,
-			ChunkDelimiter:    stringOrEmpty(l.ChunkDelimiter),
-			ValidFrom:         timeToTS(l.ValidFrom),
-			ValidTo:           timeToTS(l.ValidTo),
-			UpdatedBy:         auth.UserID,
-			ID:                l.ID,
+			Name:               l.Name,
+			Status:             int16(l.Status),
+			Remark:             l.Remark,
+			EmbeddingModelKey:  l.EmbeddingModelKey,
+			ChunkSize:          l.ChunkSize,
+			ChunkOverlap:       l.ChunkOverlap,
+			ChunkDelimiter:     stringOrEmpty(l.ChunkDelimiter),
+			ContextualChunking: l.ContextualChunking,
+			ValidFrom:          timeToTS(l.ValidFrom),
+			ValidTo:            timeToTS(l.ValidTo),
+			UpdatedBy:          auth.UserID,
+			ID:                 l.ID,
 		})
 		if err != nil {
 			return err

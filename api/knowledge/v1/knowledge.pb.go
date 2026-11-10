@@ -55,8 +55,13 @@ type Library struct {
 	// 条目生效，markdown 按标题层级切分。创建时省略
 	// 取缺省区分串 "\n\n"（段落空行），更新时省略保持原值；至多 32 字符。
 	ChunkDelimiter *string `protobuf:"bytes,15,opt,name=chunk_delimiter,json=chunkDelimiter,proto3,oneof" json:"chunk_delimiter,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// 上下文检索开关：开启后摄取在切分之后、向量化之前为每块生成上下文
+	// 前缀（本文出处 + 本块要旨），前缀只拼入向量输入，不改变切片正文与
+	// 锚点。创建可省略（缺省关闭）；更新按请求值覆盖。开启后对条目执行
+	// 重建索引生效。
+	ContextualChunking bool `protobuf:"varint,16,opt,name=contextual_chunking,json=contextualChunking,proto3" json:"contextual_chunking,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Library) Reset() {
@@ -192,6 +197,13 @@ func (x *Library) GetChunkDelimiter() string {
 		return *x.ChunkDelimiter
 	}
 	return ""
+}
+
+func (x *Library) GetContextualChunking() bool {
+	if x != nil {
+		return x.ContextualChunking
+	}
+	return false
 }
 
 // LibrarySet 是 ListLibraries 的分页集合。
@@ -1649,7 +1661,7 @@ var File_knowledge_v1_knowledge_proto protoreflect.FileDescriptor
 
 const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\n" +
-	"\x1cknowledge/v1/knowledge.proto\x12\fknowledge.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14query/v1/query.proto\"\xb1\x05\n" +
+	"\x1cknowledge/v1/knowledge.proto\x12\fknowledge.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x14query/v1/query.proto\"\xe2\x05\n" +
 	"\aLibrary\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1b\n" +
 	"\x06status\x18\x02 \x01(\x05H\x00R\x06status\x88\x01\x01\x12\x12\n" +
@@ -1673,7 +1685,8 @@ const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"updated_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x129\n" +
 	"\n" +
 	"deleted_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\x12,\n" +
-	"\x0fchunk_delimiter\x18\x0f \x01(\tH\x03R\x0echunkDelimiter\x88\x01\x01B\t\n" +
+	"\x0fchunk_delimiter\x18\x0f \x01(\tH\x03R\x0echunkDelimiter\x88\x01\x01\x12/\n" +
+	"\x13contextual_chunking\x18\x10 \x01(\bR\x12contextualChunkingB\t\n" +
 	"\a_statusB\t\n" +
 	"\a_remarkB\x16\n" +
 	"\x14_embedding_model_keyB\x12\n" +

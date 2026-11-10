@@ -222,6 +222,8 @@ type KbLibrary struct {
 	ChunkOverlap int32 `db:"chunk_overlap" json:"chunk_overlap"`
 	// 切分区分串：非空时先按该字符串切出段落块（区分串不入块），超过 chunk_size 的段落块再按固定窗口切分；空串表示不按区分串切分（纯固定窗口）。新建库缺省为两个换行（段落空行），至多 32 字符；历史库升级回填空串保持原行为 [@dynamic: exact @updatable: set]
 	ChunkDelimiter string `db:"chunk_delimiter" json:"chunk_delimiter"`
+	// 上下文检索开关：开启后摄取在切分之后、向量化之前为每块生成上下文前缀（本文出处 + 本块要旨），前缀只拼入向量输入，不改变切片正文与锚点；前缀生成失败按质量增强降级为无前缀继续摄取 [@dynamic: exact @updatable: set]
+	ContextualChunking bool `db:"contextual_chunking" json:"contextual_chunking"`
 	// 生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]
 	ValidFrom pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	// 失效时间，NULL 表示长期有效 [@dynamic: exact, range, sort @updatable: set]

@@ -418,7 +418,7 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
-	ucase, err := biz.NewDocumentUsecase(store, pipelineEmbedder{}, fixedSpaceResolver{}, biz.WithChunking(8, 2))
+	ucase, err := biz.NewDocumentUsecase(store, pipelineEmbedder{}, fixedSpaceResolver{}, nil, biz.WithChunking(8, 2))
 	if err != nil {
 		t.Fatalf("build document usecase: %v", err)
 	}

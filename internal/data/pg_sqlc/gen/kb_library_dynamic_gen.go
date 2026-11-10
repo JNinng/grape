@@ -14,6 +14,7 @@
 //	column kb_library.chunk_size: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column kb_library.chunk_overlap: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column kb_library.chunk_delimiter: [@dynamic: eq, neq @updatable: set]
+//	column kb_library.contextual_chunking: [@dynamic: eq, neq @updatable: set]
 //	column kb_library.valid_from: [@dynamic: sort, eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column kb_library.valid_to: [@dynamic: sort, eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column kb_library.created_by: [@dynamic: eq, neq, in, not_in]
@@ -134,6 +135,17 @@ var kb_libraryRegistry = dynq.TableMeta{
 			Column:     "chunk_delimiter",
 			Label:      "chunk_delimiter",
 			DataType:   dynq.DataTypeString,
+			Nullable:   false,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "contextualChunking",
+			Column:     "contextual_chunking",
+			Label:      "contextual_chunking",
+			DataType:   dynq.DataTypeBoolean,
 			Nullable:   false,
 			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
 			Sortable:   false,
@@ -268,65 +280,68 @@ var kb_libraryRegistry = dynq.TableMeta{
 
 // kb_libraryFieldIndex 是逻辑字段名到 registry 字段下标的映射,供白名单校验使用。
 var kb_libraryFieldIndex = map[dynq.FieldName]int{
-	"id":                0,
-	"status":            1,
-	"name":              2,
-	"remark":            3,
-	"embeddingModelKey": 4,
-	"chunkSize":         5,
-	"chunkOverlap":      6,
-	"chunkDelimiter":    7,
-	"validFrom":         8,
-	"validTo":           9,
-	"createdBy":         10,
-	"createdAt":         11,
-	"updatedBy":         12,
-	"updatedAt":         13,
-	"deletedAt":         14,
-	"tenantId":          15,
-	"ownerUserId":       16,
-	"ownerDeptId":       17,
-	"ownerUserGroupId":  18,
+	"id":                 0,
+	"status":             1,
+	"name":               2,
+	"remark":             3,
+	"embeddingModelKey":  4,
+	"chunkSize":          5,
+	"chunkOverlap":       6,
+	"chunkDelimiter":     7,
+	"contextualChunking": 8,
+	"validFrom":          9,
+	"validTo":            10,
+	"createdBy":          11,
+	"createdAt":          12,
+	"updatedBy":          13,
+	"updatedAt":          14,
+	"deletedAt":          15,
+	"tenantId":           16,
+	"ownerUserId":        17,
+	"ownerDeptId":        18,
+	"ownerUserGroupId":   19,
 }
 
 // KbLibraryField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
 // 字段名拼写错误将在编译期被捕获;@internal 列不提供常量。
 var KbLibraryField = struct {
-	ID                dynq.FieldName
-	Status            dynq.FieldName
-	Name              dynq.FieldName
-	Remark            dynq.FieldName
-	EmbeddingModelKey dynq.FieldName
-	ChunkSize         dynq.FieldName
-	ChunkOverlap      dynq.FieldName
-	ChunkDelimiter    dynq.FieldName
-	ValidFrom         dynq.FieldName
-	ValidTo           dynq.FieldName
-	CreatedBy         dynq.FieldName
-	CreatedAt         dynq.FieldName
-	UpdatedBy         dynq.FieldName
-	UpdatedAt         dynq.FieldName
-	OwnerUserID       dynq.FieldName
-	OwnerDeptID       dynq.FieldName
-	OwnerUserGroupID  dynq.FieldName
+	ID                 dynq.FieldName
+	Status             dynq.FieldName
+	Name               dynq.FieldName
+	Remark             dynq.FieldName
+	EmbeddingModelKey  dynq.FieldName
+	ChunkSize          dynq.FieldName
+	ChunkOverlap       dynq.FieldName
+	ChunkDelimiter     dynq.FieldName
+	ContextualChunking dynq.FieldName
+	ValidFrom          dynq.FieldName
+	ValidTo            dynq.FieldName
+	CreatedBy          dynq.FieldName
+	CreatedAt          dynq.FieldName
+	UpdatedBy          dynq.FieldName
+	UpdatedAt          dynq.FieldName
+	OwnerUserID        dynq.FieldName
+	OwnerDeptID        dynq.FieldName
+	OwnerUserGroupID   dynq.FieldName
 }{
-	ID:                "id",
-	Status:            "status",
-	Name:              "name",
-	Remark:            "remark",
-	EmbeddingModelKey: "embeddingModelKey",
-	ChunkSize:         "chunkSize",
-	ChunkOverlap:      "chunkOverlap",
-	ChunkDelimiter:    "chunkDelimiter",
-	ValidFrom:         "validFrom",
-	ValidTo:           "validTo",
-	CreatedBy:         "createdBy",
-	CreatedAt:         "createdAt",
-	UpdatedBy:         "updatedBy",
-	UpdatedAt:         "updatedAt",
-	OwnerUserID:       "ownerUserId",
-	OwnerDeptID:       "ownerDeptId",
-	OwnerUserGroupID:  "ownerUserGroupId",
+	ID:                 "id",
+	Status:             "status",
+	Name:               "name",
+	Remark:             "remark",
+	EmbeddingModelKey:  "embeddingModelKey",
+	ChunkSize:          "chunkSize",
+	ChunkOverlap:       "chunkOverlap",
+	ChunkDelimiter:     "chunkDelimiter",
+	ContextualChunking: "contextualChunking",
+	ValidFrom:          "validFrom",
+	ValidTo:            "validTo",
+	CreatedBy:          "createdBy",
+	CreatedAt:          "createdAt",
+	UpdatedBy:          "updatedBy",
+	UpdatedAt:          "updatedAt",
+	OwnerUserID:        "ownerUserId",
+	OwnerDeptID:        "ownerDeptId",
+	OwnerUserGroupID:   "ownerUserGroupId",
 }
 
 // KbLibraryScope 是 @scope 守卫函数的参数载体:字段为全部守卫声明的标识符参数并集
@@ -377,6 +392,8 @@ type ListKbLibraryParams struct {
 	ChunkOverlapLte       *int64
 	ChunkDelimiter        *string
 	ChunkDelimiterNeq     *string
+	ContextualChunking    *bool
+	ContextualChunkingNeq *bool
 	ValidFrom             *time.Time
 	ValidFromNeq          *time.Time
 	ValidFromGt           *time.Time
@@ -857,6 +874,27 @@ func ParseKbLibraryQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListKbLibrary
 					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "chunkDelimiter")
 				}
 				out.ChunkDelimiterNeq = &v
+			}
+		case "contextualChunking":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("contextualChunking.eq", i, "contextualChunking"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsBool(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextualChunking")
+				}
+				out.ContextualChunking = &v
+			case dynq.OpNeq:
+				if err := slots.Take("contextualChunking.neq", i, "contextualChunking"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsBool(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextualChunking")
+				}
+				out.ContextualChunkingNeq = &v
 			}
 		case "validFrom":
 			switch op {
@@ -1502,6 +1540,9 @@ func validateKbLibraryParams(params ListKbLibraryParams, cfg *dynq.QueryConfig) 
 	if cfg.WhereDisabled("chunkDelimiter") && (params.ChunkDelimiter != nil || params.ChunkDelimiterNeq != nil) {
 		return dynq.NewErr(dynq.KindWhere, "chunkDelimiter", "field disabled in this context", -1)
 	}
+	if cfg.WhereDisabled("contextualChunking") && (params.ContextualChunking != nil || params.ContextualChunkingNeq != nil) {
+		return dynq.NewErr(dynq.KindWhere, "contextualChunking", "field disabled in this context", -1)
+	}
 	if cfg.WhereDisabled("validFrom") && (params.ValidFrom != nil || params.ValidFromNeq != nil || params.ValidFromGt != nil || params.ValidFromGte != nil || params.ValidFromLt != nil || params.ValidFromLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "validFrom", "field disabled in this context", -1)
 	}
@@ -1654,6 +1695,12 @@ func buildKbLibraryWhere(params ListKbLibraryParams) []sq.Sqlizer {
 	}
 	if params.ChunkDelimiterNeq != nil {
 		conds = append(conds, sq.NotEq{"chunk_delimiter": *params.ChunkDelimiterNeq})
+	}
+	if params.ContextualChunking != nil {
+		conds = append(conds, sq.Eq{"contextual_chunking": *params.ContextualChunking})
+	}
+	if params.ContextualChunkingNeq != nil {
+		conds = append(conds, sq.NotEq{"contextual_chunking": *params.ContextualChunkingNeq})
 	}
 	if params.ValidFrom != nil {
 		conds = append(conds, sq.Eq{"valid_from": *params.ValidFrom})
@@ -2012,6 +2059,13 @@ func (KbLibraryTable) SetChunkDelimiter(v string) KbLibraryUpdateOption {
 	}
 }
 
+// SetContextualChunking 设置 contextualChunking 列值，无 nil。
+func (KbLibraryTable) SetContextualChunking(v bool) KbLibraryUpdateOption {
+	return func(st *dynq.UpdateState[KbLibraryTable]) error {
+		return st.Set("contextualChunking", "contextual_chunking", "", v)
+	}
+}
+
 // SetValidFrom 设置 validFrom（生效时间）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (KbLibraryTable) SetValidFrom(v *time.Time) KbLibraryUpdateOption {
 	return func(st *dynq.UpdateState[KbLibraryTable]) error {
@@ -2208,7 +2262,7 @@ func UpdateKbLibraryReturning(ctx context.Context, db DBTX, opts ...KbLibraryUpd
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
+	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return nil, err
@@ -2265,7 +2319,7 @@ func UpdateKbLibraryReturningByPk(ctx context.Context, db DBTX, pk int64, opts .
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
+	b = b.Suffix("RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return KbLibrary{}, err

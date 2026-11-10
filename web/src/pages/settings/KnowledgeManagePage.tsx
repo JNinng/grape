@@ -325,7 +325,8 @@ export function KnowledgeManagePage() {
             <h2 className="text-sm font-semibold">{selected ? selected.name : '未选择知识库'}</h2>
             {selected ? (
               <p className="text-xs text-muted-foreground">
-                切分 {selected.chunkSize}/{selected.chunkOverlap} · {describeChunkDelimiter(selected.chunkDelimiter)} · 嵌入模型{' '}
+                切分 {selected.chunkSize}/{selected.chunkOverlap} · {describeChunkDelimiter(selected.chunkDelimiter)} ·{' '}
+                {selected.contextualChunking ? '上下文前缀开' : '上下文前缀关'} · 嵌入模型{' '}
                 {selected.embeddingModelKey ?? '跟随默认'}
               </p>
             ) : null}
@@ -516,6 +517,7 @@ function LibraryDialog({
   const [chunkDelimiter, setChunkDelimiter] = useState(
     encodeChunkDelimiter(library?.chunkDelimiter ?? DEFAULT_CHUNK_DELIMITER),
   )
+  const [contextual, setContextual] = useState(library?.contextualChunking ?? false)
   const [validFrom, setValidFrom] = useState(toLocalInput(library?.validFrom))
   const [validTo, setValidTo] = useState(toLocalInput(library?.validTo))
   const [options, setOptions] = useState<ModelOptionDTO[]>([])
@@ -555,6 +557,7 @@ function LibraryDialog({
           chunkSize: Number(chunkSize) || 0,
           chunkOverlap: Number(chunkOverlap) || 0,
           chunkDelimiter: decodeChunkDelimiter(chunkDelimiter),
+          contextualChunking: contextual,
           validFrom: fromLocalInput(validFrom),
           validTo: fromLocalInput(validTo),
         })
@@ -568,6 +571,7 @@ function LibraryDialog({
           chunkSize: Number(chunkSize) || 0,
           chunkOverlap: Number(chunkOverlap) || 0,
           chunkDelimiter: decodeChunkDelimiter(chunkDelimiter),
+          contextualChunking: contextual,
           validFrom: fromLocalInput(validFrom),
           validTo: fromLocalInput(validTo),
         })
@@ -631,6 +635,15 @@ function LibraryDialog({
             <p id="kb-delimiter-hint" className="text-xs text-muted-foreground">
               {'先按区分串切出段落、超长段落再按切分大小切分；\\n 表示换行、\\t 表示制表，缺省 \\n\\n（段落空行），至多 32 字符。'}
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch id="kb-contextual" checked={contextual} onCheckedChange={setContextual} />
+            <div className="grid gap-0.5">
+              <Label htmlFor="kb-contextual">上下文前缀</Label>
+              <p className="text-xs text-muted-foreground">
+                摄取时为每块生成上下文前缀（本文出处 + 本块要旨）拼入向量输入，提升检索命中；需租户已配置文本模型，生成失败自动降级。对条目重建索引后生效。
+              </p>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">

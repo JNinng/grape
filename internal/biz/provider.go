@@ -15,8 +15,8 @@ var ProviderSet = wire.NewSet(NewUserUsecase, NewAssignmentUsecase, NewDeptUseca
 
 // NewDocumentUsecaseDefault 是 NewDocumentUsecase 的无选项装配形态：缺省
 // 切分参数由构造函数内置，Wire 不需要 DocumentOption 提供方。
-func NewDocumentUsecaseDefault(store VectorStore, embedder Embedder, resolver EmbedderResolver) (*DocumentUsecase, error) {
-	return NewDocumentUsecase(store, embedder, resolver)
+func NewDocumentUsecaseDefault(store VectorStore, embedder Embedder, resolver EmbedderResolver, completer Completer) (*DocumentUsecase, error) {
+	return NewDocumentUsecase(store, embedder, resolver, completer)
 }
 
 // NewRedactRegistry 提供标准脱敏注册表（四类骨架默认值，装配方按需

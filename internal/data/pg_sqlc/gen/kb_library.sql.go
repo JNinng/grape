@@ -28,7 +28,7 @@ func (q *Queries) CountKbDocumentsByLibrary(ctx context.Context, libraryID int64
 
 const getKbLibraryPermitted = `-- name: GetKbLibraryPermitted :one
 
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
   AND public.fn_check_visible($2, 7::int2,
@@ -60,6 +60,7 @@ func (q *Queries) GetKbLibraryPermitted(ctx context.Context, arg GetKbLibraryPer
 		&i.ChunkSize,
 		&i.ChunkOverlap,
 		&i.ChunkDelimiter,
+		&i.ContextualChunking,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -77,34 +78,37 @@ func (q *Queries) GetKbLibraryPermitted(ctx context.Context, arg GetKbLibraryPer
 
 const insertKbLibrary = `-- name: InsertKbLibrary :one
 INSERT INTO public.kb_library (id, tenant_id, status, "name", remark, embedding_model_key,
-                               chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to,
+                               chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking,
+                               valid_from, valid_to,
                                owner_user_id, owner_dept_id, owner_user_group_id,
                                created_by, updated_by)
 VALUES ($1, current_setting('app.tenant_id'), $2, $3,
         $4, $5,
         $6, $7, $8,
-        $9, $10,
-        $11, $12, $13,
-        $14, $15)
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+        $9,
+        $10, $11,
+        $12, $13, $14,
+        $15, $16)
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
 `
 
 type InsertKbLibraryParams struct {
-	ID                int64            `db:"id" json:"id"`
-	Status            int16            `db:"status" json:"status"`
-	Name              string           `db:"name" json:"name"`
-	Remark            *string          `db:"remark" json:"remark"`
-	EmbeddingModelKey *string          `db:"embedding_model_key" json:"embedding_model_key"`
-	ChunkSize         int32            `db:"chunk_size" json:"chunk_size"`
-	ChunkOverlap      int32            `db:"chunk_overlap" json:"chunk_overlap"`
-	ChunkDelimiter    string           `db:"chunk_delimiter" json:"chunk_delimiter"`
-	ValidFrom         pgtype.Timestamp `db:"valid_from" json:"valid_from"`
-	ValidTo           pgtype.Timestamp `db:"valid_to" json:"valid_to"`
-	OwnerUserID       *int64           `db:"owner_user_id" json:"owner_user_id"`
-	OwnerDeptID       *int64           `db:"owner_dept_id" json:"owner_dept_id"`
-	OwnerUserGroupID  *int64           `db:"owner_user_group_id" json:"owner_user_group_id"`
-	CreatedBy         int64            `db:"created_by" json:"created_by"`
-	UpdatedBy         int64            `db:"updated_by" json:"updated_by"`
+	ID                 int64            `db:"id" json:"id"`
+	Status             int16            `db:"status" json:"status"`
+	Name               string           `db:"name" json:"name"`
+	Remark             *string          `db:"remark" json:"remark"`
+	EmbeddingModelKey  *string          `db:"embedding_model_key" json:"embedding_model_key"`
+	ChunkSize          int32            `db:"chunk_size" json:"chunk_size"`
+	ChunkOverlap       int32            `db:"chunk_overlap" json:"chunk_overlap"`
+	ChunkDelimiter     string           `db:"chunk_delimiter" json:"chunk_delimiter"`
+	ContextualChunking bool             `db:"contextual_chunking" json:"contextual_chunking"`
+	ValidFrom          pgtype.Timestamp `db:"valid_from" json:"valid_from"`
+	ValidTo            pgtype.Timestamp `db:"valid_to" json:"valid_to"`
+	OwnerUserID        *int64           `db:"owner_user_id" json:"owner_user_id"`
+	OwnerDeptID        *int64           `db:"owner_dept_id" json:"owner_dept_id"`
+	OwnerUserGroupID   *int64           `db:"owner_user_group_id" json:"owner_user_group_id"`
+	CreatedBy          int64            `db:"created_by" json:"created_by"`
+	UpdatedBy          int64            `db:"updated_by" json:"updated_by"`
 }
 
 // 插入知识库记录；租户取会话 app.tenant_id，创建人缺省为归属人；
@@ -119,6 +123,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		arg.ChunkSize,
 		arg.ChunkOverlap,
 		arg.ChunkDelimiter,
+		arg.ContextualChunking,
 		arg.ValidFrom,
 		arg.ValidTo,
 		arg.OwnerUserID,
@@ -137,6 +142,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 		&i.ChunkSize,
 		&i.ChunkOverlap,
 		&i.ChunkDelimiter,
+		&i.ContextualChunking,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -153,7 +159,7 @@ func (q *Queries) InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams
 }
 
 const listVisibleKbLibraries = `-- name: ListVisibleKbLibraries :many
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
 WHERE deleted_at IS NULL
   AND public.fn_check_visible($1, 7::int2,
                               owner_user_id, owner_dept_id, owner_user_group_id)
@@ -180,6 +186,7 @@ func (q *Queries) ListVisibleKbLibraries(ctx context.Context, operator int64) ([
 			&i.ChunkSize,
 			&i.ChunkOverlap,
 			&i.ChunkDelimiter,
+			&i.ContextualChunking,
 			&i.ValidFrom,
 			&i.ValidTo,
 			&i.CreatedBy,
@@ -203,7 +210,7 @@ func (q *Queries) ListVisibleKbLibraries(ctx context.Context, operator int64) ([
 }
 
 const lockKbLibraryPermitted = `-- name: LockKbLibraryPermitted :one
-SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
+SELECT id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id FROM public.kb_library
 WHERE id = $1
   AND deleted_at IS NULL
   AND public.fn_can_operate_row($2,
@@ -230,6 +237,7 @@ func (q *Queries) LockKbLibraryPermitted(ctx context.Context, arg LockKbLibraryP
 		&i.ChunkSize,
 		&i.ChunkOverlap,
 		&i.ChunkDelimiter,
+		&i.ContextualChunking,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,
@@ -276,31 +284,34 @@ SET "name"              = $1,
     chunk_size          = $5,
     chunk_overlap       = $6,
     chunk_delimiter     = $7,
-    valid_from          = $8,
-    valid_to            = $9,
-    updated_by          = $10
-WHERE id = $11
+    contextual_chunking = $8,
+    valid_from          = $9,
+    valid_to            = $10,
+    updated_by          = $11
+WHERE id = $12
   AND deleted_at IS NULL
-RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
+RETURNING id, status, name, remark, embedding_model_key, chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking, valid_from, valid_to, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id, owner_user_id, owner_dept_id, owner_user_group_id
 `
 
 type UpdateKbLibraryParams struct {
-	Name              string           `db:"name" json:"name"`
-	Status            int16            `db:"status" json:"status"`
-	Remark            *string          `db:"remark" json:"remark"`
-	EmbeddingModelKey *string          `db:"embedding_model_key" json:"embedding_model_key"`
-	ChunkSize         int32            `db:"chunk_size" json:"chunk_size"`
-	ChunkOverlap      int32            `db:"chunk_overlap" json:"chunk_overlap"`
-	ChunkDelimiter    string           `db:"chunk_delimiter" json:"chunk_delimiter"`
-	ValidFrom         pgtype.Timestamp `db:"valid_from" json:"valid_from"`
-	ValidTo           pgtype.Timestamp `db:"valid_to" json:"valid_to"`
-	UpdatedBy         int64            `db:"updated_by" json:"updated_by"`
-	ID                int64            `db:"id" json:"id"`
+	Name               string           `db:"name" json:"name"`
+	Status             int16            `db:"status" json:"status"`
+	Remark             *string          `db:"remark" json:"remark"`
+	EmbeddingModelKey  *string          `db:"embedding_model_key" json:"embedding_model_key"`
+	ChunkSize          int32            `db:"chunk_size" json:"chunk_size"`
+	ChunkOverlap       int32            `db:"chunk_overlap" json:"chunk_overlap"`
+	ChunkDelimiter     string           `db:"chunk_delimiter" json:"chunk_delimiter"`
+	ContextualChunking bool             `db:"contextual_chunking" json:"contextual_chunking"`
+	ValidFrom          pgtype.Timestamp `db:"valid_from" json:"valid_from"`
+	ValidTo            pgtype.Timestamp `db:"valid_to" json:"valid_to"`
+	UpdatedBy          int64            `db:"updated_by" json:"updated_by"`
+	ID                 int64            `db:"id" json:"id"`
 }
 
 // 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
-// chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新；
-// 归属不可经本查询变更（写入路径先经 LockKbLibraryPermitted 锁定）
+// chunk_overlap/chunk_delimiter/contextual_chunking/valid_from/valid_to）；
+// updated_at 由触发器刷新；归属不可经本查询变更（写入路径先经
+// LockKbLibraryPermitted 锁定）
 func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams) (KbLibrary, error) {
 	row := q.db.QueryRow(ctx, updateKbLibrary,
 		arg.Name,
@@ -310,6 +321,7 @@ func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams
 		arg.ChunkSize,
 		arg.ChunkOverlap,
 		arg.ChunkDelimiter,
+		arg.ContextualChunking,
 		arg.ValidFrom,
 		arg.ValidTo,
 		arg.UpdatedBy,
@@ -325,6 +337,7 @@ func (q *Queries) UpdateKbLibrary(ctx context.Context, arg UpdateKbLibraryParams
 		&i.ChunkSize,
 		&i.ChunkOverlap,
 		&i.ChunkDelimiter,
+		&i.ContextualChunking,
 		&i.ValidFrom,
 		&i.ValidTo,
 		&i.CreatedBy,

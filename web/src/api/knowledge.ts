@@ -16,6 +16,8 @@ export interface LibraryDTO {
   chunkOverlap: number
   // 切分区分串：空串表示不按区分串切分；缺省（未返回）视为 "\n\n"。
   chunkDelimiter?: string
+  // 上下文检索开关：开启后摄取为每块生成上下文前缀（只影响向量输入）。
+  contextualChunking?: boolean
   validFrom?: string
   validTo?: string
   createdBy: string
@@ -81,6 +83,8 @@ export interface CreateLibraryInput {
   chunkOverlap?: number
   // 省略取服务端缺省区分串 "\n\n"；空串关闭区分串切分。
   chunkDelimiter?: string
+  // 省略关闭上下文检索开关。
+  contextualChunking?: boolean
   validFrom?: string
   validTo?: string
 }
@@ -95,6 +99,8 @@ export interface UpdateLibraryInput {
   chunkOverlap: number
   // 省略保持原值；空串关闭区分串切分。
   chunkDelimiter?: string
+  // 更新按请求值覆盖（省略视为关闭）。
+  contextualChunking?: boolean
   validFrom?: string
   validTo?: string
 }

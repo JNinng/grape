@@ -28,7 +28,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 7 | schema/70_audit.sql | 登录日志与操作日志（append-only） |
 | 8 | schema/80_session.sql | 会话/令牌表（仅存哈希）与过期清理函数 |
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
-| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`）与 kb_document 条目（kind：text / markdown / file；租户表，RLS 在 rls.sql） |
+| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`，含上下文检索开关）与 kb_document 条目（kind：text / markdown / file；租户表，RLS 在 rls.sql） |
 | 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
 | 12 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
 | 13 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
@@ -426,8 +426,8 @@ status 校验收在 biz 用例。
 | GetKbLibraryPermitted | :one | 操作者 + id → KbLibrary | 读数据范围内可见的未软删知识库（`fn_check_visible` 掩码 7）；不可见与不存在统一无行 |
 | LockKbLibraryPermitted | :one | 操作者 + id → KbLibrary | 锁定数据范围内可操作的知识库（`fn_can_operate_row` + FOR UPDATE） |
 | ListVisibleKbLibraries | :many | 操作者 → 行集 | 枚举数据范围内可见的未软删知识库（检索可见集合与列库工具共用） |
-| InsertKbLibrary | :one | 字段 + 归属 + 操作者 → KbLibrary | 插入（含切分区分串，创建人缺省为归属人）；租户取会话，名称冲突映射 AlreadyExists |
-| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段（含切分区分串；归属不变） |
+| InsertKbLibrary | :one | 字段 + 归属 + 操作者 → KbLibrary | 插入（含切分区分串与上下文检索开关，创建人缺省为归属人）；租户取会话，名称冲突映射 AlreadyExists |
+| UpdateKbLibrary | :one | 可变字段 + 操作者 + id → KbLibrary | 更新可变字段（含切分区分串与上下文检索开关；归属不变） |
 | CountKbDocumentsByLibrary | :one | library_id → 行数 | 库下未删除条目数（删除前置） |
 | SoftDeleteKbLibrary | :execrows | 操作者 + id → 行数 | 软删知识库 |
 

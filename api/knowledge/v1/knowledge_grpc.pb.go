@@ -46,8 +46,8 @@ type LibraryServiceClient interface {
 	// ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(ctx context.Context, in *ListLibrariesRequest, opts ...grpc.CallOption) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-	// 不可见与不存在统一 404。
+	// chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+	// 省略时保持原值）；不可见与不存在统一 404。
 	UpdateLibrary(ctx context.Context, in *UpdateLibraryRequest, opts ...grpc.CallOption) (*Library, error)
 	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
 	// 统一 404。
@@ -143,8 +143,8 @@ type LibraryServiceServer interface {
 	// ListLibraries 按动态查询协议返回一页调用方可见的知识库。
 	ListLibraries(context.Context, *ListLibrariesRequest) (*LibrarySet, error)
 	// UpdateLibrary 覆盖知识库可变字段（name/status/remark/embedding_model_key/
-	// chunk_size/chunk_overlap/有效期限；chunk_delimiter 省略时保持原值）；
-	// 不可见与不存在统一 404。
+	// chunk_size/chunk_overlap/contextual_chunking/有效期限；chunk_delimiter
+	// 省略时保持原值）；不可见与不存在统一 404。
 	UpdateLibrary(context.Context, *UpdateLibraryRequest) (*Library, error)
 	// DeleteLibrary 软删除知识库；存在未删除条目时拒绝；不可见与不存在
 	// 统一 404。

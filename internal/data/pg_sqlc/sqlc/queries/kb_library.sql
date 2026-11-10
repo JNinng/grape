@@ -37,20 +37,23 @@ ORDER BY id;
 -- 租户内未删除库间 name 唯一冲突映射 AlreadyExists
 -- name: InsertKbLibrary :one
 INSERT INTO public.kb_library (id, tenant_id, status, "name", remark, embedding_model_key,
-                               chunk_size, chunk_overlap, chunk_delimiter, valid_from, valid_to,
+                               chunk_size, chunk_overlap, chunk_delimiter, contextual_chunking,
+                               valid_from, valid_to,
                                owner_user_id, owner_dept_id, owner_user_group_id,
                                created_by, updated_by)
 VALUES (sqlc.arg('id'), current_setting('app.tenant_id'), sqlc.arg('status'), sqlc.arg('name'),
         sqlc.narg('remark'), sqlc.narg('embedding_model_key'),
         sqlc.arg('chunk_size'), sqlc.arg('chunk_overlap'), sqlc.arg('chunk_delimiter'),
+        sqlc.arg('contextual_chunking'),
         sqlc.narg('valid_from'), sqlc.narg('valid_to'),
         sqlc.arg('owner_user_id'), sqlc.narg('owner_dept_id'), sqlc.narg('owner_user_group_id'),
         sqlc.arg('created_by'), sqlc.arg('updated_by'))
 RETURNING *;
 
 -- 更新可变字段（name/status/remark/embedding_model_key/chunk_size/
--- chunk_overlap/chunk_delimiter/valid_from/valid_to）；updated_at 由触发器刷新；
--- 归属不可经本查询变更（写入路径先经 LockKbLibraryPermitted 锁定）
+-- chunk_overlap/chunk_delimiter/contextual_chunking/valid_from/valid_to）；
+-- updated_at 由触发器刷新；归属不可经本查询变更（写入路径先经
+-- LockKbLibraryPermitted 锁定）
 -- name: UpdateKbLibrary :one
 UPDATE public.kb_library
 SET "name"              = sqlc.arg('name'),
@@ -60,6 +63,7 @@ SET "name"              = sqlc.arg('name'),
     chunk_size          = sqlc.arg('chunk_size'),
     chunk_overlap       = sqlc.arg('chunk_overlap'),
     chunk_delimiter     = sqlc.arg('chunk_delimiter'),
+    contextual_chunking = sqlc.arg('contextual_chunking'),
     valid_from          = sqlc.narg('valid_from'),
     valid_to            = sqlc.narg('valid_to'),
     updated_by          = sqlc.arg('updated_by')
