@@ -43,8 +43,10 @@ type Role struct {
 	// 数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门
 	// 6-用户组 7-全租户。由 SetRoleDataScope 维护，创建与更新输入中被忽略。
 	DataScope int32 `protobuf:"varint,6,opt,name=data_scope,json=dataScope,proto3" json:"data_scope,omitempty"`
-	// 组织可见范围：限定角色可分配的部门层级（NULL=全租户可分配，具体部门
-	// ID=仅该部门及子部门可分配）。由 SetRoleDataScope 维护，输入中被忽略。
+	// 组织可见范围（S）：NULL=仅全租户操作人可见；非 NULL=全租户操作人恒可见，
+	// 其余操作人须 S 落在其可见部门集合内且目标角色 data_scope 档位满足。分配侧
+	// 另受约束：NULL=全租户可分配，非 NULL=仅该部门及子部门可分配。
+	// 由 SetRoleDataScope 维护，输入中被忽略。
 	ScopeDeptId *int64 `protobuf:"varint,7,opt,name=scope_dept_id,json=scopeDeptId,proto3,oneof" json:"scope_dept_id,omitempty"`
 	// 备注，可空。
 	Remark *string `protobuf:"bytes,8,opt,name=remark,proto3,oneof" json:"remark,omitempty"`

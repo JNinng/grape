@@ -183,7 +183,7 @@ sys_model 单表双态：`tenant_id=''` 为平台行（所有租户可读，RLS 
 租户树 RLS 下祖父看不到孙行，删除前置的「无未删除直接子租户」需要全局
 事实。本函数以 DEFINER 绕过租户 RLS，只返回计数、不返回行数据，不构成跨
 租户读面；函数内校验 `app.tenant_id` 已设置且目标对调用方可见，消除结构
-侧信道。`sys_tenant.parent_id` 未建索引，计数按全表扫描。
+侧信道。计数按 `sys_tenant.parent_id` 部分索引（`WHERE deleted_at IS NULL`）过滤。
 
 | 函数 | 签名 | 作用 |
 | --- | --- | --- |
@@ -359,7 +359,7 @@ sqlc 带进生成的 Go 代码（godoc），修改时同步本索引。
 | LockSysRoleByID | :one | id → SysRole | 锁定角色（FOR UPDATE） |
 | InsertSysRole | :one | 字段 + 操作者 → SysRole | 插入；code/name 唯一冲突映射 AlreadyExists |
 | UpdateSysRole | :one | name/status/remark + 操作者 + id → SysRole | 更新可变字段（不含 code/role_type/数据范围） |
-| UpdateSysRoleDataScope | :one | data_scope/scope_dept_id + 操作者 + id → SysRole | 更新数据范围标量（NULL=全租户可分配） |
+| UpdateSysRoleDataScope | :one | data_scope/scope_dept_id + 操作者 + id → SysRole | 更新数据范围标量（scope_dept_id：可见性上 NULL=仅全租户操作人可见、非 NULL=受限操作人须 S∈可见集合；分配上 NULL=全租户可分配、非 NULL=仅该部门子树可分配） |
 | SoftDeleteSysRole | :execrows | 操作者 + id → 行数 | 软删角色（映射物理残留） |
 | ListSysRoleIDScopes | :many | role_id → (type, data_id) | 范围明细活跃行 |
 | ListSysRoleAllowedDepts | :many | role_id → dept_id | 分发部门活跃行 |

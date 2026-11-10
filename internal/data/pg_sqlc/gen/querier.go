@@ -586,7 +586,9 @@ type Querier interface {
 	// 触发器刷新
 	UpdateSysRole(ctx context.Context, arg UpdateSysRoleParams) (SysRole, error)
 	// 更新数据范围配置标量（data_scope/scope_dept_id，SetRoleDataScope 专项
-	// 口径；scope_dept_id 为 NULL 表示全租户可分配）；updated_at 由触发器刷新
+	// 口径；scope_dept_id：可见性上 NULL=仅全租户操作人可见、非 NULL=受限操作人
+	// 须 S∈可见集合；分配上 NULL=全租户可分配、非 NULL=仅该部门子树可分配）；
+	// updated_at 由触发器刷新
 	UpdateSysRoleDataScope(ctx context.Context, arg UpdateSysRoleDataScopeParams) (SysRole, error)
 	// 覆盖可变字段（status/name/contact_name/contact_phone/expired_at/
 	// max_user_count/default_locale）；code 是身份列（同 code 创建后不变的

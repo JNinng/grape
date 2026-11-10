@@ -37,7 +37,7 @@ COMMENT ON COLUMN public.sys_role."name" IS '角色名 [@dynamic: fuzzy, exact, 
 COMMENT ON COLUMN public.sys_role.code IS '权限编码 [@dynamic: exact, prefix]';
 COMMENT ON COLUMN public.sys_role.role_type IS '角色类型：1-系统预置(不可删除，核心权限不可剥离) 2-租户自定义 [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.sys_role.data_scope IS '数据范围规则：1-仅本人 2-本部门 3-本部门及子部门 4-指定人 5-指定部门 6-用户组 7-全租户 [@dynamic: exact, membership @updatable: set]';
-COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围：限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配 [@dynamic: exact, membership @updatable: set]';
+COMMENT ON COLUMN public.sys_role.scope_dept_id IS '组织可见范围（S）：NULL=仅全租户操作人可见；非 NULL=全租户操作人恒可见，其余操作人须 S ∈ 可见部门集合且目标角色 data_scope 档位满足。分配侧另受约束：NULL=全租户可分配，非 NULL=仅该部门及子部门可分配 [@dynamic: exact, membership @updatable: set]';
 COMMENT ON COLUMN public.sys_role.remark IS '备注 [@dynamic: fuzzy @updatable: set]';
 COMMENT ON COLUMN public.sys_role.created_by IS '创建人 [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.sys_role.created_at IS '创建时间 [@dynamic: exact, membership, range, sort]';
@@ -102,7 +102,7 @@ CREATE TABLE public.sys_role_allowed_dept
     CONSTRAINT sys_role_allowed_dept_status_chk CHECK (status IN (0, 1))
 );
 CREATE UNIQUE INDEX sys_role_allowed_dept_tenant_role_dept_un ON public.sys_role_allowed_dept USING btree (tenant_id, role_id, dept_id) WHERE deleted_at IS NULL;
-COMMENT ON TABLE public.sys_role_allowed_dept IS '角色分发部门映射表（角色的分发部门集合）。判定规则：角色无映射记录=遵循通用逻辑（scope_dept_id 子树 + 能看见目标用户）；有映射=映射分发角色，显式映射优先——分配时命中映射的操作者豁免 data_scope 覆盖校验，但目标用户所属部门必须存在于映射集合中；角色列表按映射对部门管理员可见属宿主应用层的呈现策略；用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
+COMMENT ON TABLE public.sys_role_allowed_dept IS '角色分发部门映射表（角色的分发部门集合）。角色可见性与分配判定为 A AND G（实现见 operate.sql 的 fn_role_visibility_core / fn_can_see_role / fn_can_assign_role，列表守卫 fn_visible_role_ids 同口径）：A=本表有效映射部门集合 M 为空恒真；M 非空时操作人为全租户（可见部门集合为 NULL）或 M ∩ 操作人可见部门集合 ≠ ∅（口径是「可见部门集合」而非「所属部门」，且 M 命中不能替代 G）；G=scope_dept_id 组织可见范围与目标角色 data_scope 档位校验。分配时目标部门须同时落入 M（若配置）与 scope_dept_id 子树（若配置）。用户最终数据访问边界仍由角色 data_scope 决定，与分配逻辑解耦 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 -- Column comments
 

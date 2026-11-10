@@ -27,6 +27,8 @@ CREATE TABLE public.sys_tenant
 -- 软删除后名称/编码可复用：用部分唯一索引替代表级 UNIQUE 约束（与其他表模式一致）
 CREATE UNIQUE INDEX sys_tenant_name_un ON public.sys_tenant USING btree (name) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX sys_tenant_code_un ON public.sys_tenant USING btree (code) WHERE deleted_at IS NULL;
+-- 子租户计数（fn_tenant_active_child_count）按 parent_id 过滤未删除行，部分索引覆盖
+CREATE INDEX idx_sys_tenant_parent_id ON public.sys_tenant USING btree (parent_id) WHERE deleted_at IS NULL;
 COMMENT ON TABLE public.sys_tenant IS '租户表 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]';
 
 -- Column comments

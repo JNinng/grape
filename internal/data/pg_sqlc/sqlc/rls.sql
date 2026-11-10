@@ -20,7 +20,8 @@
 --（部署顺序位于本文件之前）；GRANT CONNECT 依赖库名，由部署方执行。
 --
 -- 这三个函数与模板仓库 basic_db_table（https://github.com/JNinng/basic_db_table）
--- 的 fun.sql 同名同构：两仓共用一套命名与形态（含用户组维度）。
+-- 的 fun.sql 同源同命名（三态返回值、用户组维度）。差异：grape 的
+-- sys_user_role_mapping 为软删映射表，my_roles 额外过滤 m.deleted_at IS NULL。
 -- ============================================================
 
 

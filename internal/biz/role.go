@@ -74,7 +74,7 @@ type Role struct {
 	Code        string
 	RoleType    int32   // 1 系统预置、2 租户自定义
 	DataScope   int32   // 1-7
-	ScopeDeptID *int64  // 可空：NULL=全租户可分配
+	ScopeDeptID *int64  // 可空：可见性上 NULL=仅全租户操作人可见；分配上 NULL=全租户可分配
 	Remark      *string // 可空
 
 	CreatedBy int64

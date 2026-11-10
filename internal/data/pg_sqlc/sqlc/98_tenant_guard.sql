@@ -28,8 +28,8 @@
 -- 清单末尾），只依赖 schema/20_tenant.sql 的 sys_tenant 存在；入
 -- sqlc catalog（函数签名），命名查询见 queries/sys_tenant.sql。
 --
--- 当前 schema 未设 sys_tenant.parent_id 索引，计数为全表扫描；后续迁移
--- 补 parent_id 部分索引（WHERE deleted_at IS NULL）优化。
+-- 计数按 sys_tenant.parent_id 部分索引（WHERE deleted_at IS NULL，见
+-- schema/20_tenant.sql）过滤；历史库升级需手工补建该索引（见 deploy_db.md）。
 -- ============================================================
 
 -- fn_tenant_active_child_count：统计指定租户名下未删除的直接子租户数

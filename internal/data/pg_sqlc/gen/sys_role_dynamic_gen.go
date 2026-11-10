@@ -136,7 +136,7 @@ var sys_roleRegistry = dynq.TableMeta{
 			Sortable:   false,
 			Visibility: dynq.VisibilityHidden,
 			Hidden:     false,
-			Desc:       "限定角色可分配的部门层级。NULL=全租户可分配，具体部门ID=仅该部门及子部门可分配",
+			Desc:       "组织可见范围：可见性上 NULL=仅全租户操作人可见，非 NULL=全租户操作人恒可见、其余操作人须 S 在其可见部门集合内且 data_scope 档位满足；分配上 NULL=全租户可分配，非 NULL=仅该部门及子部门可分配",
 		},
 		{
 			Key:        "remark",

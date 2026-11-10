@@ -137,8 +137,10 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   追加对象，以部署超级用户执行；只含 `CREATE OR REPLACE FUNCTION`，可重复。
   函数属主 = 执行者，换执行者重跑会连带改属主，部署口径以 dbdeploy 为准。
   未部署 `fn_tenant_active_child_count` 的历史库在删除租户时调用失败，属
-  预期收紧。
-- **菜单种子**：历史库按 `seed.Files` 重跑补入缺失权限点（246–249/254–273），
+  预期收紧。历史库另需补建子租户计数索引：
+  `CREATE INDEX IF NOT EXISTS idx_sys_tenant_parent_id ON public.sys_tenant (parent_id) WHERE deleted_at IS NULL;`
+  （新库由 `schema/20_tenant.sql` 携带）。
+- **菜单种子**：历史库按 `seed.Files` 重跑补入缺失权限点（246–249/254–273/274–286，其中 274–286 为知识库与模型管理），
   不覆盖既有行；route_path/component 修正需手工 `UPDATE` 或重建库；旧演示
   范围明细（`sys_role_id_scope` 1001）不会被删除。种子补齐前新增权限码返回
   403（超级管理员同样失去这些码），补齐后恢复。

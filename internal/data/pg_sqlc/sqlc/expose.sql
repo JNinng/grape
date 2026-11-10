@@ -314,6 +314,7 @@ CREATE TRIGGER trg_perm_version_user_group_mapping
     ON public.sys_user_group_mapping
     FOR EACH ROW EXECUTE FUNCTION public.fn_touch_perm_version_tenant();
 
--- 本文件在 rls.sql 的批量授权之后执行，显式补授（触发器以写入者
--- 身份 INSERT/UPDATE 版本表，读写两侧都要放行）
-GRANT SELECT, INSERT, UPDATE ON public.sys_perm_version TO test_u;
+-- role.sql 的默认权限（ALTER DEFAULT PRIVILEGES）已覆盖本表授权；此处
+-- 显式声明一份使授权面自文档化（触发器以写入者身份 INSERT/UPDATE 版本
+-- 表，读写两侧都要放行）
+GRANT SELECT, INSERT, UPDATE ON public.sys_perm_version TO grape_u, test_u;

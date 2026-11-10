@@ -5,7 +5,8 @@
 -- catalog（表为标准关系形态，命名查询见 queries/agent_grant.sql），
 -- 由部署清单（deploy.go DeployFiles）以超级用户/表 owner 连接执行，
 -- 排在 agent_vector.sql 之后（同尾部追加域，只依赖 role.sql 的
--- grape_u/test_u 存在，与 public 业务域、agent 设施域零耦合）。
+-- grape_u/test_u 存在；不改动 public 业务域与 agent 设施域既有对象、
+-- 不引用其表/函数）。
 --
 -- RLS 落点口径：表在 public 业务域、带 tenant_id，租户隔离策略随本
 -- 域文件声明而不进 rls.sql——与 expose.sql 承载 sys_perm_version 策略

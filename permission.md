@@ -63,7 +63,8 @@ Agent 设施面（`agent` schema，如向量表 `agent.agent_document`）不走 
 必须同改。
 
 角色可见性（A AND G）：A=目标角色在 `sys_role_allowed_dept` 的有效映射
-部门集合（M）为空恒真，非空时要求 M ∩ 操作人可见部门集合 ≠ ∅；命中口径
+部门集合（M）为空恒真；M 非空时操作人为全租户（O_d 为 NULL）或
+M ∩ 操作人可见部门集合 ≠ ∅；命中口径
 是「可见部门集合」而非「所属部门」，且命中不能替代 G。G=组织可见范围
 `scope_dept_id`（S）为 NULL 时仅全租户操作人（O_d 为 NULL）可见；S 非空
 时要求 S ∈ O_d 且目标角色 `data_scope` 档位满足对应条件（D=1/2 操作人
