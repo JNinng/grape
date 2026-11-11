@@ -67,6 +67,7 @@ func newWebTestServer(t *testing.T, dist fs.FS, reserved []string) *kratoshttp.S
 		nil,
 		// 租户管理服务本文件用例不触达，传 nil。
 		nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		nil, nil, nil, WebHandler(newWebFileHandler(dist, reserved)), )
 	if err != nil {
 		panic("build http server: " + err.Error())

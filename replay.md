@@ -15,11 +15,13 @@
 | 工具调用审计 | 一次工具调用的终态 | `public.agent_tool_call_log` | 工具执行审计包装器（含恢复路径代执行） |
 | 授权确认审计 | 一次授权终态（人工或系统决定，互斥） | `public.agent_confirmation_log` | ack 决定路由审计面 + 授权终态观察挂点 |
 | 检索留痕 | 一次检索或摄取操作 | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器 |
+| 模型调用留痕 | 管线侧一次模型/类模型调用（文本生成、向量化、外部解析） | `public.agent_model_call_log` | `biz.ModelCallObserver` 观察面（三个能力目录） |
 | 运行指标 | 进程内聚合 | Prometheus `/metrics` | `biz.AgentRunObserver` 推送 |
 | 链路与日志 | 一次入站请求的因果链 | 日志 `trace_id`/`span_id`、`x-trace-id`、OTel span | 链路中间件与 telemetry 桥接 |
 
-前四面是可还原内容与决定的证据面；指标与日志提供时序、因果与聚合视角，
-不能替代内容证据。
+前五面是可还原内容与决定的证据面；指标与日志提供时序、因果与聚合视角，
+不能替代内容证据。agent 对话 LLM 的模型调用事实由会话事件流与
+`/agui/session-usage` 承载，不写模型调用留痕表（避免双写）。
 
 授权状态（`public.agent_tool_grant`）不是按次调用的证据面，但解释
 `confirm` 层级「为什么没有弹出确认卡」时需要对照（`allow` 直接放行）：
@@ -33,11 +35,12 @@
 | 键 | 含义 | 作用域 | 关联对象 |
 | --- | --- | --- | --- |
 | `session_id` | 框架会话 ID（前端称 threadId） | 用户（userKey） | 事件流、工具/确认审计、检索留痕 |
-| `trace_id` | 一次入站请求的链路 ID | 请求 | 同一轮内的工具/确认/检索行、日志、span |
+| `trace_id` | 一次入站请求的链路 ID | 请求 | 同一轮内的工具/确认/检索/模型调用行、日志、span |
 | `tool_call_id` | 模型生成的工具调用 ID | 租户内唯一 | 工具审计、确认审计、事件流工具调用 |
 | `confirmation_id` | ack 确认 ID（与 `tool_call_id` 同源） | 租户内唯一 | 确认审计、恢复路径代执行的工具行 |
 | `event_id` | 会话事件 ID | 会话内 | 压缩占位符与原文事件 |
 | `document_id` / `source_id` / `anchor` | 检索命中标识与原文锚点 | 向量表内 | `agent.agent_document` 原文反查 |
+| 留痕行 `document_id` | 模型调用作用的知识条目 ID | `kb_document.id` | 摄取向量化/外部解析行 → 条目反查 |
 | userKey | `tenant_id:user_id` 编码 | 会话归属 | 框架会话表、ack 归属守卫、审计归属 |
 
 ```
@@ -45,7 +48,8 @@ session_id（会话）
   └─ trace_id（一轮请求）──┬─ tool_call_id（一次工具调用）── confirmation_id
                            ├─ 工具调用审计行
                            ├─ 授权确认审计行
-                           ├─ 检索留痕行 ── document_id
+                           ├─ 检索留痕行 ── document_id（向量切片反查）
+                           ├─ 模型调用留痕行 ── document_id（kb 条目反查）
                            └─ 日志 / span / x-trace-id
   └─ event_id（会话事件）── 压缩占位符对照
 ```
@@ -167,6 +171,34 @@ session_id（会话）
   表为 append-only。装饰器实现与阈值见
   [internal/data/README.md](internal/data/README.md#检索留痕装饰器)。
 
+### 模型调用留痕
+
+- 观察面（`biz.ModelCallObserver`，由 `ModelCallLogUsecase` 实现）覆盖管线
+  侧三个模型/类模型调用面：文本生成（openaicompleter，场景 `ingest_summary`
+  文档摘要 / `ingest_prefix` 块前缀）、向量化（openaiembedder，场景
+  `embed_document` 摄取 / `embed_query` 检索）、外部文档解析（docparse，
+  场景 `parse_document`，类模型 OCR）。agent 对话 LLM 不在本面：会话事件
+  流与 `/agui/session-usage` 已承载（见「时间与用量事实」），避免双写。
+- 一次调用一行，留痕点在「解析出端点事实之后、调用终态（含 error）」：
+  模型/空间解析失败（无端点事实）与外部解析端点未配置（未发生调用）不留
+  行；解析成功后的任何失败（协议错误、非 2xx、维度漂移）记
+  `status=error` + 错误摘要（截断 512）。空产出记 output 为空。
+- `model_key`/`endpoint` 按解析现场原样留痕，不做注册表对账——失败尝试的
+  原始声明正是排查换模型/换端点事故的证据；`usage` token 取端点响应体
+  （未上报为 NULL）；`document_id` 是作用知识条目 ID（摄取与解析链路经
+  ctx 载体注入），检索查询向量化无文档事实恒 NULL。
+- 输入/输出摘要经 `pkg/redact` 的 `model_call` 类别脱敏（4096 rune 截断，
+  对齐审计摘要口径）；docparse 的原件字节不落留痕（input 记
+  mime/filename/size/sha256 事实摘要，output 记 markdown 产物截断），
+  embedder 的向量产物不落留痕（output 记维度说明）。
+- 场景由调用链路经 ctx 载体声明（`biz.WithModelCallScene`），缺失时按实现
+  声明的缺省回落（embed→`embed_document`、completer→`ingest_prefix`；
+  docparse 无回落，缺失放弃该行），不伪造其他值。词表由应用层把门（表无
+  CHECK），rerank 等未来调用面只在词表留扩展位。
+- 写入与检索留痕同一旁路纪律：身份缺失放弃该行（fail-closed 不伪造）、
+  独立短超时预算（5s）、失败只记日志不反噬业务主流程；表为 append-only。
+  实现与阈值见 [internal/data/README.md](internal/data/README.md#审计与留痕)。
+
 ### 会话事件流
 
 - 框架六表（`agent_session_states`、`agent_session_events`、
@@ -196,14 +228,15 @@ session_id（会话）
 
 - 脱敏注册表 `pkg/redact` 是日志、审计与复现视图共用的单一代码点：
   `password`/`token` 固定掩码，`tool_param` 按键名清单对 JSON 敏感值掩码，
-  `retrieval` 按 512 rune 截断。
+  `retrieval` 按 512 rune 截断，`model_call` 按 4096 rune 截断。
 - 工具审计的参数/结果摘要分别按 `tool_param` / `retrieval` 脱敏，落库前
   再做 4096 rune 兜底；检索留痕的查询文本与过滤摘要同样处理，过滤摘要
-  截断破坏 JSON 时降级为截断声明。
+  截断破坏 JSON 时降级为截断声明；模型调用留痕的输入/输出摘要按
+  `model_call` 类别脱敏（4096 rune）+ 兜底截断，错误摘要另截 512。
 - 脱敏是类别化的确定性改写，不是内容级全文识别：未登记键名、非 JSON 参数
   与自由文本可能保留原文；会话事件流本身不做脱敏，属敏感数据面。
-- 两张审计表与检索留痕表 append-only，应用无更新/删除面；保留与归档由
-  运维执行（默认全量保留），统一口径见 operations.md
+- 两张审计表、检索留痕表与模型调用留痕表 append-only，应用无更新/删除
+  面；保留与归档由运维执行（默认全量保留），统一口径见 operations.md
   「保留期与归档统一口径」。
 - 会话事件 TTL 与审计/留痕保留期相互独立：可能「审计行在、会话事件已
   过期」或反之；复现前先确认目标证据面是否仍在保留期内。
@@ -222,16 +255,18 @@ session_id（会话）
 | `GET /v1/agent/audit/tool-calls` | 工具调用审计列表或点查 | session_id 或 tool_call_id；默认 20、上限 200 |
 | `GET /v1/agent/audit/confirmations` | 授权确认审计列表或点查 | session_id 或 confirmation_id；默认 20、上限 200 |
 | `GET /v1/agent/retrieval-logs` | 检索留痕列表 | session_id/source；默认 20、上限 200 |
+| `GET /v1/agent/model-calls` | 模型调用留痕列表（复现页「模型调用」面板） | scenario/model_key/status/document_id/created_from/created_to；默认 20、上限 200 |
 | `GET /metrics` | 运行指标 | 链外免认证、只读 |
 
 - 业务与复现端点都在 Kratos 中间件链内，缺令牌 401；参数非法 400，审计
   点查未命中或跨租户 404（不区分存在性），存储故障 500 固定文案。
 - 会话列表、事件窗口与历史快照按 userKey 归属过滤，跨用户不可见。
-- 工具/确认审计与检索留痕的查询面边界是认证 + 租户：仓储经 IdentityTx
-  注入 `app.tenant_id`，RLS 与应用层租户谓词双重强制；它们**按租户不按
-  用户**过滤。前端只提供本人会话入口，但同租户内已认证用户若持有会话 ID，
-  可经 API 读取该会话的证据行。需要用户级最小权限时，应在网关或部署层
-  收口，或扩展端点权限码与用户过滤，不要把当前边界当作按用户隔离。
+- 工具/确认审计、检索留痕与模型调用留痕的查询面边界是认证 + 租户：仓储
+  经 IdentityTx 注入 `app.tenant_id`，RLS 与应用层租户谓词双重强制；它们
+  **按租户不按用户**过滤。前端只提供本人会话入口，但同租户内已认证用户若
+  持有会话 ID，可经 API 读取该会话的证据行（模型调用留痕无会话过滤项，
+  同租户全量可见）。需要用户级最小权限时，应在网关或部署层收口，或扩展
+  端点权限码与用户过滤，不要把当前边界当作按用户隔离。
 - 响应是落库时已脱敏的形态，端点不二次脱敏、不回传原文；原文只在会话
   事件面（历史快照与事件窗口）可见。
 
@@ -290,6 +325,9 @@ session_id（会话）
   语义，不是重复执行。
 - 检索留痕的 pipeline 行没有会话与查询事实（分别为 NULL）；摄取证据用命中
   里的 `document_id` 反查。
+- 模型调用留痕行没有会话事实（`session_id` 恒 NULL，管线调用无会话）；
+  模型/空间解析失败与解析端点未配置的「调用」不留行（无端点事实）。
+  摄取与解析证据用 `document_id` 反查 `kb_document`。
 - 保留期两侧独立：审计或留痕可长于会话事件；会话事件过期后仍可能有审计行
   但无法回放原文，反之亦然。
 
@@ -297,9 +335,10 @@ session_id（会话）
 
 API 是首选；需要跨会话或按 trace 批量核对时，运维可用只读 SQL 直查。
 表结构以
-[schema/95_agent_audit.sql](internal/data/pg_sqlc/sqlc/schema/95_agent_audit.sql)
-与
+[schema/95_agent_audit.sql](internal/data/pg_sqlc/sqlc/schema/95_agent_audit.sql)、
 [schema/97_agent_retrieval_log.sql](internal/data/pg_sqlc/sqlc/schema/97_agent_retrieval_log.sql)
+与
+[schema/99_model_call_log.sql](internal/data/pg_sqlc/sqlc/schema/99_model_call_log.sql)
 为准。以 `grape_u` 连接时 RLS 生效，须在事务内先设租户；超级用户直查会
 绕过 RLS，需自律带 `tenant_id` 谓词。
 
@@ -319,6 +358,14 @@ LIMIT 100;
 SELECT created_at, source, status, query_text, requested_top_k,
        effective_top_k, filter_summary, hits, duration_ms
 FROM public.agent_retrieval_log
+WHERE tenant_id = :tenant_id AND trace_id = :trace_id
+ORDER BY created_at DESC, id DESC;
+
+-- 同一 trace 的模型调用证据（摄取/解析链路的外部调用事实）
+SELECT created_at, scenario, status, model_key, endpoint, document_id,
+       input_summary, output_summary, input_tokens, output_tokens,
+       duration_ms, error
+FROM public.agent_model_call_log
 WHERE tenant_id = :tenant_id AND trace_id = :trace_id
 ORDER BY created_at DESC, id DESC;
 COMMIT;

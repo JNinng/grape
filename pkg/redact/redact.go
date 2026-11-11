@@ -29,6 +29,9 @@ const (
 	CategoryToolParam = "tool_param"
 	// CategoryRetrieval 检索内容（截断 + 可配置保留长度）。
 	CategoryRetrieval = "retrieval"
+	// CategoryModelCall 模型调用留痕的输入/输出摘要（rune 截断 4096，
+	// 对齐审计摘要的兜底口径）。
+	CategoryModelCall = "model_call"
 )
 
 // Redactor 是脱敏器的统一形态：输入原值，输出脱敏值。实现必须确定、
@@ -267,6 +270,11 @@ func (r *Registry) Redact(category, value string) (string, bool) {
 // defaultRetrievalKeep 是 retrieval 类别的默认保留 rune 数。
 const defaultRetrievalKeep = 512
 
+// defaultModelCallKeep 是 model_call 类别的默认保留 rune 数：对齐审计
+// 摘要的 4096 rune 兜底口径（模型输入/输出摘要是证据面，截断兜底而非
+// 内容级压缩）。
+const defaultModelCallKeep = 4096
+
 // defaultToolParamKeys 是工具参数敏感键的起步清单：覆盖常见口令/令牌/
 // 密钥类参数名。业务工具面扩张时由装配方按需替换（Register 覆盖）。
 var defaultToolParamKeys = []string{
@@ -274,11 +282,11 @@ var defaultToolParamKeys = []string{
 	"refresh_token", "api_key", "apikey", "api_key_cipher", "apikeycipher", "authorization",
 }
 
-// NewStandardRegistry 构造含四类骨架默认值的注册表：password/token 为
+// NewStandardRegistry 构造含骨架默认值的注册表：password/token 为
 // 固定掩码，tool_param 为起步键名清单 + 掩码，retrieval 为 512 rune
-// 截断（截断尾部带英文标记以区别于天然短文本）。默认值面向「不出错」
-// 而非「最合适」——各消费面应在装配期按需 Register 覆盖（如 token 换
-// keyed 哈希以支持关联）。
+// 截断，model_call 为 4096 rune 截断（截断尾部带英文标记以区别于天然
+// 短文本）。默认值面向「不出错」而非「最合适」——各消费面应在装配期
+// 按需 Register 覆盖（如 token 换 keyed 哈希以支持关联）。
 func NewStandardRegistry() *Registry {
 	r := NewRegistry()
 	mask := NewMask("[redacted]")
@@ -295,6 +303,7 @@ func NewStandardRegistry() *Registry {
 		{CategoryToken, mask},
 		{CategoryToolParam, filter},
 		{CategoryRetrieval, NewTruncate(defaultRetrievalKeep, "...(truncated)")},
+		{CategoryModelCall, NewTruncate(defaultModelCallKeep, "...(truncated)")},
 	} {
 		if err := r.Register(pair.category, pair.red); err != nil {
 			panic("redact: standard registry defaults are invalid: " + err.Error())

@@ -186,6 +186,7 @@ func Test_server_span_exported_for_agent_route_when_telemetry_enabled(t *testing
 		nil,
 		nil,
 		nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		nil, nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)

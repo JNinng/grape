@@ -86,6 +86,11 @@ func deployFiles() []string {
 		// 数（不返回行数据，不构成跨租户读面）；入 sqlc catalog，
 		// 只依赖 schema/20_tenant.sql。
 		"98_tenant_guard.sql",
+		// Agent 模型调用留痕：管线侧模型/类模型调用面（文本生成/向量化/
+		// 外部解析）的证据表 + 索引 + 租户 RLS；入 sqlc catalog
+		// （queries/agent_model_call_log.sql），策略随域文件走，
+		// grape_u 的 DML 授权由 role.sql 默认权限覆盖。
+		"schema/99_model_call_log.sql",
 	)
 }
 

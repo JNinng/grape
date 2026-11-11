@@ -1,7 +1,7 @@
 # 数据库部署
 
 grape 关系存储（PostgreSQL）的部署：按序执行
-`internal/data/pg_sqlc/sqlc/` 下的 37 个 SQL 文件，最后补一次连接授权。
+`internal/data/pg_sqlc/sqlc/` 下的 38 个 SQL 文件，最后补一次连接授权。
 执行顺序的单一事实源是
 [deploy.go](internal/data/pg_sqlc/deploy/deploy.go) 的 `DeployFiles` 清单
 （dbdeploy 执行生产清单；集成测试经 `TestDeployFiles()` 追加测试种子），
@@ -29,7 +29,7 @@ dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
 
 ## 执行顺序
 
-按序执行 26 个步骤、37 个文件，顺序不能变（步骤 16 的种子包按
+按序执行 27 个步骤、38 个文件，顺序不能变（步骤 16 的种子包按
 `seed.Files` 逐文件执行）。`queries/` 是 sqlc 的 Go 生成输入，不执行。
 
 | 步骤 | 文件 | 作用 | 关键约束 |
@@ -60,6 +60,7 @@ dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
 | 24 | 98_config_write.sql | 三个受控写函数 | 尾部；依赖 9；EXECUTE 默认 PUBLIC |
 | 25 | 98_model_write.sql | 平台模型建/改/软删三个受控写函数 | 尾部；依赖 11；EXECUTE 默认 PUBLIC |
 | 26 | 98_tenant_guard.sql | 租户删除前置计数函数 | 尾部；依赖 2；`CREATE OR REPLACE` 可重复 |
+| 27 | schema/99_model_call_log.sql | 模型调用留痕表、索引与租户 RLS | 同 20 追加口径 |
 
 手工执行按上表顺序；`role.sql` 的口令占位符需先替换，最后补
 `GRANT CONNECT`（见下节）。
@@ -250,9 +251,9 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   加条目 + 对应维度索引，装配期探针逐维度对账）；单维旧表升级到多空间形状
   是结构变更，走全量重建；换默认空间的迁移靠应用侧重摄取（source_id 幂等
   覆盖并清除旧切片）。
-- **95_agent_audit.sql / 97_agent_retrieval_log.sql**：历史库追加对象，以部署
-  角色（与 role.sql 同一执行者）执行；裸创建，重复执行报错；`grape_u` 的
-  DML 授权由 role.sql 默认权限覆盖。
+- **95_agent_audit.sql / 97_agent_retrieval_log.sql / 99_model_call_log.sql**：
+  历史库追加对象，以部署角色（与 role.sql 同一执行者）执行；裸创建，重复
+  执行报错；`grape_u` 的 DML 授权由 role.sql 默认权限覆盖。
 - **96_agent_grant.sql**：历史库追加对象，以超级用户执行。授权管理权限码的
   种子（菜单 252/253 与角色 101 映射）随 `050_sys_menu.sql` /
   `060_sys_role_menu.sql` 执行；已部署库在种子执行前判定返回 403，属预期

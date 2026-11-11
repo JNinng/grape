@@ -6,6 +6,11 @@
 // 只实现单轮 user message 生成的最小面，不引入框架 model 与其 SDK 依赖；
 // biz 禁止触达 agent 框架适配层，本目录即管线侧文本生成的唯一落点。测试
 // 一律以 httptest 替身服务进行，禁真实网络。
+//
+// 模型调用留痕：目录注入 biz.ModelCallObserver（nil 即零开销跳过），在
+// 解析出端点事实之后、调用终态（含 error）观察一次调用一行；模型解析
+// 失败（无端点事实）不留行。场景取 ctx 声明（biz.WithModelCallScene），
+// 缺失回落 ingest_prefix；文档 ID 取 ctx 声明（biz.WithModelCallDocument）。
 package openaicompleter
 
 import (
@@ -33,12 +38,12 @@ const defaultTimeout = 30 * time.Second
 
 // New 构造 biz.Completer。无独立设施开关：可用性完全由文本模型解析决定
 // （租户未配置文本模型时 Complete 报 ErrTextModelUnavailable，消费方按
-// 质量增强降级处理）。
-func New(catalog biz.TextModelCatalog) (biz.Completer, func(), error) {
+// 质量增强降级处理）。observer 是模型调用留痕的观察面挂点，nil 即不留痕。
+func New(catalog biz.TextModelCatalog, observer biz.ModelCallObserver) (biz.Completer, func(), error) {
 	if catalog == nil {
 		return nil, nil, errors.New("openaicompleter: text model catalog is required")
 	}
-	return &dynamicCompleter{catalog: catalog, clients: map[clientKey]*http.Client{}}, func() {}, nil
+	return &dynamicCompleter{catalog: catalog, observer: observer, clients: map[clientKey]*http.Client{}}, func() {}, nil
 }
 
 // clientKey 是 HTTP 客户端缓存键：端点与超时共同决定连接行为。
@@ -50,7 +55,8 @@ type clientKey struct {
 // dynamicCompleter 是按当前身份动态解析文本模型端点的 chat completions
 // 客户端。
 type dynamicCompleter struct {
-	catalog biz.TextModelCatalog
+	catalog  biz.TextModelCatalog
+	observer biz.ModelCallObserver
 
 	mu      sync.Mutex
 	clients map[clientKey]*http.Client
@@ -69,16 +75,26 @@ type completeRequest struct {
 	Messages []completeMessage `json:"messages"`
 }
 
+// completeUsage 是响应体的 token 用量段（留痕面消费；端点未上报为零值，
+// 落库 NULL）。
+type completeUsage struct {
+	PromptTokens     int32 `json:"prompt_tokens"`
+	CompletionTokens int32 `json:"completion_tokens"`
+}
+
 type completeResponse struct {
 	Choices []struct {
 		Message struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage completeUsage `json:"usage"`
 }
 
 // Complete 实现 biz.Completer：按当前身份解析文本模型端点，单轮生成。
-// 空白 prompt 拒绝；非 2xx、响应缺 choices[0] 均为错误。
+// 空白 prompt 拒绝；非 2xx、响应缺 choices[0] 均为错误。模型解析成功
+// 即为端点事实成立，此后无论成败都以一次调用一行留痕（调用终态含
+// error）；模型解析失败无端点事实，不留行。
 func (c *dynamicCompleter) Complete(ctx context.Context, prompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("openaicompleter: completion prompt is required")
@@ -87,9 +103,20 @@ func (c *dynamicCompleter) Complete(ctx context.Context, prompt string) (string,
 	if err != nil {
 		return "", err
 	}
+	start := time.Now()
+	content, usage, callErr := c.callChatCompletions(ctx, spec, prompt)
+	c.observeCall(ctx, spec.Key, strings.TrimRight(spec.BaseURL, "/")+"/chat/completions", prompt, content, usage, callErr, time.Since(start))
+	return content, callErr
+}
+
+// callChatCompletions 执行协议调用并返回生成文本与用量段：端点事实已
+// 解析，本函数内任何失败（配置残缺、协议错误、非 2xx）都是调用终态，
+// 由调用方留痕。
+func (c *dynamicCompleter) callChatCompletions(ctx context.Context, spec biz.TextModelSpec, prompt string) (string, completeUsage, error) {
+	var usage completeUsage
 	baseURL := strings.TrimRight(spec.BaseURL, "/")
 	if baseURL == "" {
-		return "", fmt.Errorf("openaicompleter: text model %s has no base_url", spec.Key)
+		return "", usage, fmt.Errorf("openaicompleter: text model %s has no base_url", spec.Key)
 	}
 	timeout := spec.Timeout
 	if timeout <= 0 {
@@ -101,11 +128,11 @@ func (c *dynamicCompleter) Complete(ctx context.Context, prompt string) (string,
 		Messages: []completeMessage{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
-		return "", fmt.Errorf("openaicompleter: marshal request: %w", err)
+		return "", usage, fmt.Errorf("openaicompleter: marshal request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return "", fmt.Errorf("openaicompleter: build request: %w", err)
+		return "", usage, fmt.Errorf("openaicompleter: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if spec.APIKey != "" {
@@ -113,24 +140,54 @@ func (c *dynamicCompleter) Complete(ctx context.Context, prompt string) (string,
 	}
 	resp, err := c.client(clientKey{baseURL: baseURL, timeout: timeout}).Do(req)
 	if err != nil {
-		return "", fmt.Errorf("openaicompleter: call chat completions endpoint: %w", err)
+		return "", usage, fmt.Errorf("openaicompleter: call chat completions endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return "", fmt.Errorf("openaicompleter: read response: %w", err)
+		return "", usage, fmt.Errorf("openaicompleter: read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", fmt.Errorf("openaicompleter: chat completions endpoint returned status %d: %s", resp.StatusCode, truncateBody(body))
+		return "", usage, fmt.Errorf("openaicompleter: chat completions endpoint returned status %d: %s", resp.StatusCode, truncateBody(body))
 	}
 	var parsed completeResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return "", fmt.Errorf("openaicompleter: decode response: %w", err)
+		return "", usage, fmt.Errorf("openaicompleter: decode response: %w", err)
 	}
 	if len(parsed.Choices) == 0 {
-		return "", errors.New("openaicompleter: chat completions response carries no choices")
+		return "", parsed.Usage, errors.New("openaicompleter: chat completions response carries no choices")
 	}
-	return parsed.Choices[0].Message.Content, nil
+	return parsed.Choices[0].Message.Content, parsed.Usage, nil
+}
+
+// observeCall 构造留痕载体并交给观察面：场景取 ctx 声明，缺失回落
+// ingest_prefix（补块前缀是本目录当前唯一的常驻消费面）；文档 ID 取 ctx
+// 声明（摄取链路注入），缺失落 NULL。观察面为 nil 时零开销跳过。
+func (c *dynamicCompleter) observeCall(ctx context.Context, modelKey, endpoint, prompt, content string, usage completeUsage, callErr error, elapsed time.Duration) {
+	if c.observer == nil {
+		return
+	}
+	scenario := biz.ModelCallSceneFromContext(ctx)
+	if scenario == "" {
+		scenario = biz.ModelCallScenarioIngestPrefix
+	}
+	entry := &biz.ModelCallEntry{
+		Scenario:      scenario,
+		ModelKey:      modelKey,
+		Endpoint:      endpoint,
+		InputSummary:  prompt,
+		OutputSummary: content,
+		InputTokens:   usage.PromptTokens,
+		OutputTokens:  usage.CompletionTokens,
+		DurationMS:    elapsed.Milliseconds(),
+		Status:        biz.ModelCallStatusSuccess,
+		DocumentID:    biz.ModelCallDocumentFromContext(ctx),
+	}
+	if callErr != nil {
+		entry.Status = biz.ModelCallStatusError
+		entry.Error = callErr.Error()
+	}
+	c.observer.ObserveModelCall(ctx, entry)
 }
 
 // client 取或构造按端点 + 超时复用的 HTTP 客户端。

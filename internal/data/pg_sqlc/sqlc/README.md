@@ -1,6 +1,6 @@
 # sqlc — SQL 对象索引
 
-关系存储的声明资产目录：`schema/` 十三个域文件（表结构与注释 DSL）、
+关系存储的声明资产目录：`schema/` 十五个域文件（表结构与注释 DSL）、
 `rls.sql` / `operate.sql` / `expose.sql`、`96_agent_grant.sql`、
 `98_*.sql` 函数声明文件与 `queries/`。本文件是这些对象里函数与命名查询的
 索引：签名、属性与返回值约定。
@@ -37,11 +37,12 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 16 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
 | 17 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
 | 18 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
-| 19 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/介质/模型/对象读写（22 个文件、194 条查询） |
-| 20 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
-| 21 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
-| 22 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
-| 23 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
+| 19 | schema/99_model_call_log.sql | Agent 模型调用留痕表（append-only）与租户 RLS |
+| 20 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/模型调用/知识库/介质/模型/对象读写（23 个文件、197 条查询） |
+| 21 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
+| 22 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
+| 23 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
+| 24 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
 | — | role.sql | grape_u / test_u 角色、schema 使用权、DML 授权与 RLS 会话变量写入权 |
 | — | [seed/](seed/) | 生产默认种子：根租户自举数据，12 个 SQL 文件，顺序由 [seed.go](seed/seed.go) 声明 |
 | — | test_seed.sql | 集成测试种子（`t-test-*` 租户），仅由 `TestDeployFiles` 在生产清单后追加 |
@@ -60,11 +61,12 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/schema.md)
 为准。
 
-`sqlc.yaml` 的 schema 列表 = `schema/` 十四个域文件（10–90 九个域 +
-91_knowledge + 92_model + 93_oss + 95_agent_audit + 97_agent_retrieval_log）+
+`sqlc.yaml` 的 schema 列表 = `schema/` 十五个域文件（10–90 九个域 +
+91_knowledge + 92_model + 93_oss + 95_agent_audit + 97_agent_retrieval_log +
+99_model_call_log）+
 `rls.sql` / `operate.sql` / `expose.sql` + `96_agent_grant.sql` +
 `98_menu_write.sql` + `98_config_write.sql` + `98_model_write.sql` +
-`98_tenant_guard.sql`；queries 列表 = `queries/` 二十一个文件。函数声明文件
+`98_tenant_guard.sql`；queries 列表 = `queries/` 二十三个文件。函数声明文件
 只提供 queries 调用所需签名（受控写、删除前置计数、权限判定），函数体是否
 存在由部署顺序保证。
 
@@ -589,6 +591,18 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 租户边界与审计同型：RLS 为主，读侧 WHERE 的同源租户谓词兜底；写入侧租户
 一律取会话变量，调用方无法指定。
 
+### agent_model_call_log.sql（Agent 模型调用留痕读写）
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| InsertAgentModelCallLog | :one | 留痕字段（可空 narg）→ AgentModelCallLog | 写入；租户取会话，写入者与用户同值 |
+| ListAgentModelCallLogs | :many | 场景/模型键/状态/文档/时间范围（可空）/limit/offset → 行集 | 按过滤条件分页（时间倒序，供复现页） |
+| CountAgentModelCallLogs | :one | 同 List 过滤（可空）→ int64 | 与 List 同条件计数 |
+
+租户边界与检索留痕同型：RLS 为主，读侧 WHERE 的同源租户谓词兜底；写入侧
+租户一律取会话变量，调用方无法指定。表 append-only、无 CHECK（scenario
+词表由应用层把门，见 [biz/model_call_log.go](../../../biz/model_call_log.go)）。
+
 注意：命名查询生成的是 `*Queries` 上的方法（`gen.New(db)` 实例化后调用）；
 动态查询生成的是顶层函数（`ParseXxx` / `ListXxx` / `UpdateXxx`，db 作参数
 显式传）。两种风格不要混淆。
@@ -599,7 +613,8 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 且表主不豁免（FORCE）；会话未设置变量时什么都读写不到。策略随域文件走
 （基线在 `rls.sql`、范围版本在 `expose.sql`、Agent 审计在
 `schema/95_agent_audit.sql`、工具授权在 `96_agent_grant.sql`、检索留痕在
-`schema/97_agent_retrieval_log.sql`）。`sys_tenant` 额外允许命中自身 `id`；
+`schema/97_agent_retrieval_log.sql`、模型调用留痕在
+`schema/99_model_call_log.sql`）。`sys_tenant` 额外允许命中自身 `id`；
 `sys_config` 无租户列，不设 RLS。
 
 `kb_library` / `kb_document` / `kb_file` 为普通租户表（ENABLE + FORCE，单一

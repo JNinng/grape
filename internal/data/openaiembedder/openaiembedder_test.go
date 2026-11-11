@@ -76,7 +76,7 @@ func (r *confSpaceResolver) ResolveEmbeddingSpace(_ context.Context, key string)
 // newEmbedder 按配置构造 embedder（生产由模型目录解析空间，测试用 conf
 // 替身）。
 func newEmbedder(c *conf.Vector) (biz.Embedder, func(), error) {
-	return New(resolverFromConf(c), c)
+	return New(resolverFromConf(c), c, nil)
 }
 
 // stubEndpoint 起一个记录请求的替身 embeddings 端点，按 vector 返回
@@ -98,7 +98,7 @@ func stubEndpoint(t *testing.T, vector []float64, status int) (*httptest.Server,
 }
 
 func TestEmbedder_when_facility_disabled_returns_placeholder(t *testing.T) {
-	e, cleanup, err := New(nil, &conf.Vector{Enabled: false})
+	e, cleanup, err := New(nil, &conf.Vector{Enabled: false}, nil)
 	if err != nil {
 		t.Fatalf("New(disabled) = %v, want disabled placeholder", err)
 	}

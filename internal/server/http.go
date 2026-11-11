@@ -59,6 +59,7 @@ func NewHTTPServer(
 	agentEventWindow *service.AgentEventWindowService,
 	agentAudit *service.AgentAuditService,
 	agentRetrieval *service.AgentRetrievalService,
+	agentModelCall *service.AgentModelCallService,
 	knowledge *service.KnowledgeService,
 	model *service.ModelService,
 	s3 oss.S3Handler,
@@ -152,6 +153,11 @@ func NewHTTPServer(
 	// 路由（/v1/agent/retrieval-logs）不在 agent 前缀内，注册顺序无冲突。
 	if agentRetrieval != nil {
 		agentRetrieval.RegisterHTTP(srv)
+	}
+	// agentModelCall 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
+	// 路由（/v1/agent/model-calls）不在 agent 前缀内，注册顺序无冲突。
+	if agentModelCall != nil {
+		agentModelCall.RegisterHTTP(srv)
 	}
 	// agent 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
 	if agent != nil {

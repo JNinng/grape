@@ -87,6 +87,7 @@ func newPermissionTestServer(t *testing.T, repo biz.PermissionRepo, featureFlag 
 		nil,
 		nil,
 		nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		nil, nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)

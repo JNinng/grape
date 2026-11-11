@@ -65,6 +65,7 @@ func newChunksRouteTestServer(t *testing.T, store biz.VectorStore) *kratoshttp.S
 		permStubMiddleware(),
 		ops.NewMetricsHandler(nil, nil),
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		knowledge,
 		nil, nil, nil,
 	)

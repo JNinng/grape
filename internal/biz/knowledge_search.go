@@ -121,7 +121,9 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 	if err != nil {
 		return nil, fmt.Errorf("biz: resolve default embedder for search: %w", err)
 	}
-	vector, err := uc.embedder.Embed(ctx, space, query)
+	// 模型调用留痕场景在此声明（embed_query）：检索查询向量化无文档
+	// 事实，document_id 恒 NULL。
+	vector, err := uc.embedder.Embed(WithModelCallScene(ctx, ModelCallScenarioEmbedQuery), space, query)
 	if err != nil {
 		return nil, fmt.Errorf("biz: embed search query: %w", err)
 	}

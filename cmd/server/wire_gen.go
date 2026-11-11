@@ -139,7 +139,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	embedder, cleanup7, err := openaiembedder.New(modelResolver, confVector)
+	modelCallLogRepo := pg_sqlc.NewModelCallLogRepo(pg_sqlcData)
+	modelCallLogUsecase := biz.NewModelCallLogUsecase(modelCallLogRepo, registry)
+	embedder, cleanup7, err := openaiembedder.New(modelResolver, confVector, modelCallLogUsecase)
 	if err != nil {
 		cleanup6()
 		cleanup5()
@@ -149,7 +151,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	completer, cleanup8, err := openaicompleter.New(modelResolver)
+	completer, cleanup8, err := openaicompleter.New(modelResolver, modelCallLogUsecase)
 	if err != nil {
 		cleanup7()
 		cleanup6()
@@ -198,7 +200,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	fileParser, cleanup11, err := docparse.New(docParse)
+	fileParser, cleanup11, err := docparse.New(docParse, modelCallLogUsecase)
 	if err != nil {
 		cleanup10()
 		cleanup9()
@@ -279,6 +281,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
+	agentModelCallService := service.NewAgentModelCallService(modelCallLogUsecase)
 	s3Handler, cleanup14, err := oss.NewHandler(confOSS, pg_sqlcData)
 	if err != nil {
 		cleanup13()
@@ -297,7 +300,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, knowledgeService, modelService, s3Handler, webHandler)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, agentModelCallService, knowledgeService, modelService, s3Handler, webHandler)
 	if err != nil {
 		cleanup14()
 		cleanup13()

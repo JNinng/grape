@@ -165,6 +165,7 @@ func Test_new_http_server_rejects_enabled_cors_without_origins(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		// 租户管理服务本文件用例不触达，传 nil。
 		nil, nil, nil, nil, )
 	if err == nil || !strings.Contains(err.Error(), "allowed_origins") {
@@ -232,6 +233,7 @@ func newCorsTestServer(t *testing.T, confServer *conf.Server) *agentTestServer {
 		nil,
 		nil,
 		nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		// 租户管理服务本文件用例不触达，传 nil。
 		nil, nil, nil, nil, )
 	if err != nil {

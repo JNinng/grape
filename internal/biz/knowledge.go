@@ -594,6 +594,10 @@ func (uc *KnowledgeUsecase) ingestDocument(ctx context.Context, auth Identity, l
 	if doc.SourceName != nil && strings.TrimSpace(*doc.SourceName) != "" {
 		sourceName = *doc.SourceName
 	}
+	// 模型调用留痕的作用文档事实在此注入（kb_document.id）：摄取管线的
+	// 向量化调用与文档解析调用都经 ctx 载体读取（ModelCallDocument），
+	// 管线直调（无 kb 行）缺失落 NULL，不伪造归属。
+	ctx = WithModelCallDocument(ctx, doc.ID)
 	result, err := uc.ingest.Ingest(ctx, &Document{
 		ID:             idString(doc.ID),
 		Kind:           kind,

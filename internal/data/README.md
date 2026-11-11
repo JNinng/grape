@@ -45,14 +45,15 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
 | [pg_sqlc/vector/vector_repo.go](pg_sqlc/vector/vector_repo.go) | 多嵌入空间向量介质的装配探针、metadata 条件翻译与手写参数化 SQL |
 | [pg_sqlc/vector/retrieval_log.go](pg_sqlc/vector/retrieval_log.go) | 检索留痕装饰器与 wire 供给包装 `VectorStoreSupply` |
+| [pg_sqlc/model_call_repo.go](pg_sqlc/model_call_repo.go) | 模型调用留痕仓储（append-only 写入 + 过滤分页读）；场景/状态词表复检是落库前最后把门 |
 | [pg_sqlc/oss/server.go](pg_sqlc/oss/server.go) | 内嵌 S3 服务的 /s3/ 挂载构造（挂载决策矩阵、外层 SigV4 校验 + 前缀剥离），专题见 [pg_sqlc/oss/README.md](pg_sqlc/oss/README.md) |
 | [pg_sqlc/oss/backend.go](pg_sqlc/oss/backend.go) | gofakes3.Backend 的 PG 实现（oss_object 介质：覆盖写、Range、列举、限流、复制） |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
 | [oss_config.go](oss_config.go) | biz.OSSConfigResolver 实现：sys_config oss.* 六键现场解析，键缺即按设施未配置拒绝 |
 | [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
-| [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位 |
-| [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存 |
-| [docparse/docparse.go](docparse/docparse.go) | biz.FileParser 两档实现：嗅探 MIME 是唯一路由依据；外部档 POST {endpoint}/parse（嗅探事实走自定义头），未配置端点按组合错误拒绝 |
+| [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 embed_document，输出记维度说明） |
+| [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 ingest_prefix，usage 随响应体采集） |
+| [docparse/docparse.go](docparse/docparse.go) | biz.FileParser 两档实现：嗅探 MIME 是唯一路由依据；外部档 POST {endpoint}/parse（嗅探事实走自定义头），未配置端点按组合错误拒绝；注入 ModelCallObserver 只在外部档留痕（无场景回落放弃该行，原件字节不落留痕记 size/sha256） |
 
 ## 事务门面
 
@@ -73,10 +74,23 @@ SQL 对象的签名、属性与三态返回值见
 
 ## 审计与留痕
 
-Agent 审计仓储 [audit_repo.go](pg_sqlc/audit_repo.go) 与检索留痕仓储
-[retrieval_repo.go](pg_sqlc/retrieval_repo.go) 只做 append-only 写入与
+Agent 审计仓储 [audit_repo.go](pg_sqlc/audit_repo.go)、检索留痕仓储
+[retrieval_repo.go](pg_sqlc/retrieval_repo.go) 与模型调用留痕仓储
+[model_call_repo.go](pg_sqlc/model_call_repo.go) 只做 append-only 写入与
 分页读；租户边界以 RLS 为主，读侧 WHERE 再带同源租户谓词作应用层兜底，
 RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原子落两表。
+
+模型调用留痕的写入方是 `biz.ModelCallObserver` 观察面
+（`ModelCallLogUsecase` 实现，wire 绑定为同一实例）：三个模型/类模型调用
+能力目录（openaicompleter / openaiembedder / docparse）在「解析出端点事实
+之后、调用终态（含 error）」构造载体并交给观察面——身份缺失放弃该行、
+场景词表由应用层把门、脱敏（`model_call` 类别 4096 rune）与错误摘要
+（512）在观察面完成、独立 5s 短超时旁路写入、失败只记日志不反噬主流程。
+场景与作用文档由调用链路经 ctx 载体声明（`biz.WithModelCallScene` /
+`WithModelCallDocument`），缺失按目录声明的缺省回落（embed→embed_document、
+completer→ingest_prefix；docparse 无回落放弃该行），不伪造其他值。
+向量产物与原件字节不落留痕（embedder 记维度说明、docparse 记
+size/sha256）。agent 对话 LLM 不经本面（会话事件流已承载，避免双写）。
 
 ## 动态查询 schema 出口
 
@@ -223,7 +237,7 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
 测试按主题覆盖，不逐文件列断言：
 
 - **租户隔离与事务纪律**：未设 `app.tenant_id` 读写全拒、跨租户不可见；
-  审计、检索留痕与向量面在 RLS 关闭时仍不越租户。
+  审计、检索留痕、模型调用留痕与向量面在 RLS 关闭时仍不越租户。
 - **仓储读写边界**：固定 CRUD 的软删复用、唯一冲突与错误映射
   （NotFound / AlreadyExists / InvalidArgument）；动态 List 的过滤、排序、
   分页，以及 `total` 不随游标漂移。
@@ -241,6 +255,6 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   追加关系。
 
 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 及向量、审计、
-检索留痕、内嵌 OSS 四组专属 DSN 门控（分别使用 `grape_vector_test`、
-`grape_audit_test`、`grape_retrieval_test`、`grape_oss_test` 库），
-未设置时自动跳过。
+检索留痕、模型调用留痕、内嵌 OSS 等专属 DSN 门控（分别使用 `grape_vector_test`、
+`grape_audit_test`、`grape_retrieval_test`、`grape_model_call_test`、
+`grape_oss_test` 等库），未设置时自动跳过。

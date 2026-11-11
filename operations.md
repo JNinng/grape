@@ -175,6 +175,7 @@ ack 的已知限制：**确认决定与运行必须同进程**。live 路径的�
 | ack 未决确认 | **不设 TTL**：保持到决定或会话删除，与会话 TTL 同生命周期 | 无需执行；泄漏指针口径见粘性节备案 |
 | 终态审计（`agent_tool_call_log` / `agent_confirmation_log`） | 证据面，默认全量保留；建议按合规要求定（如 180 天） | 超期行 `DELETE WHERE created_at < now() - interval '…'` 分批删除；归档目标由运维环境定 |
 | 检索留痕（`agent_retrieval_log`） | 同审计口径（append-only 证据面） | 同审计执行口径；两表可共用同一 cron 窗口 |
+| 模型调用留痕（`agent_model_call_log`） | 同审计口径（append-only 证据面） | 同审计执行口径；三张留痕表可共用同一 cron 窗口 |
 | 授权吊销行（`agent_tool_grant.revoked_at` 非空） | 吊销是审计语义行，保留供追溯；查询面已过滤 | 同审计口径批量清理；清理后同键重授无历史可查，属预期 |
 | 向量切片（`agent.agent_document`） | 无独立保留期 | 见下「向量孤儿」结论 |
 | 对象存储（`oss_object`） | 无独立保留期，随业务写入/删除（`biz.ObjectStore`） | 无清理任务；容量治理归运维（设施面无 RLS，按 bucket/时间的 SQL 清理即可），口径见上「内嵌对象存储」节 |

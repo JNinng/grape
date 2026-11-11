@@ -50,11 +50,11 @@ func stubEndpoint(t *testing.T, content string, status int) (*httptest.Server, *
 }
 
 func newCompleterForTest(baseURL string) (biz.Completer, func(), error) {
-	return New(&stubCatalog{spec: biz.TextModelSpec{Key: "glm-4", BaseURL: baseURL, Model: "glm-4", APIKey: "test-key", Timeout: time.Second}})
+	return New(&stubCatalog{spec: biz.TextModelSpec{Key: "glm-4", BaseURL: baseURL, Model: "glm-4", APIKey: "test-key", Timeout: time.Second}}, nil)
 }
 
 func TestCompleter_when_nil_catalog_rejected(t *testing.T) {
-	if _, _, err := New(nil); err == nil {
+	if _, _, err := New(nil, nil); err == nil {
 		t.Fatal("New(nil catalog) = nil error, want rejection")
 	}
 }
@@ -120,7 +120,7 @@ func TestCompleter_when_request_carries_bearer_key_and_chat_path(t *testing.T) {
 
 func TestCompleter_when_catalog_fails_passthrough_error(t *testing.T) {
 	// 模型解析失败（租户未配置文本模型等）按原错误透传，消费方据此降级。
-	c, cleanup, err := New(&stubCatalog{err: biz.ErrTextModelUnavailable})
+	c, cleanup, err := New(&stubCatalog{err: biz.ErrTextModelUnavailable}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -168,7 +168,7 @@ func TestCompleter_when_prompt_blank_rejected(t *testing.T) {
 }
 
 func TestCompleter_when_spec_missing_base_url_rejected(t *testing.T) {
-	c, cleanup, err := New(&stubCatalog{spec: biz.TextModelSpec{Key: "glm-4", Model: "glm-4"}})
+	c, cleanup, err := New(&stubCatalog{spec: biz.TextModelSpec{Key: "glm-4", Model: "glm-4"}}, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

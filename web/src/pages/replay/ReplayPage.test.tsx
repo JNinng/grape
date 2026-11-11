@@ -22,11 +22,15 @@ vi.mock('../../api/agentRetrievalLogs', () => ({
 vi.mock('../../api/agentSessionUsage', () => ({
   fetchSessionUsage: vi.fn(),
 }))
+vi.mock('../../api/agentModelCalls', () => ({
+  fetchModelCalls: vi.fn(),
+}))
 
 import { fetchAgentSessions } from '../../api/agentSessions'
 import { fetchConfirmationAudits, fetchToolCallAudits } from '../../api/agentAudit'
 import { fetchRetrievalLogs } from '../../api/agentRetrievalLogs'
 import { fetchSessionUsage } from '../../api/agentSessionUsage'
+import { fetchModelCalls } from '../../api/agentModelCalls'
 import { fetchHistorySnapshot } from '../../agui/history'
 import { ThemeProvider } from '../../components/theme-provider'
 import { ReplayPage } from './ReplayPage'
@@ -37,6 +41,7 @@ const mockFetchToolCalls = vi.mocked(fetchToolCallAudits)
 const mockFetchConfirmations = vi.mocked(fetchConfirmationAudits)
 const mockFetchRetrievals = vi.mocked(fetchRetrievalLogs)
 const mockFetchSessionUsage = vi.mocked(fetchSessionUsage)
+const mockFetchModelCalls = vi.mocked(fetchModelCalls)
 
 function loginReply(): LoginReply {
   return {
@@ -203,6 +208,37 @@ beforeEach(() => {
       createdAt: '2026-01-01T00:00:03Z',
     },
   ])
+  mockFetchModelCalls.mockResolvedValue([
+    {
+      id: 31,
+      scenario: 'embed_document',
+      status: 'success',
+      modelKey: 'bge-m1024',
+      endpoint: 'http://embed.example/v1/embeddings',
+      documentId: 42,
+      inputSummary: 'chunk body',
+      outputSummary: 'embedding vector of 1024 dimensions (vector not persisted)',
+      inputTokens: 96,
+      outputTokens: null,
+      durationMs: 18,
+      createdAt: '2026-01-01T00:00:03Z',
+    },
+    {
+      id: 32,
+      scenario: 'parse_document',
+      status: 'error',
+      modelKey: '',
+      endpoint: 'http://ocr.example/parse',
+      documentId: 7,
+      inputSummary: 'mime=application/pdf filename=paper.pdf size=36 sha256=8181',
+      outputSummary: '',
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: 1200,
+      error: 'external parse service status 422: parse failed',
+      createdAt: '2026-01-01T00:00:04Z',
+    },
+  ])
 })
 
 afterEach(() => {
@@ -265,6 +301,15 @@ describe('ReplayPage four-facet evidence view', () => {
     // 未选中链路：证据行中性呈现，不预高亮也不灰显。
     expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-brand-soft', 'opacity-40')
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
+  })
+
+  it('renders_the_model_call_panel_at_page_level', async () => {
+    // 模型调用留痕是管线侧证据面（无会话事实），不随会话选择联动，独立
+    // 装载：页面级 region 可见并按 mock 数据渲染行事实。
+    renderReplay()
+    const region = screen.getByRole('region', { name: '模型调用' })
+    expect(await within(region).findByText('bge-m1024')).toBeInTheDocument()
+    expect(within(region).getByText('parse_document/error')).toBeInTheDocument()
   })
 
   it('renders_start_time_and_turn_latency_for_replay_items', async () => {

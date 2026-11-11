@@ -5,6 +5,12 @@
 // 不引入框架 embedder 与其 SDK 依赖；每次响应按解析出的空间维度复核，
 // 端点维度漂移在调用点显式报错。测试一律以 httptest 替身服务进行，禁真实
 // 网络。
+//
+// 模型调用留痕：目录注入 biz.ModelCallObserver（nil 即零开销跳过），在
+// 解析出空间端点事实之后、调用终态（含 error）观察一次调用一行；空间
+// 解析失败（无端点事实）不留行。输出摘要只记维度说明（向量不落库）。
+// 场景取 ctx 声明（biz.WithModelCallScene），缺失回落 embed_document；
+// 文档 ID 取 ctx 声明（biz.WithModelCallDocument）。
 package openaiembedder
 
 import (
@@ -34,8 +40,9 @@ const defaultTimeout = 30 * time.Second
 // New 构造 biz.Embedder。conf.vector.enabled=false 时返回禁用占位实现（不发
 // 网络请求）；启用时先经 conf.VectorSpaces 校验空间清单 fail-fast，实际
 // 端点则由 resolver 在每次调用时解析。模型真实产出维度无法离线探知，
-// 维度对账在每次 Embed 响应复核与存储层索引维度对账。
-func New(resolver biz.EmbedderResolver, c *conf.Vector) (biz.Embedder, func(), error) {
+// 维度对账在每次 Embed 响应复核与存储层索引维度对账。observer 是模型
+// 调用留痕的观察面挂点，nil 即不留痕。
+func New(resolver biz.EmbedderResolver, c *conf.Vector, observer biz.ModelCallObserver) (biz.Embedder, func(), error) {
 	if !c.GetEnabled() {
 		return disabledEmbedder{}, func() {}, nil
 	}
@@ -51,7 +58,7 @@ func New(resolver biz.EmbedderResolver, c *conf.Vector) (biz.Embedder, func(), e
 				i, conf.EmbedderSpaceKey(emb.GetModel(), emb.GetVersion()))
 		}
 	}
-	return &dynamicEmbedder{resolver: resolver, clients: map[clientKey]*http.Client{}, dims: map[string]int{}}, func() {}, nil
+	return &dynamicEmbedder{resolver: resolver, observer: observer, clients: map[clientKey]*http.Client{}, dims: map[string]int{}}, func() {}, nil
 }
 
 // clientKey 是 HTTP 客户端缓存键：端点与超时共同决定连接行为。
@@ -63,6 +70,7 @@ type clientKey struct {
 // dynamicEmbedder 是按空间键动态解析端点的 embeddings 客户端。
 type dynamicEmbedder struct {
 	resolver biz.EmbedderResolver
+	observer biz.ModelCallObserver
 
 	mu      sync.Mutex
 	clients map[clientKey]*http.Client
@@ -88,16 +96,25 @@ type embedRequest struct {
 	Input string `json:"input"`
 }
 
+// embedUsage 是响应体的 token 用量段（留痕面消费；端点未上报为零值，
+// 落库 NULL）。
+type embedUsage struct {
+	PromptTokens int32 `json:"prompt_tokens"`
+}
+
 type embedResponse struct {
 	Data []struct {
 		Embedding []float64 `json:"embedding"`
 		Index     int       `json:"index"`
 	} `json:"data"`
+	Usage embedUsage `json:"usage"`
 }
 
 // Embed 实现 biz.Embedder：按空间键经 resolver 解析端点，单文本向量化。
 // 空白文本与未知空间拒绝；非 2xx、响应缺 data[0]、向量长度与该空间声明
-// 维度不符均为错误（绝不返回零值向量落库）。
+// 维度不符均为错误（绝不返回零值向量落库）。空间解析成功即为端点事实
+// 成立，此后无论成败都以一次调用一行留痕；空间解析失败无端点事实，
+// 不留行。
 func (e *dynamicEmbedder) Embed(ctx context.Context, embedder string, text string) ([]float32, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, errors.New("openaiembedder: embedding text is required")
@@ -122,13 +139,24 @@ func (e *dynamicEmbedder) Embed(ctx context.Context, embedder string, text strin
 	}
 	e.rememberDimension(embedder, space.Dimension)
 
+	start := time.Now()
+	vector, usage, embedErr := e.callEmbeddings(ctx, space, baseURL, timeout, embedder, text)
+	e.observeCall(ctx, space.Key, baseURL+"/embeddings", text, vector, usage, embedErr, time.Since(start))
+	return vector, embedErr
+}
+
+// callEmbeddings 执行协议调用并返回向量与用量段：端点事实已解析，本函数
+// 内任何失败（协议错误、非 2xx、维度漂移）都是调用终态，由调用方留痕。
+// embedder 是调用方请求的空间键（维度漂移错误文案沿用请求键）。
+func (e *dynamicEmbedder) callEmbeddings(ctx context.Context, space biz.EmbeddingSpace, baseURL string, timeout time.Duration, embedder, text string) ([]float32, embedUsage, error) {
+	var usage embedUsage
 	payload, err := json.Marshal(embedRequest{Model: space.Model, Input: text})
 	if err != nil {
-		return nil, fmt.Errorf("openaiembedder: marshal request: %w", err)
+		return nil, usage, fmt.Errorf("openaiembedder: marshal request: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/embeddings", bytes.NewReader(payload))
 	if err != nil {
-		return nil, fmt.Errorf("openaiembedder: build request: %w", err)
+		return nil, usage, fmt.Errorf("openaiembedder: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if space.APIKey != "" {
@@ -136,33 +164,67 @@ func (e *dynamicEmbedder) Embed(ctx context.Context, embedder string, text strin
 	}
 	resp, err := e.client(clientKey{baseURL: baseURL, timeout: timeout}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("openaiembedder: call embeddings endpoint: %w", err)
+		return nil, usage, fmt.Errorf("openaiembedder: call embeddings endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return nil, fmt.Errorf("openaiembedder: read response: %w", err)
+		return nil, usage, fmt.Errorf("openaiembedder: read response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("openaiembedder: embeddings endpoint returned status %d: %s", resp.StatusCode, truncateBody(body))
+		return nil, usage, fmt.Errorf("openaiembedder: embeddings endpoint returned status %d: %s", resp.StatusCode, truncateBody(body))
 	}
 	var parsed embedResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("openaiembedder: decode response: %w", err)
+		return nil, usage, fmt.Errorf("openaiembedder: decode response: %w", err)
 	}
 	if len(parsed.Data) == 0 {
-		return nil, errors.New("openaiembedder: embeddings response carries no data")
+		return nil, parsed.Usage, errors.New("openaiembedder: embeddings response carries no data")
 	}
 	vector := parsed.Data[0].Embedding
 	if len(vector) != space.Dimension {
-		return nil, fmt.Errorf("openaiembedder: embedding dimension %d does not match configured %d for space %s",
+		return nil, parsed.Usage, fmt.Errorf("openaiembedder: embedding dimension %d does not match configured %d for space %s",
 			len(vector), space.Dimension, embedder)
 	}
 	out := make([]float32, len(vector))
 	for i, v := range vector {
 		out[i] = float32(v)
 	}
-	return out, nil
+	return out, parsed.Usage, nil
+}
+
+// observeCall 构造留痕载体并交给观察面：场景取 ctx 声明，缺失回落
+// embed_document（摄取向量化是本目录的主要消费面）；文档 ID 取 ctx 声明
+// （摄取链路注入），缺失落 NULL。输出摘要只记维度说明——向量产物不落
+// 留痕。观察面为 nil 时零开销跳过。
+func (e *dynamicEmbedder) observeCall(ctx context.Context, modelKey, endpoint, text string, vector []float32, usage embedUsage, embedErr error, elapsed time.Duration) {
+	if e.observer == nil {
+		return
+	}
+	scenario := biz.ModelCallSceneFromContext(ctx)
+	if scenario == "" {
+		scenario = biz.ModelCallScenarioEmbedDocument
+	}
+	output := ""
+	if embedErr == nil {
+		output = fmt.Sprintf("embedding vector of %d dimensions (vector not persisted)", len(vector))
+	}
+	entry := &biz.ModelCallEntry{
+		Scenario:      scenario,
+		ModelKey:      modelKey,
+		Endpoint:      endpoint,
+		InputSummary:  text,
+		OutputSummary: output,
+		InputTokens:   usage.PromptTokens,
+		DurationMS:    elapsed.Milliseconds(),
+		Status:        biz.ModelCallStatusSuccess,
+		DocumentID:    biz.ModelCallDocumentFromContext(ctx),
+	}
+	if embedErr != nil {
+		entry.Status = biz.ModelCallStatusError
+		entry.Error = embedErr.Error()
+	}
+	e.observer.ObserveModelCall(ctx, entry)
 }
 
 // rememberDimension 记录空间维度供无 ctx 的 Dimension 查询。

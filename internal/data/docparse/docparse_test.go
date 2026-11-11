@@ -220,7 +220,7 @@ func TestHtmlToMarkdown_script_only_page_yields_empty(t *testing.T) {
 }
 
 func TestParse_dispatches_by_mime(t *testing.T) {
-	p, cleanup, err := New(nil)
+	p, cleanup, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -256,7 +256,7 @@ func FileParseInputOf(mime string, body []byte) *biz.FileParseInput {
 }
 
 func TestParse_external_unconfigured_rejected_with_combined_error(t *testing.T) {
-	p, cleanup, err := New(nil)
+	p, cleanup, err := New(nil, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestParse_external_service_roundtrip_and_failures(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p, cleanup, err := New(docParseConfOf(srv.URL, 0))
+	p, cleanup, err := New(docParseConfOf(srv.URL, 0), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestParse_external_service_roundtrip_and_failures(t *testing.T) {
 func TestParse_external_service_unreachable_fails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close() // 端口已释放，必然连接失败
-	p, cleanup, err := New(docParseConfOf(srv.URL, 0))
+	p, cleanup, err := New(docParseConfOf(srv.URL, 0), nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

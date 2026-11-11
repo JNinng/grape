@@ -180,6 +180,7 @@ func newFileRoutePermTestServer(t *testing.T, store *fileRouteStore, perms *file
 		entrymw.NewPermissionMiddleware(biz.NewPermissionUsecase(perms)),
 		ops.NewMetricsHandler(nil, nil),
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
 		knowledge,
 		nil, nil, nil,
 	)

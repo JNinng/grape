@@ -213,7 +213,11 @@ func (uc *KnowledgeUsecase) parseFileContent(ctx context.Context, auth Identity,
 		content, err := prepareFileContent(body)
 		return content, identity.directKind, err
 	}
-	markdown, err := uc.parser.Parse(ctx, &FileParseInput{MIME: identity.sniffedMIME, FileName: stringOrEmpty(doc.FileName), Body: body})
+	// 模型调用留痕场景与作用文档在此声明（parse_document + kb 行 ID）：
+	// 外部解析档是类模型调用面，Go 内档不经留痕（docparse 只在外部档
+	// 观察行）。
+	parseCtx := WithModelCallDocument(WithModelCallScene(ctx, ModelCallScenarioParseDocument), doc.ID)
+	markdown, err := uc.parser.Parse(parseCtx, &FileParseInput{MIME: identity.sniffedMIME, FileName: stringOrEmpty(doc.FileName), Body: body})
 	if err != nil {
 		return "", "", fmt.Errorf("biz: parse file: %w", err)
 	}

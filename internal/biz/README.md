@@ -35,8 +35,8 @@
   权限；部署顺序见 [deploy_db.md](../../deploy_db.md)，SQL 对象索引见
   [sqlc/README.md](../data/pg_sqlc/sqlc/README.md)。
 
-- Agent 工具调用/授权确认审计与检索留痕的证据面、写入点与关联键见
-  [replay.md](../../replay.md)。
+- Agent 工具调用/授权确认审计、检索留痕与模型调用留痕的证据面、写入点与
+  关联键见 [replay.md](../../replay.md)。
 
 - 工具授权：`FindActive*` 未命中以 `(nil, nil)` 表达正常控制流，`Resolve` 会话级先于
   全局级，`Create` 同键幂等；吊销对不存在与跨租户统一 404，无码调用方对他人授权
@@ -68,6 +68,7 @@
 | [grant.go](grant.go) | Agent 工具授权：许可解析与本人/管理面吊销；管理面权限码在用例层判定。 |
 | [audit.go](audit.go) | Agent 工具调用/授权确认审计：入参校验、决定词表配对、摘要脱敏与截断。 |
 | [retrieval_log.go](retrieval_log.go) | 检索留痕查询用例与 ctx 事实载体；写入由 data 层装饰器直写、不经用例。 |
+| [model_call_log.go](model_call_log.go) | 模型调用留痕契约：场景词表与列宽把门、查询用例、`ModelCallObserver` 观察面（身份缺失放弃、脱敏截断、5s 短超时旁路写入、失败只记日志）与场景/文档 ctx 载体；三个能力目录经接口消费。 |
 | [embedder.go](embedder.go) | 文本向量化与默认空间解析契约；嵌入空间经 ctx 载体传给框架适配器。 |
 | [completer.go](completer.go) | 单次文本生成契约（质量增强面）：实现按当前身份解析租户文本模型，消费方必须把失败降级为主流程。 |
 | [objectstore.go](objectstore.go) | 对象存储契约（Put/Get/Delete/PresignGet/PresignPut，S3 语义）与端点解析契约：端点事实在 sys_config 的 oss.* 键，AK/SK 明文口径见 permission.md。 |
@@ -94,7 +95,8 @@
 - 安全单点：口令多算法校验与重哈希、登录防枚举与登录日志 best-effort、会话令牌
   哈希/元数据截断/登出幂等、身份 ctx 往返。
 - Agent 面：审计词表配对与脱敏截断、授权会话优先/幂等/权限码边界、检索留痕分页
-  与 fail-closed、摄取切分（固定窗口与区分串、markdown 标题切分）/维度对账/覆盖幂等/
+  与 fail-closed、模型调用留痕的观察面纪律（脱敏截断、身份缺失放弃、旁路失败
+  不反噬、超时预算、panic 恢复、过滤归一）、摄取切分（固定窗口与区分串、markdown 标题切分）/维度对账/覆盖幂等/
   中途失败/上下文前缀生成与降级（开关关闭零调用、失败降级无前缀、前缀只进 embed
   输入）、条目 kind 校验矩阵（创建接受/拒绝、更新不可变）、知识检索的
   校验/钳制/固定条件/设施缺失透传。

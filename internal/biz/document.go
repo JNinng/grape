@@ -226,10 +226,13 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 
 	// 逐块向量化在删除旧行之前完成：embed 失败（端点故障、维度漂移）
 	// 时不破坏存量数据，重摄即可补偿。前缀只拼进 embed 输入，落库的
-	// 切片正文/锚点/metadata 保持切分产物原样。
+	// 切片正文/锚点/metadata 保持切分产物原样。模型调用留痕场景在此
+	// 声明（embed_document）：作用文档 ID 由上游按 kb 行事实经 ctx
+	// 载体注入（WithModelCallDocument），管线直调缺失落 NULL。
+	embedCtx := WithModelCallScene(ctx, ModelCallScenarioEmbedDocument)
 	docs := make([]*VectorDocument, 0, len(chunks))
 	for i, c := range chunks {
-		embedding, err := u.embedder.Embed(ctx, space, embedInput(prefixes, i, c.content))
+		embedding, err := u.embedder.Embed(embedCtx, space, embedInput(prefixes, i, c.content))
 		if err != nil {
 			return nil, fmt.Errorf("biz: embed chunk %d of document %s: %w", i, sourceID, err)
 		}
@@ -265,18 +268,21 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 // 摘要只生成一次，逐块前缀共享这份摘要（每次补块正文，不做全量文档
 // 调用）。开关关闭、completer 缺失或任一次生成失败/产出为空时整篇降级
 // 为无前缀（nil），失败记服务日志——前缀是检索质量增强，降级不影响
-// 摄取正确性。返回值与 chunks 等长对齐。
+// 摄取正确性。返回值与 chunks 等长对齐。模型调用留痕场景在此声明：
+// 文档摘要 ingest_summary、块级前缀 ingest_prefix。
 func (u *DocumentUsecase) contextPrefixes(ctx context.Context, doc *Document, chunks []chunk) []string {
 	if !doc.Contextual || u.completer == nil {
 		return nil
 	}
-	summary := sanitizeContextText(u.completerComplete(ctx, documentSummaryPrompt(doc), doc), maxContextDocRunes)
+	summaryCtx := WithModelCallScene(ctx, ModelCallScenarioIngestSummary)
+	summary := sanitizeContextText(u.completerComplete(summaryCtx, documentSummaryPrompt(doc), doc), maxContextDocRunes)
 	if summary == "" {
 		return nil
 	}
+	prefixCtx := WithModelCallScene(ctx, ModelCallScenarioIngestPrefix)
 	prefixes := make([]string, len(chunks))
 	for i, c := range chunks {
-		prefix := sanitizeContextText(u.completerComplete(ctx, chunkContextPrompt(doc, summary, c.content), doc), maxContextPrefixRunes)
+		prefix := sanitizeContextText(u.completerComplete(prefixCtx, chunkContextPrompt(doc, summary, c.content), doc), maxContextPrefixRunes)
 		if prefix == "" {
 			return nil
 		}
