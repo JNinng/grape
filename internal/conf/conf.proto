@@ -23,6 +23,8 @@ message Bootstrap {
   Log log = 7;
   // 内嵌对象存储设施配置（启动期开关）。
   OSS oss = 8;
+  // 外部文档解析服务配置。
+  DocParse doc_parse = 9;
 }
 
 // OSS 是内嵌对象存储设施（gofakes3，数据落 PostgreSQL oss_object 表）的
@@ -40,6 +42,26 @@ message OSS {
   // 必填）；enabled=true 而配置不齐在装配期拒绝启动（fail-closed）。
   // enabled=false 时 /s3/ 路由不挂载、biz.ObjectStore 按设施缺失拒绝。
   bool enabled = 1;
+}
+
+// DocParse 是外部文档解析服务（独立进程 + HTTP，承担 pdf / pptx / 图片
+// OCR 等外部档类型的解析，docling 或 MinerU 风格——选型以 OmniDocBench
+// 为准，中文场景 MinerU / PP-StructureV3 通常更强）的配置。文件摄取的
+// 两档解析分工：Go 内档（xlsx / docx / html，零外部设施）不经本段；
+// 外部档全部经本服务解析。endpoint 为空即「未配置外部解析服务」：外部档
+// 类型一律按 FILE_TYPE_UNSUPPORTED 明确拒绝，Go 内档类型不受影响。
+// 与 OSS 同理放启动 conf：解析链路在装配期按「有无端点」定型，运行期
+// 改配置需重启才生效。
+message DocParse {
+  // 外部解析服务端点根地址（如 http://127.0.0.1:8501），解析请求落在其
+  // /parse 路径（POST，请求体为原始文件字节，X-Grape-Mime / X-Grape-Filename
+  // 头携带嗅探事实；成功 200 且响应体即 markdown 文本，其余状态码按解析
+  // 失败处理）。空 = 未配置：外部档类型拒绝、Go 内档类型不受影响。
+  string endpoint = 1;
+  // 单次解析调用超时；未设置取 120s。解析耗时与页数线性相关，本值是
+  // 单文件上限而非单页预算。文件上传端点的解析与向量化共用
+  // http.embedding_request_timeout 的路由级预算，本值不应超过该预算。
+  google.protobuf.Duration timeout = 2;
 }
 
 // Telemetry 是 OpenTelemetry 遥测配置：SDK 开关与 OTLP 导出目标。

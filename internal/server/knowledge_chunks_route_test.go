@@ -55,7 +55,7 @@ func newChunksRouteTestServer(t *testing.T, store biz.VectorStore) *kratoshttp.S
 	if err != nil {
 		t.Fatalf("build trace middleware: %v", err)
 	}
-	knowledge := service.NewKnowledgeService(biz.NewKnowledgeUsecase(chunksRouteRepo{}, nil, store, nil), nil)
+	knowledge := service.NewKnowledgeService(biz.NewKnowledgeUsecase(chunksRouteRepo{}, nil, store, nil, nil, nil, nil), nil)
 	srv, err := NewHTTPServer(
 		confServer,
 		nil,

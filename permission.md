@@ -196,7 +196,8 @@ M ∩ 操作人可见部门集合 ≠ ∅；命中口径
 知识库与条目共用 `sys:knowledge:query/create/update/delete`（重建索引并入
 `:update`；前端检索端点 `SearchDocuments` 并入 `:query`；模型选项端点
 `ListModelOptions` 也用 `:query`，避免知识库管理员被迫持有
-`sys:model:query`）。agent 检索/列库工具不设功能码：工具面按认证身份 +
+`sys:model:query`；文件上传手写端点 `POST /v1/knowledge/documents/upload`
+并入 `:create`，操作名即路径模板）。agent 检索/列库工具不设功能码：工具面按认证身份 +
 可见库集合收敛（工具授权走 ack 分级与 `agent_tool_grant`），否则普通对话
 用户无法检索；可见库集合由检索用例现场解析（`KnowledgeSearchUsecase`），
 列库清单与检索过滤同源。模型目录租户行用 `sys:model:query/create/

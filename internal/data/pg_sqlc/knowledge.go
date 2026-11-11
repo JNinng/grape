@@ -61,6 +61,10 @@ func toBizDocument(po *gen.KbDocument) *biz.KnowledgeDocument {
 		Content:         po.Content,
 		SourceName:      po.SourceName,
 		ContentHash:     po.ContentHash,
+		FileID:          po.FileID,
+		FileName:        po.FileName,
+		MimeType:        po.MimeType,
+		FileSize:        po.FileSize,
 		Status:          int32(po.Status),
 		ValidFrom:       tsToTimePtr(po.ValidFrom),
 		ValidTo:         tsToTimePtr(po.ValidTo),
@@ -385,7 +389,9 @@ func (r *knowledgeRepo) ListDocumentsByLibrary(ctx context.Context, auth biz.Ide
 	return out, nil
 }
 
-// CreateDocument 创建条目；租户取会话。
+// CreateDocument 创建条目；租户取会话。file 条目的原件事实（file_id /
+// file_name / mime_type / file_size）随目录行一次落库，创建后不变——重解析
+// 只经 UpdateDocument 更新解析产物 content 与 content_hash。
 func (r *knowledgeRepo) CreateDocument(ctx context.Context, auth biz.Identity, d *biz.KnowledgeDocument) (*biz.KnowledgeDocument, error) {
 	var out *biz.KnowledgeDocument
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -397,6 +403,10 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, auth biz.Identity, d
 			Content:     d.Content,
 			SourceName:  d.SourceName,
 			ContentHash: d.ContentHash,
+			FileID:      d.FileID,
+			FileName:    d.FileName,
+			MimeType:    d.MimeType,
+			FileSize:    d.FileSize,
 			Status:      int16(d.Status),
 			ValidFrom:   timeToTS(d.ValidFrom),
 			ValidTo:     timeToTS(d.ValidTo),

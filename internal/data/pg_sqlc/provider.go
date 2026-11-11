@@ -18,7 +18,7 @@ var ProviderSet = wire.NewSet(
 	NewPlatformTenantGuard, NewSessionRepo, NewAuditLogRepo, NewRetrievalLogRepo,
 	NewAuditRepo, NewGrantRepo, NewPermissionRepo, NewQuerySchemaRepo,
 	NewDiagnostics, NewSessionMaintenance, NewModelCatalog, NewSecretCipher,
-	NewKnowledgeRepo, NewModelRepo, NewOSSConfigResolver,
+	NewKnowledgeRepo, NewKnowledgeFileRepo, NewModelRepo, NewOSSConfigResolver,
 	wire.Bind(new(biz.TextModelCatalog), new(*modelResolver)),
 	wire.Bind(new(biz.EmbedderResolver), new(*modelResolver)),
 	wire.Bind(new(biz.OSSConfigResolver), new(*ossConfigResolver)),

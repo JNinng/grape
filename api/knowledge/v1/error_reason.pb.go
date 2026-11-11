@@ -56,6 +56,9 @@ const (
 	ErrorReason_DOCUMENT_CHUNKS_UNAVAILABLE ErrorReason = 13
 	// 条目分片查询执行失败（细节只进服务端日志）。
 	ErrorReason_DOCUMENT_CHUNKS_FAILED ErrorReason = 14
+	// 文件类型不被文件摄取支持（不在扩展名 / MIME 白名单，或外部档类型而
+	// 外部解析服务未配置）。
+	ErrorReason_FILE_TYPE_UNSUPPORTED ErrorReason = 15
 )
 
 // Enum value maps for ErrorReason.
@@ -76,6 +79,7 @@ var (
 		12: "SEARCH_FAILED",
 		13: "DOCUMENT_CHUNKS_UNAVAILABLE",
 		14: "DOCUMENT_CHUNKS_FAILED",
+		15: "FILE_TYPE_UNSUPPORTED",
 	}
 	ErrorReason_value = map[string]int32{
 		"KNOWLEDGE_UNSPECIFIED":         0,
@@ -93,6 +97,7 @@ var (
 		"SEARCH_FAILED":                 12,
 		"DOCUMENT_CHUNKS_UNAVAILABLE":   13,
 		"DOCUMENT_CHUNKS_FAILED":        14,
+		"FILE_TYPE_UNSUPPORTED":         15,
 	}
 )
 
@@ -127,7 +132,7 @@ var File_knowledge_v1_error_reason_proto protoreflect.FileDescriptor
 
 const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\n" +
-	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xad\x03\n" +
+	"\x1fknowledge/v1/error_reason.proto\x12\fknowledge.v1*\xc8\x03\n" +
 	"\vErrorReason\x12\x19\n" +
 	"\x15KNOWLEDGE_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11LIBRARY_NOT_FOUND\x10\x01\x12\x1c\n" +
@@ -144,7 +149,8 @@ const file_knowledge_v1_error_reason_proto_rawDesc = "" +
 	"\x12SEARCH_UNAVAILABLE\x10\v\x12\x11\n" +
 	"\rSEARCH_FAILED\x10\f\x12\x1f\n" +
 	"\x1bDOCUMENT_CHUNKS_UNAVAILABLE\x10\r\x12\x1a\n" +
-	"\x16DOCUMENT_CHUNKS_FAILED\x10\x0eBM\n" +
+	"\x16DOCUMENT_CHUNKS_FAILED\x10\x0e\x12\x19\n" +
+	"\x15FILE_TYPE_UNSUPPORTED\x10\x0fBM\n" +
 	"\x1dio.grpc.examples.knowledge.v1P\x01Z\x19grape/api/knowledge/v1;v1\xa2\x02\x0eAPIKnowledgeV1b\x06proto3"
 
 var (

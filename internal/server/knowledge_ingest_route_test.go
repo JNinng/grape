@@ -103,7 +103,7 @@ func newIngestRouteTestServer(t *testing.T, embeddingTimeout time.Duration, stor
 	if err != nil {
 		t.Fatalf("build ingest usecase: %v", err)
 	}
-	knowledge := service.NewKnowledgeService(biz.NewKnowledgeUsecase(ingestRouteRepo{}, nil, store, ingest), nil)
+	knowledge := service.NewKnowledgeService(biz.NewKnowledgeUsecase(ingestRouteRepo{}, nil, store, ingest, nil, nil, nil), nil)
 	srv, err := NewHTTPServer(
 		confServer,
 		nil,

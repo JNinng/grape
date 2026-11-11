@@ -11,7 +11,7 @@
 --      动态查询（List/Count）会把结果自动拼进 WHERE（sys_role 的
 --      @scope 守卫 fn_visible_role_ids 因依赖写侧 fn_can_see_role，
 --      随角色判定族放 operate.sql）
---   3. 21 张基线租户表的 RLS 策略（范围版本表策略在 expose.sql）：
+--   3. 基线租户表的 RLS 策略（范围版本表策略在 expose.sql）：
 --      会话没设置 app.tenant_id 时什么都读不到、写不进（默认全拒）；
 --      sys_session 另加令牌维度策略：校验/登出/刷新先于租户身份成立，
 --      以令牌哈希为唯一可见性凭据
@@ -508,7 +508,7 @@ CREATE POLICY sys_translation_tenant_isolation
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
--- kb_library / kb_document
+-- kb_library / kb_document / kb_file
 CREATE POLICY kb_library_tenant_isolation
     ON public.kb_library
     USING (tenant_id = current_setting('app.tenant_id', true))
@@ -516,6 +516,11 @@ CREATE POLICY kb_library_tenant_isolation
 
 CREATE POLICY kb_document_tenant_isolation
     ON public.kb_document
+    USING (tenant_id = current_setting('app.tenant_id', true))
+    WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+CREATE POLICY kb_file_tenant_isolation
+    ON public.kb_file
     USING (tenant_id = current_setting('app.tenant_id', true))
     WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
 
@@ -625,6 +630,10 @@ ALTER TABLE public.kb_library
 ALTER TABLE public.kb_document
     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.kb_document
+    FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_file
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kb_file
     FORCE ROW LEVEL SECURITY;
 ALTER TABLE public.sys_model
     ENABLE ROW LEVEL SECURITY;

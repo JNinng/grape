@@ -361,8 +361,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// DocumentService 管理知识条目（text / markdown；file 的摄取入口留给文件
-// 解析摄取）。条目正文经切分、向量化后
+// DocumentService 管理知识条目（text / markdown / file）。text / markdown
+// 经本服务直填正文摄取；file 由文件上传端点（POST /v1/knowledge/documents/upload）
+// 摄取：服务端识别（不信任客户端声明）、解析产 markdown、原件落对象存储。
+// 条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
 // 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
 // 404，不泄露条目存在性。
@@ -498,8 +500,10 @@ func (c *documentServiceClient) SearchDocuments(ctx context.Context, in *SearchD
 // All implementations must embed UnimplementedDocumentServiceServer
 // for forward compatibility.
 //
-// DocumentService 管理知识条目（text / markdown；file 的摄取入口留给文件
-// 解析摄取）。条目正文经切分、向量化后
+// DocumentService 管理知识条目（text / markdown / file）。text / markdown
+// 经本服务直填正文摄取；file 由文件上传端点（POST /v1/knowledge/documents/upload）
+// 摄取：服务端识别（不信任客户端声明）、解析产 markdown、原件落对象存储。
+// 条目正文经切分、向量化后
 // 进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
 // 自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
 // 404，不泄露条目存在性。

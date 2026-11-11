@@ -3318,14 +3318,14 @@ components:
                     type: string
                     description: |-
                         条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/
-                         file（文件解析条目，摄取入口暂未开放）。创建可省略（缺省 text）；创建
-                         后不可变。
+                         file（文件解析条目，经上传端点摄取，解析产物走标题切分）。创建可省略
+                         （缺省 text）；创建后不可变。
                 title:
                     type: string
                     description: 条目标题。
                 content:
                     type: string
-                    description: 条目正文（text / markdown 必填非空白；列表响应中省略）。
+                    description: 条目正文（text / markdown 必填非空白；file 解析成功前可空；列表响应中省略）。
                 sourceName:
                     type: string
                     description: 来源名，缺省取标题。
@@ -3361,6 +3361,17 @@ components:
                 deletedAt:
                     type: string
                     format: date-time
+                fileName:
+                    type: string
+                    description: |-
+                        原件文件名（保留上传原名，与嗅探 MIME 不一致时以 MIME 为准）。
+                         仅 kind=file 非空，只读。
+                mimeType:
+                    type: string
+                    description: 原件 MIME（内容嗅探结果，不信任客户端声明）。仅 kind=file 非空，只读。
+                fileSize:
+                    type: string
+                    description: 原件字节数。仅 kind=file 非空，只读。
             description: Document 是知识条目的规范表示。列表响应不填充 content。
         knowledge.v1.DocumentChunk:
             type: object
@@ -5094,8 +5105,10 @@ tags:
          不联动宿主，数据删除为软删除。
     - name: DocumentService
       description: |-
-        DocumentService 管理知识条目（text / markdown；file 的摄取入口留给文件
-         解析摄取）。条目正文经切分、向量化后
+        DocumentService 管理知识条目（text / markdown / file）。text / markdown
+         经本服务直填正文摄取；file 由文件上传端点（POST /v1/knowledge/documents/upload）
+         摄取：服务端识别（不信任客户端声明）、解析产 markdown、原件落对象存储。
+         条目正文经切分、向量化后
          进入 Agent 检索；停用/未生效/已过期条目不出现在检索结果，向量不被
          自动删除。条目的读面随所属库的可见性收窄：库不可见与条目不存在统一
          404，不泄露条目存在性。

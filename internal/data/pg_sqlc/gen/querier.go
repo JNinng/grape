@@ -138,6 +138,13 @@ type Querier interface {
 	// 动态协议整型过滤值的 JSON number 精度限制）。
 	// 按 id 读取未软删条目（租户边界由 RLS 承担）
 	GetKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
+	// 文件介质固定 CRUD（kb_file）。介质行是租户表：租户边界由 RLS 承担；
+	// 读写面只有本文件的固定查询（创建 / 点查 / 锁定 / 软删），不参与动态
+	// 查询协议。object_key 指向内嵌 OSS，本表只存元数据；软删是唯一删除
+	// 形态（OSS 对象由用例尽力清理），保留介质行是为了审计与误删恢复线索。
+	// 按 id 读取未软删介质行（kb_document.file_id 引用的本租户行校验点：
+	// 跨租户行受 RLS 隔离，无行即拒绝）
+	GetKbFileByID(ctx context.Context, id int64) (KbFile, error)
 	// 知识库固定 CRUD（kb_library）。知识库是租户表，租户边界由 RLS 承担；
 	// 租户内的库级可见性由归属三元组 + @scope 守护（表注释见
 	// schema/91_knowledge.sql），单行读与写前锁定走 fn_check_visible /
@@ -330,8 +337,12 @@ type Querier interface {
 	// 许可已存在时幂等跳过（部分唯一索引 agent_tool_grant_active_un，
 	// ON CONFLICT 不带目标以覆盖表达式部分索引），返回实际写入行数
 	InsertAgentToolGrant(ctx context.Context, arg InsertAgentToolGrantParams) (int64, error)
-	// 插入知识条目；租户取会话 app.tenant_id
+	// 插入知识条目；租户取会话 app.tenant_id。file_id / file_name /
+	// mime_type / file_size 仅 kind=file 非空（原件事实，创建后不变，重解析
+	// 不改写——变更的只有解析产物 content 与 content_hash）
 	InsertKbDocument(ctx context.Context, arg InsertKbDocumentParams) (KbDocument, error)
+	// 插入介质行；租户取会话 app.tenant_id
+	InsertKbFile(ctx context.Context, arg InsertKbFileParams) (KbFile, error)
 	// 插入知识库记录；租户取会话 app.tenant_id，创建人缺省为归属人；
 	// 租户内未删除库间 name 唯一冲突映射 AlreadyExists
 	InsertKbLibrary(ctx context.Context, arg InsertKbLibraryParams) (KbLibrary, error)
@@ -467,6 +478,8 @@ type Querier interface {
 	ListVisibleKbLibraries(ctx context.Context, operator int64) ([]KbLibrary, error)
 	// 按 id 锁定未软删条目（更新/删除/重摄取路径先锁后写）
 	LockKbDocumentByID(ctx context.Context, id int64) (KbDocument, error)
+	// 按 id 锁定未软删介质行（宿主条目删除路径先锁后写）
+	LockKbFileByID(ctx context.Context, id int64) (KbFile, error)
 	// 按 id 锁定数据范围内可操作的知识库（更新/删除路径先锁后写）；
 	// 不可见与不存在统一无行
 	LockKbLibraryPermitted(ctx context.Context, arg LockKbLibraryPermittedParams) (KbLibrary, error)
@@ -534,6 +547,8 @@ type Querier interface {
 	SetSysUserPassword(ctx context.Context, arg SetSysUserPasswordParams) (int64, error)
 	// 置位 deleted_at 软删除条目（chunk 清理由用例经向量存储完成）
 	SoftDeleteKbDocument(ctx context.Context, arg SoftDeleteKbDocumentParams) (int64, error)
+	// 置位 deleted_at 软删介质行（宿主条目删除后清理；OSS 对象删除由用例完成）
+	SoftDeleteKbFile(ctx context.Context, arg SoftDeleteKbFileParams) (int64, error)
 	// 置位 deleted_at 软删除知识库；活跃条目校验与可见性锁定由调用方在同一
 	// 事务内先行完成
 	SoftDeleteKbLibrary(ctx context.Context, arg SoftDeleteKbLibraryParams) (int64, error)

@@ -34,9 +34,11 @@ var (
 	ErrDocumentNotFound = kratoserrors.NotFound(knowledgev1.ErrorReason_DOCUMENT_NOT_FOUND.String(), "knowledge document not found")
 	// ErrDocumentInvalidArgument 表示条目请求参数非法。
 	ErrDocumentInvalidArgument = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_INVALID_ARGUMENT.String(), "invalid knowledge document argument")
-	// ErrDocumentKindUnsupported 表示创建接口只接受 text / markdown 条目
-	// （file 由文件解析摄取小节放开）。
-	ErrDocumentKindUnsupported = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_KIND_UNSUPPORTED.String(), "only text and markdown documents are supported")
+	// ErrDocumentKindUnsupported 表示创建接口只接受 text / markdown / file
+	// 条目。file 经 kind 门后仍须持有原件事实（file_id / file_name /
+	// mime_type），直填正文的创建路径没有这些事实，由入参校验拒绝——
+	// 文件条目的唯一摄取入口是上传端点（UploadDocument）。
+	ErrDocumentKindUnsupported = kratoserrors.BadRequest(knowledgev1.ErrorReason_DOCUMENT_KIND_UNSUPPORTED.String(), "only text, markdown and file documents are supported")
 	// ErrDocumentIndexFailed 表示摄取/重建索引失败。
 	ErrDocumentIndexFailed = kratoserrors.InternalServer(knowledgev1.ErrorReason_DOCUMENT_INDEX_FAILED.String(), "knowledge document indexing failed")
 	// ErrDocumentChunksUnavailable 表示分片查询能力缺失（向量设施未启用）。
@@ -53,7 +55,8 @@ const (
 )
 
 // 条目 kind 取值（与存储层 kb_document_kind_chk、摄取管线 DocumentKind*
-// 对齐）。file 的摄取入口由文件解析摄取小节放开，创建接口暂不接受。
+// 对齐）。file 的摄取入口是上传端点（UploadDocument），直填正文创建须
+// 自带原件事实。
 const (
 	DocumentKindText     = "text"
 	DocumentKindMarkdown = "markdown"
@@ -96,7 +99,11 @@ type KnowledgeLibraryList struct {
 }
 
 // KnowledgeDocument 是知识条目领域模型。Content 在列表响应中可以为空
-// （data 层按调用方形态回填），ContentHash 不对外暴露。
+// （data 层按调用方形态回填；file 条目解析成功前为空），ContentHash 不
+// 对外暴露。File* 四件是 kind=file 的原件事实（创建后不变，重解析只改
+// 解析产物 content 与 content_hash）：FileName 保留上传原名、MimeType 存
+// 内容嗅探结果、FileID 引用本租户介质行（用例校验）、FileSize 为原件
+// 字节数。
 type KnowledgeDocument struct {
 	ID              int64
 	LibraryID       int64
@@ -105,6 +112,10 @@ type KnowledgeDocument struct {
 	Content         *string
 	SourceName      *string
 	ContentHash     *string
+	FileID          *int64
+	FileName        *string
+	MimeType        *string
+	FileSize        *int64
 	Status          int32
 	ValidFrom       *time.Time
 	ValidTo         *time.Time
@@ -153,17 +164,23 @@ type KnowledgeRepo interface {
 }
 
 // KnowledgeUsecase 是知识库与条目用例：目录校验、切分/向量化编排、
-// 状态与有效期同步进 chunk metadata、删除清理。
+// 状态与有效期同步进 chunk metadata、删除清理。files / objects / parser
+// 是文件摄取（kind=file）依赖：text / markdown 链路不触达，可为 nil
+// （文件路径运行时 fail-closed），生产装配恒齐备。
 type KnowledgeUsecase struct {
-	repo   KnowledgeRepo
-	models ModelRepo
-	store  VectorStore
-	ingest *DocumentUsecase
+	repo    KnowledgeRepo
+	models  ModelRepo
+	store   VectorStore
+	ingest  *DocumentUsecase
+	files   KnowledgeFileRepo
+	objects ObjectStore
+	parser  FileParser
 }
 
-// NewKnowledgeUsecase 构造知识库用例。
-func NewKnowledgeUsecase(repo KnowledgeRepo, models ModelRepo, store VectorStore, ingest *DocumentUsecase) *KnowledgeUsecase {
-	return &KnowledgeUsecase{repo: repo, models: models, store: store, ingest: ingest}
+// NewKnowledgeUsecase 构造知识库用例。files / objects / parser 为文件摄取
+// 依赖（介质仓储、对象存储、解析器），见结构注释。
+func NewKnowledgeUsecase(repo KnowledgeRepo, models ModelRepo, store VectorStore, ingest *DocumentUsecase, files KnowledgeFileRepo, objects ObjectStore, parser FileParser) *KnowledgeUsecase {
+	return &KnowledgeUsecase{repo: repo, models: models, store: store, ingest: ingest, files: files, objects: objects, parser: parser}
 }
 
 // GetLibrary 按 id 查询知识库。
@@ -379,37 +396,57 @@ func (uc *KnowledgeUsecase) ListDocumentsByLibrary(ctx context.Context, auth Ide
 
 // CreateDocument 创建条目并摄取：目录行先落库（获得 id），摄取完成后
 // 回写 indexed_at/indexed_embedder。摄取失败时目录行保留，管理页可重建索引。
-// kind 缺省 text；file 暂不接受（ErrDocumentKindUnsupported）。
+// kind 缺省 text；file 经上传端点摄取（UploadDocument），直填正文的创建
+// 因无原件事实被入参校验拒绝。
 func (uc *KnowledgeUsecase) CreateDocument(ctx context.Context, auth Identity, d *KnowledgeDocument) (*KnowledgeDocument, error) {
 	if d == nil {
 		return nil, ErrDocumentInvalidArgument
 	}
-	if d.Kind != "" && d.Kind != DocumentKindText && d.Kind != DocumentKindMarkdown {
+	switch d.Kind {
+	case "", DocumentKindText, DocumentKindMarkdown, DocumentKindFile:
+	default:
 		return nil, ErrDocumentKindUnsupported
 	}
 	if d.Kind == "" {
 		d.Kind = DocumentKindText
 	}
-	if d.Status == KnowledgeStatusUnspecified {
-		d.Status = KnowledgeStatusEnabled
-	}
-	if err := validateDocument(d, false); err != nil {
+	lib, created, err := uc.createDocumentRow(ctx, auth, d)
+	if err != nil {
 		return nil, err
+	}
+	if d.Kind == DocumentKindFile {
+		return uc.reparseDocument(ctx, auth, lib, created)
+	}
+	return uc.reindex(ctx, auth, lib, created)
+}
+
+// createDocumentRow 落目录行：入参校验、库可见性判定、状态缺省、正文
+// 摘要与插入。file 条目的 Content 允许为空（解析成功前留痕）。
+func (uc *KnowledgeUsecase) createDocumentRow(ctx context.Context, auth Identity, d *KnowledgeDocument) (*KnowledgeLibrary, *KnowledgeDocument, error) {
+	if err := validateDocument(d, false); err != nil {
+		return nil, nil, err
 	}
 	lib, err := uc.repo.GetLibrary(ctx, auth, d.LibraryID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	created, err := uc.insertDocumentRow(ctx, auth, d)
+	if err != nil {
+		return nil, nil, err
+	}
+	return lib, created, nil
+}
+
+// insertDocumentRow 插入已校验的目录行：状态缺省、正文摘要与插入。
+// UploadDocument 在介质成立前已完成同一入参校验与库可见性判定（失败
+// 不留任何落库副作用），经本入口复用插入面，不重复调用 validateDocument
+// 与 GetLibrary。
+func (uc *KnowledgeUsecase) insertDocumentRow(ctx context.Context, auth Identity, d *KnowledgeDocument) (*KnowledgeDocument, error) {
+	if d.Status == KnowledgeStatusUnspecified {
+		d.Status = KnowledgeStatusEnabled
 	}
 	d.ContentHash = hashContent(d.Content)
-	created, err := uc.repo.CreateDocument(ctx, auth, d)
-	if err != nil {
-		return nil, err
-	}
-	indexed, err := uc.reindex(ctx, auth, lib, created)
-	if err != nil {
-		return nil, err
-	}
-	return indexed, nil
+	return uc.repo.CreateDocument(ctx, auth, d)
 }
 
 // UpdateDocument 覆盖条目可变字段：正文变更时重新摄取；仅状态/有效期
@@ -445,6 +482,20 @@ func (uc *KnowledgeUsecase) UpdateDocument(ctx context.Context, auth Identity, d
 	if strings.TrimSpace(d.Title) == "" {
 		d.Title = existing.Title
 	}
+	// 原件事实随 kind 不可变：更新入参不携带时从现存行回填（file 条目的
+	// 重解析只经本路径更新解析产物 content 与 content_hash）。
+	if d.FileID == nil {
+		d.FileID = existing.FileID
+	}
+	if d.FileName == nil {
+		d.FileName = existing.FileName
+	}
+	if d.MimeType == nil {
+		d.MimeType = existing.MimeType
+	}
+	if d.FileSize == nil {
+		d.FileSize = existing.FileSize
+	}
 	if err := validateDocument(d, true); err != nil {
 		return nil, err
 	}
@@ -472,12 +523,15 @@ func (uc *KnowledgeUsecase) UpdateDocument(ctx context.Context, auth Identity, d
 }
 
 // DeleteDocument 软删除条目并清理其 chunk（chunk 先删，避免残留可检索行）；
-// 条目不存在或所属库不可见统一 NotFound。
+// 条目不存在或所属库不可见统一 NotFound。file 条目随宿主软删介质行并
+// 尽力删除 OSS 对象：宿主已下线，介质清理失败只记日志，不影响删除结论
+// （悬挂介质行与对象由运维清理）。
 func (uc *KnowledgeUsecase) DeleteDocument(ctx context.Context, auth Identity, id int64) error {
 	if id <= 0 {
 		return ErrDocumentInvalidArgument
 	}
-	if _, err := uc.GetDocument(ctx, auth, id); err != nil {
+	doc, err := uc.GetDocument(ctx, auth, id)
+	if err != nil {
 		return err
 	}
 	if _, err := uc.store.DeleteByFilter(ctx, &VectorFilter{Conditions: []MetadataCondition{
@@ -485,7 +539,20 @@ func (uc *KnowledgeUsecase) DeleteDocument(ctx context.Context, auth Identity, i
 	}}); err != nil {
 		return fmt.Errorf("biz: clear chunks of document %d: %w", id, err)
 	}
-	return uc.repo.SoftDeleteDocument(ctx, auth, id)
+	if err := uc.repo.SoftDeleteDocument(ctx, auth, id); err != nil {
+		return err
+	}
+	if doc.FileID != nil && uc.files != nil {
+		if file, err := uc.files.GetFile(ctx, auth, *doc.FileID); err != nil {
+			slog.WarnContext(ctx, "knowledge file media lookup failed on document delete",
+				slog.Int64("document_id", id),
+				slog.Int64("file_id", *doc.FileID),
+				slog.Any("error", err))
+		} else {
+			uc.cleanupMedia(ctx, auth, file, "document deleted")
+		}
+	}
+	return nil
 }
 
 // ReindexDocument 重建条目向量：按当前正文与库配置重新摄取。
@@ -505,11 +572,23 @@ func (uc *KnowledgeUsecase) ReindexDocument(ctx context.Context, auth Identity, 
 }
 
 // reindex 执行摄取并回写索引事实。库级 embedding_model_key 与切分参数在
-// 本次摄取现场生效。
+// 本次摄取现场生效。file 条目不直接摄取正文：重取原件重解析重切分
+// （管理页可重解析的落点），解析失败留痕可重试。
 func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *KnowledgeLibrary, doc *KnowledgeDocument) (*KnowledgeDocument, error) {
+	if doc.Kind == DocumentKindFile {
+		return uc.reparseDocument(ctx, auth, lib, doc)
+	}
 	if doc.Content == nil || strings.TrimSpace(*doc.Content) == "" {
 		return nil, ErrDocumentInvalidArgument
 	}
+	return uc.ingestDocument(ctx, auth, lib, doc, doc.Kind)
+}
+
+// ingestDocument 摄取条目正文并回写索引事实：组装 chunk metadata 与来源
+// 名、按给定切分 kind 调摄取管线、回写 indexed_at/indexed_embedder。
+// 客户端只收到统一的 DOCUMENT_INDEX_FAILED；底层原因（解析/嵌入端点
+// 不可用、维度漂移、向量设施未启用等）落服务日志，供管理页排障。
+func (uc *KnowledgeUsecase) ingestDocument(ctx context.Context, auth Identity, lib *KnowledgeLibrary, doc *KnowledgeDocument, kind string) (*KnowledgeDocument, error) {
 	metadata := effectiveChunkMetadata(lib, doc)
 	sourceName := doc.Title
 	if doc.SourceName != nil && strings.TrimSpace(*doc.SourceName) != "" {
@@ -517,7 +596,7 @@ func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *Kno
 	}
 	result, err := uc.ingest.Ingest(ctx, &Document{
 		ID:             idString(doc.ID),
-		Kind:           doc.Kind,
+		Kind:           kind,
 		Name:           sourceName,
 		Content:        *doc.Content,
 		Metadata:       metadata,
@@ -528,8 +607,6 @@ func (uc *KnowledgeUsecase) reindex(ctx context.Context, auth Identity, lib *Kno
 		Contextual:     lib.ContextualChunking,
 	})
 	if err != nil {
-		// 客户端只收到统一的 DOCUMENT_INDEX_FAILED；底层原因（嵌入端点不可用、
-		// 维度漂移、向量设施未启用等）落服务日志，供管理页排障。
 		slog.WarnContext(ctx, "knowledge document indexing failed",
 			slog.Int64("document_id", doc.ID),
 			slog.Int64("library_id", doc.LibraryID),
@@ -643,7 +720,10 @@ func normalizeChunking(l *KnowledgeLibrary) {
 	}
 }
 
-// validateDocument 校验条目可变字段：标题/正文、有效期、状态。
+// validateDocument 校验条目可变字段：标题、正文（按 kind 分支）、原件
+// 事实、有效期、状态。file 条目在解析成功前 content 可空（解析失败留痕
+// 可重解析），但原件事实必须齐备——file_id / file_name / mime_type 只能
+// 来自上传端点的识别结论，直填正文的创建路径没有这些事实。
 func validateDocument(d *KnowledgeDocument, update bool) error {
 	if strings.TrimSpace(d.Title) == "" || utf8.RuneCountInString(strings.TrimSpace(d.Title)) > 256 {
 		return ErrDocumentInvalidArgument
@@ -651,7 +731,14 @@ func validateDocument(d *KnowledgeDocument, update bool) error {
 	if d.SourceName != nil && utf8.RuneCountInString(*d.SourceName) > 512 {
 		return ErrDocumentInvalidArgument
 	}
-	if d.Content == nil || strings.TrimSpace(*d.Content) == "" {
+	if d.Kind == DocumentKindFile {
+		if d.FileName == nil || strings.TrimSpace(*d.FileName) == "" || utf8.RuneCountInString(*d.FileName) > 256 {
+			return ErrDocumentInvalidArgument
+		}
+		if d.MimeType == nil || strings.TrimSpace(*d.MimeType) == "" || utf8.RuneCountInString(*d.MimeType) > 128 {
+			return ErrDocumentInvalidArgument
+		}
+	} else if d.Content == nil || strings.TrimSpace(*d.Content) == "" {
 		return ErrDocumentInvalidArgument
 	}
 	if d.ValidFrom != nil && d.ValidTo != nil && !d.ValidTo.After(*d.ValidFrom) {

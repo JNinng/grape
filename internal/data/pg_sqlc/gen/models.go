@@ -170,16 +170,24 @@ type KbDocument struct {
 	ID int64 `db:"id" json:"id"`
 	// 所属知识库 ID（库存在且同租户由用例校验） [@dynamic: exact, membership]
 	LibraryID int64 `db:"library_id" json:"library_id"`
-	// 条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，解析产物走标题切分；摄取入口暂未开放） [@dynamic: exact]
+	// 条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，原件经解析产 markdown 后走标题切分） [@dynamic: exact]
 	Kind string `db:"kind" json:"kind"`
 	// 条目标题 [@dynamic: fuzzy, exact, sort @updatable: set]
 	Title string `db:"title" json:"title"`
-	// 条目正文（text / markdown 必填非空白；file 解析成功前可空；向量化来源）
+	// 条目正文（text / markdown 必填非空白；file 解析成功前可空，解析产物入库后为 markdown；向量化来源）
 	Content *string `db:"content" json:"content"`
 	// 来源名，缺省取标题 [@dynamic: fuzzy, exact @updatable: set]
 	SourceName *string `db:"source_name" json:"source_name"`
 	// 正文摘要（变更检测与重嵌判断，不参与检索） [@internal]
 	ContentHash *string `db:"content_hash" json:"content_hash"`
+	// 原件介质行 ID（kb_file，本租户内由用例校验；仅 kind=file 非空） [@dynamic: exact]
+	FileID *int64 `db:"file_id" json:"file_id"`
+	// 原件文件名（保留上传原名，与嗅探 MIME 不一致时以 MIME 为准；仅 kind=file 非空） [@dynamic: fuzzy, exact]
+	FileName *string `db:"file_name" json:"file_name"`
+	// 原件 MIME（内容嗅探结果，不信任客户端声明；仅 kind=file 非空） [@dynamic: exact]
+	MimeType *string `db:"mime_type" json:"mime_type"`
+	// 原件字节数（≤ 20MB，与 oss_object 上限一致；仅 kind=file 非空） [@dynamic: exact, range]
+	FileSize *int64 `db:"file_size" json:"file_size"`
 	// 数据状态，0：禁用、1：启用；与所属库状态取与参与检索 [@dynamic: exact, membership, sort @updatable: set]
 	Status int16 `db:"status" json:"status"`
 	// 生效时间，NULL 表示立即生效 [@dynamic: exact, range, sort @updatable: set]
@@ -199,6 +207,34 @@ type KbDocument struct {
 	// 更新时间 [@dynamic: exact, membership, range, sort]
 	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
 	// 删除时间 [@internal]
+	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
+	// 租户 ID [@internal]
+	TenantID string `db:"tenant_id" json:"tenant_id"`
+}
+
+// 文件介质表：kind=file 知识条目的原件介质元数据（对象字节落内嵌 OSS，object_key 指向），租户表（RLS 在 rls.sql）；留原件是为了解析器升级后能重解析
+type KbFile struct {
+	// 介质行 ID（kb_document.file_id 引用）
+	ID int64 `db:"id" json:"id"`
+	// 对象键（内嵌 OSS 的 S3 key，形如 kb-file/<发号 ID>，URL 安全 ASCII；表只存元数据，将来切真实 OSS 语义不变）
+	ObjectKey string `db:"object_key" json:"object_key"`
+	// 对象内容 MD5 十六进制（S3 ETag 语义，写入 OSS 时的返回值）
+	Etag string `db:"etag" json:"etag"`
+	// 原件内容 sha256 十六进制（介质行的内容身份，与 etag 的 MD5 互为冗余校验）
+	Sha256 string `db:"sha256" json:"sha256"`
+	// 原件 MIME（内容嗅探结果，不信任客户端声明）
+	MimeType string `db:"mime_type" json:"mime_type"`
+	// 原件字节数（≤ 20MB，与 oss_object 上限一致，由应用层限流保证）
+	FileSize int64 `db:"file_size" json:"file_size"`
+	// 创建人（上传操作者）
+	CreatedBy int64 `db:"created_by" json:"created_by"`
+	// 创建时间（上传时间）
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 更新人
+	UpdatedBy int64 `db:"updated_by" json:"updated_by"`
+	// 更新时间
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+	// 删除时间（宿主条目删除时同批软删，OSS 对象尽力清理） [@internal]
 	DeletedAt pgtype.Timestamp `db:"deleted_at" json:"deleted_at"`
 	// 租户 ID [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`

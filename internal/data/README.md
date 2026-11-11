@@ -16,6 +16,7 @@
 | [ossclient](ossclient/) | 对象存储 S3 客户端设施（aws-sdk-go-v2，端点取 sys_config oss.*） |
 | [openaiembedder](openaiembedder/) | 文本向量化设施（OpenAI 兼容端点） |
 | [openaicompleter](openaicompleter/) | 单次文本生成设施（OpenAI 兼容 chat completions） |
+| [docparse](docparse/) | 文件解析设施（biz.FileParser）：Go 内档 xlsx / docx / html 直接产 markdown，外部档（pdf / pptx / 图片）走独立解析服务 HTTP 端点 |
 
 `data` 是存储后端选择点：[provider.go](provider.go) 聚合各能力
 ProviderSet 与设施诊断面/维护面，当前静态选定 `pg_sqlc` 关系存储。
@@ -38,6 +39,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/model_manage.go](pg_sqlc/model_manage.go) | 模型目录仓储：租户行普通 DML、平台行经受控函数、密钥密文落库 |
 | [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | AES-256-GCM 密钥加解密（`GRAPE_MODEL_SECRET_KEY`，`v1:` 前缀） |
 | [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页）；kb_library 的库级可见性经 `@scope` / `fn_check_visible` / `fn_can_operate_row` 强制，可见库枚举供检索用例与列库工具共用 |
+| [pg_sqlc/knowledge_file.go](pg_sqlc/knowledge_file.go) | 文件介质仓储（kb_file 固定 CRUD）：行 ID 派生对象键 `kb-file/<发号 ID>`，跨租户介质行受 RLS 隔离等同不存在 |
 | [pg_sqlc/session_repo.go](pg_sqlc/session_repo.go) | 会话仓储兼介质维护：过期清理与 token_hash 索引 REINDEX 判定 |
 | [pg_sqlc/tenant_admin.go](pg_sqlc/tenant_admin.go) | 租户树管理、平台租户判定与删除前置受控计数 |
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
@@ -50,6 +52,7 @@ SQL 对象的签名、属性与三态返回值见
 | [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位 |
 | [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存 |
+| [docparse/docparse.go](docparse/docparse.go) | biz.FileParser 两档实现：嗅探 MIME 是唯一路由依据；外部档 POST {endpoint}/parse（嗅探事实走自定义头），未配置端点按组合错误拒绝 |
 
 ## 事务门面
 
@@ -231,7 +234,9 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   与索引命中、检索留痕装饰器的转发/失败不中断/脱敏/兜底；embedding 的
   多空间路由与维度漂移、文本生成的请求形状与错误映射；内嵌 OSS 的
   Backend 存储语义（覆盖写、Range、列举、限流、复制）、/s3/ 回环的
-  S3 SDK 语义与 SigV4 拒绝矩阵、ossclient 的契约错误映射与预签名。
+  S3 SDK 语义与 SigV4 拒绝矩阵、ossclient 的契约错误映射与预签名；
+  docparse 三档内档解析的 markdown 产出形状（测试内构造容器字节）与
+  外部档 HTTP 协议（httptest 替身、未配置拒绝）。
 - **装配与部署**：连接槽位校验、debug 参数脱敏、部署清单与测试种子的
   追加关系。
 

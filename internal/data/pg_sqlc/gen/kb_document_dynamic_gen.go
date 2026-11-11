@@ -11,6 +11,10 @@
 //	column kb_document.title: [@dynamic: sort, contains, prefix, suffix, eq, neq @updatable: set]
 //	column kb_document.source_name: [@dynamic: contains, prefix, suffix, eq, neq @updatable: set]
 //	column kb_document.content_hash: [@internal]
+//	column kb_document.file_id: [@dynamic: eq, neq]
+//	column kb_document.file_name: [@dynamic: contains, prefix, suffix, eq, neq]
+//	column kb_document.mime_type: [@dynamic: eq, neq]
+//	column kb_document.file_size: [@dynamic: eq, neq, gt, gte, lt, lte, between]
 //	column kb_document.status: [@dynamic: sort, eq, neq, in, not_in @updatable: set]
 //	column kb_document.valid_from: [@dynamic: sort, eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column kb_document.valid_to: [@dynamic: sort, eq, neq, gt, gte, lt, lte, between @updatable: set]
@@ -121,6 +125,50 @@ var kb_documentRegistry = dynq.TableMeta{
 			Nullable: true,
 			Sortable: false,
 			Hidden:   true,
+		},
+		{
+			Key:        "fileId",
+			Column:     "file_id",
+			Label:      "file_id",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "fileName",
+			Column:     "file_name",
+			Label:      "file_name",
+			DataType:   dynq.DataTypeString,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpContains, dynq.OpPrefix, dynq.OpSuffix, dynq.OpEq, dynq.OpNeq},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "mimeType",
+			Column:     "mime_type",
+			Label:      "mime_type",
+			DataType:   dynq.DataTypeString,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "fileSize",
+			Column:     "file_size",
+			Label:      "file_size",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
 		},
 		{
 			Key:        "status",
@@ -261,17 +309,21 @@ var kb_documentFieldIndex = map[dynq.FieldName]int{
 	"content":         4,
 	"sourceName":      5,
 	"contentHash":     6,
-	"status":          7,
-	"validFrom":       8,
-	"validTo":         9,
-	"indexedAt":       10,
-	"indexedEmbedder": 11,
-	"createdBy":       12,
-	"createdAt":       13,
-	"updatedBy":       14,
-	"updatedAt":       15,
-	"deletedAt":       16,
-	"tenantId":        17,
+	"fileId":          7,
+	"fileName":        8,
+	"mimeType":        9,
+	"fileSize":        10,
+	"status":          11,
+	"validFrom":       12,
+	"validTo":         13,
+	"indexedAt":       14,
+	"indexedEmbedder": 15,
+	"createdBy":       16,
+	"createdAt":       17,
+	"updatedBy":       18,
+	"updatedAt":       19,
+	"deletedAt":       20,
+	"tenantId":        21,
 }
 
 // KbDocumentField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
@@ -283,6 +335,10 @@ var KbDocumentField = struct {
 	Title           dynq.FieldName
 	Content         dynq.FieldName
 	SourceName      dynq.FieldName
+	FileID          dynq.FieldName
+	FileName        dynq.FieldName
+	MimeType        dynq.FieldName
+	FileSize        dynq.FieldName
 	Status          dynq.FieldName
 	ValidFrom       dynq.FieldName
 	ValidTo         dynq.FieldName
@@ -299,6 +355,10 @@ var KbDocumentField = struct {
 	Title:           "title",
 	Content:         "content",
 	SourceName:      "sourceName",
+	FileID:          "fileId",
+	FileName:        "fileName",
+	MimeType:        "mimeType",
+	FileSize:        "fileSize",
 	Status:          "status",
 	ValidFrom:       "validFrom",
 	ValidTo:         "validTo",
@@ -339,6 +399,21 @@ type ListKbDocumentParams struct {
 	SourceNameContains string
 	SourceNamePrefix   string
 	SourceNameSuffix   string
+	FileID             *int64
+	FileIDNeq          *int64
+	FileName           *string
+	FileNameNeq        *string
+	FileNameContains   string
+	FileNamePrefix     string
+	FileNameSuffix     string
+	MimeType           *string
+	MimeTypeNeq        *string
+	FileSize           *int64
+	FileSizeNeq        *int64
+	FileSizeGt         *int64
+	FileSizeGte        *int64
+	FileSizeLt         *int64
+	FileSizeLte        *int64
 	Status             *int64
 	StatusNeq          *int64
 	StatusIn           []int64
@@ -663,6 +738,170 @@ func ParseKbDocumentQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListKbDocume
 					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "sourceName")
 				}
 				out.SourceNameSuffix = v
+			}
+		case "fileId":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("fileId.eq", i, "fileId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileId")
+				}
+				out.FileID = &v
+			case dynq.OpNeq:
+				if err := slots.Take("fileId.neq", i, "fileId"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileId")
+				}
+				out.FileIDNeq = &v
+			}
+		case "fileName":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("fileName.eq", i, "fileName"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileName")
+				}
+				out.FileName = &v
+			case dynq.OpNeq:
+				if err := slots.Take("fileName.neq", i, "fileName"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileName")
+				}
+				out.FileNameNeq = &v
+			case dynq.OpContains:
+				if err := slots.Take("fileName.contains", i, "fileName"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileName")
+				}
+				out.FileNameContains = v
+			case dynq.OpPrefix:
+				if err := slots.Take("fileName.prefix", i, "fileName"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileName")
+				}
+				out.FileNamePrefix = v
+			case dynq.OpSuffix:
+				if err := slots.Take("fileName.suffix", i, "fileName"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileName")
+				}
+				out.FileNameSuffix = v
+			}
+		case "mimeType":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("mimeType.eq", i, "mimeType"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "mimeType")
+				}
+				out.MimeType = &v
+			case dynq.OpNeq:
+				if err := slots.Take("mimeType.neq", i, "mimeType"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsString(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "mimeType")
+				}
+				out.MimeTypeNeq = &v
+			}
+		case "fileSize":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("fileSize.eq", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSize = &v
+			case dynq.OpNeq:
+				if err := slots.Take("fileSize.neq", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeNeq = &v
+			case dynq.OpGt:
+				if err := slots.Take("fileSize.gt", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeGt = &v
+			case dynq.OpGte:
+				if err := slots.Take("fileSize.gte", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeGte = &v
+			case dynq.OpLt:
+				if err := slots.Take("fileSize.lt", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeLt = &v
+			case dynq.OpLte:
+				if err := slots.Take("fileSize.lte", i, "fileSize"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeLte = &v
+			case dynq.OpBetween:
+				if err := slots.Take("fileSize.gte", i, "fileSize"); err != nil {
+					return out, err
+				}
+				if err := slots.Take("fileSize.lte", i, "fileSize"); err != nil {
+					return out, err
+				}
+				lv, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				rv, cerr := dynq.AsInt64(c.RightValue)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "fileSize")
+				}
+				out.FileSizeGte = &lv
+				out.FileSizeLte = &rv
 			}
 		case "status":
 			switch op {
@@ -1298,6 +1537,18 @@ func validateKbDocumentParams(params ListKbDocumentParams, cfg *dynq.QueryConfig
 	if cfg.WhereDisabled("sourceName") && (params.SourceName != nil || params.SourceNameNeq != nil || params.SourceNameContains != "" || params.SourceNamePrefix != "" || params.SourceNameSuffix != "") {
 		return dynq.NewErr(dynq.KindWhere, "sourceName", "field disabled in this context", -1)
 	}
+	if cfg.WhereDisabled("fileId") && (params.FileID != nil || params.FileIDNeq != nil) {
+		return dynq.NewErr(dynq.KindWhere, "fileId", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("fileName") && (params.FileName != nil || params.FileNameNeq != nil || params.FileNameContains != "" || params.FileNamePrefix != "" || params.FileNameSuffix != "") {
+		return dynq.NewErr(dynq.KindWhere, "fileName", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("mimeType") && (params.MimeType != nil || params.MimeTypeNeq != nil) {
+		return dynq.NewErr(dynq.KindWhere, "mimeType", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("fileSize") && (params.FileSize != nil || params.FileSizeNeq != nil || params.FileSizeGt != nil || params.FileSizeGte != nil || params.FileSizeLt != nil || params.FileSizeLte != nil) {
+		return dynq.NewErr(dynq.KindWhere, "fileSize", "field disabled in this context", -1)
+	}
 	if cfg.WhereDisabled("status") && (params.Status != nil || params.StatusNeq != nil || params.StatusIn != nil || params.StatusNotIn != nil) {
 		return dynq.NewErr(dynq.KindWhere, "status", "field disabled in this context", -1)
 	}
@@ -1403,6 +1654,51 @@ func buildKbDocumentWhere(params ListKbDocumentParams) []sq.Sqlizer {
 	}
 	if params.SourceNameSuffix != "" {
 		conds = append(conds, sq.Expr("source_name ILIKE ? ESCAPE '\\'", dynq.SuffixPattern(params.SourceNameSuffix)))
+	}
+	if params.FileID != nil {
+		conds = append(conds, sq.Eq{"file_id": *params.FileID})
+	}
+	if params.FileIDNeq != nil {
+		conds = append(conds, sq.NotEq{"file_id": *params.FileIDNeq})
+	}
+	if params.FileName != nil {
+		conds = append(conds, sq.Eq{"file_name": *params.FileName})
+	}
+	if params.FileNameNeq != nil {
+		conds = append(conds, sq.NotEq{"file_name": *params.FileNameNeq})
+	}
+	if params.FileNameContains != "" {
+		conds = append(conds, sq.Expr("file_name ILIKE ? ESCAPE '\\'", dynq.ContainsPattern(params.FileNameContains)))
+	}
+	if params.FileNamePrefix != "" {
+		conds = append(conds, sq.Expr("file_name ILIKE ? ESCAPE '\\'", dynq.PrefixPattern(params.FileNamePrefix)))
+	}
+	if params.FileNameSuffix != "" {
+		conds = append(conds, sq.Expr("file_name ILIKE ? ESCAPE '\\'", dynq.SuffixPattern(params.FileNameSuffix)))
+	}
+	if params.MimeType != nil {
+		conds = append(conds, sq.Eq{"mime_type": *params.MimeType})
+	}
+	if params.MimeTypeNeq != nil {
+		conds = append(conds, sq.NotEq{"mime_type": *params.MimeTypeNeq})
+	}
+	if params.FileSize != nil {
+		conds = append(conds, sq.Eq{"file_size": *params.FileSize})
+	}
+	if params.FileSizeNeq != nil {
+		conds = append(conds, sq.NotEq{"file_size": *params.FileSizeNeq})
+	}
+	if params.FileSizeGt != nil {
+		conds = append(conds, sq.Gt{"file_size": *params.FileSizeGt})
+	}
+	if params.FileSizeGte != nil {
+		conds = append(conds, sq.GtOrEq{"file_size": *params.FileSizeGte})
+	}
+	if params.FileSizeLt != nil {
+		conds = append(conds, sq.Lt{"file_size": *params.FileSizeLt})
+	}
+	if params.FileSizeLte != nil {
+		conds = append(conds, sq.LtOrEq{"file_size": *params.FileSizeLte})
 	}
 	if params.Status != nil {
 		conds = append(conds, sq.Eq{"status": *params.Status})
@@ -1931,7 +2227,7 @@ func UpdateKbDocumentReturning(ctx context.Context, db DBTX, opts ...KbDocumentU
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
+	b = b.Suffix("RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return nil, err
@@ -1988,7 +2284,7 @@ func UpdateKbDocumentReturningByPk(ctx context.Context, db DBTX, pk int64, opts 
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
+	b = b.Suffix("RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return KbDocument{}, err

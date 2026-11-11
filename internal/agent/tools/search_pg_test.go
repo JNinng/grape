@@ -127,7 +127,7 @@ func searchNewFixture(t *testing.T) *searchFixture {
 	repo := pg_sqlc.NewKnowledgeRepo(data)
 	libraryA := searchCreateLibrary(t, repo, searchTenantA, "search-a")
 	libraryB := searchCreateLibrary(t, repo, searchTenantB, "search-b")
-	knowledgeUC := biz.NewKnowledgeUsecase(repo, nil, store, nil)
+	knowledgeUC := biz.NewKnowledgeUsecase(repo, nil, store, nil, nil, nil, nil)
 	searchUC, err := biz.NewKnowledgeSearchUsecase(store, embedder, keywordSpaceResolver{}, knowledgeUC)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)

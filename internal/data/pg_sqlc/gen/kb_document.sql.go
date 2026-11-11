@@ -28,7 +28,7 @@ func (q *Queries) CountKbDocumentsByLibraryList(ctx context.Context, libraryID i
 
 const getKbDocumentByID = `-- name: GetKbDocumentByID :one
 
-SELECT id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
+SELECT id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
 WHERE id = $1
   AND deleted_at IS NULL
 `
@@ -49,6 +49,10 @@ func (q *Queries) GetKbDocumentByID(ctx context.Context, id int64) (KbDocument, 
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -66,14 +70,17 @@ func (q *Queries) GetKbDocumentByID(ctx context.Context, id int64) (KbDocument, 
 
 const insertKbDocument = `-- name: InsertKbDocument :one
 INSERT INTO public.kb_document (id, tenant_id, library_id, kind, title, content, source_name,
-                                content_hash, status, valid_from, valid_to,
+                                content_hash, file_id, file_name, mime_type, file_size,
+                                status, valid_from, valid_to,
                                 indexed_at, indexed_embedder, created_by, updated_by)
 VALUES ($1, current_setting('app.tenant_id'), $2, $3,
         $4, $5, $6,
-        $7, $8, $9, $10,
-        $11, $12,
-        $13, $14)
-RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+        $7, $8, $9,
+        $10, $11::bigint,
+        $12, $13, $14,
+        $15, $16,
+        $17, $18)
+RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type InsertKbDocumentParams struct {
@@ -84,6 +91,10 @@ type InsertKbDocumentParams struct {
 	Content         *string          `db:"content" json:"content"`
 	SourceName      *string          `db:"source_name" json:"source_name"`
 	ContentHash     *string          `db:"content_hash" json:"content_hash"`
+	FileID          *int64           `db:"file_id" json:"file_id"`
+	FileName        *string          `db:"file_name" json:"file_name"`
+	MimeType        *string          `db:"mime_type" json:"mime_type"`
+	FileSize        *int64           `db:"file_size" json:"file_size"`
 	Status          int16            `db:"status" json:"status"`
 	ValidFrom       pgtype.Timestamp `db:"valid_from" json:"valid_from"`
 	ValidTo         pgtype.Timestamp `db:"valid_to" json:"valid_to"`
@@ -93,7 +104,9 @@ type InsertKbDocumentParams struct {
 	UpdatedBy       int64            `db:"updated_by" json:"updated_by"`
 }
 
-// 插入知识条目；租户取会话 app.tenant_id
+// 插入知识条目；租户取会话 app.tenant_id。file_id / file_name /
+// mime_type / file_size 仅 kind=file 非空（原件事实，创建后不变，重解析
+// 不改写——变更的只有解析产物 content 与 content_hash）
 func (q *Queries) InsertKbDocument(ctx context.Context, arg InsertKbDocumentParams) (KbDocument, error) {
 	row := q.db.QueryRow(ctx, insertKbDocument,
 		arg.ID,
@@ -103,6 +116,10 @@ func (q *Queries) InsertKbDocument(ctx context.Context, arg InsertKbDocumentPara
 		arg.Content,
 		arg.SourceName,
 		arg.ContentHash,
+		arg.FileID,
+		arg.FileName,
+		arg.MimeType,
+		arg.FileSize,
 		arg.Status,
 		arg.ValidFrom,
 		arg.ValidTo,
@@ -120,6 +137,10 @@ func (q *Queries) InsertKbDocument(ctx context.Context, arg InsertKbDocumentPara
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -136,7 +157,7 @@ func (q *Queries) InsertKbDocument(ctx context.Context, arg InsertKbDocumentPara
 }
 
 const listKbDocumentsByLibrary = `-- name: ListKbDocumentsByLibrary :many
-SELECT id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
+SELECT id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
 WHERE library_id = $1
   AND deleted_at IS NULL
 ORDER BY updated_at DESC, id DESC
@@ -168,6 +189,10 @@ func (q *Queries) ListKbDocumentsByLibrary(ctx context.Context, arg ListKbDocume
 			&i.Content,
 			&i.SourceName,
 			&i.ContentHash,
+			&i.FileID,
+			&i.FileName,
+			&i.MimeType,
+			&i.FileSize,
 			&i.Status,
 			&i.ValidFrom,
 			&i.ValidTo,
@@ -191,7 +216,7 @@ func (q *Queries) ListKbDocumentsByLibrary(ctx context.Context, arg ListKbDocume
 }
 
 const lockKbDocumentByID = `-- name: LockKbDocumentByID :one
-SELECT id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
+SELECT id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id FROM public.kb_document
 WHERE id = $1
   AND deleted_at IS NULL
 FOR UPDATE
@@ -209,6 +234,10 @@ func (q *Queries) LockKbDocumentByID(ctx context.Context, id int64) (KbDocument,
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -231,7 +260,7 @@ SET indexed_at       = CURRENT_TIMESTAMP,
     updated_by       = $2
 WHERE id = $3
   AND deleted_at IS NULL
-RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type MarkKbDocumentIndexedParams struct {
@@ -253,6 +282,10 @@ func (q *Queries) MarkKbDocumentIndexed(ctx context.Context, arg MarkKbDocumentI
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -303,7 +336,7 @@ SET title            = $1,
     updated_by       = $10
 WHERE id = $11
   AND deleted_at IS NULL
-RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type UpdateKbDocumentParams struct {
@@ -346,6 +379,10 @@ func (q *Queries) UpdateKbDocument(ctx context.Context, arg UpdateKbDocumentPara
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,
@@ -369,7 +406,7 @@ SET status     = $1,
     updated_by = $4
 WHERE id = $5
   AND deleted_at IS NULL
-RETURNING id, library_id, kind, title, content, source_name, content_hash, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
+RETURNING id, library_id, kind, title, content, source_name, content_hash, file_id, file_name, mime_type, file_size, status, valid_from, valid_to, indexed_at, indexed_embedder, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id
 `
 
 type UpdateKbDocumentStatusParams struct {
@@ -398,6 +435,10 @@ func (q *Queries) UpdateKbDocumentStatus(ctx context.Context, arg UpdateKbDocume
 		&i.Content,
 		&i.SourceName,
 		&i.ContentHash,
+		&i.FileID,
+		&i.FileName,
+		&i.MimeType,
+		&i.FileSize,
 		&i.Status,
 		&i.ValidFrom,
 		&i.ValidTo,

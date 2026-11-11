@@ -172,6 +172,75 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 
   新版本二进制的知识库读面（单行读、动态 List、检索可见库集合）依赖该
   三元组，历史库须先升级再部署。`@scope` 只影响生成代码，不改 DDL。
+- **kb_document 文件元数据列与 kb_file 介质表（91_knowledge.sql / rls.sql）**：
+  历史库以表 owner 手工执行（与 91_knowledge.sql 逐字一致）。kb_document
+  追加四列与约束（存量行 kind 只有 text/markdown，天然满足新约束，无数据
+  迁移）；kb_file 为裸创建，重复执行报错；RLS 策略与 ENABLE/FORCE 同批补齐
+  （CREATE POLICY 亦为裸创建）：
+
+  ```sql
+  ALTER TABLE public.kb_document ADD COLUMN file_id int8 NULL;
+  ALTER TABLE public.kb_document ADD COLUMN file_name varchar(256) NULL;
+  ALTER TABLE public.kb_document ADD COLUMN mime_type varchar(128) NULL;
+  ALTER TABLE public.kb_document ADD COLUMN file_size int8 NULL;
+  ALTER TABLE public.kb_document
+      ADD CONSTRAINT kb_document_file_chk CHECK (kind <> 'file' OR (file_name IS NOT NULL AND mime_type IS NOT NULL));
+  COMMENT ON COLUMN public.kb_document.file_id IS '原件介质行 ID（kb_file，本租户内由用例校验；仅 kind=file 非空） [@dynamic: exact]';
+  COMMENT ON COLUMN public.kb_document.file_name IS '原件文件名（保留上传原名，与嗅探 MIME 不一致时以 MIME 为准；仅 kind=file 非空） [@dynamic: fuzzy, exact]';
+  COMMENT ON COLUMN public.kb_document.mime_type IS '原件 MIME（内容嗅探结果，不信任客户端声明；仅 kind=file 非空） [@dynamic: exact]';
+  COMMENT ON COLUMN public.kb_document.file_size IS '原件字节数（≤ 20MB，与 oss_object 上限一致；仅 kind=file 非空） [@dynamic: exact, range]';
+
+  CREATE TABLE public.kb_file
+  (
+      id          int8                                                   NOT NULL,
+      object_key  text                                                   NOT NULL,
+      etag        varchar(64)                                            NOT NULL,
+      sha256      varchar(64)                                            NOT NULL,
+      mime_type   varchar(128)                                           NOT NULL,
+      file_size   int8                                                   NOT NULL,
+      created_by  int8                                                   NOT NULL,
+      created_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+      updated_by  int8                                                   NOT NULL,
+      updated_at  timestamp(0) DEFAULT CURRENT_TIMESTAMP                 NOT NULL,
+      deleted_at  timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
+      tenant_id   varchar(16)                                            NOT NULL,
+      CONSTRAINT kb_file_pkey PRIMARY KEY (id)
+  );
+  COMMENT ON TABLE public.kb_file IS '文件介质表：kind=file 知识条目的原件介质元数据（对象字节落内嵌 OSS，object_key 指向），租户表（RLS 在 rls.sql）；留原件是为了解析器升级后能重解析';
+  COMMENT ON COLUMN public.kb_file.id IS '介质行 ID（kb_document.file_id 引用）';
+  COMMENT ON COLUMN public.kb_file.object_key IS '对象键（内嵌 OSS 的 S3 key，形如 kb-file/<发号 ID>，URL 安全 ASCII；表只存元数据，将来切真实 OSS 语义不变）';
+  COMMENT ON COLUMN public.kb_file.etag IS '对象内容 MD5 十六进制（S3 ETag 语义，写入 OSS 时的返回值）';
+  COMMENT ON COLUMN public.kb_file.sha256 IS '原件内容 sha256 十六进制（介质行的内容身份，与 etag 的 MD5 互为冗余校验）';
+  COMMENT ON COLUMN public.kb_file.mime_type IS '原件 MIME（内容嗅探结果，不信任客户端声明）';
+  COMMENT ON COLUMN public.kb_file.file_size IS '原件字节数（≤ 20MB，与 oss_object 上限一致，由应用层限流保证）';
+  COMMENT ON COLUMN public.kb_file.created_by IS '创建人（上传操作者）';
+  COMMENT ON COLUMN public.kb_file.created_at IS '创建时间（上传时间）';
+  COMMENT ON COLUMN public.kb_file.updated_by IS '更新人';
+  COMMENT ON COLUMN public.kb_file.updated_at IS '更新时间';
+  COMMENT ON COLUMN public.kb_file.deleted_at IS '删除时间（宿主条目删除时同批软删，OSS 对象尽力清理） [@internal]';
+  COMMENT ON COLUMN public.kb_file.tenant_id IS '租户 ID [@internal]';
+
+  CREATE POLICY kb_file_tenant_isolation
+      ON public.kb_file
+      USING (tenant_id = current_setting('app.tenant_id', true))
+      WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+  ALTER TABLE public.kb_file
+      ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE public.kb_file
+      FORCE ROW LEVEL SECURITY;
+  ```
+
+  另需刷新 kb_document 的 kind / content 列注释（与本批 91_knowledge.sql
+  逐字一致，此前升级写入的是「摄取入口暂未开放」的旧口径）：
+
+  ```sql
+  COMMENT ON COLUMN public.kb_document.kind IS '条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/ file（文件解析条目，原件经解析产 markdown 后走标题切分） [@dynamic: exact]';
+  COMMENT ON COLUMN public.kb_document.content IS '条目正文（text / markdown 必填非空白；file 解析成功前可空，解析产物入库后为 markdown；向量化来源）';
+  ```
+
+  新版本二进制的文件摄取（kind=file 创建 / 重解析 / 删除清理）依赖上述对象，历史库须先升级再部署；未升级时文件上传返回
+  500（缺列），text / markdown 摄取不受影响。内嵌 OSS（schema/93_oss.sql）
+  是文件摄取的前置依赖，见下文该文件的升级条目。
 - **98_model_write.sql**：历史库追加对象，以部署超级用户执行；只含
   `CREATE OR REPLACE FUNCTION`，可重复。平台模型写端点（`sys:model:platform:*`）
   与模型管理页菜单（279–286）依赖 `050_sys_menu.sql` / `060_sys_role_menu.sql`

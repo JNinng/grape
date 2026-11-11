@@ -290,12 +290,12 @@ type Document struct {
 	// 所属知识库 ID。创建后不可变。
 	LibraryId int64 `protobuf:"varint,2,opt,name=library_id,json=libraryId,proto3" json:"library_id,omitempty"`
 	// 条目类型：text（纯文本，区分串切分）/ markdown（Markdown，标题切分）/
-	// file（文件解析条目，摄取入口暂未开放）。创建可省略（缺省 text）；创建
-	// 后不可变。
+	// file（文件解析条目，经上传端点摄取，解析产物走标题切分）。创建可省略
+	// （缺省 text）；创建后不可变。
 	Kind string `protobuf:"bytes,3,opt,name=kind,proto3" json:"kind,omitempty"`
 	// 条目标题。
 	Title string `protobuf:"bytes,4,opt,name=title,proto3" json:"title,omitempty"`
-	// 条目正文（text / markdown 必填非空白；列表响应中省略）。
+	// 条目正文（text / markdown 必填非空白；file 解析成功前可空；列表响应中省略）。
 	Content *string `protobuf:"bytes,5,opt,name=content,proto3,oneof" json:"content,omitempty"`
 	// 来源名，缺省取标题。
 	SourceName *string `protobuf:"bytes,6,opt,name=source_name,json=sourceName,proto3,oneof" json:"source_name,omitempty"`
@@ -314,8 +314,15 @@ type Document struct {
 	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	DeletedAt       *timestamppb.Timestamp `protobuf:"bytes,16,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// 原件文件名（保留上传原名，与嗅探 MIME 不一致时以 MIME 为准）。
+	// 仅 kind=file 非空，只读。
+	FileName *string `protobuf:"bytes,17,opt,name=file_name,json=fileName,proto3,oneof" json:"file_name,omitempty"`
+	// 原件 MIME（内容嗅探结果，不信任客户端声明）。仅 kind=file 非空，只读。
+	MimeType *string `protobuf:"bytes,18,opt,name=mime_type,json=mimeType,proto3,oneof" json:"mime_type,omitempty"`
+	// 原件字节数。仅 kind=file 非空，只读。
+	FileSize      *int64 `protobuf:"varint,19,opt,name=file_size,json=fileSize,proto3,oneof" json:"file_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Document) Reset() {
@@ -458,6 +465,27 @@ func (x *Document) GetDeletedAt() *timestamppb.Timestamp {
 		return x.DeletedAt
 	}
 	return nil
+}
+
+func (x *Document) GetFileName() string {
+	if x != nil && x.FileName != nil {
+		return *x.FileName
+	}
+	return ""
+}
+
+func (x *Document) GetMimeType() string {
+	if x != nil && x.MimeType != nil {
+		return *x.MimeType
+	}
+	return ""
+}
+
+func (x *Document) GetFileSize() int64 {
+	if x != nil && x.FileSize != nil {
+		return *x.FileSize
+	}
+	return 0
 }
 
 // DocumentSet 是条目列表的分页集合。
@@ -1699,7 +1727,7 @@ const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\vnext_cursor\x18\x04 \x01(\tR\n" +
 	"nextCursor\x12\x12\n" +
 	"\x04page\x18\x05 \x01(\x05R\x04pageB\b\n" +
-	"\x06_total\"\xcd\x05\n" +
+	"\x06_total\"\xdd\x06\n" +
 	"\bDocument\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1d\n" +
 	"\n" +
@@ -1726,12 +1754,21 @@ const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x129\n" +
 	"\n" +
-	"deleted_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAtB\n" +
+	"deleted_at\x18\x10 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\x12 \n" +
+	"\tfile_name\x18\x11 \x01(\tH\x04R\bfileName\x88\x01\x01\x12 \n" +
+	"\tmime_type\x18\x12 \x01(\tH\x05R\bmimeType\x88\x01\x01\x12 \n" +
+	"\tfile_size\x18\x13 \x01(\x03H\x06R\bfileSize\x88\x01\x01B\n" +
 	"\n" +
 	"\b_contentB\x0e\n" +
 	"\f_source_nameB\t\n" +
 	"\a_statusB\x13\n" +
-	"\x11_indexed_embedder\"\xb0\x01\n" +
+	"\x11_indexed_embedderB\f\n" +
+	"\n" +
+	"_file_nameB\f\n" +
+	"\n" +
+	"_mime_typeB\f\n" +
+	"\n" +
+	"_file_size\"\xb0\x01\n" +
 	"\vDocumentSet\x12,\n" +
 	"\x05items\x18\x01 \x03(\v2\x16.knowledge.v1.DocumentR\x05items\x12\x19\n" +
 	"\x05total\x18\x02 \x01(\x03H\x00R\x05total\x88\x01\x01\x12\x19\n" +

@@ -62,6 +62,7 @@ sql:
       - "queries/sys_tenant.sql"
       - "queries/kb_library.sql"
       - "queries/kb_document.sql"
+      - "queries/kb_file.sql"
       - "queries/sys_model.sql"
       - "queries/oss_object.sql"
     gen:
@@ -118,6 +119,7 @@ sql:
       - "queries/sys_tenant.sql"
       - "queries/kb_library.sql"
       - "queries/kb_document.sql"
+      - "queries/kb_file.sql"
       - "queries/sys_model.sql"
     codegen:
       - plugin: "sqlc_gen_dynamic"

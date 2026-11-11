@@ -73,7 +73,11 @@
 | [objectstore.go](objectstore.go) | 对象存储契约（Put/Get/Delete/PresignGet/PresignPut，S3 语义）与端点解析契约：端点事实在 sys_config 的 oss.* 键，AK/SK 明文口径见 permission.md。 |
 | [document.go](document.go) | 摄取管线：按 kind 分派切分（text 区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分；markdown/file 标题切分，节超长回退块级装箱与固定窗口）、heading_path 元数据、逐块 embed（库级上下文检索开关开启时先为每块生成上下文前缀，文档摘要一次、前缀只拼进 embed 输入，失败降级）、按来源覆盖写入；重摄即迁移路径。 |
 | [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件与批量更新、枚举读面 `List`/`GetMetadata`）。 |
-| [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验、切分参数（大小/重叠/区分串/上下文检索开关）与嵌入模型选择、chunk metadata 同步、删除清理与重建索引、条目实际分片枚举（按分片序，取自向量存储）、可见库集合解析（`VisibleLibraries`，检索与列库工具共用；条目读面随所属库可见性收窄）。 |
+| [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验（按 kind 分支——file 条目 content 可空、原件事实必填）、切分参数（大小/重叠/区分串/上下文检索开关）与嵌入模型选择、chunk metadata 同步、删除清理（file 条目随宿主软删介质行并尽力删 OSS 对象）与重建索引（file 分支重取原件重解析）、条目实际分片枚举（按分片序，取自向量存储）、可见库集合解析（`VisibleLibraries`，检索与列库工具共用；条目读面随所属库可见性收窄）。 |
+| [knowledge_file.go](knowledge_file.go) | 文件摄取用例（kind=file）：上传（识别 → 介质行 → OSS → 目录行 → 解析 → 摄取，介质成立前失败无副作用、之后失败留痕可重解析）、重解析（reparseDocument，解析产物回写目录行后按路由档位切分摄取）、失败路径的介质回收（cleanupMedia）。 |
+| [fileparser.go](fileparser.go) | FileParser 契约与 MIME 路由档位（direct / native / external / unsupported）：嗅探 MIME 是唯一路由依据，扩展名只参与快速拒绝与纯文本的 markdown 判定；错误语义（类型不支持 / 乱码 / 过短）。 |
+| [fileidentify.go](fileidentify.go) | 文件识别三层校验：扩展名白名单快速拒绝 → 内容嗅探（mimetype）→ 完整性限流（20MB + zip 炸弹预检：entry 数 512 / 解压总量 96MB）；嗅探回落 octet-stream 时按扩展名放行，扩展名与嗅探不一致记风险日志。 |
+| [filecontent.go](filecontent.go) | 内容识别处理（解析产物入库前、切分前）：编码判定（BOM / UTF-8 严格性 / charset 判定 / GB18030 回落）→ 乱码占比阈值拒绝 → 换行规范化与规则级清洗（围栏逐字保留、孤立数字行与重复行剔除）→ 标题层级推断（第X章 / 一、 / （一） / 1.1 编号模式 + 孤行特征，跳级钳制）——heading_path 的产出点。 |
 | [knowledge_search.go](knowledge_search.go) | 知识检索用例（前端与 agent 的统一入口）：入参校验与 top_k 钳制、可见库集合现场解析（`library_id` 不可见/不存在统一 `ErrLibraryNotFound`）、默认空间向量化、固定检索条件（状态/有效期 + `kb_id IN` 可见库集合）、来源缺省 console 留痕声明（调用方已声明时保留）。 |
 | [model.go](model.go) | 文本模型目录与密钥加解密契约；嵌入空间形状与模型类别/维度常量。 |
 | [model_manage.go](model_manage.go) | 模型目录用例：租户/平台行 CRUD、密钥只写不读、embedding 维度 1024 与 model_key 白名单校验。 |
@@ -94,3 +98,7 @@
   中途失败/上下文前缀生成与降级（开关关闭零调用、失败降级无前缀、前缀只进 embed
   输入）、条目 kind 校验矩阵（创建接受/拒绝、更新不可变）、知识检索的
   校验/钳制/固定条件/设施缺失透传。
+- 文件摄取：识别三层校验（改扩展名、zip 炸弹、超限、空文件）、内容识别
+  （编码判定与 GB18030 回落、乱码占比拒绝、围栏保留与清洗、标题推断与
+  跳级钳制）、上传用例的失败语义（识别拒绝无副作用、解析失败留痕目录行
+  保留）、重解析的取回-解析-切分链路与删除的介质清理。

@@ -195,3 +195,18 @@ oss:
   # 配置不齐在装配期拒绝启动（fail-closed）。启用前须先部署
   # schema/93_oss.sql。
   enabled: false
+
+doc_parse:
+  # 外部文档解析服务（独立进程 + HTTP，承担 pdf / pptx / 图片 OCR 等外部
+  # 档类型的解析，docling 或 MinerU 风格——选型以 OmniDocBench 为准，
+  # 中文场景 MinerU / PP-StructureV3 通常更强）。解析是两档分工：Go 内档
+  # （xlsx / docx / html，零外部设施）不经本段；外部档全部经本服务解析。
+  # endpoint 留空 = 未配置：外部档类型一律按 FILE_TYPE_UNSUPPORTED 明确
+  # 拒绝，Go 内档类型不受影响。接口口径：POST {endpoint}/parse，请求体为
+  # 原始文件字节，X-Grape-Mime / X-Grape-Filename 头携带嗅探事实；成功
+  # 200 且响应体即 markdown 文本，其余状态码按解析失败处理。
+  endpoint: ${DOC_PARSE_ENDPOINT:}
+  # 单次解析调用超时。解析耗时与页数线性相关，本值是单文件上限而非
+  # 单页预算；文件上传端点的解析与向量化共用 http.embedding_request_
+  # timeout 的路由级预算，本值不应超过该预算。
+  timeout: 50s

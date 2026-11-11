@@ -40,7 +40,9 @@ type Bootstrap struct {
 	// 日志落盘配置。
 	Log *Log `protobuf:"bytes,7,opt,name=log,proto3" json:"log,omitempty"`
 	// 内嵌对象存储设施配置（启动期开关）。
-	Oss           *OSS `protobuf:"bytes,8,opt,name=oss,proto3" json:"oss,omitempty"`
+	Oss *OSS `protobuf:"bytes,8,opt,name=oss,proto3" json:"oss,omitempty"`
+	// 外部文档解析服务配置。
+	DocParse      *DocParse `protobuf:"bytes,9,opt,name=doc_parse,json=docParse,proto3" json:"doc_parse,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -131,6 +133,13 @@ func (x *Bootstrap) GetOss() *OSS {
 	return nil
 }
 
+func (x *Bootstrap) GetDocParse() *DocParse {
+	if x != nil {
+		return x.DocParse
+	}
+	return nil
+}
+
 // OSS 是内嵌对象存储设施（gofakes3，数据落 PostgreSQL oss_object 表）的
 // 启动配置。设施是两层分工：本段只承载「要不要启用」这一启动期装配事实；
 // 端点事实（provider / endpoint / bucket / access_key / secret_key /
@@ -188,6 +197,73 @@ func (x *OSS) GetEnabled() bool {
 	return false
 }
 
+// DocParse 是外部文档解析服务（独立进程 + HTTP，承担 pdf / pptx / 图片
+// OCR 等外部档类型的解析，docling 或 MinerU 风格——选型以 OmniDocBench
+// 为准，中文场景 MinerU / PP-StructureV3 通常更强）的配置。文件摄取的
+// 两档解析分工：Go 内档（xlsx / docx / html，零外部设施）不经本段；
+// 外部档全部经本服务解析。endpoint 为空即「未配置外部解析服务」：外部档
+// 类型一律按 FILE_TYPE_UNSUPPORTED 明确拒绝，Go 内档类型不受影响。
+// 与 OSS 同理放启动 conf：解析链路在装配期按「有无端点」定型，运行期
+// 改配置需重启才生效。
+type DocParse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 外部解析服务端点根地址（如 http://127.0.0.1:8501），解析请求落在其
+	// /parse 路径（POST，请求体为原始文件字节，X-Grape-Mime / X-Grape-Filename
+	// 头携带嗅探事实；成功 200 且响应体即 markdown 文本，其余状态码按解析
+	// 失败处理）。空 = 未配置：外部档类型拒绝、Go 内档类型不受影响。
+	Endpoint string `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	// 单次解析调用超时；未设置取 120s。解析耗时与页数线性相关，本值是
+	// 单文件上限而非单页预算。文件上传端点的解析与向量化共用
+	// http.embedding_request_timeout 的路由级预算，本值不应超过该预算。
+	Timeout       *durationpb.Duration `protobuf:"bytes,2,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocParse) Reset() {
+	*x = DocParse{}
+	mi := &file_conf_conf_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocParse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocParse) ProtoMessage() {}
+
+func (x *DocParse) ProtoReflect() protoreflect.Message {
+	mi := &file_conf_conf_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocParse.ProtoReflect.Descriptor instead.
+func (*DocParse) Descriptor() ([]byte, []int) {
+	return file_conf_conf_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *DocParse) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *DocParse) GetTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.Timeout
+	}
+	return nil
+}
+
 // Telemetry 是 OpenTelemetry 遥测配置：SDK 开关与 OTLP 导出目标。
 // 由 internal/telemetry 装配层消费；enabled=false 完全 noop（不构造
 // exporter、不发起任何连接）。采样比例按 trace-id 确定性判定：同一
@@ -216,7 +292,7 @@ type Telemetry struct {
 
 func (x *Telemetry) Reset() {
 	*x = Telemetry{}
-	mi := &file_conf_conf_proto_msgTypes[2]
+	mi := &file_conf_conf_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -228,7 +304,7 @@ func (x *Telemetry) String() string {
 func (*Telemetry) ProtoMessage() {}
 
 func (x *Telemetry) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[2]
+	mi := &file_conf_conf_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -241,7 +317,7 @@ func (x *Telemetry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Telemetry.ProtoReflect.Descriptor instead.
 func (*Telemetry) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{2}
+	return file_conf_conf_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Telemetry) GetEnabled() bool {
@@ -310,7 +386,7 @@ type Vector struct {
 
 func (x *Vector) Reset() {
 	*x = Vector{}
-	mi := &file_conf_conf_proto_msgTypes[3]
+	mi := &file_conf_conf_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -322,7 +398,7 @@ func (x *Vector) String() string {
 func (*Vector) ProtoMessage() {}
 
 func (x *Vector) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[3]
+	mi := &file_conf_conf_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -335,7 +411,7 @@ func (x *Vector) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Vector.ProtoReflect.Descriptor instead.
 func (*Vector) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{3}
+	return file_conf_conf_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Vector) GetEnabled() bool {
@@ -384,7 +460,7 @@ type Agent struct {
 
 func (x *Agent) Reset() {
 	*x = Agent{}
-	mi := &file_conf_conf_proto_msgTypes[4]
+	mi := &file_conf_conf_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -396,7 +472,7 @@ func (x *Agent) String() string {
 func (*Agent) ProtoMessage() {}
 
 func (x *Agent) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[4]
+	mi := &file_conf_conf_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -409,7 +485,7 @@ func (x *Agent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent.ProtoReflect.Descriptor instead.
 func (*Agent) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Agent) GetAppName() string {
@@ -465,7 +541,7 @@ type Auth struct {
 
 func (x *Auth) Reset() {
 	*x = Auth{}
-	mi := &file_conf_conf_proto_msgTypes[5]
+	mi := &file_conf_conf_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -477,7 +553,7 @@ func (x *Auth) String() string {
 func (*Auth) ProtoMessage() {}
 
 func (x *Auth) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[5]
+	mi := &file_conf_conf_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -490,7 +566,7 @@ func (x *Auth) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Auth.ProtoReflect.Descriptor instead.
 func (*Auth) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{5}
+	return file_conf_conf_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Auth) GetDefaultTenantId() string {
@@ -513,7 +589,7 @@ type Server struct {
 
 func (x *Server) Reset() {
 	*x = Server{}
-	mi := &file_conf_conf_proto_msgTypes[6]
+	mi := &file_conf_conf_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -525,7 +601,7 @@ func (x *Server) String() string {
 func (*Server) ProtoMessage() {}
 
 func (x *Server) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[6]
+	mi := &file_conf_conf_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -538,7 +614,7 @@ func (x *Server) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server.ProtoReflect.Descriptor instead.
 func (*Server) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{6}
+	return file_conf_conf_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Server) GetHttp() *Server_HTTP {
@@ -572,7 +648,7 @@ type Data struct {
 
 func (x *Data) Reset() {
 	*x = Data{}
-	mi := &file_conf_conf_proto_msgTypes[7]
+	mi := &file_conf_conf_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -584,7 +660,7 @@ func (x *Data) String() string {
 func (*Data) ProtoMessage() {}
 
 func (x *Data) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[7]
+	mi := &file_conf_conf_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -597,7 +673,7 @@ func (x *Data) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Data.ProtoReflect.Descriptor instead.
 func (*Data) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{7}
+	return file_conf_conf_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Data) GetDatabase() *Data_Database {
@@ -633,7 +709,7 @@ type Log struct {
 
 func (x *Log) Reset() {
 	*x = Log{}
-	mi := &file_conf_conf_proto_msgTypes[8]
+	mi := &file_conf_conf_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -645,7 +721,7 @@ func (x *Log) String() string {
 func (*Log) ProtoMessage() {}
 
 func (x *Log) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[8]
+	mi := &file_conf_conf_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -658,7 +734,7 @@ func (x *Log) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Log.ProtoReflect.Descriptor instead.
 func (*Log) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{8}
+	return file_conf_conf_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Log) GetFile() string {
@@ -730,7 +806,7 @@ type Vector_Embedding struct {
 
 func (x *Vector_Embedding) Reset() {
 	*x = Vector_Embedding{}
-	mi := &file_conf_conf_proto_msgTypes[9]
+	mi := &file_conf_conf_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -742,7 +818,7 @@ func (x *Vector_Embedding) String() string {
 func (*Vector_Embedding) ProtoMessage() {}
 
 func (x *Vector_Embedding) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[9]
+	mi := &file_conf_conf_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -755,7 +831,7 @@ func (x *Vector_Embedding) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Vector_Embedding.ProtoReflect.Descriptor instead.
 func (*Vector_Embedding) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{3, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0}
 }
 
 func (x *Vector_Embedding) GetProvider() string {
@@ -832,7 +908,7 @@ type Agent_LLM struct {
 
 func (x *Agent_LLM) Reset() {
 	*x = Agent_LLM{}
-	mi := &file_conf_conf_proto_msgTypes[10]
+	mi := &file_conf_conf_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -844,7 +920,7 @@ func (x *Agent_LLM) String() string {
 func (*Agent_LLM) ProtoMessage() {}
 
 func (x *Agent_LLM) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[10]
+	mi := &file_conf_conf_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -857,7 +933,7 @@ func (x *Agent_LLM) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_LLM.ProtoReflect.Descriptor instead.
 func (*Agent_LLM) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 0}
 }
 
 func (x *Agent_LLM) GetProvider() string {
@@ -937,7 +1013,7 @@ type Agent_AGUI struct {
 
 func (x *Agent_AGUI) Reset() {
 	*x = Agent_AGUI{}
-	mi := &file_conf_conf_proto_msgTypes[11]
+	mi := &file_conf_conf_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -949,7 +1025,7 @@ func (x *Agent_AGUI) String() string {
 func (*Agent_AGUI) ProtoMessage() {}
 
 func (x *Agent_AGUI) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[11]
+	mi := &file_conf_conf_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -962,7 +1038,7 @@ func (x *Agent_AGUI) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_AGUI.ProtoReflect.Descriptor instead.
 func (*Agent_AGUI) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 1}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 1}
 }
 
 func (x *Agent_AGUI) GetBasePath() string {
@@ -1014,7 +1090,7 @@ type Agent_SessionStorage struct {
 
 func (x *Agent_SessionStorage) Reset() {
 	*x = Agent_SessionStorage{}
-	mi := &file_conf_conf_proto_msgTypes[12]
+	mi := &file_conf_conf_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1026,7 +1102,7 @@ func (x *Agent_SessionStorage) String() string {
 func (*Agent_SessionStorage) ProtoMessage() {}
 
 func (x *Agent_SessionStorage) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[12]
+	mi := &file_conf_conf_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1039,7 +1115,7 @@ func (x *Agent_SessionStorage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_SessionStorage.ProtoReflect.Descriptor instead.
 func (*Agent_SessionStorage) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 2}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 2}
 }
 
 func (x *Agent_SessionStorage) GetSessionTtl() *durationpb.Duration {
@@ -1097,7 +1173,7 @@ type Agent_Compression struct {
 
 func (x *Agent_Compression) Reset() {
 	*x = Agent_Compression{}
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1185,7 @@ func (x *Agent_Compression) String() string {
 func (*Agent_Compression) ProtoMessage() {}
 
 func (x *Agent_Compression) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[13]
+	mi := &file_conf_conf_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1198,7 @@ func (x *Agent_Compression) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_Compression.ProtoReflect.Descriptor instead.
 func (*Agent_Compression) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 3}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 3}
 }
 
 func (x *Agent_Compression) GetEnabled() bool {
@@ -1179,7 +1255,7 @@ type Agent_Summarization struct {
 
 func (x *Agent_Summarization) Reset() {
 	*x = Agent_Summarization{}
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1191,7 +1267,7 @@ func (x *Agent_Summarization) String() string {
 func (*Agent_Summarization) ProtoMessage() {}
 
 func (x *Agent_Summarization) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[14]
+	mi := &file_conf_conf_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1204,7 +1280,7 @@ func (x *Agent_Summarization) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_Summarization.ProtoReflect.Descriptor instead.
 func (*Agent_Summarization) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 4}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 4}
 }
 
 func (x *Agent_Summarization) GetEnabled() bool {
@@ -1232,7 +1308,7 @@ type Agent_LLM_Failover struct {
 
 func (x *Agent_LLM_Failover) Reset() {
 	*x = Agent_LLM_Failover{}
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1244,7 +1320,7 @@ func (x *Agent_LLM_Failover) String() string {
 func (*Agent_LLM_Failover) ProtoMessage() {}
 
 func (x *Agent_LLM_Failover) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[15]
+	mi := &file_conf_conf_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1257,7 +1333,7 @@ func (x *Agent_LLM_Failover) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_LLM_Failover.ProtoReflect.Descriptor instead.
 func (*Agent_LLM_Failover) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 0, 0}
 }
 
 func (x *Agent_LLM_Failover) GetEnabled() bool {
@@ -1295,7 +1371,7 @@ type Agent_LLM_Hedge struct {
 
 func (x *Agent_LLM_Hedge) Reset() {
 	*x = Agent_LLM_Hedge{}
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1307,7 +1383,7 @@ func (x *Agent_LLM_Hedge) String() string {
 func (*Agent_LLM_Hedge) ProtoMessage() {}
 
 func (x *Agent_LLM_Hedge) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[16]
+	mi := &file_conf_conf_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1320,7 +1396,7 @@ func (x *Agent_LLM_Hedge) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_LLM_Hedge.ProtoReflect.Descriptor instead.
 func (*Agent_LLM_Hedge) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0, 1}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 0, 1}
 }
 
 func (x *Agent_LLM_Hedge) GetEnabled() bool {
@@ -1365,7 +1441,7 @@ type Agent_LLM_Logging struct {
 
 func (x *Agent_LLM_Logging) Reset() {
 	*x = Agent_LLM_Logging{}
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1377,7 +1453,7 @@ func (x *Agent_LLM_Logging) String() string {
 func (*Agent_LLM_Logging) ProtoMessage() {}
 
 func (x *Agent_LLM_Logging) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[17]
+	mi := &file_conf_conf_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1390,7 +1466,7 @@ func (x *Agent_LLM_Logging) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_LLM_Logging.ProtoReflect.Descriptor instead.
 func (*Agent_LLM_Logging) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0, 2}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 0, 2}
 }
 
 func (x *Agent_LLM_Logging) GetEnabled() bool {
@@ -1433,7 +1509,7 @@ type Agent_LLM_Failover_Candidate struct {
 
 func (x *Agent_LLM_Failover_Candidate) Reset() {
 	*x = Agent_LLM_Failover_Candidate{}
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1445,7 +1521,7 @@ func (x *Agent_LLM_Failover_Candidate) String() string {
 func (*Agent_LLM_Failover_Candidate) ProtoMessage() {}
 
 func (x *Agent_LLM_Failover_Candidate) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[18]
+	mi := &file_conf_conf_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1458,7 +1534,7 @@ func (x *Agent_LLM_Failover_Candidate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Agent_LLM_Failover_Candidate.ProtoReflect.Descriptor instead.
 func (*Agent_LLM_Failover_Candidate) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{4, 0, 0, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{5, 0, 0, 0}
 }
 
 func (x *Agent_LLM_Failover_Candidate) GetProvider() string {
@@ -1524,7 +1600,7 @@ type Server_HTTP struct {
 
 func (x *Server_HTTP) Reset() {
 	*x = Server_HTTP{}
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1536,7 +1612,7 @@ func (x *Server_HTTP) String() string {
 func (*Server_HTTP) ProtoMessage() {}
 
 func (x *Server_HTTP) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[19]
+	mi := &file_conf_conf_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1549,7 +1625,7 @@ func (x *Server_HTTP) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_HTTP.ProtoReflect.Descriptor instead.
 func (*Server_HTTP) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{6, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{7, 0}
 }
 
 func (x *Server_HTTP) GetNetwork() string {
@@ -1612,7 +1688,7 @@ type Server_CORS struct {
 
 func (x *Server_CORS) Reset() {
 	*x = Server_CORS{}
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1624,7 +1700,7 @@ func (x *Server_CORS) String() string {
 func (*Server_CORS) ProtoMessage() {}
 
 func (x *Server_CORS) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[20]
+	mi := &file_conf_conf_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1637,7 +1713,7 @@ func (x *Server_CORS) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_CORS.ProtoReflect.Descriptor instead.
 func (*Server_CORS) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{6, 1}
+	return file_conf_conf_proto_rawDescGZIP(), []int{7, 1}
 }
 
 func (x *Server_CORS) GetEnabled() bool {
@@ -1676,7 +1752,7 @@ type Server_GRPC struct {
 
 func (x *Server_GRPC) Reset() {
 	*x = Server_GRPC{}
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1688,7 +1764,7 @@ func (x *Server_GRPC) String() string {
 func (*Server_GRPC) ProtoMessage() {}
 
 func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[21]
+	mi := &file_conf_conf_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1701,7 +1777,7 @@ func (x *Server_GRPC) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_GRPC.ProtoReflect.Descriptor instead.
 func (*Server_GRPC) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{6, 2}
+	return file_conf_conf_proto_rawDescGZIP(), []int{7, 2}
 }
 
 func (x *Server_GRPC) GetNetwork() string {
@@ -1737,7 +1813,7 @@ type Server_Trace struct {
 
 func (x *Server_Trace) Reset() {
 	*x = Server_Trace{}
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1749,7 +1825,7 @@ func (x *Server_Trace) String() string {
 func (*Server_Trace) ProtoMessage() {}
 
 func (x *Server_Trace) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[22]
+	mi := &file_conf_conf_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1762,7 +1838,7 @@ func (x *Server_Trace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Server_Trace.ProtoReflect.Descriptor instead.
 func (*Server_Trace) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{6, 3}
+	return file_conf_conf_proto_rawDescGZIP(), []int{7, 3}
 }
 
 func (x *Server_Trace) GetTrustedNetworks() []string {
@@ -1787,7 +1863,7 @@ type Data_Database struct {
 
 func (x *Data_Database) Reset() {
 	*x = Data_Database{}
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1799,7 +1875,7 @@ func (x *Data_Database) String() string {
 func (*Data_Database) ProtoMessage() {}
 
 func (x *Data_Database) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[23]
+	mi := &file_conf_conf_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1812,7 +1888,7 @@ func (x *Data_Database) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Data_Database.ProtoReflect.Descriptor instead.
 func (*Data_Database) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{7, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{8, 0}
 }
 
 func (x *Data_Database) GetMaster() *Data_Database_Slot {
@@ -1842,7 +1918,7 @@ type Data_Database_Slot struct {
 
 func (x *Data_Database_Slot) Reset() {
 	*x = Data_Database_Slot{}
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1854,7 +1930,7 @@ func (x *Data_Database_Slot) String() string {
 func (*Data_Database_Slot) ProtoMessage() {}
 
 func (x *Data_Database_Slot) ProtoReflect() protoreflect.Message {
-	mi := &file_conf_conf_proto_msgTypes[24]
+	mi := &file_conf_conf_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1867,7 +1943,7 @@ func (x *Data_Database_Slot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Data_Database_Slot.ProtoReflect.Descriptor instead.
 func (*Data_Database_Slot) Descriptor() ([]byte, []int) {
-	return file_conf_conf_proto_rawDescGZIP(), []int{7, 0, 0}
+	return file_conf_conf_proto_rawDescGZIP(), []int{8, 0, 0}
 }
 
 func (x *Data_Database_Slot) GetSource() string {
@@ -1889,7 +1965,7 @@ var File_conf_conf_proto protoreflect.FileDescriptor
 const file_conf_conf_proto_rawDesc = "" +
 	"\n" +
 	"\x0fconf/conf.proto\x12\n" +
-	"kratos.api\x1a\x1egoogle/protobuf/duration.proto\"\xd3\x02\n" +
+	"kratos.api\x1a\x1egoogle/protobuf/duration.proto\"\x86\x03\n" +
 	"\tBootstrap\x12*\n" +
 	"\x06server\x18\x01 \x01(\v2\x12.kratos.api.ServerR\x06server\x12$\n" +
 	"\x04data\x18\x02 \x01(\v2\x10.kratos.api.DataR\x04data\x12$\n" +
@@ -1898,9 +1974,13 @@ const file_conf_conf_proto_rawDesc = "" +
 	"\x06vector\x18\x05 \x01(\v2\x12.kratos.api.VectorR\x06vector\x123\n" +
 	"\ttelemetry\x18\x06 \x01(\v2\x15.kratos.api.TelemetryR\ttelemetry\x12!\n" +
 	"\x03log\x18\a \x01(\v2\x0f.kratos.api.LogR\x03log\x12!\n" +
-	"\x03oss\x18\b \x01(\v2\x0f.kratos.api.OSSR\x03oss\"\x1f\n" +
+	"\x03oss\x18\b \x01(\v2\x0f.kratos.api.OSSR\x03oss\x121\n" +
+	"\tdoc_parse\x18\t \x01(\v2\x14.kratos.api.DocParseR\bdocParse\"\x1f\n" +
 	"\x03OSS\x12\x18\n" +
-	"\aenabled\x18\x01 \x01(\bR\aenabled\"\xce\x01\n" +
+	"\aenabled\x18\x01 \x01(\bR\aenabled\"[\n" +
+	"\bDocParse\x12\x1a\n" +
+	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x123\n" +
+	"\atimeout\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\atimeout\"\xce\x01\n" +
 	"\tTelemetry\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1a\n" +
 	"\bendpoint\x18\x02 \x01(\tR\bendpoint\x12\x1a\n" +
@@ -2031,81 +2111,84 @@ func file_conf_conf_proto_rawDescGZIP() []byte {
 	return file_conf_conf_proto_rawDescData
 }
 
-var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_conf_conf_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_conf_conf_proto_goTypes = []any{
 	(*Bootstrap)(nil),                    // 0: kratos.api.Bootstrap
 	(*OSS)(nil),                          // 1: kratos.api.OSS
-	(*Telemetry)(nil),                    // 2: kratos.api.Telemetry
-	(*Vector)(nil),                       // 3: kratos.api.Vector
-	(*Agent)(nil),                        // 4: kratos.api.Agent
-	(*Auth)(nil),                         // 5: kratos.api.Auth
-	(*Server)(nil),                       // 6: kratos.api.Server
-	(*Data)(nil),                         // 7: kratos.api.Data
-	(*Log)(nil),                          // 8: kratos.api.Log
-	(*Vector_Embedding)(nil),             // 9: kratos.api.Vector.Embedding
-	(*Agent_LLM)(nil),                    // 10: kratos.api.Agent.LLM
-	(*Agent_AGUI)(nil),                   // 11: kratos.api.Agent.AGUI
-	(*Agent_SessionStorage)(nil),         // 12: kratos.api.Agent.SessionStorage
-	(*Agent_Compression)(nil),            // 13: kratos.api.Agent.Compression
-	(*Agent_Summarization)(nil),          // 14: kratos.api.Agent.Summarization
-	(*Agent_LLM_Failover)(nil),           // 15: kratos.api.Agent.LLM.Failover
-	(*Agent_LLM_Hedge)(nil),              // 16: kratos.api.Agent.LLM.Hedge
-	(*Agent_LLM_Logging)(nil),            // 17: kratos.api.Agent.LLM.Logging
-	(*Agent_LLM_Failover_Candidate)(nil), // 18: kratos.api.Agent.LLM.Failover.Candidate
-	(*Server_HTTP)(nil),                  // 19: kratos.api.Server.HTTP
-	(*Server_CORS)(nil),                  // 20: kratos.api.Server.CORS
-	(*Server_GRPC)(nil),                  // 21: kratos.api.Server.GRPC
-	(*Server_Trace)(nil),                 // 22: kratos.api.Server.Trace
-	(*Data_Database)(nil),                // 23: kratos.api.Data.Database
-	(*Data_Database_Slot)(nil),           // 24: kratos.api.Data.Database.Slot
-	(*durationpb.Duration)(nil),          // 25: google.protobuf.Duration
+	(*DocParse)(nil),                     // 2: kratos.api.DocParse
+	(*Telemetry)(nil),                    // 3: kratos.api.Telemetry
+	(*Vector)(nil),                       // 4: kratos.api.Vector
+	(*Agent)(nil),                        // 5: kratos.api.Agent
+	(*Auth)(nil),                         // 6: kratos.api.Auth
+	(*Server)(nil),                       // 7: kratos.api.Server
+	(*Data)(nil),                         // 8: kratos.api.Data
+	(*Log)(nil),                          // 9: kratos.api.Log
+	(*Vector_Embedding)(nil),             // 10: kratos.api.Vector.Embedding
+	(*Agent_LLM)(nil),                    // 11: kratos.api.Agent.LLM
+	(*Agent_AGUI)(nil),                   // 12: kratos.api.Agent.AGUI
+	(*Agent_SessionStorage)(nil),         // 13: kratos.api.Agent.SessionStorage
+	(*Agent_Compression)(nil),            // 14: kratos.api.Agent.Compression
+	(*Agent_Summarization)(nil),          // 15: kratos.api.Agent.Summarization
+	(*Agent_LLM_Failover)(nil),           // 16: kratos.api.Agent.LLM.Failover
+	(*Agent_LLM_Hedge)(nil),              // 17: kratos.api.Agent.LLM.Hedge
+	(*Agent_LLM_Logging)(nil),            // 18: kratos.api.Agent.LLM.Logging
+	(*Agent_LLM_Failover_Candidate)(nil), // 19: kratos.api.Agent.LLM.Failover.Candidate
+	(*Server_HTTP)(nil),                  // 20: kratos.api.Server.HTTP
+	(*Server_CORS)(nil),                  // 21: kratos.api.Server.CORS
+	(*Server_GRPC)(nil),                  // 22: kratos.api.Server.GRPC
+	(*Server_Trace)(nil),                 // 23: kratos.api.Server.Trace
+	(*Data_Database)(nil),                // 24: kratos.api.Data.Database
+	(*Data_Database_Slot)(nil),           // 25: kratos.api.Data.Database.Slot
+	(*durationpb.Duration)(nil),          // 26: google.protobuf.Duration
 }
 var file_conf_conf_proto_depIdxs = []int32{
-	6,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
-	7,  // 1: kratos.api.Bootstrap.data:type_name -> kratos.api.Data
-	5,  // 2: kratos.api.Bootstrap.auth:type_name -> kratos.api.Auth
-	4,  // 3: kratos.api.Bootstrap.agent:type_name -> kratos.api.Agent
-	3,  // 4: kratos.api.Bootstrap.vector:type_name -> kratos.api.Vector
-	2,  // 5: kratos.api.Bootstrap.telemetry:type_name -> kratos.api.Telemetry
-	8,  // 6: kratos.api.Bootstrap.log:type_name -> kratos.api.Log
+	7,  // 0: kratos.api.Bootstrap.server:type_name -> kratos.api.Server
+	8,  // 1: kratos.api.Bootstrap.data:type_name -> kratos.api.Data
+	6,  // 2: kratos.api.Bootstrap.auth:type_name -> kratos.api.Auth
+	5,  // 3: kratos.api.Bootstrap.agent:type_name -> kratos.api.Agent
+	4,  // 4: kratos.api.Bootstrap.vector:type_name -> kratos.api.Vector
+	3,  // 5: kratos.api.Bootstrap.telemetry:type_name -> kratos.api.Telemetry
+	9,  // 6: kratos.api.Bootstrap.log:type_name -> kratos.api.Log
 	1,  // 7: kratos.api.Bootstrap.oss:type_name -> kratos.api.OSS
-	9,  // 8: kratos.api.Vector.embedders:type_name -> kratos.api.Vector.Embedding
-	10, // 9: kratos.api.Agent.llm:type_name -> kratos.api.Agent.LLM
-	11, // 10: kratos.api.Agent.agui:type_name -> kratos.api.Agent.AGUI
-	12, // 11: kratos.api.Agent.session_storage:type_name -> kratos.api.Agent.SessionStorage
-	13, // 12: kratos.api.Agent.compression:type_name -> kratos.api.Agent.Compression
-	14, // 13: kratos.api.Agent.summarization:type_name -> kratos.api.Agent.Summarization
-	19, // 14: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
-	21, // 15: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
-	22, // 16: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
-	23, // 17: kratos.api.Data.database:type_name -> kratos.api.Data.Database
-	25, // 18: kratos.api.Vector.Embedding.timeout:type_name -> google.protobuf.Duration
-	25, // 19: kratos.api.Agent.LLM.timeout:type_name -> google.protobuf.Duration
-	15, // 20: kratos.api.Agent.LLM.failover:type_name -> kratos.api.Agent.LLM.Failover
-	16, // 21: kratos.api.Agent.LLM.hedge:type_name -> kratos.api.Agent.LLM.Hedge
-	17, // 22: kratos.api.Agent.LLM.logging:type_name -> kratos.api.Agent.LLM.Logging
-	25, // 23: kratos.api.Agent.AGUI.timeout:type_name -> google.protobuf.Duration
-	25, // 24: kratos.api.Agent.AGUI.heartbeat_interval:type_name -> google.protobuf.Duration
-	25, // 25: kratos.api.Agent.SessionStorage.session_ttl:type_name -> google.protobuf.Duration
-	25, // 26: kratos.api.Agent.SessionStorage.track_event_ttl:type_name -> google.protobuf.Duration
-	25, // 27: kratos.api.Agent.SessionStorage.app_state_ttl:type_name -> google.protobuf.Duration
-	25, // 28: kratos.api.Agent.SessionStorage.user_state_ttl:type_name -> google.protobuf.Duration
-	18, // 29: kratos.api.Agent.LLM.Failover.candidates:type_name -> kratos.api.Agent.LLM.Failover.Candidate
-	25, // 30: kratos.api.Agent.LLM.Hedge.delay:type_name -> google.protobuf.Duration
-	25, // 31: kratos.api.Agent.LLM.Failover.Candidate.timeout:type_name -> google.protobuf.Duration
-	25, // 32: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
-	25, // 33: kratos.api.Server.HTTP.request_timeout:type_name -> google.protobuf.Duration
-	20, // 34: kratos.api.Server.HTTP.cors:type_name -> kratos.api.Server.CORS
-	25, // 35: kratos.api.Server.HTTP.embedding_request_timeout:type_name -> google.protobuf.Duration
-	25, // 36: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
-	25, // 37: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
-	24, // 38: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
-	24, // 39: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
-	40, // [40:40] is the sub-list for method output_type
-	40, // [40:40] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	2,  // 8: kratos.api.Bootstrap.doc_parse:type_name -> kratos.api.DocParse
+	26, // 9: kratos.api.DocParse.timeout:type_name -> google.protobuf.Duration
+	10, // 10: kratos.api.Vector.embedders:type_name -> kratos.api.Vector.Embedding
+	11, // 11: kratos.api.Agent.llm:type_name -> kratos.api.Agent.LLM
+	12, // 12: kratos.api.Agent.agui:type_name -> kratos.api.Agent.AGUI
+	13, // 13: kratos.api.Agent.session_storage:type_name -> kratos.api.Agent.SessionStorage
+	14, // 14: kratos.api.Agent.compression:type_name -> kratos.api.Agent.Compression
+	15, // 15: kratos.api.Agent.summarization:type_name -> kratos.api.Agent.Summarization
+	20, // 16: kratos.api.Server.http:type_name -> kratos.api.Server.HTTP
+	22, // 17: kratos.api.Server.grpc:type_name -> kratos.api.Server.GRPC
+	23, // 18: kratos.api.Server.trace:type_name -> kratos.api.Server.Trace
+	24, // 19: kratos.api.Data.database:type_name -> kratos.api.Data.Database
+	26, // 20: kratos.api.Vector.Embedding.timeout:type_name -> google.protobuf.Duration
+	26, // 21: kratos.api.Agent.LLM.timeout:type_name -> google.protobuf.Duration
+	16, // 22: kratos.api.Agent.LLM.failover:type_name -> kratos.api.Agent.LLM.Failover
+	17, // 23: kratos.api.Agent.LLM.hedge:type_name -> kratos.api.Agent.LLM.Hedge
+	18, // 24: kratos.api.Agent.LLM.logging:type_name -> kratos.api.Agent.LLM.Logging
+	26, // 25: kratos.api.Agent.AGUI.timeout:type_name -> google.protobuf.Duration
+	26, // 26: kratos.api.Agent.AGUI.heartbeat_interval:type_name -> google.protobuf.Duration
+	26, // 27: kratos.api.Agent.SessionStorage.session_ttl:type_name -> google.protobuf.Duration
+	26, // 28: kratos.api.Agent.SessionStorage.track_event_ttl:type_name -> google.protobuf.Duration
+	26, // 29: kratos.api.Agent.SessionStorage.app_state_ttl:type_name -> google.protobuf.Duration
+	26, // 30: kratos.api.Agent.SessionStorage.user_state_ttl:type_name -> google.protobuf.Duration
+	19, // 31: kratos.api.Agent.LLM.Failover.candidates:type_name -> kratos.api.Agent.LLM.Failover.Candidate
+	26, // 32: kratos.api.Agent.LLM.Hedge.delay:type_name -> google.protobuf.Duration
+	26, // 33: kratos.api.Agent.LLM.Failover.Candidate.timeout:type_name -> google.protobuf.Duration
+	26, // 34: kratos.api.Server.HTTP.timeout:type_name -> google.protobuf.Duration
+	26, // 35: kratos.api.Server.HTTP.request_timeout:type_name -> google.protobuf.Duration
+	21, // 36: kratos.api.Server.HTTP.cors:type_name -> kratos.api.Server.CORS
+	26, // 37: kratos.api.Server.HTTP.embedding_request_timeout:type_name -> google.protobuf.Duration
+	26, // 38: kratos.api.Server.CORS.max_age:type_name -> google.protobuf.Duration
+	26, // 39: kratos.api.Server.GRPC.timeout:type_name -> google.protobuf.Duration
+	25, // 40: kratos.api.Data.Database.master:type_name -> kratos.api.Data.Database.Slot
+	25, // 41: kratos.api.Data.Database.system:type_name -> kratos.api.Data.Database.Slot
+	42, // [42:42] is the sub-list for method output_type
+	42, // [42:42] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_conf_conf_proto_init() }
@@ -2119,7 +2202,7 @@ func file_conf_conf_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_conf_conf_proto_rawDesc), len(file_conf_conf_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

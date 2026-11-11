@@ -40,4 +40,7 @@ enum ErrorReason {
   DOCUMENT_CHUNKS_UNAVAILABLE = 13;
   // 条目分片查询执行失败（细节只进服务端日志）。
   DOCUMENT_CHUNKS_FAILED = 14;
+  // 文件类型不被文件摄取支持（不在扩展名 / MIME 白名单，或外部档类型而
+  // 外部解析服务未配置）。
+  FILE_TYPE_UNSUPPORTED = 15;
 }

@@ -28,7 +28,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 7 | schema/70_audit.sql | 登录日志与操作日志（append-only） |
 | 8 | schema/80_session.sql | 会话/令牌表（仅存哈希）与过期清理函数 |
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
-| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`，含上下文检索开关）与 kb_document 条目（kind：text / markdown / file；租户表，RLS 在 rls.sql） |
+| 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`，含上下文检索开关）、kb_document 条目（kind：text / markdown / file，file 元数据列 file_id/file_name/mime_type/file_size）与 kb_file 文件介质表（原件介质元数据，对象字节落内嵌 OSS；租户表，RLS 在 rls.sql） |
 | 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
 | 12 | schema/93_oss.sql | oss_object 对象表（内嵌 gofakes3 数据介质；设施面无 RLS，bucket 即命名空间） |
 | 13 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
@@ -37,7 +37,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 16 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
 | 17 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
 | 18 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
-| 19 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/模型/对象读写（21 个文件、190 条查询） |
+| 19 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/介质/模型/对象读写（22 个文件、194 条查询） |
 | 20 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
 | 21 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
 | 22 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
@@ -439,8 +439,8 @@ status 校验收在 biz 用例。
 | --- | --- | --- | --- |
 | GetKbDocumentByID | :one | id → KbDocument | 读未软删条目 |
 | LockKbDocumentByID | :one | id → KbDocument | 锁定条目（FOR UPDATE） |
-| InsertKbDocument | :one | 字段 + 操作者 → KbDocument | 插入；租户取会话 |
-| UpdateKbDocument | :one | 可变字段 + 操作者 + id → KbDocument | 更新可变字段（library_id/kind 不变） |
+| InsertKbDocument | :one | 字段 + 原件事实（可空）+ 操作者 → KbDocument | 插入；租户取会话；file_id/file_name/mime_type/file_size 仅 kind=file 非空且创建后不变 |
+| UpdateKbDocument | :one | 可变字段 + 操作者 + id → KbDocument | 更新可变字段（library_id/kind/原件事实不变；重解析只经本路径更新 content/content_hash） |
 | UpdateKbDocumentStatus | :one | status/valid_from/valid_to + 操作者 + id → KbDocument | 只改状态与有效期（不重嵌） |
 | ListKbDocumentsByLibrary | :many | library_id/limit/offset → 行集 | 库内条目固定分页（updated_at 倒序） |
 | CountKbDocumentsByLibraryList | :one | library_id → 行数 | 与 List 同条件计数 |
@@ -450,6 +450,18 @@ status 校验收在 biz 用例。
 条目动态 List（`ParseKbDocumentQuery` 生成物）在仓储解析后把 `libraryId in`
 与可见库集合求交（List/Count 同条件），条目读面随所属库可见性收窄——
 kb_document 无独立归属，不设 `@scope`。
+
+### kb_file.sql（文件介质固定 CRUD）
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| GetKbFileByID | :one | id → KbFile | 读未软删介质行（跨租户行受 RLS 隔离，无行即拒绝；kb_document.file_id 的本租户校验点） |
+| LockKbFileByID | :one | id → KbFile | 锁定介质行（FOR UPDATE） |
+| InsertKbFile | :one | 字段 + 操作者 → KbFile | 插入；租户取会话 |
+| SoftDeleteKbFile | :execrows | 操作者 + id → 行数 | 软删介质行（宿主条目删除后清理；OSS 对象由用例尽力清理） |
+
+介质行不参与动态查询协议（表注释不带 DSL），读写面只有本文件的固定查询；
+软删是唯一删除形态，保留介质行是为了审计与误删恢复线索。
 
 ### sys_model.sql（模型目录固定 CRUD）
 
@@ -590,10 +602,10 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 `schema/97_agent_retrieval_log.sql`）。`sys_tenant` 额外允许命中自身 `id`；
 `sys_config` 无租户列，不设 RLS。
 
-`kb_library` / `kb_document` 为普通租户表（ENABLE + FORCE，单一策略）。
-`kb_library` 另有归属三元组与 `@scope` 守卫（租户内的库级可见性，单行读与
+`kb_library` / `kb_document` / `kb_file` 为普通租户表（ENABLE + FORCE，单一
+策略）。`kb_library` 另有归属三元组与 `@scope` 守卫（租户内的库级可见性，单行读与
 写前锁定走 `fn_check_visible` / `fn_can_operate_row`）；`kb_document` 无
-归属，随库的管理面走。
+归属，随库的管理面走；`kb_file` 无归属，介质行只随宿主条目读写。
 `sys_model` 是双态表：读策略 `sys_model_read` 放行「平台行（tenant_id=''）+ 本
 租户行」，写策略 `sys_model_write` 只放行本租户行；平台行只能经
 `98_model_write.sql` 的 SECURITY DEFINER 函数（属主绕过 RLS）写入。

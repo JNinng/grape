@@ -400,6 +400,8 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		knowledgev1.OperationDocumentServiceReindexDocument:      {},
 		knowledgev1.OperationDocumentServiceSearchDocuments:      {},
 		knowledgev1.OperationDocumentServiceListDocumentChunks:   {},
+		// 文件上传的手写路由：操作名即路径模板
+		"/v1/knowledge/documents/upload": {},
 		// 模型目录
 		modelv1.OperationModelServiceGetModel:         {},
 		modelv1.OperationModelServiceListModels:       {},

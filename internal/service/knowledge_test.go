@@ -227,7 +227,7 @@ func (r *libraryFakeRepo) ListDocumentsByLibrary(context.Context, biz.Identity, 
 }
 
 func newLibraryTestService(repo biz.KnowledgeRepo) *KnowledgeService {
-	return NewKnowledgeService(biz.NewKnowledgeUsecase(repo, nil, nil, nil), nil)
+	return NewKnowledgeService(biz.NewKnowledgeUsecase(repo, nil, nil, nil, nil, nil, nil), nil)
 }
 
 func libraryStatus(v int32) *int32 { return &v }
@@ -299,7 +299,7 @@ func newChunksTestService(store biz.VectorStore) *KnowledgeService {
 	repo := &libraryFakeRepo{existing: &biz.KnowledgeLibrary{ID: 1, Status: biz.KnowledgeStatusEnabled}, doc: &biz.KnowledgeDocument{
 		ID: 2, LibraryID: 1, Kind: "text", Title: "t", Status: biz.KnowledgeStatusEnabled,
 	}}
-	return NewKnowledgeService(biz.NewKnowledgeUsecase(repo, nil, store, nil), nil)
+	return NewKnowledgeService(biz.NewKnowledgeUsecase(repo, nil, store, nil, nil, nil, nil), nil)
 }
 
 func TestListDocumentChunks_maps_chunks_in_order(t *testing.T) {

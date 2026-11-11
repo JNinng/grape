@@ -204,7 +204,7 @@ func newLibraryUsecaseForTest(t *testing.T, repo KnowledgeRepo, store *mockVecto
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
-	return NewKnowledgeUsecase(repo, nil, store, ingest)
+	return NewKnowledgeUsecase(repo, nil, store, ingest, nil, nil, nil)
 }
 
 func libraryAuth() Identity { return Identity{TenantID: "t-kb", UserID: 3} }
@@ -387,22 +387,36 @@ func TestCreateDocument_accepts_text_markdown_and_defaults_text(t *testing.T) {
 }
 
 func TestCreateDocument_with_file_or_unknown_kind_rejected(t *testing.T) {
-	for _, kind := range []string{DocumentKindFile, "html"} {
-		repo := &libraryFakeRepo{
-			existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
-		}
-		uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+	// 未知 kind 在 kind 门拒绝。
+	repo := &libraryFakeRepo{
+		existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+	}
+	uc := newLibraryUsecaseForTest(t, repo, &mockVectorStore{})
+	content := "c"
+	_, err := uc.CreateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+		LibraryID: 1, Kind: "html", Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+	})
+	if !errors.Is(err, ErrDocumentKindUnsupported) {
+		t.Fatalf("CreateDocument(kind=%q) = %v, want ErrDocumentKindUnsupported", "html", err)
+	}
+	if repo.createdDoc != nil {
+		t.Fatalf("repo written despite unsupported kind %q", "html")
+	}
 
-		content := "c"
-		_, err := uc.CreateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
-			LibraryID: 1, Kind: kind, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
-		})
-		if !errors.Is(err, ErrDocumentKindUnsupported) {
-			t.Fatalf("CreateDocument(kind=%q) = %v, want ErrDocumentKindUnsupported", kind, err)
-		}
-		if repo.createdDoc != nil {
-			t.Fatalf("repo written despite unsupported kind %q", kind)
-		}
+	// kind=file 通过 kind 门，但直填正文的创建没有原件事实——入参校验
+	// 拒绝（文件条目的唯一摄取入口是上传端点）。
+	fileRepo := &libraryFakeRepo{
+		existing: &KnowledgeLibrary{ID: 1, Status: KnowledgeStatusEnabled, ChunkSize: 800, ChunkOverlap: 100},
+	}
+	fileUC := newLibraryUsecaseForTest(t, fileRepo, &mockVectorStore{})
+	_, err = fileUC.CreateDocument(ingestCtx(), libraryAuth(), &KnowledgeDocument{
+		LibraryID: 1, Kind: DocumentKindFile, Title: "t", Content: &content, Status: KnowledgeStatusEnabled,
+	})
+	if !errors.Is(err, ErrDocumentInvalidArgument) {
+		t.Fatalf("CreateDocument(kind=file) = %v, want ErrDocumentInvalidArgument", err)
+	}
+	if fileRepo.createdDoc != nil {
+		t.Fatalf("repo written despite missing file facts")
 	}
 }
 
@@ -466,7 +480,7 @@ func TestReindexDocument_contextual_flag_drives_prefix_generation(t *testing.T) 
 			if err != nil {
 				t.Fatalf("NewDocumentUsecase: %v", err)
 			}
-			uc := NewKnowledgeUsecase(repo, nil, store, ingest)
+			uc := NewKnowledgeUsecase(repo, nil, store, ingest, nil, nil, nil)
 
 			if _, err := uc.ReindexDocument(ingestCtx(), libraryAuth(), 2); err != nil {
 				t.Fatalf("ReindexDocument: %v", err)

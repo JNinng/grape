@@ -16,14 +16,19 @@ WHERE id = sqlc.arg('id')
   AND deleted_at IS NULL
 FOR UPDATE;
 
--- 插入知识条目；租户取会话 app.tenant_id
+-- 插入知识条目；租户取会话 app.tenant_id。file_id / file_name /
+-- mime_type / file_size 仅 kind=file 非空（原件事实，创建后不变，重解析
+-- 不改写——变更的只有解析产物 content 与 content_hash）
 -- name: InsertKbDocument :one
 INSERT INTO public.kb_document (id, tenant_id, library_id, kind, title, content, source_name,
-                                content_hash, status, valid_from, valid_to,
+                                content_hash, file_id, file_name, mime_type, file_size,
+                                status, valid_from, valid_to,
                                 indexed_at, indexed_embedder, created_by, updated_by)
 VALUES (sqlc.arg('id'), current_setting('app.tenant_id'), sqlc.arg('library_id'), sqlc.arg('kind'),
         sqlc.arg('title'), sqlc.narg('content'), sqlc.narg('source_name'),
-        sqlc.narg('content_hash'), sqlc.arg('status'), sqlc.narg('valid_from'), sqlc.narg('valid_to'),
+        sqlc.narg('content_hash'), sqlc.narg('file_id'), sqlc.narg('file_name'),
+        sqlc.narg('mime_type'), sqlc.narg('file_size')::bigint,
+        sqlc.arg('status'), sqlc.narg('valid_from'), sqlc.narg('valid_to'),
         sqlc.narg('indexed_at'), sqlc.narg('indexed_embedder'),
         sqlc.arg('created_by'), sqlc.arg('updated_by'))
 RETURNING *;

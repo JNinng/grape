@@ -15,11 +15,15 @@ import (
 // embeddingOperations 是同步调用嵌入端点的路由：条目正文变更即逐块摄取，
 // 检索先向量化查询。耗时随切片数与嵌入端点（含本地模型冷启动加载）而定，
 // 按 embedding_request_timeout 限时。新增同步调用 Embedder 的端点须登记。
+// 文件上传是手写路由，操作名即路径模板：解析（doc_parse.timeout）与逐块
+// 向量化同步串联在同一请求内，共用该预算——doc_parse.timeout 不应超过
+// embedding_request_timeout。
 var embeddingOperations = map[string]struct{}{
 	knowledgev1.OperationDocumentServiceCreateDocument:  {},
 	knowledgev1.OperationDocumentServiceUpdateDocument:  {},
 	knowledgev1.OperationDocumentServiceReindexDocument: {},
 	knowledgev1.OperationDocumentServiceSearchDocuments: {},
+	"/v1/knowledge/documents/upload":                    {},
 }
 
 // RouteTimeoutMiddleware 是路由级请求超时中间件的注入类型。以命名类型

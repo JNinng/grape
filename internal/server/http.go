@@ -128,6 +128,9 @@ func NewHTTPServer(
 	queryv1.RegisterQueryServiceHTTPServer(srv, query)
 	knowledgev1.RegisterLibraryServiceHTTPServer(srv, knowledge)
 	knowledgev1.RegisterDocumentServiceHTTPServer(srv, knowledge)
+	// 文件上传的手写路由（multipart，POST /v1/knowledge/documents/upload）：
+	// 注册面在 service.KnowledgeService，认证/权限/路由级超时按操作名生效。
+	knowledge.RegisterHTTP(srv)
 	modelv1.RegisterModelServiceHTTPServer(srv, model)
 	// agentSessions 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
 	// 必须先于 agent 注册：gorilla/mux 按注册顺序匹配，精确路径

@@ -140,6 +140,9 @@ var operationPermissionCodes = map[string]string{
 	knowledgev1.OperationDocumentServiceReindexDocument:      biz.PermKnowledgeUpdate,
 	knowledgev1.OperationDocumentServiceSearchDocuments:      biz.PermKnowledgeQuery,
 	knowledgev1.OperationDocumentServiceListDocumentChunks:   biz.PermKnowledgeQuery,
+	// 文件上传的手写路由（multipart，无生成操作名）：操作名即路径模板，
+	// 与「创建条目」同设 sys:knowledge:create（同一管理页的上传形态）。
+	"/v1/knowledge/documents/upload": biz.PermKnowledgeCreate,
 	// 模型目录（租户行与平台 super 写分码）
 	modelv1.OperationModelServiceGetModel:         biz.PermModelQuery,
 	modelv1.OperationModelServiceListModels:       biz.PermModelQuery,

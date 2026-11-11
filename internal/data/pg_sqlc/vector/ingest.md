@@ -6,6 +6,33 @@
 
 ## 入库链路
 
+文件条目（kind=file）在目录行之前多两步——原件落介质与对象存储、解析产
+markdown，之后与本链路汇合（切分按标题、metadata 带 heading_path）：
+
+```
+service/knowledge_file.go（POST /v1/knowledge/documents/upload，multipart 手写端点）
+  → KnowledgeUsecase.UploadDocument（[../../../biz/knowledge_file.go](../../../biz/knowledge_file.go)）
+      1. 文件识别三层校验（identifyFile，[../../../biz/fileidentify.go](../../../biz/fileidentify.go)）：
+         扩展名白名单 → 内容嗅探（路由与落库 MIME 的唯一依据）→ 20MB +
+         zip 炸弹预检；不在白名单按 FILE_TYPE_UNSUPPORTED 拒绝（介质成立
+         前，无任何落库副作用）
+      2. 介质行落 kb_file（对象键 kb-file/<发号 ID>）→ 原件字节写内嵌 OSS
+      3. 目录行落 kb_document（kind=file，content 空——解析失败留痕可重解析）
+      4. reparseDocument：direct 档（text/plain / markdown）免解析直接内容
+         识别处理；native / external 档经 FileParser 解析产 markdown
+         （[../../../data/docparse/](../../../data/docparse/)，外部档走
+         conf.doc_parse 端点，未配置按 FILE_TYPE_UNSUPPORTED 拒绝）
+      5. 内容识别处理（prepareFileContent，[../../../biz/filecontent.go](../../../biz/filecontent.go)）：
+         编码统一 UTF-8（BOM / UTF-8 严格性 / charset 判定 / GB18030 回落，
+         乱码占比超阈值拒绝）→ 规范化与规则级清洗 → 标题层级推断
+         （heading_path 的产出点）→ 解析产物回写目录行
+      6. 摄取（ingestDocument）：kind=file 按标题切分（direct 档按原文件
+         形态——.md 走标题切分、其余走 text 切分）
+  解析 / 内容识别 / 摄取失败：目录行与介质行保留（content 空），管理页
+  重建索引即重解析（ReindexDocument 的 file 分支重取原件重走 4-6）。
+  删除条目随宿主软删介质行并尽力删除 OSS 对象。
+```
+
 ```
 service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ ReindexDocument）
   → KnowledgeUsecase.reindex（[../../../biz/knowledge.go](../../../biz/knowledge.go)）
@@ -50,8 +77,9 @@ service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ Rei
 ## 切分与切片 ID
 
 kind 是切分策略的分派依据（`chunkByKind`）：`text` 走区分串/固定窗口，
-`markdown` / `file` 走标题切分（file 的正文是解析产物 markdown，摄取入口
-由文件解析摄取小节放开）；未知 kind 在摄取时显式拒绝，不静默回落。
+`markdown` / `file` 走标题切分（file 的正文是解析产物 markdown；直传的
+纯文本文件按原文件形态分派——.md 走标题切分、其余走 text 切分）；未知
+kind 在摄取时显式拒绝，不静默回落。
 
 - **区分串切分**（[chunkText](../../../biz/document.go)，text 条目）：缺省
   区分串是段落空行（`\n\n`），先按区分串切出段落块——区分串本身不入块、
