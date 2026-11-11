@@ -15,6 +15,7 @@ import (
 	"grape/internal/data/openaicompleter"
 	"grape/internal/data/openaiembedder"
 	"grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/oss"
 	"grape/internal/data/pg_sqlc/vector"
 	"grape/internal/middleware"
 	"grape/internal/ops"
@@ -32,7 +33,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, confVector *conf.Vector, confTelemetry *conf.Telemetry, logger *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, confVector *conf.Vector, confTelemetry *conf.Telemetry, confOSS *conf.OSS, logger *slog.Logger) (*kratos.App, func(), error) {
 	setup, cleanup, err := telemetry.NewSetup(confTelemetry, logger)
 	if err != nil {
 		return nil, nil, err
@@ -227,9 +228,24 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
-	webHandler := server.NewWebHandler(agentService)
-	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, knowledgeService, modelService, webHandler)
+	s3Handler, cleanup11, err := oss.NewHandler(confOSS, pg_sqlcData)
 	if err != nil {
+		cleanup10()
+		cleanup9()
+		cleanup8()
+		cleanup7()
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	webHandler := server.NewWebHandler(agentService)
+	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, knowledgeService, modelService, s3Handler, webHandler)
+	if err != nil {
+		cleanup11()
 		cleanup10()
 		cleanup9()
 		cleanup8()
@@ -247,6 +263,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
+		cleanup11()
 		cleanup10()
 		cleanup9()
 		cleanup8()

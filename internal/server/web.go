@@ -32,12 +32,13 @@ func NewWebHandler(agent *service.AgentService) WebHandler {
 }
 
 // ReservedAPIPrefixes 列出绝不落入 SPA fallback 的 API 路径前缀：生成契约
-// 路由（/v1）、运维出口（/metrics）与 AG-UI / ack 前缀。前缀判定按边界
-// 匹配（等于前缀或以其子路径开头），/v1x 之类的相邻路径不受影响——与
-// 路由级超时中间件的跳过判定同一纪律。
+// 路由（/v1）、运维出口（/metrics）、内嵌 OSS 的 S3 API（/s3，SigV4 自证
+// 身份，未挂载时同前缀按 API 语义 404）与 AG-UI / ack 前缀。前缀判定按
+// 边界匹配（等于前缀或以其子路径开头），/v1x 之类的相邻路径不受影响
+// ——与路由级超时中间件的跳过判定同一纪律。
 func ReservedAPIPrefixes(agent *service.AgentService) []string {
-	prefixes := make([]string, 0, 3)
-	prefixes = append(prefixes, "/v1", "/metrics")
+	prefixes := make([]string, 0, 4)
+	prefixes = append(prefixes, "/v1", "/metrics", "/s3")
 	if agent != nil {
 		prefixes = append(prefixes, agent.BasePath())
 	}

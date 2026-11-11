@@ -30,6 +30,15 @@ Agent 设施面（`agent` schema，如向量表 `agent.agent_document`）不走 
 集成测试以无 RLS 场景断言隔离仍成立。跨租户管理操作（在线重建索引、租户级
 全量清理）属 super 管理口径：向量层仅留占位，不暴露普通入口。
 
+内嵌 OSS 数据面（`oss_object` 表）是另一类设施面：表无租户列、无 RLS，
+bucket 即命名空间，访问边界由 SigV4 签名承担——持有 `oss.access_key` /
+`oss.secret_key`（sys_config 明文配置）的请求经签名自证身份，匿名、篡改
+签名与过期预签名在 `/s3/` 挂载点一律 403。`/s3/` 路由链外直挂、不经 JWT
+中间件（签名即鉴权，无租户/用户语义可注入），Backend 以池直连读写、不经
+事务门面。服务端不承担租户隔离：对象归属由业务调用方（写入方）的 object_key
+命名约定约束，装置面只保证「持密钥者可读写」；AK/SK 的分发与轮换是运维
+职责（operations.md）。
+
 ## 数据范围推导
 
 可见范围只由三个函数推导，入参只有用户 ID：
@@ -236,10 +245,23 @@ update/delete`；平台行写面另设 `sys:model:platform:create/update/delete`
    不得扩展到其他读写。受控计数以 DEFINER 读取全局事实、只返回计数不返回
    行数据，函数内校验 `app.tenant_id` 已设置且目标对调用方可见；口径见
    [data/README.md](internal/data/README.md#租户管理与删除孤儿判定)。
-9. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、
+   设施面并列例外（同属绕过路径清单）：内嵌 OSS 数据面 `oss_object` 无
+   RLS、`/s3/` 挂载面经 SigV4 签名自证身份（池直连读写，不经事务门面），
+   边界口径见上文「三层约束」的内嵌 OSS 段。
+9. **明文密钥的存储口径**：模型 api_key 走密文（`GRAPE_MODEL_SECRET_KEY`
+   加解密，`v1:` 前缀）；`jwt.secret` 类启动密钥经 `${ENV:default}` 占位
+   注入 conf，仓库与配置模板不落明文（见 operations.md「配置与密钥管理」）。
+   内嵌 OSS 的 `oss.access_key` / `oss.secret_key` 是既有口径之外的新例外：
+   落 sys_config `value`（value_type=json）明文，与 `jwt.secret` 同级敏感、
+   但不经 conf——S3 凭据属运营配置，需要在运行期经管理端受控写函数
+   （`fn_config_create/update`，仅平台根租户可写）轮换。补偿控制：操作
+   审计快照按键形态脱敏（键名含 secret 的配置值记 sha256，不落明文，
+   见 middleware 审计快照的红名单）；种子不含 AK/SK，启用设施必须先经
+   管理端配置，缺失在装配期 fail-closed。
+10. **测试**：每个资源覆盖全租户看全集、范围角色看子集、范围外读 NotFound、
    范围外写不改行、转归属不可达 Forbidden、缺 Scope fail-closed、未设
    `app.tenant_id` 全拒。
-10. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），
+11. **约定**：有权限的领域方法默认按权限处理（Scope / RLS 强制生效），
     无需额外标注；只有「身份已成立、接口有意绕过其租户/数据范围约束」的
     方法才在名称带 `super`（如管理端跨租户查询），并配受限端点与跨范围
     测试。

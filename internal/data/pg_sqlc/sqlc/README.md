@@ -30,17 +30,18 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 9 | schema/90_config.sql | 全局/租户配置、功能开关与翻译 |
 | 10 | schema/91_knowledge.sql | kb_library 知识库（归属三元组 + `@scope`，含上下文检索开关）与 kb_document 条目（kind：text / markdown / file；租户表，RLS 在 rls.sql） |
 | 11 | schema/92_model.sql | sys_model 模型目录（tenant_id='' 平台行 / 租户行双态） |
-| 12 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
-| 13 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
-| 14 | expose.sql | 只读判定函数、范围版本表与 bump 触发器 |
-| 15 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
-| 16 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
-| 17 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
-| 18 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/模型读写（20 个文件、179 条查询） |
-| 19 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
-| 20 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
-| 21 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
-| 22 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
+| 12 | schema/93_oss.sql | oss_object 对象表（内嵌 gofakes3 数据介质；设施面无 RLS，bucket 即命名空间） |
+| 13 | schema/95_agent_audit.sql | Agent 工具调用与授权确认审计（append-only，含租户 RLS） |
+| 14 | rls.sql | 租户 RLS 策略、`fn_accessible_*` 三件套与 updated_at 触发器 |
+| 15 | expose.sql | 只读判定函数、范围版本表与 bump 触发器 |
+| 16 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
+| 17 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
+| 18 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
+| 19 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/知识库/模型/对象读写（21 个文件、190 条查询） |
+| 20 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
+| 21 | 98_config_write.sql | sys_config 三个 SECURITY DEFINER 受控写函数 |
+| 22 | 98_model_write.sql | sys_model 平台行建/改/软删三个 SECURITY DEFINER 受控写函数 |
+| 23 | 98_tenant_guard.sql | 租户删除前置受控计数函数 |
 | — | role.sql | grape_u / test_u 角色、schema 使用权、DML 授权与 RLS 会话变量写入权 |
 | — | [seed/](seed/) | 生产默认种子：根租户自举数据，12 个 SQL 文件，顺序由 [seed.go](seed/seed.go) 声明 |
 | — | test_seed.sql | 集成测试种子（`t-test-*` 租户），仅由 `TestDeployFiles` 在生产清单后追加 |
@@ -59,12 +60,13 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 [schema.md](https://github.com/JNinng/sqlc_gen_dynamic/blob/master/schema.md)
 为准。
 
-`sqlc.yaml` 的 schema 列表 = `schema/` 十三个域文件（10–90 九个域 +
-91_knowledge + 92_model + 95_agent_audit + 97_agent_retrieval_log）+ `rls.sql` /
-`operate.sql` / `expose.sql` + `96_agent_grant.sql` + `98_menu_write.sql` +
-`98_config_write.sql` + `98_model_write.sql` + `98_tenant_guard.sql`；queries
-列表 = `queries/` 二十个文件。函数声明文件只提供 queries 调用所需签名
-（受控写、删除前置计数、权限判定），函数体是否存在由部署顺序保证。
+`sqlc.yaml` 的 schema 列表 = `schema/` 十四个域文件（10–90 九个域 +
+91_knowledge + 92_model + 93_oss + 95_agent_audit + 97_agent_retrieval_log）+
+`rls.sql` / `operate.sql` / `expose.sql` + `96_agent_grant.sql` +
+`98_menu_write.sql` + `98_config_write.sql` + `98_model_write.sql` +
+`98_tenant_guard.sql`；queries 列表 = `queries/` 二十一个文件。函数声明文件
+只提供 queries 调用所需签名（受控写、删除前置计数、权限判定），函数体是否
+存在由部署顺序保证。
 
 - **向量 SQL 不进 catalog**：`agent_document` 的存取 SQL 是手写参数化常量
   （[../vector/vector_repo.go](../vector/vector_repo.go)），pgvector 的类型与
@@ -465,6 +467,25 @@ kb_document 无独立归属，不设 `@scope`。
 | SoftDeleteSysModelPlatform | :one | 操作者 + id → 删除行数 | 调 `fn_model_platform_delete`；0 行即未命中 |
 | ListSysModelAll | :many | 可空 kind → 行集 | 可见模型（本租户行 + 平台行，含停用） |
 | ListSysModelOptions | :many | kind → 行集 | 可见且启用，每 model_key 租户行覆盖平台行 |
+
+### oss_object.sql（内嵌 OSS 对象固定 CRUD）
+
+调用方是 `internal/data/pg_sqlc/oss` 的 gofakes3 Backend（池直连，设施面
+无租户/身份语义，表无 RLS）。覆盖写是唯一更新形态（S3 PutObject 幂等
+覆盖语义）；桶不单独登记，存在性以桶内对象行存在为准。
+
+| 查询 | 类型 | 参数 → 返回 | 作用 |
+| --- | --- | --- | --- |
+| UpsertOssObject | :one | bucket/object_key/data/size/content_type/etag/metadata → (size, etag, created_at, updated_at) | 覆盖写对象（PutObject）；冲突更新内容与 updated_at，created_at 不变 |
+| GetOssObject | :one | bucket/object_key → OssObject | 读整个对象（含 data） |
+| GetOssObjectRange | :one | bucket/object_key/start_offset/length → 行 + data_slice | 读对象字节区间（Range 请求 substr 切片，不整对象出库） |
+| GetOssObjectMeta | :one | bucket/object_key → OssObject | 读对象元数据（HeadObject，无 data） |
+| DeleteOssObject | :execrows | bucket/object_key → 行数 | 删除单个对象（幂等：不存在的键 0 行） |
+| DeleteOssObjects | :many | bucket/object_key[] → object_key | 批量删除（DeleteMulti），返回实际删除的键 |
+| CountOssBucketObjects | :one | bucket → 行数 | 桶内对象行计数（BucketExists 与 DeleteBucket 非空守卫共用） |
+| ListOssBucketHeads | :many | → (bucket, created_at) | 列举桶（对象行聚合，创建时间取 min(created_at)） |
+| ListOssObjectEntries | :many | bucket/pattern/marker（可空）→ (object_key, size, etag, updated_at) | 列举桶内条目（LIKE 前缀收窄 + marker 字典序分页，键升序） |
+| CopyOssObject | :one | src/dst 四元组 + content_type/metadata → (size, etag, updated_at) | 单语句复制对象（读源 + 写目标）；源不存在无行返回 |
 
 ### sys_tenant.sql（租户固定 CRUD）
 

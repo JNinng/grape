@@ -248,6 +248,28 @@ type KbLibrary struct {
 	OwnerUserGroupID *int64 `db:"owner_user_group_id" json:"owner_user_group_id"`
 }
 
+// 内嵌 OSS 对象表：服务内嵌 gofakes3（SigV4 鉴权）的标准 S3 API 数据介质，设施面无 RLS（bucket 即命名空间），单对象 ≤ 20MB 由应用层限流
+type OssObject struct {
+	// 桶名（varchar(64)，即命名空间；不单独登记，桶存在性以桶内对象行存在为准）
+	Bucket string `db:"bucket" json:"bucket"`
+	// 对象键（S3 key，原样存储，不做路径语义解释）
+	ObjectKey string `db:"object_key" json:"object_key"`
+	// 对象内容（bytea 直存，不用 PG 大对象；上限 20MB 由 Backend PutObject 按 Content-Length 限流）
+	Data []byte `db:"data" json:"data"`
+	// 对象字节数（Content-Length 口径，与 data 长度一致）
+	Size int64 `db:"size" json:"size"`
+	// 对象 Content-Type；请求未声明时空串（冗余自 metadata，便于按列读取）
+	ContentType string `db:"content_type" json:"content_type"`
+	// 对象内容 MD5 十六进制（S3 ETag 语义，存储不带引号；覆盖写后随内容更新）
+	Etag string `db:"etag" json:"etag"`
+	// S3 请求元数据（Content-Type / Last-Modified / X-Amz-Meta-* 等请求头键值对原样落 jsonb，GET/HEAD 时原样回带）
+	Metadata []byte `db:"metadata" json:"metadata"`
+	// 首次写入时间（覆盖写不变）
+	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
+	// 最近写入时间（覆盖写刷新，List 的 LastModified 取本列）
+	UpdatedAt pgtype.Timestamp `db:"updated_at" json:"updated_at"`
+}
+
 // 系统全局配置表，存储平台级系统参数，不绑定租户，所有租户共享 [@default_sort: updated_at DESC @pk: id @filter: deleted_at is_null]
 type SysConfig struct {
 	// 配置 ID [@dynamic: exact, membership]

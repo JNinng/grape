@@ -88,7 +88,10 @@ task 入口与之同构，只是没有 DTO 与查询协议转换：task 只调 b
   `telemetry/trace`，仅桥接赋值，不装配框架对象）。
 - `server`：`conf`、`service`、生成代码注册函数、`middleware` / `telemetry`
   （otel 中间件开关的时序锚点）与 `web`（静态托管的 `fs.FS` 导出）；ops 的
-  指标 Handler 以 `net/http.Handler` 参数注入，不直接 import。
+  指标 Handler 以 `net/http.Handler` 参数注入，不直接 import；内嵌 OSS 的
+  挂载 Handler 以 data 层 [pg_sqlc/oss](data/pg_sqlc/oss/) 的 `S3Handler`
+  命名类型参数注入（命名类型避免与 metrics 的 `nethttp.Handler` 形参在
+  wire 装配中二义），不触达其实现。
 - `agent`：根包是唯一装配点，只导入 `conf`、`biz`（含随仓储接口跨界的
   `dynq`）、自身子包与框架包；子包依赖单向无环（`httpapi → audit →
   identity`，`tools → identity`），不反向 import 根包，也不被 agent 树以外
@@ -110,6 +113,7 @@ task 入口与之同构，只是没有 DTO 与查询协议转换：task 只调 b
 | 类别 | 典型端点 | 归属 | 注册方式 | 中间件链 |
 | --- | --- | --- | --- | --- |
 | 运维 / 探针 | `/metrics`；同类新增 `/healthz`、`/readyz`、`/debug/pprof` | `ops` | `srv.Handle`（原生 `net/http.Handler`） | 链外、免认证、只读 |
+| 设施出口 | `/s3/`（内嵌 OSS，SigV4 签名自证身份，`oss.enabled=false` 或 provider 非 local 不挂载） | data 层 [pg_sqlc/oss](data/pg_sqlc/oss/) 构造 Handler，`server` 只挂载 | `srv.HandlePrefix`（链外直挂） | 链外、免认证（SigV4 即鉴权） |
 | 业务手写 | 文件上传下载、SSE、WebSocket | `service/<资源>_http.go` | `srv.Route` + handler 内 `ctx.Middleware` | 入链、认证生效 |
 | 前端静态托管 | SPA 页面壳与 assets（`/` 兜底） | `server/web.go`（挂载）＋根目录 `web/`（产物与 embed） | `srv.HandlePrefix("/")` 直挂、最后注册 | 链外、免认证；保留 API 前缀内 404 不回页面壳 |
 

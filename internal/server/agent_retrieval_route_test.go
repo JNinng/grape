@@ -66,7 +66,7 @@ func newAgentRetrievalTestServer(t *testing.T) *kratoshttp.Server {
 		// 租户管理服务本文件用例不触达，传 nil。
 		nil,
 		retrievalService,
-		nil, nil, nil, )
+		nil, nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

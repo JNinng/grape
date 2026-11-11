@@ -21,6 +21,25 @@ message Bootstrap {
   Telemetry telemetry = 6;
   // 日志落盘配置。
   Log log = 7;
+  // 内嵌对象存储设施配置（启动期开关）。
+  OSS oss = 8;
+}
+
+// OSS 是内嵌对象存储设施（gofakes3，数据落 PostgreSQL oss_object 表）的
+// 启动配置。设施是两层分工：本段只承载「要不要启用」这一启动期装配事实；
+// 端点事实（provider / endpoint / bucket / access_key / secret_key /
+// region）在 sys_config 的 oss.* 配置键（value_type=json），运行期由
+// biz.ObjectStore 实现按配置键解析、装配期由 data 层 S3 服务构造面读取
+// 以决定 /s3/ 路由挂载。开关放启动 conf 的理由：路由表在装配期固化，
+// sys_config 的运行期改动对挂载生效仍需重启，放 sys_config 会造成
+// 「改了但不生效」的语义陷阱（与 vector.enabled 的设施开关先例一致）；
+// 切换 provider（local / minio / s3 / aliyun）属运营配置，归 sys_config。
+message OSS {
+  // 是否启用内嵌对象存储设施。启用前须先部署 schema/93_oss.sql 并在
+  // sys_config 配齐 oss.* 键（provider=local 时 access_key/secret_key
+  // 必填）；enabled=true 而配置不齐在装配期拒绝启动（fail-closed）。
+  // enabled=false 时 /s3/ 路由不挂载、biz.ObjectStore 按设施缺失拒绝。
+  bool enabled = 1;
 }
 
 // Telemetry 是 OpenTelemetry 遥测配置：SDK 开关与 OTLP 导出目标。

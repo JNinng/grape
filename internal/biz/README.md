@@ -70,6 +70,7 @@
 | [retrieval_log.go](retrieval_log.go) | 检索留痕查询用例与 ctx 事实载体；写入由 data 层装饰器直写、不经用例。 |
 | [embedder.go](embedder.go) | 文本向量化与默认空间解析契约；嵌入空间经 ctx 载体传给框架适配器。 |
 | [completer.go](completer.go) | 单次文本生成契约（质量增强面）：实现按当前身份解析租户文本模型，消费方必须把失败降级为主流程。 |
+| [objectstore.go](objectstore.go) | 对象存储契约（Put/Get/Delete/PresignGet/PresignPut，S3 语义）与端点解析契约：端点事实在 sys_config 的 oss.* 键，AK/SK 明文口径见 permission.md。 |
 | [document.go](document.go) | 摄取管线：按 kind 分派切分（text 区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分；markdown/file 标题切分，节超长回退块级装箱与固定窗口）、heading_path 元数据、逐块 embed（库级上下文检索开关开启时先为每块生成上下文前缀，文档摘要一次、前缀只拼进 embed 输入，失败降级）、按来源覆盖写入；重摄即迁移路径。 |
 | [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件与批量更新、枚举读面 `List`/`GetMetadata`）。 |
 | [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验、切分参数（大小/重叠/区分串/上下文检索开关）与嵌入模型选择、chunk metadata 同步、删除清理与重建索引、条目实际分片枚举（按分片序，取自向量存储）、可见库集合解析（`VisibleLibraries`，检索与列库工具共用；条目读面随所属库可见性收窄）。 |

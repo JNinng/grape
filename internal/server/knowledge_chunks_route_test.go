@@ -66,7 +66,7 @@ func newChunksRouteTestServer(t *testing.T, store biz.VectorStore) *kratoshttp.S
 		ops.NewMetricsHandler(nil, nil),
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		knowledge,
-		nil, nil,
+		nil, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)

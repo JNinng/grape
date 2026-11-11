@@ -87,7 +87,7 @@ func newPermissionTestServer(t *testing.T, repo biz.PermissionRepo, featureFlag 
 		nil,
 		nil,
 		nil,
-		nil, nil, nil, )
+		nil, nil, nil, nil, )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

@@ -227,7 +227,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		nil,
 		nil,
-		nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
+		nil, nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

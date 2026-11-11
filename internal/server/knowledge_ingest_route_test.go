@@ -114,7 +114,7 @@ func newIngestRouteTestServer(t *testing.T, embeddingTimeout time.Duration, stor
 		ops.NewMetricsHandler(nil, nil),
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		knowledge,
-		nil, nil,
+		nil, nil, nil,
 	)
 	if err != nil {
 		t.Fatalf("build http server: %v", err)

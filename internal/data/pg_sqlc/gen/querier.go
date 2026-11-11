@@ -49,6 +49,10 @@ type Querier interface {
 	CheckVisible(ctx context.Context, arg CheckVisibleParams) (bool, error)
 	// 删除已撤销或过期超过宽限期的会话，返回删除行数
 	CleanupExpiredSysSessions(ctx context.Context, graceSeconds int64) (int64, error)
+	// 复制对象（CopyObject）：单语句完成「读源 + 写目标」，源不存在时无行
+	// 返回（Backend 映射 KeyNotFound）；content_type/metadata 由服务端按
+	// x-amz-metadata-directive 给出的完整元数据传入
+	CopyOssObject(ctx context.Context, arg CopyOssObjectParams) (CopyOssObjectRow, error)
 	// 按会话过滤统计授权确认审计条数（与 List 同条件，供分页信封）
 	CountAgentConfirmationLogs(ctx context.Context, sessionID *string) (int64, error)
 	// 按会话/来源过滤统计检索留痕条数（与 List 同条件，供分页信封）
@@ -59,6 +63,8 @@ type Querier interface {
 	CountKbDocumentsByLibrary(ctx context.Context, libraryID int64) (int64, error)
 	// 与 ListKbDocumentsByLibrary 同条件计数
 	CountKbDocumentsByLibraryList(ctx context.Context, libraryID int64) (int64, error)
+	// 桶内对象行计数（BucketExists 的存在性判定与 DeleteBucket 非空守卫共用）
+	CountOssBucketObjects(ctx context.Context, bucket string) (int64, error)
 	// 统计给定角色中携带指定权限码的有效角色数（角色/菜单均活跃未删，与
 	// fn_has_permission 的活跃联结同口径）；供自锁保护判定最终集合是否仍
 	// 至少保留一个能授予分配权限的角色
@@ -95,6 +101,10 @@ type Querier interface {
 	CountSysUserGroupMemberCandidates(ctx context.Context, userIds []int64) (int64, error)
 	// 统计组成员数（与 List 同条件，供分页信封）
 	CountSysUserGroupMembers(ctx context.Context, groupID int64) (int64, error)
+	// 删除单个对象（DeleteObject 幂等：S3 语义删除不存在的对象不算错误）
+	DeleteOssObject(ctx context.Context, arg DeleteOssObjectParams) (int64, error)
+	// 批量删除（DeleteMulti），返回实际删除的对象键
+	DeleteOssObjects(ctx context.Context, arg DeleteOssObjectsParams) ([]string, error)
 	// 清除指定的一条分发部门映射（物理删除避免软删残留）
 	DeleteSysRoleAllowedDept(ctx context.Context, arg DeleteSysRoleAllowedDeptParams) (int64, error)
 	// 清除指定的一条数据范围明细（物理删除避免软删残留；角色行已在本事务
@@ -142,6 +152,14 @@ type Querier interface {
 	// 个人中心专用：按认证身份读取本人行（目标恒取 auth.UserID，不接受客户端
 	// 定位参数；不判行级归属，RLS 仍强制租户边界；属身份成立后的内部回读例外）
 	GetMyProfileByID(ctx context.Context, id int64) (SysUser, error)
+	// 读取整个对象（GetObject 全量）
+	GetOssObject(ctx context.Context, arg GetOssObjectParams) (OssObject, error)
+	// 读取对象元数据（HeadObject，不出字节）
+	GetOssObjectMeta(ctx context.Context, arg GetOssObjectMetaParams) (GetOssObjectMetaRow, error)
+	// 读取对象的字节区间（GetObject Range）：substr 按 1 基字节偏移切 bytea，
+	// start/length 由 Backend 从 ObjectRangeRequest 换算，避免整对象出库
+	// （substr 的 bytea 签名收 integer，单对象上限 20MB 内恒可安全截取）
+	GetOssObjectRange(ctx context.Context, arg GetOssObjectRangeParams) (GetOssObjectRangeRow, error)
 	// 枚举用户的有效权限码（去重）；用户无效（不存在/禁用/删除）时返回空集
 	GetPermissionCodes(ctx context.Context, userID int64) ([]string, error)
 	// 一次取回三个维度的可见集合；列 NULL 表示全租户不过滤，
@@ -398,6 +416,13 @@ type Querier interface {
 	// 分页列出指定库下的未删除条目（管理面子列表：固定 offset 分页，
 	// updated_at 倒序、同秒 id 倒序稳定排序）
 	ListKbDocumentsByLibrary(ctx context.Context, arg ListKbDocumentsByLibraryParams) ([]KbDocument, error)
+	// 列举桶（ListBuckets）：桶不单独登记，按对象行聚合，桶创建时间取
+	// 首个对象的写入时间（cast 供 sqlc 推断聚合类型）
+	ListOssBucketHeads(ctx context.Context) ([]ListOssBucketHeadsRow, error)
+	// 列举桶内对象条目（ListBucket）：pattern 是前缀字面量转义后拼 '%' 的
+	// LIKE 模式（通配符语义在 Go 侧由 gofakes3 Prefix 处理，SQL 只做前缀
+	// 收窄）；marker 是上一页最后一个对象键（字典序严格大于）
+	ListOssObjectEntries(ctx context.Context, arg ListOssObjectEntriesParams) ([]ListOssObjectEntriesRow, error)
 	// 归属部门候选：fn_accessible_dept_ids 三态过滤，只返回活跃且未删除的
 	// 部门；关键字匹配 name，label 取 name
 	ListOwnerDeptOptions(ctx context.Context, arg ListOwnerDeptOptionsParams) ([]ListOwnerDeptOptionsRow, error)
@@ -621,6 +646,14 @@ type Querier interface {
 	UpdateSysUserGroup(ctx context.Context, arg UpdateSysUserGroupParams) (SysUserGroup, error)
 	// 更新用户归属三元组；归属参数为 NULL 表示清空该归属
 	UpdateSysUserOwner(ctx context.Context, arg UpdateSysUserOwnerParams) error
+	// 内嵌 OSS（gofakes3 PG Backend）的固定命名查询：调用方是
+	// internal/data/pg_sqlc/oss 的 gofakes3 Backend，以池直连执行（设施面，
+	// 无租户/身份语义，oss_object 无 RLS）。不参与动态查询协议；bucket 即
+	// 命名空间，主键 (bucket, object_key)。覆盖写（upsert）是唯一更新形态
+	// —— S3 PutObject 的幂等覆盖语义，etag 随内容更新，created_at 保持
+	// 首次写入。Range 读取用 substr 只取切片字节，避免整对象出库。
+	// 覆盖写一个对象（PutObject）；返回写入后的口径事实（size/etag 与时间）
+	UpsertOssObject(ctx context.Context, arg UpsertOssObjectParams) (UpsertOssObjectRow, error)
 }
 
 var _ Querier = (*Queries)(nil)

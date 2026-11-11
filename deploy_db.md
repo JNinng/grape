@@ -1,7 +1,7 @@
 # 数据库部署
 
 grape 关系存储（PostgreSQL）的部署：按序执行
-`internal/data/pg_sqlc/sqlc/` 下的 36 个 SQL 文件，最后补一次连接授权。
+`internal/data/pg_sqlc/sqlc/` 下的 37 个 SQL 文件，最后补一次连接授权。
 执行顺序的单一事实源是
 [deploy.go](internal/data/pg_sqlc/deploy/deploy.go) 的 `DeployFiles` 清单
 （dbdeploy 执行生产清单；集成测试经 `TestDeployFiles()` 追加测试种子），
@@ -29,7 +29,7 @@ dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
 
 ## 执行顺序
 
-按序执行 25 个步骤、36 个文件，顺序不能变（步骤 16 的种子包按
+按序执行 26 个步骤、37 个文件，顺序不能变（步骤 16 的种子包按
 `seed.Files` 逐文件执行）。`queries/` 是 sqlc 的 Go 生成输入，不执行。
 
 | 步骤 | 文件 | 作用 | 关键约束 |
@@ -50,15 +50,16 @@ dbdeploy 执行前在内存中一次性替换，仓库与日志不落明文。
 | 14 | expose.sql | 只读判定、范围版本表与 bump 触发器 | 依赖 13；先于 15（函数体引用）与 16（种子 bump） |
 | 15 | operate.sql | `fn_can_*` 与角色判定族 | 依赖 13/14 的函数；`fn_visible_role_ids` 依赖同文件 `fn_can_see_role` |
 | 16 | [seed/](internal/data/pg_sqlc/sqlc/seed/) | 根租户自举 12 个文件，顺序见 [seed.go](internal/data/pg_sqlc/sqlc/seed/seed.go) | RLS 已启用，须以超级用户/表 owner 执行 |
-| 17 | agent_session.sql | 框架 session/postgres 六张 `agent_*` 表 | 只依赖 12 的 grape_u；尾部追加不改序 |
-| 18 | agent_vector.sql | pgvector 扩展与 `agent_document` 多空间向量表 | 后于 12；超级用户执行；无 RLS，应用层隔离 |
-| 19 | schema/95_agent_audit.sql | Agent 审计两表、索引与租户 RLS | 尾部追加；依赖 12；授权由 role.sql 默认权限覆盖 |
-| 20 | 96_agent_grant.sql | 工具授权表、未撤销唯一约束与租户 RLS | 后于 12；超级用户执行；策略随域文件 |
-| 21 | schema/97_agent_retrieval_log.sql | 检索留痕表、索引与租户 RLS | 同 19 追加口径 |
-| 22 | 98_menu_write.sql | 四个受控写函数 | 尾部追加；依赖 4；EXECUTE 默认 PUBLIC |
-| 23 | 98_config_write.sql | 三个受控写函数 | 尾部；依赖 9；EXECUTE 默认 PUBLIC |
-| 24 | 98_model_write.sql | 平台模型建/改/软删三个受控写函数 | 尾部；依赖 11；EXECUTE 默认 PUBLIC |
-| 25 | 98_tenant_guard.sql | 租户删除前置计数函数 | 尾部；依赖 2；`CREATE OR REPLACE` 可重复 |
+| 17 | schema/93_oss.sql | oss_object 对象表（内嵌 gofakes3 数据介质，设施面无 RLS） | 尾部追加；依赖 12 的 grape_u（DML 授权文件内显式声明） |
+| 18 | agent_session.sql | 框架 session/postgres 六张 `agent_*` 表 | 只依赖 12 的 grape_u；尾部追加不改序 |
+| 19 | agent_vector.sql | pgvector 扩展与 `agent_document` 多空间向量表 | 后于 12；超级用户执行；无 RLS，应用层隔离 |
+| 20 | schema/95_agent_audit.sql | Agent 审计两表、索引与租户 RLS | 尾部追加；依赖 12；授权由 role.sql 默认权限覆盖 |
+| 21 | 96_agent_grant.sql | 工具授权表、未撤销唯一约束与租户 RLS | 后于 12；超级用户执行；策略随域文件 |
+| 22 | schema/97_agent_retrieval_log.sql | 检索留痕表、索引与租户 RLS | 同 20 追加口径 |
+| 23 | 98_menu_write.sql | 四个受控写函数 | 尾部追加；依赖 4；EXECUTE 默认 PUBLIC |
+| 24 | 98_config_write.sql | 三个受控写函数 | 尾部；依赖 9；EXECUTE 默认 PUBLIC |
+| 25 | 98_model_write.sql | 平台模型建/改/软删三个受控写函数 | 尾部；依赖 11；EXECUTE 默认 PUBLIC |
+| 26 | 98_tenant_guard.sql | 租户删除前置计数函数 | 尾部；依赖 2；`CREATE OR REPLACE` 可重复 |
 
 手工执行按上表顺序；`role.sql` 的口令占位符需先替换，最后补
 `GRANT CONNECT`（见下节）。
@@ -187,6 +188,11 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   种子（菜单 252/253 与角色 101 映射）随 `050_sys_menu.sql` /
   `060_sys_role_menu.sql` 执行；已部署库在种子执行前判定返回 403，属预期
   收紧。
+- **schema/93_oss.sql**：历史库追加对象（`oss_object` 表），以部署角色
+  （与 role.sql 同一执行者）执行；裸创建，重复执行报错；文件尾部的
+  grape_u / test_u DML 授权为幂等语句可重复。表设施面无 RLS、无策略
+  需补。未部署本表的新版二进制以内嵌 OSS 启用（`oss.enabled=true` 且
+  provider=local）时启动即失败，属预期收紧；未启用内嵌 OSS 时无影响。
 - **98_menu_write.sql / 98_config_write.sql / 98_tenant_guard.sql**：历史库
   追加对象，以部署超级用户执行；只含 `CREATE OR REPLACE FUNCTION`，可重复。
   函数属主 = 执行者，换执行者重跑会连带改属主，部署口径以 dbdeploy 为准。

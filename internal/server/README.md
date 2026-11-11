@@ -14,11 +14,14 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
   到 `/agui/`；生成代码路由的尾斜杠变体由 301 收紧为 404。
 - **SPA 兜底与保留前缀**：静态托管经 `srv.HandlePrefix("/")` 链外直挂，
   必须最后注册（语义即「其余路由全部未命中」）。`ReservedAPIPrefixes`
-  给出 `/v1`、`/metrics` 与 agent 前缀，按边界匹配判定（等于前缀或以子路径
-  开头），`/v1x` 之类相邻路径不受影响；前缀内未知路径与方法失配一律 404，
-  绝不回页面壳。assets 带内容哈希可 immutable 长缓存，`index.html` 禁缓存。
+  给出 `/v1`、`/metrics`、`/s3`（内嵌 OSS，SigV4 自证身份）与 agent 前缀，
+  按边界匹配判定（等于前缀或以子路径开头），`/v1x` 之类相邻路径不受影响；
+  前缀内未知路径与方法失配一律 404，绝不回页面壳。assets 带内容哈希可
+  immutable 长缓存，`index.html` 禁缓存。
 - **注册顺序**：gorilla/mux 按注册顺序匹配，agent 会话列表与事件窗口的
-  精确路径必须先于 agent 前缀通配注册，否则被通配吞并。
+  精确路径必须先于 agent 前缀通配注册，否则被通配吞并；内嵌 OSS 的
+  `/s3/` 与 SPA 兜底同理靠注册顺序（`/s3/` 在 SPA 之前、未挂载时保留
+  前缀按 API 语义 404）。
 - **otel 信任模型**：`telemetry.enabled` 时 `tracing.Server()` 入链，位置在
   grape 链路中间件之内、认证之外——不可信 `traceparent` 已被链路中间件
   剥除，otel 的 Extract 以链路中间件注入的 SpanContext 为父，可信网络
@@ -43,9 +46,9 @@ HTTP / gRPC 服务器的构建与挂载层：读取 `conf`、装配中间件、�
 
 | 文件 | 职责 |
 | ---- | ---- |
-| [http.go](http.go) | `NewHTTPServer`：装配中间件链、按注册顺序挂载生成路由与手写路由、`srv.Handle` 直挂 `/metrics`、最后挂载 SPA；CORS 启用时接 405 兜底。 |
+| [http.go](http.go) | `NewHTTPServer`：装配中间件链、按注册顺序挂载生成路由与手写路由、`srv.Handle` 直挂 `/metrics`、`HandlePrefix` 直挂 `/s3/`（内嵌 OSS，SigV4 自证身份，nil 跳过）、最后挂载 SPA；CORS 启用时接 405 兜底。 |
 | [grpc.go](grpc.go) | `NewGRPCServer`：同构的 gRPC 装配与生成服务注册；不挂运维出口，无 SSE 不涉超时治理。 |
-| [web.go](web.go) | `NewWebHandler` / `ReservedAPIPrefixes`：嵌入 dist 静态托管、保留前缀按边界 404、assets 长缓存与 `index.html` 禁缓存、非 GET/HEAD 405。 |
+| [web.go](web.go) | `NewWebHandler` / `ReservedAPIPrefixes`：嵌入 dist 静态托管、保留前缀（`/v1`、`/metrics`、`/s3` 与 agent 前缀）按边界 404、assets 长缓存与 `index.html` 禁缓存、非 GET/HEAD 405。 |
 | [timeout.go](timeout.go) | `NewRouteTimeoutMiddleware`：按 `request_timeout` 恢复普通路由限时，向量化路由登记表按 `embedding_request_timeout`，agent 前缀跳过；请求超时非正时退化为直通。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：暴露 `NewGRPCServer` / `NewHTTPServer` / `NewRouteTimeoutMiddleware` / `NewWebHandler`。 |
 

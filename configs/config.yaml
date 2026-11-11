@@ -178,3 +178,15 @@ log:
   max_backups: 7
   max_age_days: 14
   compress: true
+
+oss:
+  # 内嵌对象存储设施（gofakes3，数据落 PostgreSQL oss_object 表）的启动
+  # 开关。enabled=false 时 /s3/ 路由不挂载，业务对象存储按设施缺失拒绝。
+  # 端点事实（provider / endpoint / bucket / access_key / secret_key /
+  # region）在 sys_config 的 oss.* 配置键（管理端维护，value_type=json）：
+  # provider 取 local / minio / s3 / aliyun，仅 local 时本服务挂载 /s3/
+  # （SigV4 鉴权，AK/SK 为 oss.access_key / oss.secret_key）；endpoint 指
+  # S3 兼容端点根地址（local 指 http://<本服务>/s3）。enabled=true 而
+  # 配置不齐在装配期拒绝启动（fail-closed）。启用前须先部署
+  # schema/93_oss.sql。
+  enabled: false

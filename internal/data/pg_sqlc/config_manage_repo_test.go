@@ -418,8 +418,8 @@ func TestConfigRepo_list_filters_and_counts_total(t *testing.T) {
 }
 
 func TestConfigRepo_list_page_total_independent_of_page(t *testing.T) {
-	// 种子全局配置共 9 条（含模型目录默认键）；第 2 页（页大小 2）的 total
-	// 不得随翻页位置递减。
+	// 种子全局配置共 13 条（含模型目录默认键与 oss.* 四键）；第 2 页
+	// （页大小 2）的 total 不得随翻页位置递减。
 	d := setupTestDB(t)
 	page := 2
 	pageSize := 2
@@ -432,8 +432,8 @@ func TestConfigRepo_list_page_total_independent_of_page(t *testing.T) {
 	if len(out.Items) != 2 {
 		t.Fatalf("page 2 items = %d, want 2", len(out.Items))
 	}
-	if out.Total == nil || *out.Total != 9 {
-		t.Fatalf("total = %+v, want 9", out.Total)
+	if out.Total == nil || *out.Total != 13 {
+		t.Fatalf("total = %+v, want 13", out.Total)
 	}
 }
 
@@ -666,7 +666,7 @@ func TestTenantConfigRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 }
 
 func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
-	// 动态协议的 sort 生效：按 id 降序取前 3 条为种子 9/8/7。
+	// 动态协议的 sort 生效：按 id 降序取前 3 条为种子 13/12/11。
 	d := setupTestDB(t)
 	pageSize := 3
 
@@ -678,8 +678,8 @@ func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list configs sorted: %v", err)
 	}
-	if len(out.Items) != 3 || out.Items[0].ID != 9 || out.Items[1].ID != 8 || out.Items[2].ID != 7 {
-		t.Fatalf("items = %+v, want descending ids 9/8/7", out.Items)
+	if len(out.Items) != 3 || out.Items[0].ID != 13 || out.Items[1].ID != 12 || out.Items[2].ID != 11 {
+		t.Fatalf("items = %+v, want descending ids 13/12/11", out.Items)
 	}
 }
 

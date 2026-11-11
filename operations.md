@@ -41,7 +41,7 @@ go build -o grape ./cmd/server
 
 - 执行顺序的单一事实源是
   [deploy.go](internal/data/pg_sqlc/deploy/deploy.go) 的 `DeployFiles`
-  清单（31 个文件），一键部署 `make dbdeploy`（单事务、失败整体回滚）；
+  清单（37 个文件），一键部署 `make dbdeploy`（单事务、失败整体回滚）；
   手工顺序与升级步骤见 [deploy_db.md](deploy_db.md)。
 - 角色拆分（[role.sql](internal/data/pg_sqlc/sqlc/role.sql)）：`grape_u`
   供应用运行连接（非超级用户，真实承受 RLS），`test_u` 供演示/验收。口令
@@ -62,6 +62,38 @@ go build -o grape ./cmd/server
   敏感数据面——保留期见下文统一节；不得把租户业务数据写入框架会话表。
 - 向量表 `agent.agent_document` 同为设施面（无 RLS，租户隔离由应用层
   VectorStore 适配器强制），授权收窄到该表、不覆盖 agent schema 全表。
+
+## 内嵌对象存储（OSS，数据落 PG）
+
+`conf.oss.enabled=true` 且 sys_config `oss.provider=local` 时，服务在
+`/s3/` 前缀内嵌标准 S3 API（gofakes3，SigV4 鉴权），数据落 `oss_object`
+表；业务侧只认 aws-sdk-go-v2 S3 客户端，端点事实在 sys_config 的
+`oss.*` 配置键。专题文档见
+[internal/data/pg_sqlc/oss/README.md](internal/data/pg_sqlc/oss/README.md)。
+
+- **启用步骤**：1) 按 deploy_db.md 部署（`schema/93_oss.sql` 已入清单，
+  历史库按其「升级」节补建表）；2) 经管理端（平台根租户）配置
+  `oss.access_key` / `oss.secret_key`（明文口径见 permission.md「明文
+  密钥的存储口径」，种子不含、缺失时装配期拒绝启动）——provider /
+  endpoint / bucket / region 已随种子给出缺省；3) 打开 `oss.enabled`
+  并重启（开关在 conf，路由挂载是启动期装配事实，改 sys_config 不重挂）。
+- **反向代理**：SigV4 签名覆盖 Host 头，前置 Nginx/LB 必须原样透传
+  `Host`（禁止代理层改写域名后再转发，如 `proxy_set_header Host
+  $host` 是必要项而非可选项）；`X-Amz-*` 与 `Authorization` 头同样
+  原样透传。预签名 URL 支撑前端直传直下载，URL 携带本服务对外地址
+  （`oss.endpoint`），SPA 与服务同源部署时无跨域问题；跨域挂载由外部
+  OSS 自身的 CORS 策略承担。
+- **限流**：单对象 ≤ 20MB（服务端按 Content-Length 拒绝，EntityTooLarge）；
+  本期只开简单上传，multipart 留给前端直传大文件时再开。
+- **切换真实 OSS（MinIO / AWS S3 / 阿里云 OSS）**：业务只认 S3 协议，
+  仅改 sys_config——`oss.provider` 改为对应取值（本服务随即不挂 `/s3/`）、
+  `oss.endpoint` / `oss.bucket` / `oss.access_key` / `oss.secret_key` /
+  `oss.region` 改为外部端点事实，下一次调用即生效（客户端每次调用现场
+  解析）；`oss.enabled` 可保持 true（客户端继续可用）。存量对象迁移
+  （PG → 外部桶）是运维数据搬运，应用不内置。
+- **保留期**：`oss_object` 无独立保留期，对象生命周期随业务调用
+  （写入/删除经 `biz.ObjectStore`）；无清理任务，容量治理归运维
+  （按 bucket / 时间维度的 SQL 清理即可，设施面无 RLS 不涉租户策略）。
 
 ## SSE 与超时治理
 
@@ -145,6 +177,7 @@ ack 的已知限制：**确认决定与运行必须同进程**。live 路径的�
 | 检索留痕（`agent_retrieval_log`） | 同审计口径（append-only 证据面） | 同审计执行口径；两表可共用同一 cron 窗口 |
 | 授权吊销行（`agent_tool_grant.revoked_at` 非空） | 吊销是审计语义行，保留供追溯；查询面已过滤 | 同审计口径批量清理；清理后同键重授无历史可查，属预期 |
 | 向量切片（`agent.agent_document`） | 无独立保留期 | 见下「向量孤儿」结论 |
+| 对象存储（`oss_object`） | 无独立保留期，随业务写入/删除（`biz.ObjectStore`） | 无清理任务；容量治理归运维（设施面无 RLS，按 bucket/时间的 SQL 清理即可），口径见上「内嵌对象存储」节 |
 
 **向量孤儿结论**（不设清理任务）：「文档删除后残留切片」的孤儿面在当前
 代码形态下不存在——摄取管线（`biz.DocumentUsecase.Ingest`）的覆盖语义是

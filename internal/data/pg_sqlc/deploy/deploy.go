@@ -45,6 +45,12 @@ func deployFiles() []string {
 	}
 	files = append(files, seed.Files...)
 	return append(files,
+		// 内嵌 OSS 数据面：oss_object 单表（bucket + object_key 主键），
+		// 服务内嵌 gofakes3 的数据介质。设施面无 RLS（bucket 即命名空间，
+		// SigV4 签名自证身份），入 sqlc catalog（queries/oss_object.sql）；
+		// grape_u 的 DML 授权在文件内显式声明，依赖 role.sql 的角色
+		// 先行存在。
+		"schema/93_oss.sql",
 		// Agent 会话存储：CREATE SCHEMA agent + 框架
 		// session/postgres 六张 agent_* 表与索引 + grape_u 授权；超级用户
 		// 执行面，不入 sqlc catalog，升级以框架建表模板 diff 该文件。

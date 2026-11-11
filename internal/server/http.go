@@ -15,6 +15,7 @@ import (
 	tenantv1 "grape/api/tenant/v1"
 	userv1 "grape/api/user/v1"
 	"grape/internal/conf"
+	oss "grape/internal/data/pg_sqlc/oss"
 	entrymw "grape/internal/middleware"
 	"grape/internal/service"
 	"grape/internal/telemetry"
@@ -60,6 +61,7 @@ func NewHTTPServer(
 	agentRetrieval *service.AgentRetrievalService,
 	knowledge *service.KnowledgeService,
 	model *service.ModelService,
+	s3 oss.S3Handler,
 	web WebHandler,
 ) (*http.Server, error) {
 	cors, err := entrymw.NewCORS(c)
@@ -151,6 +153,13 @@ func NewHTTPServer(
 	// agent 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
 	if agent != nil {
 		agent.RegisterHTTP(srv)
+	}
+	// 内嵌 OSS（/s3/）：SigV4 签名自证身份，链外直挂（不进 JWT 中间件
+	// 链）；nil 仅出现在设施未启用（oss.enabled=false 或 provider 非
+	// local）的装配。保留前缀由 ReservedAPIPrefixes 声明，未挂载时同
+	// 前缀按 API 语义 404，不落 SPA 页面壳。必须在 SPA 兜底之前注册。
+	if s3 != nil {
+		srv.HandlePrefix("/s3/", s3)
 	}
 	// web 为 nil 仅出现在不触达静态路由的测试装配；生产恒非 nil。
 	// 必须最后注册：SPA fallback 的语义即「其余路由全部未命中」。

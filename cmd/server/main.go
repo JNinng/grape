@@ -114,7 +114,7 @@ func main() {
 	)
 	log.SetDefault(logger)
 
-	app, cleanup, err := wireApp(bc.Server, bc.Data, bc.Auth, bc.Agent, bc.Vector, bc.Telemetry, logger)
+	app, cleanup, err := wireApp(bc.Server, bc.Data, bc.Auth, bc.Agent, bc.Vector, bc.Telemetry, bc.Oss, logger)
 	if err != nil {
 		panic(err)
 	}

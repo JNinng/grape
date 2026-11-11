@@ -31,6 +31,7 @@ sql:
       - "schema/90_config.sql"
       - "schema/91_knowledge.sql"
       - "schema/92_model.sql"
+      - "schema/93_oss.sql"
       - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"
@@ -62,6 +63,7 @@ sql:
       - "queries/kb_library.sql"
       - "queries/kb_document.sql"
       - "queries/sys_model.sql"
+      - "queries/oss_object.sql"
     gen:
       go:
         package: "gen"
@@ -85,6 +87,7 @@ sql:
       - "schema/90_config.sql"
       - "schema/91_knowledge.sql"
       - "schema/92_model.sql"
+      - "schema/93_oss.sql"
       - "schema/95_agent_audit.sql"
       - "rls.sql"
       - "operate.sql"

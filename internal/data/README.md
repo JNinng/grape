@@ -11,13 +11,15 @@
 | --- | --- |
 | [pg_sqlc](pg_sqlc/) | 关系存储：连接门面、关系仓储、声明资产与生成产物 |
 | [pg_sqlc/vector](pg_sqlc/vector/) | 向量存储介质与检索留痕装饰器 |
+| [pg_sqlc/oss](pg_sqlc/oss/) | 内嵌对象存储设施（gofakes3）：/s3/ 挂载面与 gofakes3.Backend 的 PG 实现 |
 | [pg_sqlc/deploy](pg_sqlc/deploy/) | 声明资产部署面：执行清单、口令占位替换、跨进程锁，不依赖运行期门面 |
+| [ossclient](ossclient/) | 对象存储 S3 客户端设施（aws-sdk-go-v2，端点取 sys_config oss.*） |
 | [openaiembedder](openaiembedder/) | 文本向量化设施（OpenAI 兼容端点） |
 | [openaicompleter](openaicompleter/) | 单次文本生成设施（OpenAI 兼容 chat completions） |
 
 `data` 是存储后端选择点：[provider.go](provider.go) 聚合各能力
 ProviderSet 与设施诊断面/维护面，当前静态选定 `pg_sqlc` 关系存储。
-`pg_sqlc` 的两个子包只依赖根包，根包不反向引用。
+`pg_sqlc` 的三个子包只依赖根包，根包不反向引用。
 
 `pg_sqlc` 内的声明资产（`sqlc/` 下的 schema、rls、operate、expose、
 queries、seed）与生成产物（`gen/`，单 catalog）同目录；`gen/` 禁止手改。
@@ -41,7 +43,11 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
 | [pg_sqlc/vector/vector_repo.go](pg_sqlc/vector/vector_repo.go) | 多嵌入空间向量介质的装配探针、metadata 条件翻译与手写参数化 SQL |
 | [pg_sqlc/vector/retrieval_log.go](pg_sqlc/vector/retrieval_log.go) | 检索留痕装饰器与 wire 供给包装 `VectorStoreSupply` |
+| [pg_sqlc/oss/server.go](pg_sqlc/oss/server.go) | 内嵌 S3 服务的 /s3/ 挂载构造（挂载决策矩阵、外层 SigV4 校验 + 前缀剥离），专题见 [pg_sqlc/oss/README.md](pg_sqlc/oss/README.md) |
+| [pg_sqlc/oss/backend.go](pg_sqlc/oss/backend.go) | gofakes3.Backend 的 PG 实现（oss_object 介质：覆盖写、Range、列举、限流、复制） |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
+| [oss_config.go](oss_config.go) | biz.OSSConfigResolver 实现：sys_config oss.* 六键现场解析，键缺即按设施未配置拒绝 |
+| [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位 |
 | [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存 |
 
@@ -152,6 +158,27 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
 租户未配置文本模型时 Complete 按 `ErrTextModelUnavailable` 拒绝，由消费方
 按质量增强降级处理（见 ingest.md）。
 
+## 对象存储设施
+
+内嵌 OSS 是两半结构，业务侧只认 S3 协议（`biz.ObjectStore`，本期无消费
+方，文件解析摄取接入时启用）：
+
+- **服务端**（[pg_sqlc/oss](pg_sqlc/oss/)）：`conf.oss.enabled=true` 且
+  sys_config `oss.provider=local` 时由 `NewHandler` 产出挂载 Handler，
+  server 层 `/s3/` 链外直挂（SigV4 自证身份，不走 JWT 中间件链）；外层
+  以含前缀的原始路径校验签名后剥前缀交给 gofakes3 路由。数据落
+  `oss_object`（设施面无 RLS，bucket 即命名空间），单对象 ≤ 20MB，
+  本期只开简单上传。专题见 [pg_sqlc/oss/README.md](pg_sqlc/oss/README.md)。
+- **客户端**（[ossclient](ossclient/)）：`biz.ObjectStore` 的
+  aws-sdk-go-v2 实现（Put/Get/Delete/PresignGet/PresignPut），每次调用经
+  `biz.OSSConfigResolver` 现场解析 sys_config 的 `oss.*` 六键（无行值
+  缓存，配置变更下一次调用生效），`*s3.Client` 按端点+凭据缓存复用；
+  provider 为 minio / s3 / aliyun 时客户端指向外部端点，本服务不挂
+  `/s3/`。键缺即按 `ErrObjectStoreDisabled` 拒绝（fail-closed）。
+- AK/SK 明文落 sys_config（与 jwt.secret 同口径的设施面文档化例外，
+  见 permission.md）；预签名 URL 支撑前端直传直下载，反向代理须透传
+  Host 头（运维口径见 operations.md）。
+
 ## 会话介质维护
 
 [session_repo.go](pg_sqlc/session_repo.go) 同时实现
@@ -202,10 +229,13 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   运行角色直写。
 - **设施与介质**：诊断样本采集、会话清理与 REINDEX 判定、向量空间对账
   与索引命中、检索留痕装饰器的转发/失败不中断/脱敏/兜底；embedding 的
-  多空间路由与维度漂移、文本生成的请求形状与错误映射。
+  多空间路由与维度漂移、文本生成的请求形状与错误映射；内嵌 OSS 的
+  Backend 存储语义（覆盖写、Range、列举、限流、复制）、/s3/ 回环的
+  S3 SDK 语义与 SigV4 拒绝矩阵、ossclient 的契约错误映射与预签名。
 - **装配与部署**：连接槽位校验、debug 参数脱敏、部署清单与测试种子的
   追加关系。
 
 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 及向量、审计、
-检索留痕三组专属 DSN 门控（分别使用 `grape_vector_test`、
-`grape_audit_test`、`grape_retrieval_test` 库），未设置时自动跳过。
+检索留痕、内嵌 OSS 四组专属 DSN 门控（分别使用 `grape_vector_test`、
+`grape_audit_test`、`grape_retrieval_test`、`grape_oss_test` 库），
+未设置时自动跳过。

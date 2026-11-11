@@ -8,13 +8,15 @@ import (
 	"grape/internal/biz"
 	"grape/internal/data/openaicompleter"
 	"grape/internal/data/openaiembedder"
+	"grape/internal/data/ossclient"
 	pgsqlc "grape/internal/data/pg_sqlc"
+	"grape/internal/data/pg_sqlc/oss"
 	"grape/internal/data/pg_sqlc/vector"
 )
 
 // ProviderSet 是 data 层的 Wire 依赖注入集合，也是存储后端选择点：
 // 当前按编译期静态方式选定 pg_sqlc 关系存储后端。
-var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, vector.ProviderSet, openaiembedder.ProviderSet, openaicompleter.ProviderSet, NewFacilityDiagnostics, NewFacilityMaintenance)
+var ProviderSet = wire.NewSet(pgsqlc.ProviderSet, vector.ProviderSet, oss.ProviderSet, openaiembedder.ProviderSet, openaicompleter.ProviderSet, ossclient.ProviderSet, NewFacilityDiagnostics, NewFacilityMaintenance)
 
 // NewFacilityDiagnostics 聚合各能力目录的诊断面实现（biz.FacilityDiagnostics）。
 // data 是设施聚合点：新设施（如缓存）落地诊断面时在此追加参数与切片元素，
