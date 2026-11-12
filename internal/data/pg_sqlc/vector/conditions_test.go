@@ -127,6 +127,79 @@ func TestVectorStore_search_and_update_metadata_conditions(t *testing.T) {
 	}
 }
 
+func TestVectorStore_metadata_is_null_condition_and_mark_superseded(t *testing.T) {
+	d := setupVectorTestDB(t)
+	store := newVectorStoreForTest(t, d)
+	ctx := vectorIdentityContext(vectorTenantA)
+
+	docs := []*biz.VectorDocument{
+		{ID: "c-live", Content: "live", Embedder: vectorTestSpace, Dimension: int(vectorDimension), Embedding: unitVector(int(vectorDimension), 0),
+			Metadata: map[string]any{"source_id": "src"}},
+		{ID: "c-retired", Content: "retired", Embedder: vectorTestSpace, Dimension: int(vectorDimension), Embedding: unitVector(int(vectorDimension), 1),
+			Metadata: map[string]any{"source_id": "src", "superseded_at": "2026-01-01T00:00:00Z"}},
+		{ID: "c-json-null", Content: "json null", Embedder: vectorTestSpace, Dimension: int(vectorDimension), Embedding: unitVector(int(vectorDimension), 2),
+			Metadata: map[string]any{"source_id": "src", "superseded_at": nil}},
+		{ID: "c-empty", Content: "empty string", Embedder: vectorTestSpace, Dimension: int(vectorDimension), Embedding: unitVector(int(vectorDimension), 3),
+			Metadata: map[string]any{"source_id": "src", "superseded_at": ""}},
+	}
+	for _, doc := range docs {
+		addVectorDocument(t, store, vectorTenantA, doc)
+	}
+
+	// is-null（Values 为空也成立）：键缺失与 JSON null 同义，二者都算「未
+	// 被 superseded」；键存在但值为空字符串是「存在」——不命中（口径为
+	// 键存在且非 JSON null 即非现行）。
+	total, err := store.Count(ctx, &biz.VectorFilter{Conditions: []biz.MetadataCondition{
+		{Key: "superseded_at", Op: biz.VectorMetadataIsNull},
+	}})
+	if err != nil {
+		t.Fatalf("count is-null: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("is-null count = %d, want 2 (missing key + JSON null; empty string counts as present)", total)
+	}
+	activeDocs, err := store.List(ctx, &biz.VectorFilter{Conditions: []biz.MetadataCondition{
+		{Key: "superseded_at", Op: biz.VectorMetadataIsNull},
+	}})
+	if err != nil || len(activeDocs) != 2 {
+		t.Fatalf("is-null list = (%d docs, %v), want 2", len(activeDocs), err)
+	}
+	for _, doc := range activeDocs {
+		if doc.ID == "c-empty" {
+			t.Fatal("empty-string superseded_at counted as missing (must count as present)")
+		}
+	}
+	// eq/ne 等取值算子对键缺失不命中（is-null 的互补语义由此成立）；
+	// 该断言走 List 而非 Count（Count 自身排除退役行，语义见契约）。
+	eqDocs, err := store.List(ctx, &biz.VectorFilter{Conditions: []biz.MetadataCondition{
+		{Key: "superseded_at", Op: biz.VectorMetadataEq, Values: []any{"2026-01-01T00:00:00Z"}},
+	}})
+	if err != nil || len(eqDocs) != 1 || eqDocs[0].ID != "c-retired" {
+		t.Fatalf("eq list = (%d docs, %v), want [c-retired]", len(eqDocs), err)
+	}
+
+	// MarkSuperseded：只改 metadata，正文与向量保留；时标为 RFC3339 文本。
+	marked, err := store.MarkSuperseded(ctx, &biz.VectorFilter{IDs: []string{"c-live"}}, time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC))
+	if err != nil || marked != 1 {
+		t.Fatalf("MarkSuperseded = (%d, %v), want 1", marked, err)
+	}
+	doc, err := store.Get(ctx, "c-live")
+	if err != nil {
+		t.Fatalf("get marked chunk: %v", err)
+	}
+	if doc.Content != "live" || len(doc.Embedding) != int(vectorDimension) {
+		t.Fatalf("mark touched content/embedding: %+v", doc)
+	}
+	if got, _ := doc.Metadata["superseded_at"].(string); got != "2026-02-03T04:05:06Z" {
+		t.Fatalf("superseded_at = %v, want RFC3339 text", doc.Metadata["superseded_at"])
+	}
+	if total, err := store.Count(ctx, &biz.VectorFilter{Conditions: []biz.MetadataCondition{
+		{Key: "superseded_at", Op: biz.VectorMetadataIsNull},
+	}}); err != nil || total != 1 {
+		t.Fatalf("is-null count after marking = (%d, %v), want 1", total, err)
+	}
+}
+
 func TestVectorStore_metadata_condition_ops(t *testing.T) {
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)

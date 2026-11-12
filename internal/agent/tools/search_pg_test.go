@@ -1,8 +1,8 @@
 package tools
 
 // 摄取管线与检索工具 PG 集成测试：摄取 → 检索闭环、RLS 关闭时跨租户
-// 隔离、引用可追溯、幂等覆盖与 top_k 上限。embedding 用确定性替身，不
-// 发起真实网络请求；套件与环境变量见 README「测试」。
+// 隔离、引用可追溯、重摄差量对账（退役行可反查）与 top_k 上限。embedding
+// 用确定性替身，不发起真实网络请求；套件与环境变量见 README「测试」。
 
 import (
 	"context"
@@ -259,8 +259,9 @@ func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testi
 		t.Fatalf("hits = %d, want exactly 1", out.Count)
 	}
 	hit := out.Hits[0]
-	// 引用可追溯：文档 ID / 来源标识 / 锚点随命中返回。
-	if hit.DocumentID != "kb-alpha-1#0" || hit.SourceID != "kb-alpha-1" || hit.SourceName != "Refund Policy" {
+	// 引用可追溯：文档 ID / 来源标识 / 锚点随命中返回；切片 ID 带内容
+	// 哈希（"<source>#<index>#<hash8>"）。
+	if !strings.HasPrefix(hit.DocumentID, "kb-alpha-1#0#") || hit.SourceID != "kb-alpha-1" || hit.SourceName != "Refund Policy" {
 		t.Fatalf("citation fields = %+v, want kb-alpha-1 lineage", hit)
 	}
 	if !strings.HasPrefix(hit.Anchor, "runes 0-") {
@@ -278,7 +279,7 @@ func TestPGDocumentSearch_ingest_then_tool_roundtrip_hits_with_citation(t *testi
 	}
 
 	// 引用可反查：命中文档 ID 经存储点查取回切片原文（不含围栏）。
-	doc, err := f.store.Get(ctx, "kb-alpha-1#0")
+	doc, err := f.store.Get(ctx, hit.DocumentID)
 	if err != nil {
 		t.Fatalf("reverse lookup by document id: %v", err)
 	}
@@ -365,23 +366,54 @@ func TestPGDocumentSearch_reingest_replaces_previous_chunks(t *testing.T) {
 	if v1.Chunks <= 1 {
 		t.Fatalf("v1 chunks = %d, want multiple", v1.Chunks)
 	}
-	// v2：同 ID 重摄（内容变短），旧块必须全部清除（同来源覆盖幂等）。
+	v1Docs, err := f.store.List(ctx, &biz.VectorFilter{Metadata: map[string]any{"source_id": "kb-evolve"}})
+	if err != nil || len(v1Docs) != v1.Chunks {
+		t.Fatalf("v1 stored chunks = (%d, %v), want %d", len(v1Docs), err, v1.Chunks)
+	}
+	v1Content := make(map[string]string, len(v1Docs))
+	for _, doc := range v1Docs {
+		v1Content[doc.ID] = doc.Content
+	}
+	// v2：同来源重摄（内容变短）。内容哈希按块正文派生，新旧版本中正文
+	// 相同的块（重复文本的前缀块）ID 相同走刷新，不再产出的块标记退役
+	//（保留期内仍可按 ID 反查命中当时的原文）。
 	v2, err := pipeline.Ingest(ctx, &biz.Document{
 		Metadata: activeDocMetadata(f.libraryA), ID: "kb-evolve", Content: strings.Repeat("beta", 20)})
 	if err != nil {
 		t.Fatalf("ingest v2: %v", err)
 	}
-	if v2.Replaced != int64(v1.Chunks) {
-		t.Fatalf("v2 replaced = %d, want %d (all v1 chunks cleared)", v2.Replaced, v1.Chunks)
+	stored, err := f.store.List(ctx, &biz.VectorFilter{Metadata: map[string]any{"source_id": "kb-evolve"}})
+	if err != nil {
+		t.Fatalf("list after re-ingest: %v", err)
+	}
+	retiredIDs := map[string]bool{}
+	active := 0
+	for _, doc := range stored {
+		if _, retired := doc.Metadata[biz.VectorMetadataSupersededAt]; retired {
+			retiredIDs[doc.ID] = true
+			continue
+		}
+		active++
+	}
+	if active != v2.Chunks {
+		t.Fatalf("active chunks after re-ingest = %d, want %d", active, v2.Chunks)
+	}
+	if len(retiredIDs) == 0 || v2.Replaced != int64(len(retiredIDs)) {
+		t.Fatalf("v2 replaced = %d retired = %d, want equal and non-zero", v2.Replaced, len(retiredIDs))
 	}
 	total, err := f.store.Count(ctx, &biz.VectorFilter{Metadata: map[string]any{"source_id": "kb-evolve"}})
 	if err != nil || total != int64(v2.Chunks) {
-		t.Fatalf("count after re-ingest = (%d, %v), want %d", total, err, v2.Chunks)
+		t.Fatalf("count after re-ingest = (%d, %v), want %d active chunks", total, err, v2.Chunks)
 	}
-	// v1 的末块（v2 不再产出的 ID）已不可见。
-	staleID := fmt.Sprintf("kb-evolve#%d", v1.Chunks-1)
-	if _, err := f.store.Get(ctx, staleID); !errors.Is(err, biz.ErrVectorDocNotFound) {
-		t.Fatalf("stale v1 chunk %s still present: %v", staleID, err)
+	for id := range retiredIDs {
+		// 复现反查允许读退役行：命中当时的原文仍按旧 ID 可取。
+		doc, err := f.store.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("reverse lookup of retired chunk %s: %v", id, err)
+		}
+		if doc.Content != v1Content[id] {
+			t.Fatalf("retired chunk %s content = %q, want hit-time %q", id, doc.Content, v1Content[id])
+		}
 	}
 }
 
@@ -400,7 +432,7 @@ func TestPGDocumentSearch_dimension_drift_rejects_at_ingest(t *testing.T) {
 		!strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("Ingest with drifting embedder = %v, want dimension error", err)
 	}
-	total, err := f.store.Count(ctx, &biz.VectorFilter{IDs: []string{"kb-drift#0"}})
+	total, err := f.store.Count(ctx, &biz.VectorFilter{IDs: []string{"kb-drift#0#a1b2c3d4"}})
 	if err != nil || total != 0 {
 		t.Fatalf("count after drift rejection = (%d, %v), want (0, nil) — store untouched", total, err)
 	}

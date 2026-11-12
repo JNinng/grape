@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"grape/internal/agent/internal/testsupport"
 	"grape/internal/biz"
@@ -83,6 +84,10 @@ func (f *fakeVectorStore) DeleteByFilter(_ context.Context, filter *biz.VectorFi
 }
 
 func (f *fakeVectorStore) UpdateMetadata(_ context.Context, _ *biz.VectorFilter, _ map[string]any) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeVectorStore) MarkSuperseded(_ context.Context, _ *biz.VectorFilter, _ time.Time) (int64, error) {
 	return 0, nil
 }
 

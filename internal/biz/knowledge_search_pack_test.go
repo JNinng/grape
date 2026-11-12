@@ -135,9 +135,9 @@ func TestKnowledgeSearchPack_same_section_multi_hit_aggregates_full_section_with
 	if f.Limit != KnowledgeSearchPackListGuardChunks+1 {
 		t.Fatalf("list limit = %d, want fetch guard %d", f.Limit, KnowledgeSearchPackListGuardChunks+1)
 	}
-	last := f.Conditions[len(f.Conditions)-1]
-	if last.Key != "kb_id" {
-		t.Fatalf("list conditions = %+v, want the fixed retrieval conditions carried", f.Conditions)
+	if conditionByKey(f.Conditions, "kb_id").Key != "kb_id" ||
+		conditionByKey(f.Conditions, VectorMetadataSupersededAt).Op != VectorMetadataIsNull {
+		t.Fatalf("list conditions = %+v, want the fixed retrieval conditions carried (including superseded is-null)", f.Conditions)
 	}
 }
 

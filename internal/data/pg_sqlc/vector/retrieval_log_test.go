@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"grape/internal/biz"
@@ -78,6 +79,11 @@ func (s *fakeInnerStore) Count(_ context.Context, _ *biz.VectorFilter) (int64, e
 func (s *fakeInnerStore) UpdateMetadata(_ context.Context, _ *biz.VectorFilter, _ map[string]any) (int64, error) {
 	s.calls = append(s.calls, "update_metadata")
 	return 1, nil
+}
+
+func (s *fakeInnerStore) MarkSuperseded(_ context.Context, _ *biz.VectorFilter, _ time.Time) (int64, error) {
+	s.calls = append(s.calls, "mark_superseded")
+	return 3, nil
 }
 
 func (s *fakeInnerStore) GetMetadata(_ context.Context, _ *biz.VectorFilter) (map[string]map[string]any, error) {

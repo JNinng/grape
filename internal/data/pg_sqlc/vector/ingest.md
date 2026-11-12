@@ -1,8 +1,8 @@
 # ingest — 知识入库逻辑
 
-知识入库的落库面在本目录（`Add` / `DeleteByFilter` / `UpdateMetadata`），
-管线本体在 biz 层。本文记录从条目写入到向量落库的完整链路与各环节的
-不变量。
+知识入库的落库面在本目录（`Add` / `Update` / `MarkSuperseded` /
+`DeleteByFilter` / `UpdateMetadata`），管线本体在 biz 层。本文记录从条目
+写入到向量落库的完整链路与各环节的不变量。
 
 ## 入库链路
 
@@ -47,8 +47,10 @@ service/knowledge.go（CreateDocument / UpdateDocument（正文变更时）/ Rei
       4. 上下文前缀生成（开关开启时，见下节）
       5. 逐块 embed.Embed（输入 = 前缀 + 块正文（有前缀时）；响应长度与
          维度声明一致性复核）
-      6. DeleteByFilter(source_id)（跨空间清除旧切片）
-      7. 逐块 store.Add（经本目录契约实现落库 + 留痕装饰器）
+      6. 差量对账（reconcileChunks，按新批 ID 对账本来源现存切片）：
+         仍在新批 → Update 整行刷新（清退役标记）；不在新批的现行行 →
+         MarkSuperseded 标记退役；全新 ID → Add
+      7. 写路径经本目录契约实现落库 + 留痕装饰器（Add/Update/MarkSuperseded）
   → MarkDocumentIndexed 回写最近摄取时间与空间键（kb_document 行）
 ```
 
@@ -106,19 +108,42 @@ kind 在摄取时显式拒绝，不静默回落。
   过滤」；text 切片不带该键，metadata 形状不变。两实现产出同一「内容 +
   原文 rune 锚点」形状，切片正文恒等于原文对应 rune 区间，管线其余环节
   无感。
-- **切片 ID 确定性派生**：`"<sourceID>#<index>"`。来源 ID 上限 96 字节，
-  为后缀留出 `agent_document.id` 列宽（varchar(128)）余量；确定性保证
-  重摄的覆盖语义（同来源重摄写同一批 ID）。
+- **切片 ID 确定性派生**：`"<sourceID>#<index>#<hash8>"`。hash8 取
+  `sha256(嵌入空间键 + "\x00" + 切片内容)` 的前 4 字节十六进制（8 字符）：
 
-## 幂等覆盖语义
+  - 内容变化或换空间即出新 ID，历史 ID 永不指向新内容（留痕反查的前提）；
+  - 空间键参与哈希，避免 PK `(tenant_id, id)` 下同内容跨空间撞 ID；
+  - NUL 分隔保证「空间键 + 内容」拼接无歧义（两者都不含 NUL）；
+  - 长度：来源 ID 上限 96 + `#` + 7 位序号 + `#` + 8 = 113，在
+    `agent_document.id` 的 varchar(128) 内；
+  - 确定性保证同内容同空间重摄复用同一批 ID（差量对账的匹配依据）。
+    存量旧形态 ID `"<sourceID>#<index>"` 在下次重摄时自然换新，不做一次性
+    迁移。
 
-同来源覆盖：摄取前按 `source_id` metadata 清除本租户旧切片（跨空间——
-重摄取即换空间迁移路径），再整批写入。
+## 幂等差量对账
 
-- **顺序不变量**：空间解析与逐块向量化都在删除旧行**之前**完成——
-  embed 失败（端点故障、维度漂移）不破坏存量数据，重摄即可补偿。
-- **无跨步事务**：清除与写入三步不在同一事务，中途失败存在短暂缺文档
-  窗口，重摄可补偿（不引入分布式事务换取瞬时一致性）。
+同来源重摄按新批 ID 对账本来源现存切片（biz
+[reconcileChunks](../../../biz/document.go)），**不再先删后写**——旧切片
+保留为退役行，留痕行在保留期内仍可反查命中当时的原文：
+
+- **仍在新批的 ID**：`Update` 整行刷新（content / embedding / metadata）。
+  metadata 是整列替换，`superseded_at` 键因此被清掉——内容改回旧版本时
+  旧 ID 复活。
+- **现存但不在新批的现行行**：`MarkSuperseded` 写入 `superseded_at`
+  （RFC3339 文本），物理行保留。已退役且不在新批的行不重复标记，保留
+  首次退役时间（清理任务以它为保留期依据）。
+- **全新 ID**：`Add`。
+- **读面排除退役行**：检索固定条件、管理页 `ListDocumentChunks`、`Count`
+  以 `superseded_at IS NULL`（`VectorMetadataIsNull`）排除；`Get` 是复现
+  反查读面，不过滤（跨租户仍不可见）。
+- **显式下线仍物理删除**：删条目 `DeleteByFilter(document_id)`、删库
+  `DeleteByFilter(kb_id)`。条目删除后复现页按 `kb_document.deleted_at`
+  标注，不依赖切片行。
+- **顺序不变量**：空间解析与逐块向量化都在对账写**之前**完成——embed
+  失败（端点故障、维度漂移）不破坏存量数据。
+- **无跨步事务**：标记退役与写入分步执行、不在同一事务，中途失败存在
+  短暂缺文档窗口，重摄可补偿（不引入分布式事务换取瞬时一致性）。并发
+  重摄同一来源沿用既有口径（无源级锁），结果收敛到最后一批 ID。
 
 ## chunk metadata 契约
 
@@ -129,6 +154,7 @@ kind 在摄取时显式拒绝，不静默回落。
 | `source_id` / `source_name` / `chunk_index` / `chunk_total` / `anchor` | 管线保留键（[chunkMetadata](../../../biz/document.go)） | 来源标识与原文锚点（rune 区间），引用可追溯；以服务端产出覆盖调用方同名键 |
 | `heading_path` | 管线保留键（仅 markdown / file 条目） | 标题链（`" > "` 拼接，节前内容为空串），支撑按章节过滤与整节聚合 |
 | `kb_id` / `document_id` / `doc_status` / `valid_from_unix` / `valid_to_unix` | 库过滤事实（[effectiveChunkMetadata](../../../biz/knowledge.go)） | 库与条目状态取与（0/1）、有效期取交集（NULL 视为无界） |
+| `superseded_at` | 重摄差量对账（`MarkSuperseded`，[vector_repo.go](vector_repo.go)） | 退役时间（RFC3339）；键存在且非 JSON null 即非现行（JSON null 与键缺失同判），检索/管理页/计数以 is-null 排除；整行 Update 替换 metadata 即清除（复活） |
 | 调用方自定义键 | 原样保留 | — |
 
 存储层再注入身份与空间事实：`tenant_id` / `user_id` / `embedder` /
@@ -149,7 +175,7 @@ kind 在摄取时显式拒绝，不静默回落。
 
 ## 留痕
 
-摄取三动作都经本目录留痕装饰器落一行（来源 pipeline，失败行同样留痕）：
+摄取写动作都经本目录留痕装饰器落一行（来源 pipeline，失败行同样留痕）：
 `Add`/`Update` 作用文档进 hits 列（单元素，anchor 取切片元数据）；
-`DeleteByFilter` 条件摘要进 filter_summary。写入失败只记日志，不中断
-摄取。
+`MarkSuperseded`/`DeleteByFilter` 条件摘要进 filter_summary。写入失败只记
+日志，不中断摄取。

@@ -202,11 +202,11 @@ describe('knowledge api', () => {
 
   it('search_reply_with_omitted_zero_values_is_normalized', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(200, { items: [{ documentId: '200#0', content: '正文' }], total: 1 }),
+      jsonResponse(200, { items: [{ documentId: '200#0#a1b2c3d4', content: '正文' }], total: 1 }),
     )
     const result = await searchDocuments({ query: '年假' })
     expect(result).toEqual({
-      items: [{ documentId: '200#0', sourceId: '', sourceName: '', anchor: '', score: 0, content: '正文' }],
+      items: [{ documentId: '200#0#a1b2c3d4', sourceId: '', sourceName: '', anchor: '', score: 0, content: '正文' }],
       total: 1,
     })
   })
@@ -227,12 +227,12 @@ describe('knowledge api', () => {
 
 describe('knowledge chunk api', () => {
   it('lists_document_chunks_by_path_id', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ index: 0, chunkId: '200#0', content: '正文' }], total: 1 }))
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ index: 0, chunkId: '200#0#a1b2c3d4', content: '正文' }], total: 1 }))
     const set = await listDocumentChunks('200')
     expect(String(fetchMock.mock.calls[0][0])).toBe('/v1/knowledge/documents/200/chunks')
     expect(init(fetchMock.mock.calls[0]).method).toBeUndefined()
     expect(set).toEqual({
-      items: [{ index: 0, chunkId: '200#0', anchor: '', content: '正文', embedder: '' }],
+      items: [{ index: 0, chunkId: '200#0#a1b2c3d4', anchor: '', content: '正文', embedder: '' }],
       total: 1,
     })
   })

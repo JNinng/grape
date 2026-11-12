@@ -74,8 +74,8 @@
 | [reranker.go](reranker.go) | 检索重排契约（query + documents 逐段打分，质量增强面）与重排模型目录解析：未配置（`ErrRerankUnavailable`）按跳过该层处理，调用失败降级融合序；实现按当前身份解析租户重排模型，解析出的模型键随 `RerankResult` 返回供阶段留痕记录。 |
 | [tokenizer.go](tokenizer.go) | 词元切分契约（词法召回的正确性前提）：摄取建索引与查询分词必须共用同一实现实例（口径漂移即静默漏召回），本层只声明形状不消费。 |
 | [objectstore.go](objectstore.go) | 对象存储契约（Put/Get/Delete/PresignGet/PresignPut，S3 语义）与端点解析契约：端点事实在 sys_config 的 oss.* 键，AK/SK 明文口径见 permission.md。 |
-| [document.go](document.go) | 摄取管线：按 kind 分派切分（text 区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分；markdown/file 标题切分，节超长回退块级装箱与固定窗口）、heading_path 元数据、逐块 embed（库级上下文检索开关开启时先为每块生成上下文前缀，文档摘要一次、前缀只拼进 embed 输入，失败降级）、按来源覆盖写入；重摄即迁移路径。 |
-| [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件与批量更新、枚举读面 `List`/`GetMetadata`、词法检索 `SearchLexical`——ts_rank_cd 分数未归一、与向量相似度跨方法不可比）。 |
+| [document.go](document.go) | 摄取管线：按 kind 分派切分（text 区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分；markdown/file 标题切分，节超长回退块级装箱与固定窗口）、heading_path 元数据、内容哈希切片 ID（`<source>#<index>#<hash8>`，空间参与哈希）、逐块 embed（库级上下文检索开关开启时先为每块生成上下文前缀，文档摘要一次、前缀只拼进 embed 输入，失败降级）、按新批 ID 差量对账写入（仍在 → Update 刷新并复活、消失 → 标记退役、全新 → Add）；重摄即迁移路径。 |
+| [vectorstore.go](vectorstore.go) | 向量设施契约：文档/过滤/评分形状与读写方法面（多嵌入空间、metadata 条件（含 is_null 键缺失算子）与批量更新/退役标记 `MarkSuperseded`、枚举读面 `List`/`GetMetadata`、词法检索 `SearchLexical`——ts_rank_cd 分数未归一、与向量相似度跨方法不可比；`Count` 只计现行切片）。 |
 | [knowledge.go](knowledge.go) | 知识库与条目用例：库/条目校验（按 kind 分支——file 条目 content 可空、原件事实必填）、切分参数（大小/重叠/区分串/上下文检索开关）与嵌入模型选择、chunk metadata 同步、删除清理（file 条目随宿主软删介质行并尽力删 OSS 对象）与重建索引（file 分支重取原件重解析）、条目实际分片枚举（按分片序，取自向量存储）、可见库集合解析（`VisibleLibraries`，检索与列库工具共用；条目读面随所属库可见性收窄）。 |
 | [knowledge_file.go](knowledge_file.go) | 文件摄取用例（kind=file）：上传（识别 → 介质行 → OSS → 目录行 → 解析 → 摄取，介质成立前失败无副作用、之后失败留痕可重解析）、重解析（reparseDocument，解析产物回写目录行后按路由档位切分摄取）、失败路径的介质回收（cleanupMedia）。 |
 | [fileparser.go](fileparser.go) | FileParser 契约与 MIME 路由档位（direct / native / external / unsupported）：嗅探 MIME 是唯一路由依据，扩展名只参与快速拒绝与纯文本的 markdown 判定；错误语义（类型不支持 / 乱码 / 过短）。 |
@@ -100,8 +100,8 @@
   哈希/元数据截断/登出幂等、身份 ctx 往返。
 - Agent 面：审计词表配对与脱敏截断、授权会话优先/幂等/权限码边界、检索留痕分页
   与 fail-closed、模型调用留痕的观察面纪律（脱敏截断、身份缺失放弃、旁路失败
-  不反噬、超时预算、panic 恢复、过滤归一）、摄取切分（固定窗口与区分串、markdown 标题切分）/维度对账/覆盖幂等/
-  中途失败/上下文前缀生成与降级（开关关闭零调用、失败降级无前缀、前缀只进 embed
+  不反噬、超时预算、panic 恢复、过滤归一）、摄取切分（固定窗口与区分串、markdown 标题切分）/切片 ID 内容哈希（同内容同 ID、改内容或换空间出新 ID）/维度对账/
+  重摄差量对账（刷新/退役/新增三分支、内容改回旧版本复活）/中途失败/上下文前缀生成与降级（开关关闭零调用、失败降级无前缀、前缀只进 embed
   输入）、条目 kind 校验矩阵（创建接受/拒绝、更新不可变）、知识检索的
   校验/钳制/固定条件/设施缺失透传、RRF 融合（多路累加、并列名次按首次
   出现序、top_k 截断、nil 命中不计名次）、变体召回（逐条 trim 与上限校验、

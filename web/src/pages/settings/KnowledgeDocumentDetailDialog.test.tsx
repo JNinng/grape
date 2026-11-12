@@ -31,7 +31,7 @@ function documentDTO(overrides: Partial<DocumentDTO> = {}): DocumentDTO {
 function chunk(overrides: Partial<KnowledgeChunkDTO> = {}): KnowledgeChunkDTO {
   return {
     index: 0,
-    chunkId: '200#0',
+    chunkId: '200#0#a1b2c3d4',
     anchor: 'runes 0-12',
     content: '30 天内全额退款',
     embedder: 'qwen3-embedding:0.6b',

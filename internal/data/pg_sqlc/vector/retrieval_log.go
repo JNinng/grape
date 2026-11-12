@@ -140,7 +140,8 @@ func (s *loggedVectorStore) Get(ctx context.Context, id string) (*biz.VectorDocu
 }
 
 // DeleteByFilter 转发条件删除并按摄取侧留痕：条件摘要进 filter_summary
-// （管线的同来源覆盖清除即此路径），行数结果由调用方持有、不入留痕。
+// （条目删除/删库的显式下线即此路径；重摄改为差量对账退役，不走这里），
+// 行数结果由调用方持有、不入留痕。
 func (s *loggedVectorStore) DeleteByFilter(ctx context.Context, filter *biz.VectorFilter) (int64, error) {
 	start := time.Now()
 	deleted, err := s.inner.DeleteByFilter(ctx, filter)
@@ -157,6 +158,17 @@ func (s *loggedVectorStore) Count(ctx context.Context, filter *biz.VectorFilter)
 // UpdateMetadata 转发 metadata 合并更新，不留痕（目录状态同步非检索证据）。
 func (s *loggedVectorStore) UpdateMetadata(ctx context.Context, filter *biz.VectorFilter, patch map[string]any) (int64, error) {
 	return s.inner.UpdateMetadata(ctx, filter, patch)
+}
+
+// MarkSuperseded 转发退役标记并按摄取侧留痕（来源 pipeline）：条件摘要进
+// filter_summary，与 DeleteByFilter 同一形态——重摄差量对账的淘汰动作是
+// 摄取证据，保留期内可对照留痕行反查被淘汰的候选 ID。
+func (s *loggedVectorStore) MarkSuperseded(ctx context.Context, filter *biz.VectorFilter, at time.Time) (int64, error) {
+	start := time.Now()
+	marked, err := s.inner.MarkSuperseded(ctx, filter, at)
+	rec := s.buildRecord(ctx, biz.RetrievalSourcePipeline, filter, nil, err, time.Since(start))
+	s.record(ctx, rec)
+	return marked, err
 }
 
 // List 转发枚举（含正文），不留痕（枚举读面非证据面）。

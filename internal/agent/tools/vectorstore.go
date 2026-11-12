@@ -182,7 +182,10 @@ func (a *vectorStoreAdapter) Search(ctx context.Context, query *vectorstore.Sear
 		filter.Metadata = query.Filter.Metadata
 	}
 	// 检索固定条件（状态/有效期/可选知识库）由检索工具经中性 ctx 载体
-	// 传入；框架 SearchQuery 不携带条件 DSL。
+	// 传入；框架 SearchQuery 不携带条件 DSL。退役行排除不在本适配器隐式
+	// 追加：框架侧消费方（本仓库当前无）启用检索时必须自带
+	// VectorMetadataSupersededAt 的 is-null 条件（知识检索工具经 biz 用例，
+	// 固定条件已含），否则会命中重摄淘汰的历史切片。
 	if rf, ok := biz.RetrievalFilterFromContext(ctx); ok {
 		filter.Conditions = rf.Conditions
 	}
@@ -243,7 +246,10 @@ func (a *vectorStoreAdapter) Count(ctx context.Context, opts ...vectorstore.Coun
 }
 
 // GetMetadata 映射 IDs/metadata 过滤与分页；框架侧的 Limit/Offset 校验
-// （ApplyGetMetadataOptions）先行，分页语义与契约一致。
+// （ApplyGetMetadataOptions）先行，分页语义与契约一致。框架过滤面没有
+// metadata 条件 DSL，本适配器不追加退役行排除——框架侧消费方（本仓库当前
+// 无）须在 Metadata 过滤中自带 is-null 语义或经契约直读，否则会枚举到
+// 重摄淘汰的历史切片。
 func (a *vectorStoreAdapter) GetMetadata(ctx context.Context, opts ...vectorstore.GetMetadataOption) (map[string]vectorstore.DocumentMetadata, error) {
 	store, err := a.requireStore()
 	if err != nil {

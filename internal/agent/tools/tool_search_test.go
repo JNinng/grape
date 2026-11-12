@@ -99,7 +99,7 @@ func searchHitFixture() *fakeVectorStore {
 		hits: []*biz.ScoredVectorDocument{
 			{
 				Document: &biz.VectorDocument{
-					ID:      "kb-1#0",
+					ID:      "kb-1#0#a1b2c3d4",
 					Content: "refund policy: full refund within 30 days",
 					Metadata: map[string]any{
 						"source_id":   "kb-1",
@@ -174,7 +174,7 @@ func TestSearchTool_when_results_wrapped_untrusted_with_citation(t *testing.T) {
 	}
 	hit := out.Hits[0]
 	// 引用可追溯：文档 ID / 来源标识 / 锚点随命中返回。
-	if hit.DocumentID != "kb-1#0" || hit.SourceID != "kb-1" || hit.SourceName != "HR Handbook" || hit.Anchor != "runes 0-43" {
+	if hit.DocumentID != "kb-1#0#a1b2c3d4" || hit.SourceID != "kb-1" || hit.SourceName != "HR Handbook" || hit.Anchor != "runes 0-43" {
 		t.Fatalf("citation fields drifted: %+v", hit)
 	}
 	// Score 是 RRF 融合分：词法路空（替身恒空）时为单路 rank-1 的 1/(k+1)。
@@ -221,7 +221,7 @@ func TestSearchTool_when_section_packed_projects_mode_and_wraps_unit_content(t *
 			}}, Score: 0.7},
 		},
 		listed: []*biz.VectorDocument{
-			{ID: "kb-1#0", Content: "intro para", Metadata: sectionMeta(0)},
+			{ID: "kb-1#0#a1b2c3d4", Content: "intro para", Metadata: sectionMeta(0)},
 			{ID: "kb-1#1", Content: "first para", Metadata: sectionMeta(1)},
 			{ID: "kb-1#2", Content: "second para", Metadata: sectionMeta(2)},
 		},
@@ -284,7 +284,7 @@ func TestSearchTool_library_id_narrows_to_visible_library(t *testing.T) {
 	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund","library_id":"2"}`); err != nil {
 		t.Fatalf("search with visible library: %v", err)
 	}
-	last := fake.searchF.Conditions[len(fake.searchF.Conditions)-1]
+	last := searchConditionByKey(fake.searchF.Conditions, "kb_id")
 	if last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || !reflect.DeepEqual(last.Values, []any{"2"}) {
 		t.Fatalf("library condition = %+v, want kb_id IN [2]", last)
 	}
@@ -324,10 +324,21 @@ func TestSearchTool_when_library_id_empty_string_searches_all_visible(t *testing
 	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund","library_id":""}`); err != nil {
 		t.Fatalf("search with empty library_id: %v", err)
 	}
-	last := fake.searchF.Conditions[len(fake.searchF.Conditions)-1]
+	last := searchConditionByKey(fake.searchF.Conditions, "kb_id")
 	if last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || !reflect.DeepEqual(last.Values, []any{"1", "2"}) {
 		t.Fatalf("library condition = %+v, want kb_id IN all visible libraries", last)
 	}
+}
+
+// searchConditionByKey 按 metadata 键取检索条件（固定条件集合的顺序不是
+// 契约，断言落在键与值上）。
+func searchConditionByKey(conditions []biz.MetadataCondition, key string) biz.MetadataCondition {
+	for _, cond := range conditions {
+		if cond.Key == key {
+			return cond
+		}
+	}
+	return biz.MetadataCondition{}
 }
 
 func TestSearchTool_declares_tool_source_and_query_facts(t *testing.T) {

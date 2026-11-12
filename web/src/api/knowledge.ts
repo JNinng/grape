@@ -319,8 +319,9 @@ export async function searchDocuments(input: SearchDocumentsInput): Promise<Sear
   return { items, total: reply.total ?? 0 }
 }
 
-// KnowledgeChunkDTO 是条目的一个实际分片：chunkId 为 "<条目 ID>#<序号>"，
-// content 为不可信原文，只按文本渲染。
+// KnowledgeChunkDTO 是条目的一个实际分片：chunkId 为
+// "<source_id>#<chunk_index>#<hash8>"（hash8 取嵌入空间键 + 切片内容经
+// sha256 的前 8 位十六进制），content 为不可信原文，只按文本渲染。
 export interface KnowledgeChunkDTO {
   index: number
   chunkId: string

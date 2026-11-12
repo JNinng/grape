@@ -269,8 +269,20 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 - **agent_vector.sql**：历史库追加对象，以超级用户单独执行（扩展/schema 判存，
   建表建索引裸创建）。调整嵌入空间须 conf 与 DDL 成对变更（`conf.vector.embedders`
   加条目 + 对应维度索引，装配期探针逐维度对账）；单维旧表升级到多空间形状
-  是结构变更，走全量重建；换默认空间的迁移靠应用侧重摄取（source_id 幂等
-  覆盖并清除旧切片）。
+  是结构变更，走全量重建；换默认空间的迁移靠应用侧重摄取（source_id 差量
+  对账：旧空间切片标记 `superseded_at` 退役，保留期内可反查、由运维按
+  保留期清理）。
+
+  本批 `agent_vector.sql` 只改 `id` / `metadata` 两列的 `COMMENT ON COLUMN`
+  文本（切片 ID 形态与退役标记语义），**无 DDL、不需 `make sqlc`**。该文件
+  不是幂等重放脚本，历史库的列注释不会随部署自动刷新；需要同步注释时以
+  表 owner 单独执行：
+
+  ```sql
+  COMMENT ON COLUMN agent.agent_document.id IS '文档 ID（调用方生成，租户内唯一，承载框架字符串 ID）：知识切片为 <sourceID>#<index>#<hash8> 形态（hash 取嵌入空间键 + 切片内容，内容或空间变化即出新 ID，历史 ID 永不指向新内容）';
+  COMMENT ON COLUMN agent.agent_document.metadata IS '文档元数据（jsonb）：含仓储注入的 tenant_id/user_id/embedder/embed_dim 与调用方自定义键值，过滤经容器运算符整值下发；superseded_at（RFC3339）为重摄差量对账写入的退役标记，键存在且非 JSON null 即非现行切片（检索/管理枚举/Count 以 is_null 排除，Get 复现反查不过滤），整行 Update 替换 metadata 即清除（复活）';
+  ```
+
 - **agent_document.lexical 词法索引列与 GIN 索引（agent_vector.sql）**：已有
   `agent_document` 的历史库以表 owner 手工追加列、刷新表/列注释并建部分
   GIN 索引（与 agent_vector.sql 逐字一致）。存量行的 lexical 保持 NULL、

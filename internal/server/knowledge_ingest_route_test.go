@@ -51,7 +51,7 @@ func (ingestRouteResolver) ResolveEmbeddingSpace(context.Context, string) (biz.E
 	return biz.EmbeddingSpace{Key: "space@v1", Dimension: 2}, nil
 }
 
-// ingestRouteStore 只承接摄取写路径（覆盖清除 + 逐块写入）。
+// ingestRouteStore 只承接摄取写路径（差量对账：新增/刷新/退役）。
 type ingestRouteStore struct {
 	biz.VectorStore
 	added int
@@ -59,6 +59,11 @@ type ingestRouteStore struct {
 
 func (s *ingestRouteStore) DeleteByFilter(context.Context, *biz.VectorFilter) (int64, error) {
 	return 0, nil
+}
+
+// GetMetadata 返回空集合：首次摄取没有现存切片，差量对账只走 Add 分支。
+func (s *ingestRouteStore) GetMetadata(context.Context, *biz.VectorFilter) (map[string]map[string]any, error) {
+	return map[string]map[string]any{}, nil
 }
 
 func (s *ingestRouteStore) Add(context.Context, *biz.VectorDocument) error {

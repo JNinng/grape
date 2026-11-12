@@ -180,7 +180,7 @@ func TestSearchDocuments_request_fields_reach_store_filter(t *testing.T) {
 	if _, err := svc.SearchDocuments(searchIdentityCtx(), &knowledgev1.SearchDocumentsRequest{Query: "q", LibraryId: 3, TopK: 4}); err != nil {
 		t.Fatalf("SearchDocuments: %v", err)
 	}
-	last := store.filter.Conditions[len(store.filter.Conditions)-1]
+	last := searchFilterConditionByKey(store.filter.Conditions, "kb_id")
 	// 每路召回宽度 = 2×top_k（融合只看排名，宽召回保边界）。
 	wantLimit := 4 * biz.KnowledgeSearchRecallFactor
 	if store.filter.Limit != wantLimit || last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || last.Values[0] != "3" {
@@ -460,4 +460,15 @@ func TestUpdateLibrary_maps_contextual_flag_to_usecase(t *testing.T) {
 	if !captured {
 		t.Fatal("update usecase received contextual chunking = false, want true")
 	}
+}
+
+// searchFilterConditionByKey 按 metadata 键取检索条件（固定条件集合的
+// 顺序不是契约）。
+func searchFilterConditionByKey(conditions []biz.MetadataCondition, key string) biz.MetadataCondition {
+	for _, cond := range conditions {
+		if cond.Key == key {
+			return cond
+		}
+	}
+	return biz.MetadataCondition{}
 }

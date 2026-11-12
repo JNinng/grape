@@ -53,11 +53,25 @@ const (
 	VectorMetadataLte VectorMetadataOp = "lte"
 	VectorMetadataGt  VectorMetadataOp = "gt"
 	VectorMetadataGte VectorMetadataOp = "gte"
+	// VectorMetadataIsNull 键缺失判定：metadata->>key IS NULL（键不存在
+	// 或值为 JSON null 都算缺失）。其余算子都取值比较，键缺失时结果为
+	// NULL 即不命中，表达不了「未被标记」，本算子补上该语义（不消费
+	// Values，给了也忽略）。
+	VectorMetadataIsNull VectorMetadataOp = "is_null"
 )
+
+// VectorMetadataSupersededAt 是切片退役时间的 metadata 键：值为 RFC3339
+// 时间文本（写入方取 UTC），键存在且非 JSON null 即「已被重摄淘汰」——
+// 检索固定条件、管理页枚举与计数以 is-null 条件排除（SQL 侧
+// `metadata->>key IS NULL` 对键缺失与 JSON null 同判，故 JSON null 仍视为
+// 现行）。重摄差量对账对仍在新批的 ID 走整行 Update（metadata 整列替换），
+// 键因此自然消失即「复活」；键的删除不需要显式清除动作。该键是服务端保留
+// 键：摄取构造 chunk metadata 时剥离调用方同名键，写入只经 MarkSuperseded。
+const VectorMetadataSupersededAt = "superseded_at"
 
 // MetadataCondition 是 metadata 的单条比较条件。Key 与 Value 都经占位符
 // 下发（键名与值都不拼进 SQL 文本）；Op 只接受 VectorMetadataOp 常量集。
-// Eq/Ne/Lt/Lte/Gt/Gte 取 Values[0]；In 取全部 Values。
+// Eq/Ne/Lt/Lte/Gt/Gte 取 Values[0]；In 取全部 Values；IsNull 不取值。
 type MetadataCondition struct {
 	Key    string
 	Op     VectorMetadataOp
@@ -65,8 +79,10 @@ type MetadataCondition struct {
 }
 
 // VectorFilter 是向量读面共用的过滤与分页参数。IDs、Metadata 与
-// Conditions 叠加时取交集；均空表示不过滤（Count/GetMetadata 视为租户
-// 全量，DeleteByFilter 与 UpdateMetadata 拒绝执行，见各方法注释）。
+// Conditions 叠加时取交集；均空表示不过滤（Count 为租户现行切片总量——
+// 退役行剔除在实现内强制；GetMetadata/List 为租户全量含退役行；
+// DeleteByFilter / UpdateMetadata / MarkSuperseded 拒绝执行，见各方法
+// 注释）。
 // Embedder 为可空过滤：Search/SearchLexical 必填（与 Dimension 成对声明
 // 检索空间并对账），Count/DeleteByFilter/GetMetadata/UpdateMetadata 非
 // 空时收敛到该空间、空即跨空间操作；Dimension 与 MinScore 仅检索两方法
@@ -130,7 +146,8 @@ type VectorStore interface {
 	// 身份与维度必填且经注册表对账（见 VectorDocument 注释）。
 	Add(ctx context.Context, doc *VectorDocument) error
 	// Get 按 ID 取文档（含向量、嵌入空间身份与 metadata）；不存在或
-	// 跨租户返回 ErrVectorDocNotFound。
+	// 跨租户返回 ErrVectorDocNotFound。退役（superseded）行不过滤——复现
+	// 反查依赖按历史切片 ID 取回命中当时的原文，保留期由运维清理收口。
 	Get(ctx context.Context, id string) (*VectorDocument, error)
 	// Update 整体覆盖文档的可变部分（嵌入空间身份/维度/content/
 	// embedding/metadata——空间变更即显式重嵌入，无隐式换形）；不存在
@@ -161,17 +178,31 @@ type VectorStore interface {
 	// UpdateMetadata 按 IDs/Embedder/Metadata/Conditions 交集把 patch 合并
 	// 进命中行的 metadata（jsonb ||），返回更新行数；只改 metadata 列，
 	// 不动正文与向量。所有条件均空时拒绝执行。知识库目录的状态/有效期
-	// 变更加载在 chunk metadata 上，失败必须让上层事务回滚。
+	// 变更加载在 chunk metadata 上，失败必须让上层事务回滚。patch 不应
+	// 携带 VectorMetadataSupersededAt（服务端保留键，退役只经
+	// MarkSuperseded；该键置 JSON null 与键缺失同判为现行）。
 	UpdateMetadata(ctx context.Context, filter *VectorFilter, patch map[string]any) (int64, error)
+	// MarkSuperseded 按 IDs/Embedder/Metadata/Conditions 交集给命中行打
+	// 退役标记（metadata.VectorMetadataSupersededAt = at 的 RFC3339 文本，
+	// 零值时间取当前时间），返回标记行数；只改 metadata 列，正文与向量
+	// 保留——保留期内留痕行的候选 ID 仍可反查到命中当时的原文（Get 不过
+	// 滤退役行，检索/枚举/计数读面以 is-null 条件排除）。所有条件均空时
+	// 拒绝执行。
+	MarkSuperseded(ctx context.Context, filter *VectorFilter, at time.Time) (int64, error)
 	// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量，
-	// Embedder 非空则限该空间。
+	// Embedder 非空则限该空间。退役（superseded）行不计入——计数读面
+	// 只反映现行切片。
 	Count(ctx context.Context, filter *VectorFilter) (int64, error)
 	// GetMetadata 按 IDs/Embedder/Metadata 过滤枚举文档 metadata（不含
 	// 向量与正文），按写入时间升序分页；返回值以文档 ID 为键。Limit
-	// 非正为不限量，此时 Offset 必须为 0。
+	// 非正为不限量，此时 Offset 必须为 0。退役行不隐式过滤——摄取差量
+	// 对账依赖看到本来源的全部历史 ID；面向用户/检索的读面须自行带
+	// VectorMetadataSupersededAt 的 is-null 条件（或走 Count 的现行口径）。
 	GetMetadata(ctx context.Context, filter *VectorFilter) (map[string]map[string]any, error)
 	// List 按 IDs/Embedder/Metadata/Conditions 交集枚举文档（含正文与
 	// metadata，不回填 Embedding——枚举读面不需要向量，避免批量拉取），
-	// 按写入时间升序；Limit 非正为不限量，此时 Offset 必须为 0。
+	// 按写入时间升序；Limit 非正为不限量，此时 Offset 必须为 0。退役行
+	// 过滤口径与 GetMetadata 相同：不隐式过滤，调用方按需加 is-null 条件
+	//（管理页分片枚举与检索回包聚合均已带）。
 	List(ctx context.Context, filter *VectorFilter) ([]*VectorDocument, error)
 }

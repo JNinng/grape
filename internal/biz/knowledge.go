@@ -299,8 +299,11 @@ func (uc *KnowledgeUsecase) ListDocumentChunks(ctx context.Context, auth Identit
 	if _, err := uc.GetDocument(ctx, auth, id); err != nil {
 		return nil, err
 	}
+	// 管理页只核对现行分片：重摄淘汰的历史行（superseded）在保留期内仍
+	// 可经留痕行反查，但不属于「实际切分结果」。
 	docs, err := uc.store.List(ctx, &VectorFilter{Conditions: []MetadataCondition{
 		{Key: "document_id", Op: VectorMetadataEq, Values: []any{idString(id)}},
+		{Key: VectorMetadataSupersededAt, Op: VectorMetadataIsNull},
 	}})
 	if err != nil {
 		return nil, fmt.Errorf("biz: list chunks of document %d: %w", id, err)
@@ -327,11 +330,20 @@ func (uc *KnowledgeUsecase) ListDocumentChunks(ctx context.Context, auth Identit
 	return chunks, nil
 }
 
-// chunkIndexOf 取分片序号：切片 ID 的 "#<index>" 后缀是摄取侧确定性派生
-// 的结果，优先采用；形状不符时回落 metadata 的 chunk_index。
+// chunkIndexOf 取分片序号：切片 ID 是摄取侧确定性派生的结果，优先采用。
+// 现行形态 "<sourceID>#<index>#<hash8>"（末段是 8 位十六进制哈希）取倒数
+// 第二段，历史形态 "<sourceID>#<index>" 取末段；形状不符时回落 metadata
+// 的 chunk_index。
 func chunkIndexOf(id string, metadata map[string]any) int {
 	if at := strings.LastIndex(id, "#"); at >= 0 {
-		if index, err := strconv.Atoi(id[at+1:]); err == nil {
+		suffix := id[at+1:]
+		if isChunkHash(suffix) {
+			if prev := strings.LastIndex(id[:at], "#"); prev >= 0 {
+				if index, err := strconv.Atoi(id[prev+1 : at]); err == nil {
+					return index
+				}
+			}
+		} else if index, err := strconv.Atoi(suffix); err == nil {
 			return index
 		}
 	}
@@ -346,6 +358,20 @@ func chunkIndexOf(id string, metadata map[string]any) int {
 		}
 	}
 	return 0
+}
+
+// isChunkHash 判定切片 ID 末段是否为现行形态的 8 位十六进制内容哈希
+// （chunkID 取 sha256 前 4 字节的 %x 渲染）。
+func isChunkHash(suffix string) bool {
+	if len(suffix) != 8 {
+		return false
+	}
+	for _, r := range suffix {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // GetDocument 按 id 查询条目；条目不存在或所属库不在调用方数据范围内统一

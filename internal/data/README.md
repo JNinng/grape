@@ -138,8 +138,9 @@ reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向
 - 留痕点：Search 与 SearchLexical 记 query、请求/生效 top_k、过滤摘要、
   命中、耗时、来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例缺省
   声明 `console`，agent 工具链路显式声明 `tool`，未声明回落 `tool`；词法路
-  的 query 记分词前原文，脱敏口径与向量路一致）；Add/Update/DeleteByFilter
-  记摄取侧、来源 `pipeline`；
+  的 query 记分词前原文，脱敏口径与向量路一致）；Add/Update/MarkSuperseded/
+  DeleteByFilter 记摄取侧、来源 `pipeline`（MarkSuperseded 是重摄差量对账
+  的淘汰动作，条件摘要记被退役的切片 ID）；
   Get/Delete/Count/GetMetadata/List 不留痕（点读与枚举不构成召回证据）。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
   留痕失败只记日志，不中断业务。
@@ -168,9 +169,15 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
   `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)` 的维度集合；conf
   声明的每个维度仍必须有索引（fail-fast），运行期空间校验以发现集合为准
   （动态模型目录产生的空间键在装配期未知）。
-- `VectorFilter.Conditions` 支持 eq/ne/in/lt/lte/gt/gte 六类 metadata
-  比较：键与值都走占位符，数值比较显式 `::bigint`；`UpdateMetadata` 以
-  `metadata || patch` 合并，空过滤拒绝（用于知识库状态/有效期同步）。
+- `VectorFilter.Conditions` 支持 eq/ne/in/lt/lte/gt/gte 与 is_null 七类
+  metadata 比较：键与值都走占位符，数值比较显式 `::bigint`，is_null 判定
+  `metadata->>key IS NULL`（键缺失或 JSON null，不消费比较值）；
+  `UpdateMetadata` 以 `metadata || patch` 合并，`MarkSuperseded` 以同一
+  合并写路径打 `superseded_at` 退役标记，二者空过滤拒绝。
+- 重摄是差量对账（仍在新批的 ID 整行 Update、消失的现行行标退役、新 ID
+  Add），退役行保留期内与现行行共存：检索固定条件、管理页分片枚举与
+  `Count` 以 is-null 排除，`Get`（复现反查）不过滤。保留期与清理 SQL 见
+  [operations.md](../../operations.md)「保留期与归档统一口径」。
 - 框架适配器路径在 ctx 上携带固定条件（`doc_status` / `valid_from_unix` /
   `valid_to_unix` / 可选 `kb_id`），适配器并入 VectorFilter；知识检索用例
   路径直接把固定条件放进 `VectorFilter.Conditions`，不经 ctx 载体。

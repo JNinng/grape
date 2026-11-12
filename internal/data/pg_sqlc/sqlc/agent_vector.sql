@@ -75,7 +75,7 @@ CREATE TABLE agent.agent_document
 );
 
 COMMENT ON TABLE agent.agent_document IS '租户向量文档（RAG 检索，多嵌入空间）：租户隔离由应用层适配器强制，RLS 仅作可选加强；embedder/embed_dim 与 embedding 由 CHECK 绑定，空间注册表见 conf.vector.embedders，每维度索引见本文件表达式部分 HNSW，词法索引列 lexical 由应用侧分词器产出、GIN 部分索引承接词法召回';
-COMMENT ON COLUMN agent.agent_document.id IS '文档 ID（调用方生成，租户内唯一，承载框架字符串 ID）';
+COMMENT ON COLUMN agent.agent_document.id IS '文档 ID（调用方生成，租户内唯一，承载框架字符串 ID）：知识切片为 <sourceID>#<index>#<hash8> 形态（hash 取嵌入空间键 + 切片内容，内容或空间变化即出新 ID，历史 ID 永不指向新内容）';
 COMMENT ON COLUMN agent.agent_document.tenant_id IS '租户 ID：仓储从认证 ctx 提取并强制过滤，不来自请求侧输入';
 COMMENT ON COLUMN agent.agent_document.user_id IS '写入用户 ID：仓储从认证 ctx 提取，同时冗余进 metadata';
 COMMENT ON COLUMN agent.agent_document.embedder IS '嵌入空间键（模型[@版本]）：conf.vector.embedders 派生的身份，检索与清理以等值过滤；存储层只做等值比对、从不解析，键语义由注册表声明';
@@ -84,7 +84,7 @@ COMMENT ON COLUMN agent.agent_document.name IS '文档名/标题（可空）';
 COMMENT ON COLUMN agent.agent_document.content IS '文档正文（检索命中后回传给模型的原文）';
 COMMENT ON COLUMN agent.agent_document.embedding IS '文档向量（pgvector，float4）：裸 vector 无固定维度，维度随行（embed_dim），余弦距离只在同空间内可比';
 COMMENT ON COLUMN agent.agent_document.lexical IS '词法索引（tsvector）：应用侧由分词器对切片正文产出（词元按出现序带位置），Add/Update 同批填充；可空——分词为空（无有效词元）或历史库存量行（重摄回填）落 NULL，词法检索经部分 GIN 索引只扫非空行';
-COMMENT ON COLUMN agent.agent_document.metadata IS '文档元数据（jsonb）：含仓储注入的 tenant_id/user_id/embedder/embed_dim 与调用方自定义键值，过滤经容器运算符整值下发';
+COMMENT ON COLUMN agent.agent_document.metadata IS '文档元数据（jsonb）：含仓储注入的 tenant_id/user_id/embedder/embed_dim 与调用方自定义键值，过滤经容器运算符整值下发；superseded_at（RFC3339）为重摄差量对账写入的退役标记，键存在且非 JSON null 即非现行切片（检索/管理枚举/Count 以 is_null 排除，Get 复现反查不过滤），整行 Update 替换 metadata 即清除（复活）';
 COMMENT ON COLUMN agent.agent_document.created_by IS '创建人（认证 ctx 的用户 ID）';
 COMMENT ON COLUMN agent.agent_document.created_at IS '创建时间';
 COMMENT ON COLUMN agent.agent_document.updated_by IS '更新人（认证 ctx 的用户 ID）';

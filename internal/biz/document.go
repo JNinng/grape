@@ -2,10 +2,12 @@ package biz
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -18,8 +20,8 @@ import (
 var ErrDocumentSourceTooLong = errors.New("biz: document source id too long")
 
 // 摄取管线的入参边界与切片缺省：
-//   - maxSourceIDChars 限制来源 ID 长度，为切片 ID 后缀 "#<index>" 留出
-//     列宽余量（agent.agent_document.id 为 varchar(128)）；
+//   - maxSourceIDChars 限制来源 ID 长度，为切片 ID 后缀 "#<index>#<hash8>"
+//     留出列宽余量（agent.agent_document.id 为 varchar(128)，96+17=113）；
 //   - defaultChunkSize/defaultChunkOverlap 是固定窗口切分的缺省（rune
 //     计），与主流 embedding 模型的输入窗口量级匹配；
 //   - defaultChunkDelimiter 是分隔符切分的缺省区分串：段落空行是文档最
@@ -70,8 +72,9 @@ type Document struct {
 	Contextual     bool
 }
 
-// IngestResult 是摄取结果：Chunks 为本次写入的切片数，Replaced 为覆盖
-// 语义下先行删除的旧切片数（首次摄取为 0）；Embedder 是本次落库的空间键。
+// IngestResult 是摄取结果：Chunks 为本次写入的切片数，Replaced 为差量
+// 对账下本次标记退役的旧现行切片数（内容未变的切片走整行刷新，不计入；
+// 首次摄取为 0）；Embedder 是本次落库的空间键。
 type IngestResult struct {
 	DocumentID string
 	Chunks     int
@@ -167,8 +170,11 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 }
 
 // Ingest 摄取一篇内部文档：切分 → 逐块 embed → 写入向量存储。幂等语义为
-// 同来源覆盖：切片 ID 确定性派生，摄取前按 source_id 跨空间清旧行再整批
-// 写入。三步不在同一事务，中途失败存在短暂缺文档窗口，重摄可补偿。
+// 同来源差量对账：切片 ID 确定性派生（含内容哈希），摄取按新批 ID 对账
+// 本来源现存行——仍在新批的整行刷新（清掉退役标记，内容改回旧版本即
+// 复活）、不在新批的现行行标记退役、新 ID 写入。旧切片不物理删除，保留
+// 期内留痕行仍可反查命中当时的原文。对账与写入不在同一事务，中途失败
+// 存在短暂缺文档窗口，重摄可补偿。
 func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestResult, error) {
 	if _, ok := IdentityFromContext(ctx); !ok {
 		return nil, errors.New("biz: document ingest requires an authenticated identity")
@@ -199,8 +205,8 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		return nil, errors.New("biz: document content chunks to nothing")
 	}
 
-	// 摄取空间在删除旧行之前解析：库级指定空间优先，未指定走默认空间。
-	// 旧切片（可能属于其他空间）由覆盖语义跨空间清除，重摄取即换空间
+	// 摄取空间在对账写之前解析：库级指定空间优先，未指定走默认空间。
+	// 旧切片（可能属于其他空间）按新批 ID 差量对账退役，重摄取即换空间
 	// 迁移路径。
 	var space string
 	var dimension int
@@ -240,7 +246,7 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 			return nil, fmt.Errorf("biz: embedder returned dimension %d for space %s, expected %d", len(embedding), space, dimension)
 		}
 		docs = append(docs, &VectorDocument{
-			ID:        chunkID(sourceID, i),
+			ID:        chunkID(sourceID, i, space, c.content),
 			Embedder:  space,
 			Dimension: dimension,
 			Name:      doc.Name,
@@ -250,18 +256,64 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 		})
 	}
 
-	// 覆盖语义：先按来源锚点清除本租户内的旧切片（跨租户行由存储层
-	// 租户过滤天然隔离），再整批写入。
-	replaced, err := u.store.DeleteByFilter(ctx, &VectorFilter{Metadata: map[string]any{"source_id": sourceID}})
+	// 差量对账：先标记新批不再产出的现行行，再整批刷新/写入（跨租户行由
+	// 存储层租户过滤天然隔离）。
+	replaced, err := u.reconcileChunks(ctx, sourceID, docs)
 	if err != nil {
-		return nil, fmt.Errorf("biz: clear previous chunks of document %s: %w", sourceID, err)
-	}
-	for _, d := range docs {
-		if err := u.store.Add(ctx, d); err != nil {
-			return nil, fmt.Errorf("biz: add chunk %s: %w", d.ID, err)
-		}
+		return nil, err
 	}
 	return &IngestResult{DocumentID: sourceID, Chunks: len(docs), Replaced: replaced, Embedder: space}, nil
+}
+
+// reconcileChunks 按新批 ID 差量对账本来源的现存切片，替换「先删后写」的
+// 覆盖语义：
+//   - 现存且仍在新批的 ID：Update 整行刷新（内容/向量/metadata；metadata
+//     是整列替换，退役标记自然清掉——内容改回旧版本即复活）；
+//   - 现存但不在新批的现行行：MarkSuperseded 标记退役时间（保留期内仍可
+//     按留痕行的候选 ID 反查原文）；
+//   - 全新 ID：Add。
+//
+// 已退役且不在新批的行不再触碰，保留首次退役时间（清理任务以它为保留期
+// 依据）。返回本次标记退役的现行行数。对账分步执行、无跨步事务，中途
+// 失败存在短暂缺文档窗口，重摄可补偿（与旧覆盖语义同一口径）。
+func (u *DocumentUsecase) reconcileChunks(ctx context.Context, sourceID string, docs []*VectorDocument) (int64, error) {
+	existing, err := u.store.GetMetadata(ctx, &VectorFilter{Metadata: map[string]any{"source_id": sourceID}})
+	if err != nil {
+		return 0, fmt.Errorf("biz: list existing chunks of document %s: %w", sourceID, err)
+	}
+	batch := make(map[string]struct{}, len(docs))
+	for _, d := range docs {
+		batch[d.ID] = struct{}{}
+	}
+	stale := make([]string, 0, len(existing))
+	for id, metadata := range existing {
+		if _, ok := batch[id]; ok {
+			continue
+		}
+		if _, retired := metadata[VectorMetadataSupersededAt]; retired {
+			continue
+		}
+		stale = append(stale, id)
+	}
+	var replaced int64
+	if len(stale) > 0 {
+		replaced, err = u.store.MarkSuperseded(ctx, &VectorFilter{IDs: stale}, time.Now())
+		if err != nil {
+			return 0, fmt.Errorf("biz: mark previous chunks of document %s superseded: %w", sourceID, err)
+		}
+	}
+	for _, d := range docs {
+		if _, ok := existing[d.ID]; ok {
+			if err := u.store.Update(ctx, d); err != nil {
+				return 0, fmt.Errorf("biz: update chunk %s: %w", d.ID, err)
+			}
+			continue
+		}
+		if err := u.store.Add(ctx, d); err != nil {
+			return 0, fmt.Errorf("biz: add chunk %s: %w", d.ID, err)
+		}
+	}
+	return replaced, nil
 }
 
 // contextPrefixes 生成每块的上下文前缀（本文出处 + 本块要旨）：文档级
@@ -377,22 +429,32 @@ func docChunkDelimiter(def string, override *string) string {
 	return *override
 }
 
-// chunkID 派生切片 ID："<sourceID>#<index>"，确定性保证重摄的覆盖语义；
-// 长度在来源 ID 上限与列宽之间留有余量。
-func chunkID(sourceID string, index int) string {
-	return fmt.Sprintf("%s#%d", sourceID, index)
+// chunkID 派生切片 ID："<sourceID>#<index>#<hash8>"。hash8 取
+// sha256(嵌入空间键 + '\x00' + 切片内容) 的前 4 字节十六进制（8 字符）：
+// 内容或空间变化即出新 ID，历史 ID 永不指向新内容（重摄差量对账与留痕
+// 反查的前提）；空间键参与哈希，避免 PK (tenant_id, id) 下同内容跨空间
+// 撞 ID。NUL 分隔保证「空间键 + 内容」拼接无歧义（两者都不含 NUL）。
+// 长度：来源 ID 上限 96 + '#' + 7 位序号 + '#' + 8 = 113，在
+// agent_document.id 的 varchar(128) 内。
+func chunkID(sourceID string, index int, space, content string) string {
+	sum := sha256.Sum256([]byte(space + "\x00" + content))
+	return fmt.Sprintf("%s#%d#%x", sourceID, index, sum[:4])
 }
 
 // chunkMetadata 组装切片元数据：来源标识（source_id/source_name）与
 // 原文锚点（anchor，rune 区间）保证引用可追溯——检索命中可反查来源
 // 文档与原文位置。结构化切分的切片附 heading_path（标题链），供按章节
 // 过滤与整节聚合。管线保留键以服务端产出为准覆盖调用方同名键，调用方
-// 自定义键原样保留。
+// 自定义键原样保留；superseded_at 是服务端保留键，调用方同名键直接剥离
+//（退役标记只经重摄差量对账写入）。
 func chunkMetadata(doc *Document, index, total int, c chunk) map[string]any {
 	metadata := make(map[string]any, len(doc.Metadata)+6)
 	for k, v := range doc.Metadata {
 		metadata[k] = v
 	}
+	// superseded_at 是服务端保留键（退役标记只经 MarkSuperseded 写入）：
+	// 剥离调用方同名键，否则公开 Ingest 可把切片写成永久「已退役」。
+	delete(metadata, VectorMetadataSupersededAt)
 	metadata["source_id"] = strings.TrimSpace(doc.ID)
 	metadata["source_name"] = doc.Name
 	metadata["chunk_index"] = index

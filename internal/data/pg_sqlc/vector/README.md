@@ -32,6 +32,15 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
 - **租户隔离由应用层强制**：表无 RLS，身份只来自认证 ctx（`vectorIdentity`），
   每条 SQL 强制 `tenant_id` 过滤；不存在与跨租户统一落到
   `biz.ErrVectorDocNotFound`，不泄露存在性。写读经根包 `IdentityTx` 门面。
+- **重摄差量对账与退役行**：切片 ID 带内容哈希
+  （`"<sourceID>#<index>#<hash8>"`，hash 取 sha256(嵌入空间键 + NUL + 切片
+  内容) 前 4 字节），内容或空间变化即出新 ID。重摄不再先删后写：仍在新批
+  的 ID 整行 `Update`（metadata 整列替换即清退役标记，内容改回旧版本即
+  复活）、消失的现行行 `MarkSuperseded`、新 ID `Add`。退役行的
+  `metadata.superseded_at` 为 RFC3339 文本，检索固定条件、管理页分片枚举
+  与 `Count` 以 `VectorMetadataIsNull` 排除，`Get`（复现反查）不过滤；
+  物理删除只用于显式下线（删条目/删库）。保留期与清理 SQL 见
+  [operations.md](../../../../operations.md)「保留期与归档统一口径」。
 - **参数化纪律**：表名是唯一拼进 SQL 文本的配置值（构造期白名单拒绝注入
   形态）；过滤键/条件值全部走占位符，metadata 操作符只从封闭集合选择。
 - **禁用语义**：`conf.vector.enabled=false` 时返回禁用占位实现，所有调用按
@@ -42,10 +51,11 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
 | 文件 | 内容 |
 | --- | --- |
 | [provider.go](provider.go) | Wire ProviderSet：`NewVectorStoreSupply` → `NewLoggedVectorStore` 两跳产出对外的 `biz.VectorStore` |
-| [vector_repo.go](vector_repo.go) | 向量仓储介质实现：CRUD、余弦检索、词法检索（tsvector/tsquery 字面量构造）、条件删除/统计/枚举、空间解析与部署探针、禁用占位 |
-| [retrieval_log.go](retrieval_log.go) | 检索留痕装饰器 `loggedVectorStore` 与 wire 供给包装 `VectorStoreSupply`：检索与摄取两链路一次操作一行留痕，脱敏与长度兜底；混合检索编排路径经 ctx 抑制标记跳过逐路留痕（行由编排层自写） |
+| [vector_repo.go](vector_repo.go) | 向量仓储介质实现：CRUD、余弦检索、词法检索（tsvector/tsquery 字面量构造）、条件删除/统计/枚举、退役标记（`MarkSuperseded`）、空间解析与部署探针、禁用占位 |
+| [retrieval_log.go](retrieval_log.go) | 检索留痕装饰器 `loggedVectorStore` 与 wire 供给包装 `VectorStoreSupply`：检索与摄取两链路一次操作一行留痕，脱敏与长度兜底；摄取侧含 `MarkSuperseded`（记退役条件摘要）；混合检索编排路径经 ctx 抑制标记跳过逐路留痕（行由编排层自写） |
 | [vector_test.go](vector_test.go) | 介质集成测试（真实 PostgreSQL，`GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN` 门控）：租户隔离、空间隔离、检索命中与分页 |
-| [conditions_test.go](conditions_test.go) | metadata 条件与批量更新集成测试（同上门控）：固定条件检索、`UpdateMetadata` 只改 metadata、空过滤拒绝 |
+| [conditions_test.go](conditions_test.go) | metadata 条件与批量更新集成测试（同上门控）：固定条件检索、`UpdateMetadata` 只改 metadata、`MarkSuperseded` 退役标记与 is-null 算子、空过滤拒绝 |
+| [supersede_pg_test.go](supersede_pg_test.go) | 重摄差量对账集成测试（`GRAPE_VECTOR_TEST_*` 门控）：同内容刷新、内容变化退役、读面排除退役行、旧 ID 复现反查、内容改回旧版本复活 |
 | [lexical_test.go](lexical_test.go) | 词法检索集成测试（同上门控）：中文命中与 ts_rank_cd 排序、conditions 口径与向量路一致、特殊字符 round-trip、跨租户不可见、空分词查询空集、GIN 索引命中 |
 | [vector_repo_test.go](vector_repo_test.go) | 仓储单测（纯内存）：配置校验、身份注入拒绝、注册表对账、过滤条件参数化翻译、词法字面量构造与转义、禁用占位 |
 | [retrieval_log_test.go](retrieval_log_test.go) | 留痕装饰器单测（替身仓储）：转发语义、留痕行内容、留痕失败不中断、脱敏与截断 |
@@ -57,10 +67,10 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
   `NewVectorStore` 不入集合，留给测试直用。`NewVectorStoreSupply` 透传
   `biz.Tokenizer`：写入建索引与查询分词共用同一实例。
 - 留痕点：`Search` 与 `SearchLexical`（来源取 ctx 声明：console 或缺省
-  tool，查询文本记分词前原文、脱敏口径不变）、`Add`/`Update`/`DeleteByFilter`
-  （来源 pipeline）一次操作一行，失败行同样留痕；`Get`/`Delete`/`Count`/
-  `UpdateMetadata`/`GetMetadata`/`List` 不留痕。留痕写入失败只记日志，不影响业务
-  结果。
+  tool，查询文本记分词前原文、脱敏口径不变）、`Add`/`Update`/`MarkSuperseded`/
+  `DeleteByFilter`（来源 pipeline）一次操作一行，失败行同样留痕；`Get`/`Delete`/
+  `Count`/`UpdateMetadata`/`GetMetadata`/`List` 不留痕。留痕写入失败只记日志，
+  不影响业务结果。
 - top_k 口径：请求值取调用方 `Limit`（0=未指定），生效值在未指定时取存储
   默认页大小（10，与框架 pgvector 实现一致）。
 
@@ -74,6 +84,10 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
   向量路一致、特殊字符（单引号/反斜杠）round-trip、跨租户不可见、空分词
   查询与 `EXPLAIN` 断言 GIN 部分索引命中；分词口径本身由
   [../../../gsetokenizer/](../../../gsetokenizer/) 单测覆盖。
+- 重摄对账套件以真实 `DocumentUsecase.Ingest` 驱动：同内容刷新不增行、
+  内容变化退役旧 ID、读面排除退役行而 `Get` 反查仍取到命中时原文、内容
+  改回旧版本后旧 ID 复活；is-null 算子与 `MarkSuperseded` 的时标形态在
+  条件套件覆盖。
 - 新增维度上线：`conf.vector.embedders` 加条目 +
   [../sqlc/agent_vector.sql](../sqlc/agent_vector.sql) 加同形态索引，探针
   装配期对账；集成测试维度取 1024（既有索引覆盖）。

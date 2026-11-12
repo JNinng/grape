@@ -470,3 +470,28 @@ func TestVectorStore_lexical_search_with_blank_tokens_returns_empty_without_db(t
 		t.Fatalf("hits = %#v, want empty non-nil slice", hits)
 	}
 }
+
+func TestPlanMetadataCondition_is_null_uses_key_only(t *testing.T) {
+	// 键缺失算子只下发键名（占位符），比较值不参与；键名不进 SQL 文本。
+	clause, args, err := planMetadataCondition(3, biz.MetadataCondition{
+		Key: "superseded_at", Op: biz.VectorMetadataIsNull, Values: []any{"ignored"},
+	})
+	if err != nil {
+		t.Fatalf("planMetadataCondition = %v", err)
+	}
+	if clause != "(metadata->>$3) IS NULL" {
+		t.Fatalf("clause = %q, want parameterized is-null", clause)
+	}
+	if len(args) != 1 || args[0] != "superseded_at" {
+		t.Fatalf("args = %v, want only the key", args)
+	}
+	// Values 为空同样是合法输入（算子不消费值）。
+	if clause, args, err := planMetadataCondition(1, biz.MetadataCondition{
+		Key: "superseded_at", Op: biz.VectorMetadataIsNull,
+	}); err != nil || clause != "(metadata->>$1) IS NULL" || len(args) != 1 {
+		t.Fatalf("empty-value is-null = (%q, %v, %v), want key-only clause", clause, args, err)
+	}
+	if _, _, err := planMetadataCondition(1, biz.MetadataCondition{}); err == nil {
+		t.Fatal("empty key = nil error, want rejection")
+	}
+}

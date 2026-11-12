@@ -1054,7 +1054,9 @@ type DocumentChunk struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// 分片序号（原文顺序，从 0 起）。
 	Index int32 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
-	// 分片 ID（"<条目 ID>#<序号>"），与检索留痕的命中对账。
+	// 分片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+	// 内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+	// 的命中对账。
 	ChunkId string `protobuf:"bytes,2,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
 	// 原文锚点（rune 区间描述）。
 	Anchor string `protobuf:"bytes,3,opt,name=anchor,proto3" json:"anchor,omitempty"`
@@ -1545,8 +1547,9 @@ func (x *SearchDocumentsRequest) GetTopK() int32 {
 // 进来的兄弟块）。
 type SearchHit struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账，可经存
-	// 储点查反查切片原文。
+	// 切片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+	// 内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+	// 的命中对账，可经存储点查反查切片原文（重摄淘汰的旧行保留期内仍可反查）。
 	DocumentId string `protobuf:"bytes,1,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
 	// 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。
 	SourceId string `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`

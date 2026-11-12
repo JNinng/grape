@@ -67,6 +67,9 @@ SELECT count(*) FROM updated`
 
 	vectorCountSQL = `SELECT count(*) FROM %s WHERE tenant_id = $1%s`
 
+	// Count 的退役行排除子句：键经占位符下发（键名不拼进 SQL 文本）。
+	vectorCountActiveClause = ` AND (metadata->>$%d) IS NULL`
+
 	// GetMetadata 的排序键：created_at 是 timestamp(0) 秒级精度，同秒
 	// 写入必须以 id tie-break，否则 LIMIT/OFFSET 翻页不确定；排序键与
 	// agent_document_tenant_created_idx（租户前缀）对齐。
@@ -660,8 +663,46 @@ func (r *vectorStore) UpdateMetadata(ctx context.Context, filter *biz.VectorFilt
 	return updated, nil
 }
 
-// Count 统计租户内满足过滤条件的文档数；条件为空即租户全量，Embedder
-// 非空则限该空间。
+// MarkSuperseded 按 IDs/Embedder/Metadata/Conditions 交集给命中行打退役
+// 标记（metadata.superseded_at = at 的 RFC3339 文本，只改 metadata 列），
+// 返回标记行数。所有条件均空时拒绝执行。键名经占位符进 jsonb 容器运算
+// 符（不拼进 SQL 文本），时间由写入方取 UTC 秒级文本。
+func (r *vectorStore) MarkSuperseded(ctx context.Context, filter *biz.VectorFilter, at time.Time) (int64, error) {
+	auth, err := vectorIdentity(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if at.IsZero() {
+		at = time.Now()
+	}
+	plan, err := planVectorFilter(4, filter)
+	if err != nil {
+		return 0, err
+	}
+	if len(plan.clauses) == 0 {
+		return 0, errors.New("pg_sqlc: unfiltered vector supersede is refused; tenant-wide marking has no caller")
+	}
+	raw, err := json.Marshal(map[string]any{biz.VectorMetadataSupersededAt: at.UTC().Format(time.RFC3339)})
+	if err != nil {
+		return 0, fmt.Errorf("pg_sqlc: marshal vector supersede patch: %w", err)
+	}
+	args := []any{auth.TenantID, raw, auth.UserID}
+	args = append(args, plan.args...)
+	var updated int64
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
+		return s.Tx().QueryRow(ctx,
+			fmt.Sprintf(vectorUpdateMetadataSQL, r.qualifiedTable(), plan.where()),
+			args...).Scan(&updated)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return updated, nil
+}
+
+// Count 统计租户内满足过滤条件的现行文档数；条件为空即租户全量，Embedder
+// 非空则限该空间。退役（superseded）行不计入——计数读面只反映现行切片，
+// 保留期内的历史行不污染管理面统计。
 func (r *vectorStore) Count(ctx context.Context, filter *biz.VectorFilter) (int64, error) {
 	auth, err := vectorIdentity(ctx)
 	if err != nil {
@@ -672,10 +713,12 @@ func (r *vectorStore) Count(ctx context.Context, filter *biz.VectorFilter) (int6
 		return 0, err
 	}
 	args := append([]any{auth.TenantID}, plan.args...)
+	args = append(args, biz.VectorMetadataSupersededAt)
+	where := plan.where() + fmt.Sprintf(vectorCountActiveClause, len(args))
 	var total int64
 	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		return s.Tx().QueryRow(ctx,
-			fmt.Sprintf(vectorCountSQL, r.qualifiedTable(), plan.where()),
+			fmt.Sprintf(vectorCountSQL, r.qualifiedTable(), where),
 			args...).Scan(&total)
 	})
 	if err != nil {
@@ -975,19 +1018,24 @@ func planVectorFilter(startArg int, filter *biz.VectorFilter) (*vectorFilterPlan
 // planMetadataCondition 把单条 metadata 条件翻译为参数化 SQL 片段：键名
 // 与比较值都走占位符，操作符只从封闭集合选择（键与值都不拼进 SQL 文本）。
 // eq/ne/in 按文本比较（metadata->> 的返回值即 JSON 标量的文本形态）；
-// lt/lte/gt/gte 显式 ::bigint 后做数值比较。
+// lt/lte/gt/gte 显式 ::bigint 后做数值比较；is_null 判定键缺失
+//（metadata->>key IS NULL，键不存在与 JSON null 同义）。
 func planMetadataCondition(startArg int, cond biz.MetadataCondition) (string, []any, error) {
 	key := strings.TrimSpace(cond.Key)
 	if key == "" {
 		return "", nil, errors.New("metadata condition key is required")
 	}
-	if len(cond.Values) == 0 {
-		return "", nil, fmt.Errorf("metadata condition %s requires a value", cond.Op)
-	}
 	keyArg := startArg
 	valueArg := startArg + 1
 	valueRef := fmt.Sprintf("$%d", valueArg)
 	keyRef := fmt.Sprintf("$%d", keyArg)
+	if cond.Op == biz.VectorMetadataIsNull {
+		// 键缺失算子不消费比较值：只下发键名，值给不给都忽略。
+		return fmt.Sprintf("(metadata->>%s) IS NULL", keyRef), []any{key}, nil
+	}
+	if len(cond.Values) == 0 {
+		return "", nil, fmt.Errorf("metadata condition %s requires a value", cond.Op)
+	}
 	switch cond.Op {
 	case biz.VectorMetadataEq:
 		text, err := metadataTextValue(cond.Values[0])
@@ -1169,6 +1217,10 @@ func (*disabledVectorStore) DeleteByFilter(context.Context, *biz.VectorFilter) (
 }
 
 func (*disabledVectorStore) UpdateMetadata(context.Context, *biz.VectorFilter, map[string]any) (int64, error) {
+	return 0, biz.ErrVectorStoreDisabled
+}
+
+func (*disabledVectorStore) MarkSuperseded(context.Context, *biz.VectorFilter, time.Time) (int64, error) {
 	return 0, biz.ErrVectorStoreDisabled
 }
 

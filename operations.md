@@ -177,17 +177,44 @@ ack 的已知限制：**确认决定与运行必须同进程**。live 路径的�
 | 检索留痕（`agent_retrieval_log`） | 同审计口径（append-only 证据面） | 同审计执行口径；两表可共用同一 cron 窗口 |
 | 模型调用留痕（`agent_model_call_log`） | 同审计口径（append-only 证据面） | 同审计执行口径；三张留痕表可共用同一 cron 窗口 |
 | 授权吊销行（`agent_tool_grant.revoked_at` 非空） | 吊销是审计语义行，保留供追溯；查询面已过滤 | 同审计口径批量清理；清理后同键重授无历史可查，属预期 |
-| 向量切片（`agent.agent_document`） | 无独立保留期 | 见下「向量孤儿」结论 |
+| 向量切片（`agent.agent_document`） | 现行切片无独立保留期；重摄淘汰行（`metadata.superseded_at` 非空）保留期 = 检索留痕保留期（由运维按合规要求定，如 180 天；超期后可反查的留痕行已不存在） | 清理退役行按 `superseded_at` 早于保留期分批 `DELETE`（见下 SQL）；条目删除与删库仍物理删除 |
 | 对象存储（`oss_object`） | 无独立保留期，随业务写入/删除（`biz.ObjectStore`） | 无清理任务；容量治理归运维（设施面无 RLS，按 bucket/时间的 SQL 清理即可），口径见上「内嵌对象存储」节 |
 
-**向量孤儿结论**（不设清理任务）：「文档删除后残留切片」的孤儿面在当前
-代码形态下不存在——摄取管线（`biz.DocumentUsecase.Ingest`）的覆盖语义是
-先 `DeleteByFilter(source_id)` 清旧再整批写入，且没有绕过该语义的文档删除
-入口（无独立删除用例；`DeleteByFilter` 是唯一删除通路，跨租户管理归 super
-口径）。残余风险仅剩「DeleteByFilter 与 Add 之间崩溃」的中间态，重摄同一
-来源即可补偿（确定性 chunk ID + 覆盖幂等）。若将来引入不经 DeleteByFilter
-的文档删除路径，必须在 permission.md 的 super 管理口径下补清理义务说明
-（应用层孤儿清扫或运维 SQL），否则将产生真孤儿。
+**向量退役行与孤儿结论**（清理归运维，不设应用内任务）：重摄改为差量
+对账后，旧切片不再物理删除，而是标记 `superseded_at`（RFC3339）退役——
+这是复现反查「留痕行候选 ID → 命中当时原文」的前提，退役行与现行行在
+保留期内共存，读面（检索固定条件、管理页分片枚举、`Count`）以
+`superseded_at IS NULL` 排除，`Get` 反查不过滤。清理 SQL（super/属主连接
+执行；`<检索留痕保留期>` 换成与留痕表一致的 interval 文本，如 `180 days`；
+单轮限量、**重复执行至返回 0 行**，避免长事务与锁膨胀）：
+
+```sql
+DELETE FROM agent.agent_document
+WHERE (tenant_id, id) IN (
+    SELECT tenant_id, id
+    FROM agent.agent_document
+    WHERE metadata->>'superseded_at' IS NOT NULL
+      AND (metadata->>'superseded_at')::timestamptz < now() - interval '<检索留痕保留期>'
+    LIMIT 1000
+);
+```
+
+- **膨胀提示**：重摄频繁的库（每次重建索引、切分参数反复调整、批量重导）
+  会按版本累积退役行，单库行数 ≈ 现行切片数 × 保留期内重摄次数。退役行
+  仍占向量表行空间，并同样进入该维度的表达式部分 HNSW 索引与词法 GIN
+  索引：is-null 是检索后的过滤条件（不参与索引裁剪），退役行越多，检索
+  扫描与排序的无效行越多，延迟上升、同 `LIMIT` 下的有效召回也被稀释。
+  容量与延迟敏感环境应缩短退役行保留期，或对高频重建的库改用「先删条目
+  切片再重摄」的运维脚本（会牺牲该库的复现反查能力）。
+- **孤儿面变化**：物理删除通路只剩显式下线（删条目 `DeleteByFilter
+  (document_id)`、删库 `DeleteByFilter(kb_id)`）与上述运维清理。对账本身
+  不自造孤儿：不在新批的现行行必被标记为退役，退役行由保留期清理收口。
+  残余风险仍是「标记退役与写入之间崩溃」的中间态——重摄同一来源即可
+  补偿（确定性 chunk ID + 差量对账幂等）。若将来引入不经 `DeleteByFilter`
+  的文档删除路径，必须在 permission.md 的 super 管理口径下补清理义务说明
+  （应用层孤儿清扫或运维 SQL）。
+- **条目删除**：物理删除切片后不再有复现反查价值，复现页按
+  `kb_document.deleted_at` 标注条目下线。
 
 ## 指标与告警
 

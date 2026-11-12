@@ -433,27 +433,17 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 	}
 
 	uc := biz.NewRetrievalLogUsecase(logRepo)
+	// 首次摄取：差量对账无现存行，两行 Add，无覆盖清除行。
 	list, err := uc.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourcePipeline})
-	if err != nil || list.Total != 3 {
-		t.Fatalf("pipeline rows = (%d total, %v), want 3 (one clear + two adds)", list.Total, err)
+	if err != nil || list.Total != 2 {
+		t.Fatalf("pipeline rows = (%d total, %v), want 2 adds", list.Total, err)
 	}
-	// 时间倒序：最先落库的覆盖清除行在末尾；两行 Add 在前。清除行不带
-	// 空间声明（跨空间清理），embedder 落 NULL。
-	clear := list.Items[list.Total-1]
-	if clear.Status != biz.RetrievalStatusSuccess || clear.Hits != nil {
-		t.Fatalf("clear row = (%s, hits %v), want success without hits", clear.Status, clear.Hits)
+	// 落库切片 ID 是留痕行的唯一事实来源（哈希按块正文派生，用例不重算）。
+	existing, err := store.GetMetadata(ctx, &biz.VectorFilter{Metadata: map[string]any{"source_id": "handbook"}})
+	if err != nil || len(existing) != 2 {
+		t.Fatalf("stored chunks = (%d, %v), want 2", len(existing), err)
 	}
-	if clear.Embedder != "" {
-		t.Fatalf("clear row embedder = %q, want empty (no space declaration on the cross-space purge)", clear.Embedder)
-	}
-	summary := map[string]any{}
-	if err := json.Unmarshal(clear.FilterSummary, &summary); err != nil {
-		t.Fatalf("unmarshal clear filter summary: %v", err)
-	}
-	meta, _ := summary["metadata"].(map[string]any)
-	if meta["source_id"] != "handbook" {
-		t.Fatalf("clear condition = %v, want source_id=handbook", summary)
-	}
+	seen := map[string]bool{}
 	for i := 0; i < 2; i++ {
 		row := list.Items[i]
 		var hits []map[string]any
@@ -464,11 +454,14 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 			t.Fatalf("add row %d hits = %v, want single affected chunk", i, hits)
 		}
 		id, _ := hits[0]["document_id"].(string)
-		anchor, _ := hits[0]["anchor"].(string)
-		want := fmt.Sprintf("handbook#%d", 1-i)
-		if id != want {
-			t.Fatalf("add row %d document = %q, want %q (time desc order)", i, id, want)
+		if !hashedChunkID(id) {
+			t.Fatalf("add row %d document = %q, want hashed chunk id", i, id)
 		}
+		if _, ok := existing[id]; !ok {
+			t.Fatalf("add row %d document = %q not among stored chunks %v", i, id, existing)
+		}
+		seen[id] = true
+		anchor, _ := hits[0]["anchor"].(string)
 		if !strings.HasPrefix(anchor, "runes ") {
 			t.Fatalf("add row %d anchor = %q, want chunk metadata anchor", i, anchor)
 		}
@@ -479,16 +472,65 @@ func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
 			t.Fatalf("add row %d embedder = %q, want %s (ingested space recorded)", i, row.Embedder, vectorTestSpace)
 		}
 	}
+	if len(seen) != 2 {
+		t.Fatalf("logged add ids = %v, want both stored chunks", seen)
+	}
 
-	// 同来源重摄：覆盖清除行删旧写新，摄取行继续追加且 Replaced=2。
+	// 同内容重摄：ID 未变，差量对账走 Update（两行），无标记退役行。
 	result2, err := ucase.Ingest(ctx, &biz.Document{ID: "handbook", Name: "Grape Handbook", Content: "01234567890123"})
-	if err != nil || result2.Replaced != 2 {
-		t.Fatalf("re-ingest = (%+v, %v), want replaced 2", result2, err)
+	if err != nil || result2.Replaced != 0 {
+		t.Fatalf("same-content re-ingest = (%+v, %v), want replaced 0", result2, err)
 	}
 	list2, err := uc.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourcePipeline})
-	if err != nil || list2.Total != 6 {
-		t.Fatalf("pipeline rows after re-ingest = (%d total, %v), want 6", list2.Total, err)
+	if err != nil || list2.Total != 4 {
+		t.Fatalf("pipeline rows after same-content re-ingest = (%d total, %v), want 4", list2.Total, err)
 	}
+
+	// 内容变化重摄：旧两行标记退役（一行 MarkSuperseded，条件记旧 ID），
+	// 新两行 Add；Replaced=2。
+	result3, err := ucase.Ingest(ctx, &biz.Document{ID: "handbook", Name: "Grape Handbook", Content: "abcdefghijklmn"})
+	if err != nil || result3.Replaced != 2 {
+		t.Fatalf("changed re-ingest = (%+v, %v), want replaced 2", result3, err)
+	}
+	list3, err := uc.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourcePipeline})
+	if err != nil || list3.Total != 7 {
+		t.Fatalf("pipeline rows after changed re-ingest = (%d total, %v), want 7", list3.Total, err)
+	}
+	var supersede *biz.RetrievalLog
+	for _, row := range list3.Items {
+		if row.Hits != nil || len(row.FilterSummary) == 0 {
+			continue
+		}
+		summary := map[string]any{}
+		if err := json.Unmarshal(row.FilterSummary, &summary); err != nil {
+			t.Fatalf("unmarshal supersede row summary: %v", err)
+		}
+		if ids, _ := summary["ids"].([]any); len(ids) == 2 {
+			supersede = row
+			break
+		}
+	}
+	if supersede == nil || supersede.Embedder != "" || supersede.Status != biz.RetrievalStatusSuccess {
+		t.Fatalf("supersede row = %+v, want success row with two retired ids and no space", supersede)
+	}
+}
+
+// hashedChunkID 判定切片 ID 为现行形态 "<source>#<index>#<8 hex>"。
+func hashedChunkID(id string) bool {
+	at := strings.LastIndex(id, "#")
+	if at <= 0 {
+		return false
+	}
+	suffix := id[at+1:]
+	if len(suffix) != 8 {
+		return false
+	}
+	for _, r := range suffix {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return strings.Contains(id[:at], "#")
 }
 
 func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T) {

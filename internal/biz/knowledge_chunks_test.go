@@ -45,9 +45,9 @@ func chunkDoc(id int64) *KnowledgeDocument {
 
 func TestListDocumentChunks_returns_chunks_ordered_by_index(t *testing.T) {
 	store := &chunkListStore{docs: []*VectorDocument{
-		{ID: "2#10", Embedder: "space@v1", Content: "tenth", Metadata: map[string]any{"anchor": "runes 90-95", "chunk_index": float64(10)}},
-		{ID: "2#2", Embedder: "space@v1", Content: "second", Metadata: map[string]any{"anchor": "runes 10-15", "chunk_index": float64(2)}},
-		{ID: "2#0", Embedder: "space@v1", Content: "first", Metadata: map[string]any{"anchor": "runes 0-5", "chunk_index": float64(0)}},
+		{ID: "2#10#11111111", Embedder: "space@v1", Content: "tenth", Metadata: map[string]any{"anchor": "runes 90-95", "chunk_index": float64(10)}},
+		{ID: "2#2#22222222", Embedder: "space@v1", Content: "second", Metadata: map[string]any{"anchor": "runes 10-15", "chunk_index": float64(2)}},
+		{ID: "2#0#33333333", Embedder: "space@v1", Content: "first", Metadata: map[string]any{"anchor": "runes 0-5", "chunk_index": float64(0)}},
 	}}
 	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
 
@@ -56,12 +56,20 @@ func TestListDocumentChunks_returns_chunks_ordered_by_index(t *testing.T) {
 		t.Fatalf("ListDocumentChunks: %v", err)
 	}
 	want := []*KnowledgeChunk{
-		{ID: "2#0", Index: 0, Anchor: "runes 0-5", Content: "first", Embedder: "space@v1"},
-		{ID: "2#2", Index: 2, Anchor: "runes 10-15", Content: "second", Embedder: "space@v1"},
-		{ID: "2#10", Index: 10, Anchor: "runes 90-95", Content: "tenth", Embedder: "space@v1"},
+		{ID: "2#0#33333333", Index: 0, Anchor: "runes 0-5", Content: "first", Embedder: "space@v1"},
+		{ID: "2#2#22222222", Index: 2, Anchor: "runes 10-15", Content: "second", Embedder: "space@v1"},
+		{ID: "2#10#11111111", Index: 10, Anchor: "runes 90-95", Content: "tenth", Embedder: "space@v1"},
 	}
 	if !reflect.DeepEqual(chunks, want) {
 		t.Fatalf("chunks = %+v, want index order %+v", chunks, want)
+	}
+	// 管理读面排除退役行：枚举条件必须同时带「键缺失」（未被 superseded）。
+	// 条件集合的顺序不是契约，按 key 断言。
+	if store.filter == nil || len(store.filter.Conditions) != 2 {
+		t.Fatalf("list conditions = %+v, want document equality + superseded is-null", store.filter)
+	}
+	if cond := conditionByKey(store.filter.Conditions, VectorMetadataSupersededAt); cond.Op != VectorMetadataIsNull {
+		t.Fatalf("superseded condition = %+v, want is-null on %s", cond, VectorMetadataSupersededAt)
 	}
 }
 
@@ -88,9 +96,15 @@ func TestListDocumentChunks_filters_by_document_id_condition(t *testing.T) {
 	if _, err := uc.ListDocumentChunks(ingestCtx(), libraryAuth(), 7); err != nil {
 		t.Fatalf("ListDocumentChunks: %v", err)
 	}
-	want := []MetadataCondition{{Key: "document_id", Op: VectorMetadataEq, Values: []any{"7"}}}
-	if store.filter == nil || !reflect.DeepEqual(store.filter.Conditions, want) {
-		t.Fatalf("filter = %+v, want document_id eq 7", store.filter)
+	if store.filter == nil || len(store.filter.Conditions) != 2 {
+		t.Fatalf("filter = %+v, want document equality + superseded is-null", store.filter)
+	}
+	docCond := conditionByKey(store.filter.Conditions, "document_id")
+	if docCond.Op != VectorMetadataEq || !reflect.DeepEqual(docCond.Values, []any{"7"}) {
+		t.Fatalf("document condition = %+v, want eq 7", docCond)
+	}
+	if cond := conditionByKey(store.filter.Conditions, VectorMetadataSupersededAt); cond.Op != VectorMetadataIsNull {
+		t.Fatalf("superseded condition = %+v, want is-null", cond)
 	}
 }
 
@@ -148,6 +162,8 @@ func TestChunkIndexOf_prefers_id_suffix_then_metadata(t *testing.T) {
 	}{
 		"id suffix":              {"12#7", nil, 7},
 		"id suffix beats meta":   {"12#7", map[string]any{"chunk_index": float64(3)}, 7},
+		"hashed id index":        {"12#7#a1b2c3d4", nil, 7},
+		"hashed id beats meta":   {"12#7#a1b2c3d4", map[string]any{"chunk_index": float64(3)}, 7},
 		"metadata float64":       {"no-suffix", map[string]any{"chunk_index": float64(4)}, 4},
 		"metadata int":           {"no-suffix", map[string]any{"chunk_index": 5}, 5},
 		"metadata string":        {"no-suffix", map[string]any{"chunk_index": "6"}, 6},

@@ -39,7 +39,7 @@
 | `tool_call_id` | 模型生成的工具调用 ID | 租户内唯一 | 工具审计、确认审计、事件流工具调用 |
 | `confirmation_id` | ack 确认 ID（与 `tool_call_id` 同源） | 租户内唯一 | 确认审计、恢复路径代执行的工具行 |
 | `event_id` | 会话事件 ID | 会话内 | 压缩占位符与原文事件 |
-| `document_id` / `source_id` / `anchor` | 检索命中标识与原文锚点 | 向量表内 | `agent.agent_document` 原文反查 |
+| `document_id` / `source_id` / `anchor` | 检索命中标识与原文锚点 | 向量表内（切片 ID 含内容哈希，重摄后旧行标 `superseded_at` 仍可读） | `agent.agent_document` 原文反查（保留期内退役行可反查，检索/管理读面不可见） |
 | 留痕行 `document_id` | 模型调用作用的知识条目 ID | `kb_document.id` | 摄取向量化/外部解析行 → 条目反查 |
 | userKey | `tenant_id:user_id` 编码 | 会话归属 | 框架会话表、ack 归属守卫、审计归属 |
 
@@ -304,8 +304,10 @@ session_id（会话）
    （召回 → 融合 → 重排 → 回包，含阶段失败摘要与被预算截断的回包单元）
    与耗时；回放项的模型调用事实看模型型号、token 用量、思考与首字时长。
 5. 反查原文：压缩占位符经 `event-window` 按 `event_id` 取原文；检索命中经
-   `document_id` 反查 `agent.agent_document`；工具参数与结果原文以会话事件
-   为准。
+   `document_id` 反查 `agent.agent_document`——切片 ID 含内容哈希且重摄只
+   标记 `superseded_at` 不物理删除，保留期内旧留痕行的候选 ID 仍取到命中
+   当时的原文（管理/检索读面已看不到退役行）；工具参数与结果原文以会话
+   事件为准。
 6. 关联链路：用 `trace_id` 检索日志；telemetry 启用且该链路被采样时在
    OTel 后端看 span；用 `/metrics` 判断是否为全局或下游问题。
 7. 判定与补证：证据缺失时先查保留期、写入失败日志与链路采样，不把

@@ -3382,7 +3382,10 @@ components:
                     format: int32
                 chunkId:
                     type: string
-                    description: 分片 ID（"<条目 ID>#<序号>"），与检索留痕的命中对账。
+                    description: |-
+                        分片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+                         内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+                         的命中对账。
                 anchor:
                     type: string
                     description: 原文锚点（rune 区间描述）。
@@ -3569,8 +3572,9 @@ components:
                 documentId:
                     type: string
                     description: |-
-                        切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账，可经存
-                         储点查反查切片原文。
+                        切片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+                         内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+                         的命中对账，可经存储点查反查切片原文（重摄淘汰的旧行保留期内仍可反查）。
                 sourceId:
                     type: string
                     description: 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。

@@ -256,6 +256,7 @@ func TestKnowledgeSearch_without_library_applies_fixed_conditions_over_visible_l
 		{Key: "valid_from_unix", Op: VectorMetadataLte, Values: []any{now}},
 		{Key: "valid_to_unix", Op: VectorMetadataGt, Values: []any{now}},
 		{Key: "kb_id", Op: VectorMetadataIn, Values: []any{"7", "8"}},
+		{Key: VectorMetadataSupersededAt, Op: VectorMetadataIsNull},
 	}
 	if !reflect.DeepEqual(store.filter.Conditions, want) {
 		t.Fatalf("conditions = %+v, want %+v", store.filter.Conditions, want)
@@ -280,10 +281,12 @@ func TestKnowledgeSearch_with_visible_library_narrows_to_it(t *testing.T) {
 		t.Fatalf("Search: %v", err)
 	}
 	conditions := store.filter.Conditions
-	last := conditions[len(conditions)-1]
 	want := MetadataCondition{Key: "kb_id", Op: VectorMetadataIn, Values: []any{"42"}}
-	if len(conditions) != 4 || !reflect.DeepEqual(last, want) {
-		t.Fatalf("conditions = %+v, want fixed three plus %+v", conditions, want)
+	if len(conditions) != 5 || !reflect.DeepEqual(conditionByKey(conditions, "kb_id"), want) {
+		t.Fatalf("conditions = %+v, want fixed conditions plus %+v", conditions, want)
+	}
+	if got := conditionByKey(conditions, VectorMetadataSupersededAt); got.Op != VectorMetadataIsNull {
+		t.Fatalf("superseded condition = %+v, want is-null", got)
 	}
 }
 
@@ -361,7 +364,7 @@ func TestKnowledgeSearch_resolves_visible_libraries_per_search_without_cache(t *
 	if _, err := uc.Search(ctx, &KnowledgeSearchQuery{Query: "grape"}); err != nil {
 		t.Fatalf("first Search: %v", err)
 	}
-	first := store.filter.Conditions[len(store.filter.Conditions)-1]
+	first := conditionByKey(store.filter.Conditions, "kb_id")
 	if !reflect.DeepEqual(first.Values, []any{"7"}) {
 		t.Fatalf("first kb_id values = %v, want [7]", first.Values)
 	}
@@ -371,7 +374,7 @@ func TestKnowledgeSearch_resolves_visible_libraries_per_search_without_cache(t *
 	if _, err := uc.Search(ctx, &KnowledgeSearchQuery{Query: "grape"}); err != nil {
 		t.Fatalf("second Search: %v", err)
 	}
-	second := store.filter.Conditions[len(store.filter.Conditions)-1]
+	second := conditionByKey(store.filter.Conditions, "kb_id")
 	if libraries.calls != 2 {
 		t.Fatalf("library resolution calls = %d, want 2 (resolved per search)", libraries.calls)
 	}
@@ -631,4 +634,15 @@ func TestKnowledgeSearch_variant_count_at_limit_accepted(t *testing.T) {
 		t.Fatalf("route calls = (%d, %d), want (%d, %d)",
 			store.calls, store.lexicalCalls, MaxKnowledgeSearchQueryVariants+1, MaxKnowledgeSearchQueryVariants+1)
 	}
+}
+
+// conditionByKey 按 metadata 键取检索条件：条件列表顺序不是契约
+//（固定条件集合按语义而非位置断言）。
+func conditionByKey(conditions []MetadataCondition, key string) MetadataCondition {
+	for _, cond := range conditions {
+		if cond.Key == key {
+			return cond
+		}
+	}
+	return MetadataCondition{}
 }

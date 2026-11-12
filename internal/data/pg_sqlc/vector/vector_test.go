@@ -328,7 +328,8 @@ func TestVectorStore_search_only_hits_declared_space(t *testing.T) {
 	}
 
 	// 空间限定的计数与清理：Embedder 过滤收敛到单空间；不带 Embedder
-	// 的 DeleteByFilter 跨空间（重摄取迁移的覆盖清除路径）。
+	// 的 DeleteByFilter 跨空间（显式下线路径；重摄迁移已改差量对账退役，
+	// 不再走物理删除）。
 	v1Only, err := store.Count(ctx, &biz.VectorFilter{Embedder: vectorTestSpace})
 	if err != nil || v1Only != 1 {
 		t.Fatalf("Count(v1) = (%d, %v), want (1, nil)", v1Only, err)
@@ -388,7 +389,7 @@ func TestVectorStore_update_across_spaces_reembeds_explicitly(t *testing.T) {
 
 func TestVectorStore_delete_by_filter_scopes_to_declared_space(t *testing.T) {
 	// Embedder 过滤把条件删除收敛到单空间：其余空间的同条件行存活
-	//（跨空间清理必须不带 Embedder，见空间隔离用例的覆盖清除）。
+	//（跨空间显式下线必须不带 Embedder；重摄不再物理删除）。
 	d := setupVectorTestDB(t)
 	store := newMultiSpaceStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)

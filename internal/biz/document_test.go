@@ -3,10 +3,10 @@ package biz
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // testEmbedderSpace 是管线单测的固定嵌入空间键（stubResolver 解析产出）。
@@ -62,13 +62,19 @@ func (r *stubResolver) ResolveEmbeddingSpace(context.Context, string) (Embedding
 }
 
 // mockVectorStore 是管线单测的向量存储替身：记录调用序列与入参，行为
-// 可编程。
+// 可编程。existing 模拟本来源的现存切片（GetMetadata 返回，键为切片 ID、
+// 值为 metadata——带退役标记的键即已被淘汰），superseded 记录退役标记
+// 调用。
 type mockVectorStore struct {
-	added      []*VectorDocument
-	deleted    *VectorFilter
-	deleteHits int64
-	deleteErr  error
-	addErrAt   int // 第 n 次 Add 返回错误（1 起；0 = 永不）
+	added       []*VectorDocument
+	updated     []*VectorDocument
+	addErrAt    int // 第 n 次 Add 返回错误（1 起；0 = 永不）
+	updateErr   error
+	existing    map[string]map[string]any
+	metaErr     error
+	superseded  []*VectorFilter
+	supersedeAt []time.Time
+	markErr     error
 }
 
 func (m *mockVectorStore) Add(_ context.Context, doc *VectorDocument) error {
@@ -79,19 +85,23 @@ func (m *mockVectorStore) Add(_ context.Context, doc *VectorDocument) error {
 	return nil
 }
 
-func (m *mockVectorStore) DeleteByFilter(_ context.Context, filter *VectorFilter) (int64, error) {
-	if m.deleteErr != nil {
-		return 0, m.deleteErr
+func (m *mockVectorStore) Update(_ context.Context, doc *VectorDocument) error {
+	if m.updateErr != nil {
+		return m.updateErr
 	}
-	m.deleted = filter
-	return m.deleteHits, nil
+	m.updated = append(m.updated, doc)
+	return nil
+}
+
+// DeleteByFilter 承接显式下线（删条目/删库）路径；摄取不再调用，只满足契约。
+func (*mockVectorStore) DeleteByFilter(context.Context, *VectorFilter) (int64, error) {
+	return 0, nil
 }
 
 func (*mockVectorStore) Get(context.Context, string) (*VectorDocument, error) {
 	return nil, ErrVectorDocNotFound
 }
-func (*mockVectorStore) Update(context.Context, *VectorDocument) error { return nil }
-func (*mockVectorStore) Delete(context.Context, string) error          { return nil }
+func (*mockVectorStore) Delete(context.Context, string) error { return nil }
 func (*mockVectorStore) Search(context.Context, []float32, *VectorFilter) ([]*ScoredVectorDocument, error) {
 	return nil, nil
 }
@@ -105,8 +115,17 @@ func (*mockVectorStore) Count(context.Context, *VectorFilter) (int64, error) {
 func (*mockVectorStore) UpdateMetadata(context.Context, *VectorFilter, map[string]any) (int64, error) {
 	return 0, nil
 }
-func (*mockVectorStore) GetMetadata(context.Context, *VectorFilter) (map[string]map[string]any, error) {
-	return nil, nil
+func (m *mockVectorStore) GetMetadata(context.Context, *VectorFilter) (map[string]map[string]any, error) {
+	return m.existing, m.metaErr
+}
+func (m *mockVectorStore) MarkSuperseded(_ context.Context, filter *VectorFilter, at time.Time) (int64, error) {
+	// 调用事实先记录（错误注入也代表一次真实调用尝试）。
+	m.superseded = append(m.superseded, filter)
+	m.supersedeAt = append(m.supersedeAt, at)
+	if m.markErr != nil {
+		return 0, m.markErr
+	}
+	return int64(len(filter.IDs)), nil
 }
 func (*mockVectorStore) List(context.Context, *VectorFilter) ([]*VectorDocument, error) {
 	return nil, nil
@@ -179,8 +198,9 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 		t.Fatalf("adds = %d embeds = %d, want 3/3", len(store.added), len(embedder.calls))
 	}
 	for i, doc := range store.added {
-		if doc.ID != fmt.Sprintf("kb-1#%d", i) {
-			t.Fatalf("chunk id = %s, want kb-1#%d", doc.ID, i)
+		// 切片 ID = 来源 + 序号 + 内容哈希（空间参与哈希）。
+		if want := chunkID("kb-1", i, testEmbedderSpace, doc.Content); doc.ID != want {
+			t.Fatalf("chunk id = %s, want %s", doc.ID, want)
 		}
 		// 嵌入空间身份与维度成对落在每个切片上，embedder 调用同空间。
 		if doc.Embedder != testEmbedderSpace || doc.Dimension != 8 {
@@ -203,33 +223,142 @@ func TestDocumentUsecase_when_ingest_chunks_embeds_and_adds_with_anchor(t *testi
 			t.Fatalf("chunk %d must keep caller metadata, got %v", i, doc.Metadata)
 		}
 	}
-	// 覆盖锚点先于写入：DeleteByFilter 以 source_id 为条件（跨空间清除，
-	// 不限嵌入空间——换默认空间的重摄取正是迁移路径）。
-	if store.deleted == nil || store.deleted.Metadata["source_id"] != "kb-1" {
-		t.Fatalf("delete filter = %+v, want source_id kb-1", store.deleted)
-	}
-	if store.deleted.Embedder != "" {
-		t.Fatalf("delete filter embedder = %s, want empty (cross-space)", store.deleted.Embedder)
+	// 首次摄取没有现存行：不标记退役、不删除、不更新（差量对账的新增分支）。
+	if len(store.superseded) != 0 || len(store.updated) != 0 {
+		t.Fatalf("first ingest touched reconcile branches: superseded=%v updated=%d",
+			store.superseded, len(store.updated))
 	}
 }
 
-func TestDocumentUsecase_when_reingest_replaces_previous_chunks(t *testing.T) {
-	store := &mockVectorStore{deleteHits: 3}
+func TestDocumentUsecase_when_reingest_marks_only_stale_current_chunks(t *testing.T) {
+	// 现存三块：两块仍在新批（内容未变 → Update），一块被淘汰（→ 标记
+	// 退役），一块早已退役（不再触碰，保留首次退役时间）。
+	content := "v2 content"
+	store := &mockVectorStore{existing: map[string]map[string]any{
+		chunkID("kb-1", 0, testEmbedderSpace, content):   {"source_id": "kb-1"},
+		chunkID("kb-1", 1, testEmbedderSpace, "removed"): {"source_id": "kb-1"},
+		chunkID("kb-1", 2, testEmbedderSpace, "retired"): {
+			"source_id": "kb-1", VectorMetadataSupersededAt: "2026-01-01T00:00:00Z",
+		},
+	}}
 	embedder := &stubEmbedder{dims: 4}
 	u, err := newDocumentUsecaseForTest(store, embedder)
 	if err != nil {
 		t.Fatalf("NewDocumentUsecase: %v", err)
 	}
-	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "v2 content"})
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: content})
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
-	if result.Replaced != 3 {
-		t.Fatalf("Replaced = %d, want 3 (previous version cleared)", result.Replaced)
+	if result.Replaced != 1 {
+		t.Fatalf("Replaced = %d, want 1 (one current chunk dropped)", result.Replaced)
 	}
-	// 切片 ID 确定性：同来源重摄复用同一 ID 空间（覆盖语义的前提）。
-	if store.added[0].ID != "kb-1#0" {
-		t.Fatalf("chunk id = %s, want kb-1#0", store.added[0].ID)
+	if len(store.superseded) != 1 || len(store.superseded[0].IDs) != 1 ||
+		store.superseded[0].IDs[0] != chunkID("kb-1", 1, testEmbedderSpace, "removed") {
+		t.Fatalf("superseded calls = %+v, want only the dropped current chunk", store.superseded)
+	}
+	if len(store.updated) != 1 || store.updated[0].ID != chunkID("kb-1", 0, testEmbedderSpace, content) {
+		t.Fatalf("updated = %+v, want the unchanged chunk refreshed in place", store.updated)
+	}
+	if len(store.added) != 0 {
+		t.Fatalf("added = %d, want 0 (no new chunk)", len(store.added))
+	}
+}
+
+func TestDocumentUsecase_when_same_content_reingest_updates_in_place(t *testing.T) {
+	// 首次摄取后重摄同一内容：ID 相同 → 全部走 Update，退役标记被整列
+	// metadata 替换自然清掉（复活），Replaced 为 0。
+	content := "stable content"
+	store := &mockVectorStore{existing: map[string]map[string]any{
+		chunkID("kb-1", 0, testEmbedderSpace, content): {"source_id": "kb-1"},
+	}}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: content})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if result.Replaced != 0 || len(store.superseded) != 0 {
+		t.Fatalf("Replaced = %d superseded = %v, want no retirement for unchanged content", result.Replaced, store.superseded)
+	}
+	if len(store.added) != 0 || len(store.updated) != 1 {
+		t.Fatalf("added = %d updated = %d, want 0/1", len(store.added), len(store.updated))
+	}
+}
+
+func TestDocumentUsecase_when_content_reverts_old_chunk_is_revived_by_update(t *testing.T) {
+	// 内容改回旧版本：旧 ID 重现于新批，现存行虽已退役仍走 Update——
+	// 整列 metadata 替换掉退役标记，切片复活。
+	oldContent := "original content"
+	oldID := chunkID("kb-1", 0, testEmbedderSpace, oldContent)
+	store := &mockVectorStore{existing: map[string]map[string]any{
+		oldID: {"source_id": "kb-1", VectorMetadataSupersededAt: "2026-01-01T00:00:00Z"},
+	}}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	result, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: oldContent})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if result.Replaced != 0 {
+		t.Fatalf("Replaced = %d, want 0 (revived chunk is not retired)", result.Replaced)
+	}
+	if len(store.updated) != 1 || store.updated[0].ID != oldID {
+		t.Fatalf("updated = %+v, want revival of %s", store.updated, oldID)
+	}
+	if len(store.added) != 0 || len(store.superseded) != 0 {
+		t.Fatalf("added = %d superseded = %v, want none", len(store.added), store.superseded)
+	}
+}
+
+func TestChunkID_deterministic_and_content_space_sensitive(t *testing.T) {
+	base := chunkID("12", 3, "space@v1", "content")
+	if base != chunkID("12", 3, "space@v1", "content") {
+		t.Fatal("chunkID is not deterministic for identical inputs")
+	}
+	if base == chunkID("12", 3, "space@v1", "content changed") {
+		t.Fatal("chunkID unchanged after content change")
+	}
+	if base == chunkID("12", 3, "space@v2", "content") {
+		t.Fatal("chunkID unchanged after space change")
+	}
+	if at := strings.LastIndex(base, "#"); at < 0 || !isChunkHash(base[at+1:]) {
+		t.Fatalf("chunkID = %q, want 8-hex hash suffix", base)
+	}
+	// 列宽断言：来源 ID 上限 96 + 序号 7 位 + 两个分隔符 + 8 位哈希 = 113。
+	long := chunkID(strings.Repeat("x", maxSourceIDChars), 9999999, "space@v1", "content")
+	if len(long) != 113 || len(long) > 128 {
+		t.Fatalf("chunkID length = %d, want 113 (within varchar(128))", len(long))
+	}
+}
+
+func TestDocumentUsecase_when_caller_sets_superseded_key_it_is_stripped(t *testing.T) {
+	// superseded_at 是服务端保留键：调用方同名键不得进入切片 metadata，
+	// 否则公开 Ingest 可写出永久不可见的切片。
+	store := &mockVectorStore{}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{
+		ID:       "kb-1",
+		Content:  "content",
+		Metadata: map[string]any{VectorMetadataSupersededAt: "2026-01-01T00:00:00Z", "dept": "hr"},
+	}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(store.added) != 1 {
+		t.Fatalf("added = %d, want 1", len(store.added))
+	}
+	if _, ok := store.added[0].Metadata[VectorMetadataSupersededAt]; ok {
+		t.Fatalf("chunk metadata kept caller superseded key: %v", store.added[0].Metadata)
+	}
+	if store.added[0].Metadata["dept"] != "hr" {
+		t.Fatalf("caller metadata dropped: %v", store.added[0].Metadata)
 	}
 }
 
@@ -275,8 +404,9 @@ func TestDocumentUsecase_when_resolver_fails_ingest_rejected_and_store_untouched
 		t.Fatalf("Ingest with failing resolver = %v, want ErrEmbedderDisabled", err)
 	}
 	// 空间解析先于删旧写新：解析失败不触存储。
-	if len(store.added) != 0 || store.deleted != nil {
-		t.Fatalf("store touched on resolver failure: added=%d deleted=%+v", len(store.added), store.deleted)
+	if len(store.added) != 0 || len(store.updated) != 0 || len(store.superseded) != 0 {
+		t.Fatalf("store touched on resolver failure: added=%d updated=%d superseded=%v",
+			len(store.added), len(store.updated), store.superseded)
 	}
 }
 
@@ -292,8 +422,9 @@ func TestDocumentUsecase_when_embed_dimension_drifts_ingest_rejected(t *testing.
 	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "content"}); err == nil || !strings.Contains(err.Error(), "dimension") {
 		t.Fatalf("Ingest with drifting embedder = %v, want dimension error", err)
 	}
-	if len(store.added) != 0 || store.deleted != nil {
-		t.Fatalf("store touched on dimension drift: added=%d deleted=%+v", len(store.added), store.deleted)
+	if len(store.added) != 0 || len(store.updated) != 0 || len(store.superseded) != 0 {
+		t.Fatalf("store touched on dimension drift: added=%d updated=%d superseded=%v",
+			len(store.added), len(store.updated), store.superseded)
 	}
 }
 
@@ -308,8 +439,9 @@ func TestDocumentUsecase_when_embed_fails_keeps_store_untouched(t *testing.T) {
 		t.Fatal("Ingest with failing embedder = nil error, want rejection")
 	}
 	// embed 失败先于删旧写新：存量数据不被破坏。
-	if len(store.added) != 0 || store.deleted != nil {
-		t.Fatalf("store touched on embed failure: added=%d deleted=%+v", len(store.added), store.deleted)
+	if len(store.added) != 0 || len(store.updated) != 0 || len(store.superseded) != 0 {
+		t.Fatalf("store touched on embed failure: added=%d updated=%d superseded=%v",
+			len(store.added), len(store.updated), store.superseded)
 	}
 }
 
@@ -322,6 +454,63 @@ func TestDocumentUsecase_when_add_fails_midway_reports(t *testing.T) {
 	}
 	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: strings.Repeat("x", 10)}); err == nil {
 		t.Fatal("Ingest with mid-way Add failure = nil error, want error")
+	}
+}
+
+func TestDocumentUsecase_when_existing_chunk_lookup_fails_reports_and_skips_writes(t *testing.T) {
+	store := &mockVectorStore{metaErr: errors.New("metadata down")}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "content"}); err == nil || !strings.Contains(err.Error(), "list existing chunks") {
+		t.Fatalf("Ingest with failing chunk lookup = %v, want wrapped lookup error", err)
+	}
+	if len(store.added) != 0 || len(store.updated) != 0 || len(store.superseded) != 0 {
+		t.Fatalf("store written after lookup failure: added=%d updated=%d superseded=%v",
+			len(store.added), len(store.updated), store.superseded)
+	}
+}
+
+func TestDocumentUsecase_when_mark_superseded_fails_reports_and_skips_writes(t *testing.T) {
+	store := &mockVectorStore{
+		markErr: errors.New("mark down"),
+		existing: map[string]map[string]any{
+			"kb-1#9#deadbeef": {"source_id": "kb-1"},
+		},
+	}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: "content"}); err == nil || !strings.Contains(err.Error(), "mark previous chunks") {
+		t.Fatalf("Ingest with failing supersede = %v, want wrapped mark error", err)
+	}
+	if len(store.superseded) != 1 {
+		t.Fatalf("supersede attempts = %d, want 1 (the stale current chunk)", len(store.superseded))
+	}
+	if len(store.added) != 0 || len(store.updated) != 0 {
+		t.Fatalf("store written after supersede failure: added=%d updated=%d", len(store.added), len(store.updated))
+	}
+}
+
+func TestDocumentUsecase_when_chunk_update_fails_reports(t *testing.T) {
+	content := "same content"
+	store := &mockVectorStore{
+		updateErr: errors.New("update down"),
+		existing: map[string]map[string]any{
+			chunkID("kb-1", 0, testEmbedderSpace, content): {"source_id": "kb-1"},
+		},
+	}
+	u, err := newDocumentUsecaseForTest(store, &stubEmbedder{dims: 4})
+	if err != nil {
+		t.Fatalf("NewDocumentUsecase: %v", err)
+	}
+	if _, err := u.Ingest(ingestCtx(), &Document{ID: "kb-1", Content: content}); err == nil || !strings.Contains(err.Error(), "update chunk") {
+		t.Fatalf("Ingest with failing chunk update = %v, want wrapped update error", err)
+	}
+	if len(store.updated) != 0 || len(store.added) != 0 {
+		t.Fatalf("store mutated after update failure: updated=%d added=%d", len(store.updated), len(store.added))
 	}
 }
 

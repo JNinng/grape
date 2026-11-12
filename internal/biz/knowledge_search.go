@@ -588,8 +588,9 @@ func normalizeKnowledgeSearch(q *KnowledgeSearchQuery) (string, []string, int, e
 
 // knowledgeRetrievalConditions 组装检索固定条件：条目参与（库与条目状态
 // 取与后写入 chunk metadata）且 now 落在有效期 [from, to) 内；库范围
-// 恒以 kb_id IN 收窄到可见库集合（调用方保证非空）。时间为秒级 unix，
-// 与摄取侧 effectiveChunkMetadata 的写入口径一致。
+// 恒以 kb_id IN 收窄到可见库集合（调用方保证非空）；重摄淘汰的历史行
+//（superseded）由 is-null 条件排除——检索只召回现行切片。时间为秒级
+// unix，与摄取侧 effectiveChunkMetadata 的写入口径一致。
 func knowledgeRetrievalConditions(libraryIDs []int64, now time.Time) []MetadataCondition {
 	unix := now.Unix()
 	ids := make([]any, 0, len(libraryIDs))
@@ -601,6 +602,7 @@ func knowledgeRetrievalConditions(libraryIDs []int64, now time.Time) []MetadataC
 		{Key: "valid_from_unix", Op: VectorMetadataLte, Values: []any{unix}},
 		{Key: "valid_to_unix", Op: VectorMetadataGt, Values: []any{unix}},
 		{Key: "kb_id", Op: VectorMetadataIn, Values: ids},
+		{Key: VectorMetadataSupersededAt, Op: VectorMetadataIsNull},
 	}
 }
 

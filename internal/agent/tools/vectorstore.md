@@ -24,10 +24,17 @@
 | `Search`         | `store.Search`         | 只落 `SearchModeVector`；top_k 超限钳到 `maxSearchTopK`（20），不报错也不放行 |
 | `DeleteByFilter` | `store.DeleteByFilter` | `DeleteAll`（租户级全量清理）是 super 管理口径，拒绝                           |
 | `UpdateByFilter` | —                      | 无消费方，`errVectorUnsupported` 显式拒绝                              |
-| `Count`          | `store.Count`          | metadata 过滤计数                                                 |
-| `GetMetadata`    | `store.GetMetadata`    | 框架侧 Limit/Offset 校验先行，分页语义与契约一致                               |
+| `Count`          | `store.Count`          | metadata 过滤计数；退役行（`superseded_at`）不计入                         |
+| `GetMetadata`    | `store.GetMetadata`    | 框架侧 Limit/Offset 校验先行，分页语义与契约一致；不追加退役行排除（见下）             |
 | `Close`          | —                      | 无自有资源；连接池与仓储生命周期归 data 层 cleanup                              |
 | `List`           | `store.List`           | 契约新增的枚举读面（含正文）；框架接口无对应方法，适配器不映射                       |
+
+退役行（`metadata.superseded_at`）排除不在适配器隐式追加：框架 `SearchQuery`
+与 metadata 过滤都没有条件 DSL，`Search`/`GetMetadata` 只透传调用方给的
+IDs/metadata。框架侧消费方（本仓库当前无）启用这两条路径时必须自带
+`superseded_at IS NULL` 语义（经 `VectorFilter.Conditions` 的 is-null 条件
+或等价过滤），否则会召回/枚举到重摄淘汰的历史切片。知识检索工具与前端
+检索统一走 `biz.KnowledgeSearchUsecase`，固定条件已含该排除。
 
 ## 检索逻辑（框架消费方路径）
 

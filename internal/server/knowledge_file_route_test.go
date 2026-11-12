@@ -35,6 +35,11 @@ func (s *fileRouteStore) DeleteByFilter(context.Context, *biz.VectorFilter) (int
 	return 0, nil
 }
 
+// GetMetadata 返回空集合：首次摄取没有现存切片，差量对账只走 Add 分支。
+func (s *fileRouteStore) GetMetadata(context.Context, *biz.VectorFilter) (map[string]map[string]any, error) {
+	return map[string]map[string]any{}, nil
+}
+
 func (s *fileRouteStore) Add(context.Context, *biz.VectorDocument) error {
 	s.added++
 	return nil

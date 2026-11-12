@@ -309,7 +309,9 @@ message ListDocumentChunksRequest {
 message DocumentChunk {
   // 分片序号（原文顺序，从 0 起）。
   int32 index = 1;
-  // 分片 ID（"<条目 ID>#<序号>"），与检索留痕的命中对账。
+  // 分片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+  // 内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+  // 的命中对账。
   string chunk_id = 2;
   // 原文锚点（rune 区间描述）。
   string anchor = 3;
@@ -377,8 +379,9 @@ message SearchDocumentsRequest {
 // 切片拼成整段回包，是 agent 工具面的语义；本消息仍逐切片映射，不含聚合
 // 进来的兄弟块）。
 message SearchHit {
-  // 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账，可经存
-  // 储点查反查切片原文。
+  // 切片 ID（"<source_id>#<chunk_index>#<hash8>"；hash8 取嵌入空间键 + 切片
+  // 内容经 sha256 的前 8 位十六进制，内容或空间变化即换新 ID），与检索留痕
+  // 的命中对账，可经存储点查反查切片原文（重摄淘汰的旧行保留期内仍可反查）。
   string document_id = 1;
   // 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。
   string source_id = 2;

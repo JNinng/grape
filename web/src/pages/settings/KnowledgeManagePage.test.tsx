@@ -89,7 +89,7 @@ beforeEach(() => {
   mockUpdateDocument.mockResolvedValue(documentDetail())
   mockCreateDocument.mockResolvedValue(documentDetail())
   mockListDocumentChunks.mockResolvedValue({
-    items: [{ index: 0, chunkId: '200#0', anchor: 'runes 0-11', content: '30 天内全额退款', embedder: 'space@v1' }],
+    items: [{ index: 0, chunkId: '200#0#a1b2c3d4', anchor: 'runes 0-11', content: '30 天内全额退款', embedder: 'space@v1' }],
     total: 1,
   })
 })

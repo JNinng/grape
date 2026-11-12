@@ -29,7 +29,7 @@ function library(id: string, name: string): LibraryDTO {
 
 function hit(overrides: Partial<SearchHitDTO> = {}): SearchHitDTO {
   return {
-    documentId: '200#0',
+    documentId: '200#0#a1b2c3d4',
     sourceId: '200',
     sourceName: '员工手册',
     anchor: 'runes 0-12',
