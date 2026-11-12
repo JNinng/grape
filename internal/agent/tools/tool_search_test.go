@@ -423,3 +423,61 @@ func TestSearchTool_when_embedded_searches_in_resolved_space(t *testing.T) {
 		t.Fatalf("search filter space = %+v, want %s/4", fake.searchF, testsupport.SearchTestSpace)
 	}
 }
+
+// TestSearchTool_declaration_input_schema_marks_query_required 锁定入参
+// 声明：query 显式必填，默认值与取值方式经字段说明下发而非工具描述。
+func TestSearchTool_declaration_input_schema_marks_query_required(t *testing.T) {
+	tl, _, _, _ := newSearchToolForTest(searchHitFixture())
+	d := tl.(tool.CallableTool).Declaration()
+	if d == nil || d.InputSchema == nil {
+		t.Fatal("search tool declaration has no input schema")
+	}
+	if len(d.InputSchema.Required) != 1 || d.InputSchema.Required[0] != "query" {
+		t.Fatalf("input required = %v, want [query]", d.InputSchema.Required)
+	}
+	if got := d.InputSchema.Properties["query"].Description; got != "Search query text (1-512 chars)" {
+		t.Fatalf("query description = %q", got)
+	}
+	for _, field := range []string{"top_k", "library_id"} {
+		if p, ok := d.InputSchema.Properties[field]; !ok || p.Description == "" {
+			t.Fatalf("optional field %q missing schema description", field)
+		}
+	}
+}
+
+// TestSearchTool_declaration_output_schema_documents_fields 锁定出参声明：
+// 回包单元（含嵌套 hits 条目）逐字段说明经 tag 进入 OutputSchema。
+func TestSearchTool_declaration_output_schema_documents_fields(t *testing.T) {
+	tl, _, _, _ := newSearchToolForTest(searchHitFixture())
+	d := tl.(tool.CallableTool).Declaration()
+	if d == nil || d.OutputSchema == nil {
+		t.Fatal("search tool declaration has no output schema")
+	}
+	for _, field := range []string{"query", "count", "hits", "notice"} {
+		if p, ok := d.OutputSchema.Properties[field]; !ok || p.Description == "" {
+			t.Fatalf("output field %q missing schema description", field)
+		}
+	}
+	hits := d.OutputSchema.Properties["hits"]
+	if hits == nil || hits.Items == nil || hits.Items.Properties == nil {
+		t.Fatal("output hits must declare an item schema")
+	}
+	for _, field := range []string{"document_id", "mode", "content"} {
+		if p, ok := hits.Items.Properties[field]; !ok || p.Description == "" {
+			t.Fatalf("output hits item field %q missing schema description", field)
+		}
+	}
+}
+
+// TestSearchTool_declaration_description_keeps_purpose_and_safety_only 锁定
+// 工具描述职责：只保留用途与不可信内容纪律，参数说明不再堆在描述里。
+func TestSearchTool_declaration_description_keeps_purpose_and_safety_only(t *testing.T) {
+	tl, _, _, _ := newSearchToolForTest(searchHitFixture())
+	desc := tl.(tool.CallableTool).Declaration().Description
+	if strings.Contains(desc, "Parameters:") {
+		t.Fatalf("tool description still documents parameters: %q", desc)
+	}
+	if !strings.Contains(desc, "UNTRUSTED") || !strings.Contains(desc, "data only") {
+		t.Fatalf("tool description missing untrusted-content discipline: %q", desc)
+	}
+}
