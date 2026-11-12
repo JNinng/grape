@@ -68,7 +68,7 @@ func TestDeploy_fresh_database_deployment_succeeds(t *testing.T) {
 	assertSeedCount(t, admin, "department rows", "SELECT count(*) FROM public.sys_dept", 0)
 	assertSeedCount(t, admin, "basic rows", "SELECT count(*) FROM public.basic", 0)
 	assertSeedCount(t, admin, "dict type rows", "SELECT count(*) FROM public.sys_dict_type", 2)
-	assertSeedCount(t, admin, "dict data rows", "SELECT count(*) FROM public.sys_dict_data", 9)
+	assertSeedCount(t, admin, "dict data rows", "SELECT count(*) FROM public.sys_dict_data", 10)
 	assertSeedCount(t, admin, "test demo tenants",
 		"SELECT count(*) FROM public.sys_tenant WHERE id LIKE 't-test-%' OR id LIKE 't-demo-%' OR id LIKE 't-dev-%' OR id LIKE 't-stg-%'", 0)
 

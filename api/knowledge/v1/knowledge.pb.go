@@ -915,7 +915,7 @@ func (x *DeleteLibraryRequest) GetId() int64 {
 // ListModelOptionsRequest 是 LibraryService.ListModelOptions 的输入。
 type ListModelOptionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 模型类别：text / embedding；空值返回全部。
+	// 模型类别：text / embedding / rerank；空值返回全部。
 	Kind          *string `protobuf:"bytes,1,opt,name=kind,proto3,oneof" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -242,6 +242,26 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   新版本二进制的文件摄取（kind=file 创建 / 重解析 / 删除清理）依赖上述对象，历史库须先升级再部署；未升级时文件上传返回
   500（缺列），text / markdown 摄取不受影响。内嵌 OSS（schema/93_oss.sql）
   是文件摄取的前置依赖，见下文该文件的升级条目。
+- **sys_model kind 取值放开 rerank（92_model.sql / 120_sys_dict.sql）**：历史库
+  以表 owner 手工替换 kind 约束、刷新列注释（与 92_model.sql 逐字一致），
+  并补种重排模型字典行与类型备注（120_sys_dict.sql 同批口径，`ON CONFLICT
+  DO NOTHING` 不覆盖已有行，remark 需手工 UPDATE）。存量行只有 text /
+  embedding，天然满足新约束，无数据迁移：
+
+  ```sql
+  ALTER TABLE public.sys_model DROP CONSTRAINT sys_model_kind_chk;
+  ALTER TABLE public.sys_model ADD CONSTRAINT sys_model_kind_chk CHECK (kind IN ('text', 'embedding', 'rerank'));
+  COMMENT ON COLUMN public.sys_model.kind IS '模型类别：text / embedding / rerank（rerank 供检索重排，不携带维度） [@dynamic: exact, membership]';
+  INSERT INTO public.sys_dict_data (id, status, dict_type_id, label, value, value_type, sort_order, remark,
+                                    created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+  VALUES (3103, 1, 301, '重排模型', 'rerank', 'string', 3, NULL, 1, '2026-11-08 10:00:00.000', 1,
+          '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+  UPDATE public.sys_dict_type SET remark = '文本 / 嵌入 / 重排模型类别枚举' WHERE id = 301 AND remark = '文本 / 嵌入模型类别枚举';
+  ```
+
+  旧版本二进制不产出 rerank 模型行，不受旧约束影响；新版二进制写入的
+  rerank 行会被存量库的旧 `sys_model_kind_chk` 拒绝，历史库须先执行上述
+  约束升级再部署新版二进制。不重排的部署无需配置（检索行为不变）。
 - **98_model_write.sql**：历史库追加对象，以部署超级用户执行；只含
   `CREATE OR REPLACE FUNCTION`，可重复。平台模型写端点（`sys:model:platform:*`）
   与模型管理页菜单（279–286）依赖 `050_sys_menu.sql` / `060_sys_role_menu.sql`

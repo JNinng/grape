@@ -356,9 +356,13 @@ func TestModelCallLogRepo_rejects_unknown_scenario_and_unauthenticated_calls(t *
 
 	// 未知场景在仓储侧复检拒绝（表无 CHECK，仓储是落库前的最后一道把门）。
 	ctx := modelCallIdentityContext(modelCallTenantA, false)
-	err := repo.Append(ctx, &biz.ModelCallEntry{Scenario: "rerank", Status: biz.ModelCallStatusSuccess})
+	err := repo.Append(ctx, &biz.ModelCallEntry{Scenario: "unknown_scene", Status: biz.ModelCallStatusSuccess})
 	if err == nil || !strings.Contains(err.Error(), "scenario") {
 		t.Fatalf("append unknown scenario = %v, want rejection", err)
+	}
+	err = repo.Append(ctx, &biz.ModelCallEntry{Scenario: biz.ModelCallScenarioRerank, Status: biz.ModelCallStatusSuccess})
+	if err != nil {
+		t.Fatalf("append rerank scenario = %v, want accepted (in vocabulary)", err)
 	}
 	err = repo.Append(ctx, &biz.ModelCallEntry{Scenario: biz.ModelCallScenarioEmbedDocument, Status: "timeout"})
 	if err == nil || !strings.Contains(err.Error(), "status") {

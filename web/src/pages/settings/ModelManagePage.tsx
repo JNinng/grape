@@ -8,7 +8,9 @@ import {
   listModels,
   updateModel,
   updateModelSuper,
+  MODEL_KINDS,
   type ModelDTO,
+  type ModelKind,
 } from '@/api/models'
 import { usePermissions } from '@/auth/permissions'
 import { PERM } from '@/auth/permissionCodes'
@@ -54,6 +56,18 @@ const EMBEDDING_DIMENSION = 1024
 
 const PROVIDERS = ['openai', 'deepseek', 'qwen', 'glm', 'minimax', 'kimi', 'hunyuan'] as const
 
+// KIND_LABELS 是模型类别的展示名（与 sys_dict model_kind 种子同口径）。
+const KIND_LABELS: Record<ModelKind, string> = {
+  text: '文本模型',
+  embedding: '嵌入模型',
+  rerank: '重排模型',
+}
+
+// kindLabel 渲染类别列：词表外取值原样透出（fail-visible，不吞异常数据）。
+function kindLabel(kind: string): string {
+  return kind in KIND_LABELS ? KIND_LABELS[kind as ModelKind] : kind
+}
+
 function errorHint(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) {
     return err.message
@@ -82,7 +96,7 @@ export function ModelManagePage() {
     setLoading(true)
     setError(null)
     try {
-      const set = await listModels(kind === 'all' ? undefined : (kind as 'text' | 'embedding'))
+      const set = await listModels(kind === 'all' ? undefined : (kind as ModelKind))
       setModels(set.items)
     } catch (err) {
       setError(errorHint(err, '加载模型失败'))
@@ -128,13 +142,16 @@ export function ModelManagePage() {
         </div>
         <div className="flex items-center gap-2">
           <Select value={kind} onValueChange={setKind}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger aria-label="模型类别" className="w-36">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部类别</SelectItem>
-              <SelectItem value="text">文本模型</SelectItem>
-              <SelectItem value="embedding">嵌入模型</SelectItem>
+              {MODEL_KINDS.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {KIND_LABELS[value]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {canCreate ? (
@@ -194,7 +211,7 @@ export function ModelManagePage() {
                   <TableCell className="text-xs text-muted-foreground">
                     {model.platform ? '平台' : '租户'}
                   </TableCell>
-                  <TableCell>{model.kind === 'embedding' ? '嵌入' : '文本'}</TableCell>
+                  <TableCell>{kindLabel(model.kind)}</TableCell>
                   <TableCell className="font-mono text-xs">{model.modelKey}</TableCell>
                   <TableCell>{model.provider}</TableCell>
                   <TableCell className="font-mono text-xs">{model.model}</TableCell>
@@ -363,8 +380,11 @@ function ModelDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="text">文本模型</SelectItem>
-                  <SelectItem value="embedding">嵌入模型</SelectItem>
+                  {MODEL_KINDS.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {KIND_LABELS[value]}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

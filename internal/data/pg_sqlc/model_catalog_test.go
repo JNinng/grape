@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"testing"
+	"time"
 
 	"grape/internal/biz"
 	"grape/internal/conf"
@@ -194,5 +195,73 @@ func TestModelRepo_tenant_key_unique_conflict(t *testing.T) {
 	}
 	if _, err := repo.CreateModel(context.Background(), auth, model, ""); !errors.Is(err, biz.ErrModelAlreadyExists) {
 		t.Fatalf("duplicate create = %v, want ErrModelAlreadyExists", err)
+	}
+}
+
+func TestModelCatalog_rerank_model_resolution(t *testing.T) {
+	d := setupTestDB(t)
+	cipher := modelCatalogTestCipher(t)
+	resolver := modelCatalogTestResolver(t, d, cipher)
+	repo := NewModelRepo(d)
+	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
+	ctx := biz.WithIdentity(context.Background(), auth)
+
+	// 键完全未配置（租户与全局均无 ai.rerank.model）：跳过该层的哨兵。
+	if _, err := resolver.ResolveRerankModel(ctx); !errors.Is(err, biz.ErrRerankUnavailable) {
+		t.Fatalf("resolve without rerank config = %v, want ErrRerankUnavailable", err)
+	}
+
+	// 配置全局键但无 sys_model 行：配置错误返回普通错误，与未配置哨兵
+	// 区分（调用方按调用失败降级，而非静默跳过）。
+	configs := NewConfigRepo(d)
+	value := "bge-reranker:0.6b"
+	if _, err := configs.CreateSuper(ctx, auth, &biz.Config{
+		Status:    1,
+		Name:      "rerank model",
+		ConfigKey: biz.ConfigKeyRerankModel,
+		Value:     &value,
+		ValueType: "string",
+	}); err != nil {
+		t.Fatalf("seed global rerank key: %v", err)
+	}
+	_, err := resolver.ResolveRerankModel(ctx)
+	if err == nil || errors.Is(err, biz.ErrRerankUnavailable) {
+		t.Fatalf("resolve configured-but-missing row = %v, want plain error", err)
+	}
+
+	// 平台 rerank 行就位后解析到该行：端点事实与超时按行声明。
+	created, err := repo.CreateModelPlatform(ctx, auth, &biz.ModelCfg{
+		Status:    1,
+		Kind:      biz.ModelKindRerank,
+		Name:      "BGE Reranker",
+		ModelKey:  "bge-reranker:0.6b",
+		Provider:  "openai",
+		BaseURL:   ptrString("http://127.0.0.1:11434/v1"),
+		Model:     "bge-reranker:0.6b",
+		TimeoutMs: func(v int32) *int32 { return &v }(8000),
+	}, "")
+	if err != nil {
+		t.Fatalf("create platform rerank row: %v", err)
+	}
+	spec, err := resolver.ResolveRerankModel(ctx)
+	if err != nil {
+		t.Fatalf("resolve rerank model: %v", err)
+	}
+	if spec.Key != "bge-reranker:0.6b" || spec.BaseURL != "http://127.0.0.1:11434/v1" || spec.Model != "bge-reranker:0.6b" {
+		t.Fatalf("spec = %+v, want the platform rerank row", spec)
+	}
+	if spec.Timeout != 8*time.Second {
+		t.Fatalf("timeout = %v, want 8s from the row declaration", spec.Timeout)
+	}
+
+	// 停用行 fail-closed：键已配置而模型停用属「配置了但坏了」，返回
+	// 普通错误而非跳过哨兵。
+	created.Status = 0
+	if _, err := repo.UpdateModelPlatform(ctx, auth, created, ""); err != nil {
+		t.Fatalf("disable platform rerank row: %v", err)
+	}
+	_, err = resolver.ResolveRerankModel(ctx)
+	if err == nil || errors.Is(err, biz.ErrRerankUnavailable) {
+		t.Fatalf("resolve disabled rerank row = %v, want plain error", err)
 	}
 }

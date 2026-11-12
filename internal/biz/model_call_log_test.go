@@ -139,7 +139,7 @@ func TestModelCallObserver_drops_rows_with_unknown_scenario_or_status(t *testing
 	ctx := modelCallIdentityContext()
 
 	bad := modelCallEntryOf()
-	bad.Scenario = "rerank" // 词表扩展前的未知场景：放弃该行，不伪造
+	bad.Scenario = "unknown_scene" // 词表外场景：放弃该行，不伪造
 	uc.ObserveModelCall(ctx, bad)
 	if len(repo.appended) != 0 {
 		t.Fatalf("unknown scenario appended, want drop")
@@ -290,7 +290,7 @@ func TestModelCallUsecase_list_filter_normalization_and_identity_gate(t *testing
 		"limit over max":     {Limit: 201},
 		"limit negative":     {Limit: -1},
 		"offset negative":    {Offset: -1},
-		"scenario unknown":   {Scenario: "rerank"},
+		"scenario unknown":   {Scenario: "unknown_scene"},
 		"status unknown":     {Status: "timeout"},
 		"model key too long": {ModelKey: strings.Repeat("k", 129)},
 		"document negative":  {DocumentID: -1},
@@ -311,13 +311,13 @@ func TestValidModelCallScenario_vocabulary(t *testing.T) {
 	for _, ok := range []string{
 		ModelCallScenarioIngestSummary, ModelCallScenarioIngestPrefix,
 		ModelCallScenarioEmbedDocument, ModelCallScenarioEmbedQuery,
-		ModelCallScenarioParseDocument,
+		ModelCallScenarioParseDocument, ModelCallScenarioRerank,
 	} {
 		if !ValidModelCallScenario(ok) {
 			t.Fatalf("scenario %q = false, want in vocabulary", ok)
 		}
 	}
-	if ValidModelCallScenario("") || ValidModelCallScenario("rerank") {
+	if ValidModelCallScenario("") || ValidModelCallScenario("unknown_scene") {
 		t.Fatalf("empty/unknown scenario accepted, want rejected")
 	}
 }

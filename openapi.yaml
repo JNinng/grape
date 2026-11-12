@@ -1083,7 +1083,7 @@ paths:
             parameters:
                 - name: kind
                   in: query
-                  description: 模型类别：text / embedding；空值返回全部。
+                  description: 模型类别：text / embedding / rerank；空值返回全部。
                   schema:
                     type: string
             responses:
@@ -1225,7 +1225,7 @@ paths:
             parameters:
                 - name: kind
                   in: query
-                  description: 按类别过滤（text/embedding）；空值返回全部。
+                  description: 按类别过滤（text/embedding/rerank）；空值返回全部。
                   schema:
                     type: string
             responses:
@@ -3624,7 +3624,7 @@ components:
                     format: int32
                 kind:
                     type: string
-                    description: 模型类别：text / embedding。创建后不可变。
+                    description: 模型类别：text / embedding / rerank。创建后不可变。
                 name:
                     type: string
                     description: 模型展示名。
@@ -3642,7 +3642,9 @@ components:
                     description: 发给 provider 的模型名。
                 dimension:
                     type: integer
-                    description: 嵌入维度；kind=embedding 时本期必须为 1024。
+                    description: |-
+                        嵌入维度；kind=embedding 时本期必须为 1024，其余类别（text / rerank）
+                         不携带。
                     format: int32
                 timeoutMs:
                     type: integer

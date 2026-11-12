@@ -33,7 +33,7 @@ CREATE TABLE public.sys_model
     deleted_at     timestamp(0) DEFAULT NULL::timestamp without time zone NULL,
     CONSTRAINT sys_model_pkey PRIMARY KEY (id),
     CONSTRAINT sys_model_status_chk CHECK (status IN (0, 1)),
-    CONSTRAINT sys_model_kind_chk CHECK (kind IN ('text', 'embedding')),
+    CONSTRAINT sys_model_kind_chk CHECK (kind IN ('text', 'embedding', 'rerank')),
     CONSTRAINT sys_model_dim_chk CHECK (kind <> 'embedding' OR dimension IS NOT NULL),
     CONSTRAINT sys_model_dim_pos_chk CHECK (dimension IS NULL OR dimension > 0),
     CONSTRAINT sys_model_timeout_chk CHECK (timeout_ms IS NULL OR timeout_ms > 0)
@@ -45,7 +45,7 @@ COMMENT ON TABLE public.sys_model IS '模型目录表：tenant_id='''' 为平台
 COMMENT ON COLUMN public.sys_model.id IS '模型 ID [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.sys_model.tenant_id IS '租户 ID，空串为平台行 [@internal]';
 COMMENT ON COLUMN public.sys_model.status IS '数据状态，0：禁用、1：启用；停用不参与解析（fail-closed） [@dynamic: exact, membership, sort @updatable: set]';
-COMMENT ON COLUMN public.sys_model.kind IS '模型类别：text / embedding [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.sys_model.kind IS '模型类别：text / embedding / rerank（rerank 供检索重排，不携带维度） [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.sys_model."name" IS '模型展示名 [@dynamic: fuzzy, exact, sort @updatable: set]';
 COMMENT ON COLUMN public.sys_model.model_key IS '选择键与向量空间键（租户内未删除行间唯一），字符白名单同 vectorSpaceKeyPattern [@dynamic: exact, prefix]';
 COMMENT ON COLUMN public.sys_model.provider IS 'provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等） [@dynamic: exact @updatable: set]';

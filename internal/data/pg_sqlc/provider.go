@@ -22,5 +22,6 @@ var ProviderSet = wire.NewSet(
 	NewOSSConfigResolver,
 	wire.Bind(new(biz.TextModelCatalog), new(*modelResolver)),
 	wire.Bind(new(biz.EmbedderResolver), new(*modelResolver)),
+	wire.Bind(new(biz.RerankModelCatalog), new(*modelResolver)),
 	wire.Bind(new(biz.OSSConfigResolver), new(*ossConfigResolver)),
 )

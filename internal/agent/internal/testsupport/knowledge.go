@@ -34,6 +34,7 @@ func NewStackKnowledgeSearch() *biz.KnowledgeSearchUsecase {
 		StackVectorStore{},
 		&SearchTestEmbedder{Dims: 4},
 		&SearchTestResolver{Dims: 4},
+		nil, // 无重排层：测试栈不装配 reranker
 		EmptyLibraryDirectory{},
 	)
 	if err != nil {

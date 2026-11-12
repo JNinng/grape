@@ -27,7 +27,7 @@ function statusChipClass(status: string): string {
 }
 
 // scenarioOptions 是场景过滤的封闭选项（与后端 biz 词表对齐）；空值即
-// 不过滤。词表扩展（如 rerank）随 biz 常量演进在此追加。
+// 不过滤。词表扩展随 biz 常量演进在此追加。
 const scenarioOptions: Array<{ value: string; label: string }> = [
   { value: '', label: '全部场景' },
   { value: 'ingest_summary', label: '摄取摘要' },
@@ -35,6 +35,7 @@ const scenarioOptions: Array<{ value: string; label: string }> = [
   { value: 'embed_document', label: '摄取向量化' },
   { value: 'embed_query', label: '检索向量化' },
   { value: 'parse_document', label: '外部解析' },
+  { value: 'rerank', label: '检索重排' },
 ]
 
 // tokensText 渲染 token 用量：未上报（null）不以 0 冒充，给占位。
@@ -95,7 +96,7 @@ function ModelCallRow({ row }: { row: ModelCall }) {
 }
 
 // ModelCallPanel 是模型调用留痕面板：管线侧模型/类模型调用的证据面
-//（摄取摘要/块前缀/向量化/外部解析），与检索留痕面板同形态——列表 +
+//（摄取摘要/块前缀/向量化/检索重排/外部解析），与检索留痕面板同形态——列表 +
 // 过滤器（场景/模型键/状态），行展开原样渲染 input/output。数据按租户
 // 查询（服务端认证 + 行级），不随会话选择联动：管线调用没有会话事实。
 export function ModelCallPanel() {

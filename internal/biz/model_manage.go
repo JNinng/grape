@@ -35,25 +35,25 @@ const ModelStatusUnspecified int32 = -1
 // 响应事实而非可写字段。HasAPIKey 由密文或环境变量名是否配置推导，接口
 // 不返回密文与明文。
 type ModelCfg struct {
-	ID         int64
-	Platform   bool
-	Status     int32
-	Kind       string
-	Name       string
-	ModelKey   string
-	Provider   string
-	BaseURL    *string
-	Model      string
-	Dimension  *int32
-	TimeoutMs  *int32
-	HasAPIKey  bool
-	APIKeyEnv  *string
-	Remark     *string
-	CreatedBy  int64
-	UpdatedBy  int64
-	CreatedAt  time.Time
-	UpdatedAt  *time.Time
-	DeletedAt  *time.Time
+	ID        int64
+	Platform  bool
+	Status    int32
+	Kind      string
+	Name      string
+	ModelKey  string
+	Provider  string
+	BaseURL   *string
+	Model     string
+	Dimension *int32
+	TimeoutMs *int32
+	HasAPIKey bool
+	APIKeyEnv *string
+	Remark    *string
+	CreatedBy int64
+	UpdatedBy int64
+	CreatedAt time.Time
+	UpdatedAt *time.Time
+	DeletedAt *time.Time
 }
 
 // ModelRepo 是模型目录仓储接口。租户行与平台行分路径：平台行写经受控
@@ -100,7 +100,7 @@ func (uc *ModelUsecase) GetModel(ctx context.Context, auth Identity, id int64) (
 // ListModels 返回可见模型清单。
 func (uc *ModelUsecase) ListModels(ctx context.Context, auth Identity, kind string) ([]*ModelCfg, error) {
 	kind = strings.TrimSpace(kind)
-	if kind != "" && kind != ModelKindText && kind != ModelKindEmbedding {
+	if !validModelKindFilter(kind) {
 		return nil, ErrModelInvalidArgument
 	}
 	return uc.repo.ListModels(ctx, auth, kind)
@@ -109,10 +109,16 @@ func (uc *ModelUsecase) ListModels(ctx context.Context, auth Identity, kind stri
 // ListModelOptions 返回可见且启用的模型选项（知识库模型下拉用）。
 func (uc *ModelUsecase) ListModelOptions(ctx context.Context, auth Identity, kind string) ([]*ModelCfg, error) {
 	kind = strings.TrimSpace(kind)
-	if kind != "" && kind != ModelKindText && kind != ModelKindEmbedding {
+	if !validModelKindFilter(kind) {
 		return nil, ErrModelInvalidArgument
 	}
 	return uc.repo.ListModelOptions(ctx, auth, kind)
+}
+
+// validModelKindFilter 校验 List 过滤的类别取值：空串不过滤，其余必须
+// 命中类别枚举。
+func validModelKindFilter(kind string) bool {
+	return kind == "" || kind == ModelKindText || kind == ModelKindEmbedding || kind == ModelKindRerank
 }
 
 // CreateModel 创建租户模型行。apiKey 明文非空时加密落库；空值不配置密钥。
@@ -247,22 +253,23 @@ func (uc *ModelUsecase) resolveUpdatedKey(apiKey *string, clear bool, current st
 
 // 模型列宽约束，与 sys_model 列宽对齐。
 const (
-	modelNameMaxRunes    = 128
-	modelKeyMaxRunes     = 128
+	modelNameMaxRunes     = 128
+	modelKeyMaxRunes      = 128
 	modelProviderMaxRunes = 32
-	modelBaseURLMaxRunes = 512
-	modelNameColMaxRunes = 128
-	modelEnvMaxRunes     = 128
-	modelRemarkMaxRunes  = 512
+	modelBaseURLMaxRunes  = 512
+	modelNameColMaxRunes  = 128
+	modelEnvMaxRunes      = 128
+	modelRemarkMaxRunes   = 512
 )
 
 // validateModelCfg 校验模型可变字段：类别在枚举内、名称/模型名必填、
-// model_key 必填且命中白名单（仅创建路径）、嵌入维度固定 1024、超时为正。
+// model_key 必填且命中白名单（仅创建路径）、嵌入维度固定 1024（其余类别
+// 不携带维度）、超时为正。
 func validateModelCfg(m *ModelCfg, update bool) error {
 	if m == nil {
 		return ErrModelInvalidArgument
 	}
-	if m.Kind != ModelKindText && m.Kind != ModelKindEmbedding {
+	if m.Kind != ModelKindText && m.Kind != ModelKindEmbedding && m.Kind != ModelKindRerank {
 		return ErrModelInvalidArgument
 	}
 	if strings.TrimSpace(m.Name) == "" || utf8.RuneCountInString(strings.TrimSpace(m.Name)) > modelNameMaxRunes {

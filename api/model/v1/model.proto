@@ -90,7 +90,7 @@ message Model {
   bool platform = 2;
   // 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
   optional int32 status = 3;
-  // 模型类别：text / embedding。创建后不可变。
+  // 模型类别：text / embedding / rerank。创建后不可变。
   string kind = 4;
   // 模型展示名。
   string name = 5;
@@ -102,7 +102,8 @@ message Model {
   optional string base_url = 8;
   // 发给 provider 的模型名。
   string model = 9;
-  // 嵌入维度；kind=embedding 时本期必须为 1024。
+  // 嵌入维度；kind=embedding 时本期必须为 1024，其余类别（text / rerank）
+  // 不携带。
   optional int32 dimension = 10;
   // 单次调用超时（毫秒）。
   optional int32 timeout_ms = 11;
@@ -144,7 +145,7 @@ message GetModelRequest {
 
 // ListModelsRequest 是 ModelService.ListModels 的输入。
 message ListModelsRequest {
-  // 按类别过滤（text/embedding）；空值返回全部。
+  // 按类别过滤（text/embedding/rerank）；空值返回全部。
   optional string kind = 1;
 }
 

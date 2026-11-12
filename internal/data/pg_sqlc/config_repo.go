@@ -15,12 +15,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// 模型目录解析（biz.TextModelCatalog 与 biz.EmbedderResolver 的 PostgreSQL
-// 实现）：读取 sys_config / sys_tenant_config 的模型键选键，再按
-// 「sys_model 租户行 > 平台行 > conf 对应条目」找端点；租户边界由 RLS
-// 承担（sys_model 读策略放行本租户行与平台行）。停用、软删与未知键一律
-// fail-closed，不静默回落。无缓存：配置点读（唯一索引）成本低，切换即
-// 下一次调用生效。
+// 模型目录解析（biz.TextModelCatalog、biz.EmbedderResolver 与
+// biz.RerankModelCatalog 的 PostgreSQL 实现）：读取 sys_config /
+// sys_tenant_config 的模型键选键，再按「sys_model 租户行 > 平台行 > conf
+// 对应条目」找端点；租户边界由 RLS 承担（sys_model 读策略放行本租户行与
+// 平台行）。停用、软删与未知键一律 fail-closed，不静默回落。无缓存：配置
+// 点读（唯一索引）成本低，切换即下一次调用生效。
 
 // defaultEmbeddingTimeout 是模型行与 conf 条目都未声明超时时的单次调用
 // 上限（与 openaiembedder 的缺省一致）。
@@ -39,13 +39,15 @@ type modelResolver struct {
 }
 
 var (
-	_ biz.TextModelCatalog = (*modelResolver)(nil)
-	_ biz.EmbedderResolver = (*modelResolver)(nil)
+	_ biz.TextModelCatalog   = (*modelResolver)(nil)
+	_ biz.EmbedderResolver   = (*modelResolver)(nil)
+	_ biz.RerankModelCatalog = (*modelResolver)(nil)
 )
 
-// NewModelCatalog 构造模型目录解析器，同时提供 biz.TextModelCatalog 与
-// biz.EmbedderResolver（Wire 以两个接口绑定同一实例）。conf.vector 未启用
-// 时嵌入侧按设施缺失拒绝，文本侧照常工作。
+// NewModelCatalog 构造模型目录解析器，同时提供 biz.TextModelCatalog、
+// biz.EmbedderResolver 与 biz.RerankModelCatalog（Wire 以接口绑定同一
+// 实例）。conf.vector 未启用时嵌入侧按设施缺失拒绝，文本与重排侧照常
+// 工作。
 func NewModelCatalog(c *conf.Agent, v *conf.Vector, d *Data, cipher biz.SecretCipher) (*modelResolver, func(), error) {
 	if cipher == nil {
 		return nil, nil, errors.New("pg_sqlc: model catalog requires a secret cipher")
@@ -130,6 +132,48 @@ func (r *modelResolver) ResolveTextModel(ctx context.Context) (biz.TextModelSpec
 		}, nil
 	}
 	return biz.TextModelSpec{}, fmt.Errorf("%w: %q is neither a visible sys_model row nor the conf.agent.llm model", biz.ErrTextModelUnavailable, key)
+}
+
+// ResolveRerankModel 解析当前身份的重排模型：选键（租户配置 ai.rerank.model
+// > 全局同名键）后按「sys_model 租户行 > 平台行」找端点。rerank 无 conf
+// 兜底条目，形态比文本侧简单。错误语义：键完全未配置报
+// biz.ErrRerankUnavailable（调用方按跳过重排层处理）；键有值而行停用、
+// 软删、类别不符或无可见行是配置错误，返回普通错误（消费方按调用失败
+// 降级并记日志，与未配置相区分，不静默回落）。
+func (r *modelResolver) ResolveRerankModel(ctx context.Context) (biz.RerankModelSpec, error) {
+	auth, err := resolverIdentity(ctx)
+	if err != nil {
+		return biz.RerankModelSpec{}, err
+	}
+	key, err := r.selectedKey(ctx, auth, biz.ConfigKeyRerankModel, "")
+	if err != nil {
+		return biz.RerankModelSpec{}, err
+	}
+	if key == "" {
+		return biz.RerankModelSpec{}, fmt.Errorf("%w: no rerank model key is configured", biz.ErrRerankUnavailable)
+	}
+	row, err := r.lookupModel(ctx, auth, key)
+	if err != nil {
+		return biz.RerankModelSpec{}, err
+	}
+	if row == nil {
+		return biz.RerankModelSpec{}, fmt.Errorf("pg_sqlc: rerank model key %q has no visible sys_model row", key)
+	}
+	if row.Status != 1 || row.Kind != biz.ModelKindRerank {
+		return biz.RerankModelSpec{}, fmt.Errorf("pg_sqlc: rerank model %q is disabled or has a non-rerank kind", key)
+	}
+	apiKey, err := r.apiKeyOf(row)
+	if err != nil {
+		return biz.RerankModelSpec{}, err
+	}
+	return biz.RerankModelSpec{
+		Key:      key,
+		Provider: row.Provider,
+		BaseURL:  stringOrEmpty(row.BaseUrl),
+		Model:    row.Model,
+		APIKey:   apiKey,
+		Timeout:  rerankTimeout(row),
+	}, nil
 }
 
 // ResolveDefaultEmbedder 解析当前身份的默认嵌入空间：租户配置
@@ -335,6 +379,15 @@ func (r *modelResolver) embeddingTimeout(row *gen.SysModel) time.Duration {
 		return time.Duration(*row.TimeoutMs) * time.Millisecond
 	}
 	return defaultEmbeddingTimeout
+}
+
+// rerankTimeout 取模型行超时，缺失返回 0（由调用方实现按其声明的缺省
+// 上限兜底；rerank 无 conf 条目可回落）。
+func rerankTimeout(row *gen.SysModel) time.Duration {
+	if row.TimeoutMs != nil && *row.TimeoutMs > 0 {
+		return time.Duration(*row.TimeoutMs) * time.Millisecond
+	}
+	return 0
 }
 
 // resolverIdentity 从认证 ctx 取身份：缺失或非法（空租户/非正用户）拒绝，

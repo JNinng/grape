@@ -33,7 +33,7 @@ type Model struct {
 	Platform bool `protobuf:"varint,2,opt,name=platform,proto3" json:"platform,omitempty"`
 	// 数据状态：0 禁用、1 启用。创建时可省略（缺省启用）；更新时必填。
 	Status *int32 `protobuf:"varint,3,opt,name=status,proto3,oneof" json:"status,omitempty"`
-	// 模型类别：text / embedding。创建后不可变。
+	// 模型类别：text / embedding / rerank。创建后不可变。
 	Kind string `protobuf:"bytes,4,opt,name=kind,proto3" json:"kind,omitempty"`
 	// 模型展示名。
 	Name string `protobuf:"bytes,5,opt,name=name,proto3" json:"name,omitempty"`
@@ -45,7 +45,8 @@ type Model struct {
 	BaseUrl *string `protobuf:"bytes,8,opt,name=base_url,json=baseUrl,proto3,oneof" json:"base_url,omitempty"`
 	// 发给 provider 的模型名。
 	Model string `protobuf:"bytes,9,opt,name=model,proto3" json:"model,omitempty"`
-	// 嵌入维度；kind=embedding 时本期必须为 1024。
+	// 嵌入维度；kind=embedding 时本期必须为 1024，其余类别（text / rerank）
+	// 不携带。
 	Dimension *int32 `protobuf:"varint,10,opt,name=dimension,proto3,oneof" json:"dimension,omitempty"`
 	// 单次调用超时（毫秒）。
 	TimeoutMs *int32 `protobuf:"varint,11,opt,name=timeout_ms,json=timeoutMs,proto3,oneof" json:"timeout_ms,omitempty"`
@@ -380,7 +381,7 @@ func (x *GetModelRequest) GetId() int64 {
 // ListModelsRequest 是 ModelService.ListModels 的输入。
 type ListModelsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 按类别过滤（text/embedding）；空值返回全部。
+	// 按类别过滤（text/embedding/rerank）；空值返回全部。
 	Kind          *string `protobuf:"bytes,1,opt,name=kind,proto3,oneof" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -42,7 +42,7 @@ type AgentConfirmationLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义
+// 模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义
 type AgentModelCallLog struct {
 	// 日志 ID，自增序列
 	ID int64 `db:"id" json:"id"`
@@ -54,7 +54,7 @@ type AgentModelCallLog struct {
 	TraceID *string `db:"trace_id" json:"trace_id"`
 	// Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表
 	SessionID *string `db:"session_id" json:"session_id"`
-	// 调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展（如 rerank）在 biz 常量与列注释同步
+	// 调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步
 	Scenario string `db:"scenario" json:"scenario"`
 	// 模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL
 	ModelKey *string `db:"model_key" json:"model_key"`
@@ -62,9 +62,9 @@ type AgentModelCallLog struct {
 	Endpoint *string `db:"endpoint" json:"endpoint"`
 	// 作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL
 	DocumentID *int64 `db:"document_id" json:"document_id"`
-	// 输入摘要：completer 记 prompt、embedder 记向量化文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限
+	// 输入摘要：completer 记 prompt、embedder 记向量化文本、reranker 记查询文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限
 	InputSummary *string `db:"input_summary" json:"input_summary"`
-	// 输出摘要：completer 记生成文本、embedder 记维度说明（向量不落库）、docparse 记 markdown 产物截断；空产出记空串（落库 NULL）
+	// 输出摘要：completer 记生成文本、embedder 记维度说明（向量不落库）、reranker 记分数条数说明（分数不落库）、docparse 记 markdown 产物截断；空产出记空串（落库 NULL）
 	OutputSummary *string `db:"output_summary" json:"output_summary"`
 	// 输入 token 用量（端点 usage.prompt_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留（如维度漂移失败行）
 	InputTokens *int32 `db:"input_tokens" json:"input_tokens"`
@@ -578,7 +578,7 @@ type SysModel struct {
 	TenantID string `db:"tenant_id" json:"tenant_id"`
 	// 数据状态，0：禁用、1：启用；停用不参与解析（fail-closed） [@dynamic: exact, membership, sort @updatable: set]
 	Status int16 `db:"status" json:"status"`
-	// 模型类别：text / embedding [@dynamic: exact, membership]
+	// 模型类别：text / embedding / rerank（rerank 供检索重排，不携带维度） [@dynamic: exact, membership]
 	Kind string `db:"kind" json:"kind"`
 	// 模型展示名 [@dynamic: fuzzy, exact, sort @updatable: set]
 	Name string `db:"name" json:"name"`

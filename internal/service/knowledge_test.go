@@ -73,7 +73,7 @@ func newSearchTestService(t *testing.T, store biz.VectorStore, embedder biz.Embe
 
 func newSearchTestServiceWithLibraries(t *testing.T, store biz.VectorStore, embedder biz.Embedder, libraries biz.KnowledgeLibraryDirectory) *KnowledgeService {
 	t.Helper()
-	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{}, libraries)
+	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{}, nil, libraries)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}

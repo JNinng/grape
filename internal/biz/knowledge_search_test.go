@@ -75,7 +75,9 @@ func defaultSearchLibraries() *stubLibraryDirectory {
 
 func newSearchUsecaseForTest(t *testing.T, store VectorStore, embedder Embedder, resolver EmbedderResolver, libraries KnowledgeLibraryDirectory) *KnowledgeSearchUsecase {
 	t.Helper()
-	uc, err := NewKnowledgeSearchUsecase(store, embedder, resolver, libraries)
+	// 缺省不装配重排层（nil 即跳过）；重排编排用例在
+	// knowledge_search_rerank_test.go 自行构造带 reranker 的用例。
+	uc, err := NewKnowledgeSearchUsecase(store, embedder, resolver, nil, libraries)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}
@@ -91,19 +93,19 @@ func TestNewKnowledgeSearchUsecase_missing_dependency_returns_error(t *testing.T
 	resolver := &stubResolver{space: testEmbedderSpace, dim: 4}
 	for name, fn := range map[string]func() error{
 		"nil store": func() error {
-			_, err := NewKnowledgeSearchUsecase(nil, &stubEmbedder{dims: 4}, resolver, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(nil, &stubEmbedder{dims: 4}, resolver, nil, defaultSearchLibraries())
 			return err
 		},
 		"nil embedder": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, nil, resolver, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, nil, resolver, nil, defaultSearchLibraries())
 			return err
 		},
 		"nil resolver": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, nil, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, nil, nil, defaultSearchLibraries())
 			return err
 		},
 		"nil library directory": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, resolver, nil)
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, resolver, nil, nil)
 			return err
 		},
 	} {

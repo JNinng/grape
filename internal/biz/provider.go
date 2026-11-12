@@ -10,7 +10,7 @@ import (
 // 表与复现视图共用的脱敏注册表（单一代码点）：经 wire 装配为
 // 同一实例，消费方按类别取用、不自行构造。知识库用例同时绑定为检索的
 // 可见库集合解析接缝（单一实现，检索与列库工具同源）；模型调用留痕
-// 用例同时绑定为管线侧的 ModelCallObserver 观察面（三个能力目录经接口
+// 用例同时绑定为管线侧的 ModelCallObserver 观察面（四个能力目录经接口
 // 消费）。
 var ProviderSet = wire.NewSet(NewUserUsecase, NewAssignmentUsecase, NewDeptUsecase, NewUserGroupUsecase, NewRoleUsecase, NewMenuUsecase, NewPermissionUsecase, NewDictUsecase, NewConfigUsecase, NewTenantConfigUsecase, NewFeatureFlagUsecase, NewTranslationUsecase, NewTenantUsecase, NewAuditLogUsecase, NewSessionUsecase, NewAuthUsecase, NewAuditUsecase, NewDocumentUsecaseDefault, NewGrantUsecase, NewRetrievalLogUsecase, NewModelCallLogUsecase, NewQueryUsecase, NewRedactRegistry, NewKnowledgeUsecase, NewKnowledgeSearchUsecase, NewModelUsecase,
 	wire.Bind(new(KnowledgeLibraryDirectory), new(*KnowledgeUsecase)),

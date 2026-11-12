@@ -208,7 +208,7 @@ export async function deleteLibrary(id: string): Promise<void> {
   }
 }
 
-export async function listModelOptions(kind?: 'text' | 'embedding'): Promise<ModelOptionSetDTO> {
+export async function listModelOptions(kind?: 'text' | 'embedding' | 'rerank'): Promise<ModelOptionSetDTO> {
   const search = kind ? `?kind=${encodeURIComponent(kind)}` : ''
   const res = await authFetch(`/v1/knowledge/model-options${search}`)
   if (!res.ok) {

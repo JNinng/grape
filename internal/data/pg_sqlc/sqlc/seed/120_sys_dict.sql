@@ -10,7 +10,7 @@
 -- 字典类型：model_kind / model_provider
 INSERT INTO public.sys_dict_type (id, status, "name", code, remark, created_by, created_at, updated_by, updated_at,
                                   deleted_at, tenant_id)
-VALUES (301, 1, '模型类别', 'model_kind', '文本 / 嵌入模型类别枚举', 1, '2026-11-08 10:00:00.000', 1,
+VALUES (301, 1, '模型类别', 'model_kind', '文本 / 嵌入 / 重排模型类别枚举', 1, '2026-11-08 10:00:00.000', 1,
         '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_dict_type (id, status, "name", code, remark, created_by, created_at, updated_by, updated_at,
@@ -27,6 +27,11 @@ VALUES (3101, 1, 301, '文本模型', 'text', 'string', 1, NULL, 1, '2026-11-08 
 INSERT INTO public.sys_dict_data (id, status, dict_type_id, label, value, value_type, sort_order, remark,
                                   created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
 VALUES (3102, 1, 301, '嵌入模型', 'embedding', 'string', 2, NULL, 1, '2026-11-08 10:00:00.000', 1,
+        '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+INSERT INTO public.sys_dict_data (id, status, dict_type_id, label, value, value_type, sort_order, remark,
+                                  created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (3103, 1, 301, '重排模型', 'rerank', 'string', 3, NULL, 1, '2026-11-08 10:00:00.000', 1,
         '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
 
 -- 字典数据：模型 Provider

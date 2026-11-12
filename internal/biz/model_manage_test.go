@@ -70,3 +70,28 @@ func TestValidateModelCfg_model_key_whitelist_and_text_dimension(t *testing.T) {
 		t.Fatalf("create with unspecified status rejected: %v", err)
 	}
 }
+
+func TestValidateModelCfg_rerank_kind_accepted_without_dimension(t *testing.T) {
+	// rerank 类别合法且与文本同形不携带维度（维度是嵌入专属列）。
+	m := validEmbeddingModel()
+	m.Kind = ModelKindRerank
+	m.Name = "Rerank"
+	m.ModelKey = "bge-reranker:0.6b"
+	m.Model = "bge-reranker:0.6b"
+	m.Dimension = nil
+	if err := validateModelCfg(m, false); err != nil {
+		t.Fatalf("rerank model without dimension rejected: %v", err)
+	}
+	// rerank 携带维度按非法拒绝。
+	m.Dimension = ptrInt32(ModelEmbeddingDimension)
+	if err := validateModelCfg(m, false); !errors.Is(err, ErrModelInvalidArgument) {
+		t.Fatalf("rerank model with dimension = %v, want ErrModelInvalidArgument", err)
+	}
+	// 类别过滤校验：空串不过滤，三类枚举命中，其余拒绝。
+	if !validModelKindFilter("") || !validModelKindFilter(ModelKindText) || !validModelKindFilter(ModelKindEmbedding) || !validModelKindFilter(ModelKindRerank) {
+		t.Fatal("valid model kind filter rejected, want accepted")
+	}
+	if validModelKindFilter("audio") {
+		t.Fatal("unknown kind filter accepted, want ErrModelInvalidArgument semantics")
+	}
+}

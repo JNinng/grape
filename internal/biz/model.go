@@ -10,6 +10,11 @@ import (
 //   - ErrTextModelUnavailable：选中的文本模型不可用（停用、软删、键未知，
 //     或既不在 sys_model 也不在 conf）——fail-closed，不静默回落默认模型；
 //   - ErrEmbeddingModelUnavailable：选中的嵌入模型不可用，口径同上；
+//   - ErrRerankUnavailable：rerank 模型键完全未配置（租户与全局 sys_config
+//     均无 ai.rerank.model 值）。这是 Reranker 契约的「跳过该层」哨兵：
+//     重排是质量增强面，调用方按未启用处理（行为与无重排一致），与
+//     「配置了但坏了」（键有值而行停用/软删/类别不符/密钥损坏，返回普通
+//     错误，按调用失败降级）相区分；
 //   - ErrModelSecretUnavailable：模型配置了密钥但主密钥缺失/密文损坏，
 //     无法解密——同样 fail-closed。
 var (
@@ -24,10 +29,12 @@ var (
 const (
 	ConfigKeyTextModel      = "ai.text.model"
 	ConfigKeyEmbeddingModel = "ai.embedding.model"
+	ConfigKeyRerankModel    = "ai.rerank.model"
 	ConfigKeyEmbedderLegacy = "vector.embedder"
 
 	ModelKindText      = "text"
 	ModelKindEmbedding = "embedding"
+	ModelKindRerank    = "rerank"
 
 	// ModelEmbeddingDimension 是本期唯一允许的嵌入维度，与
 	// agent_vector.sql 的唯一 HNSW 索引对齐。放宽维度必须同时改此处、

@@ -62,7 +62,12 @@ function compact(body: object): string {
   return JSON.stringify(body)
 }
 
-export async function listModels(kind?: 'text' | 'embedding'): Promise<ModelSetDTO> {
+// MODEL_KINDS 是模型类别封闭枚举（与 sys_model_kind_chk 同口径）。
+export const MODEL_KINDS = ['text', 'embedding', 'rerank'] as const
+
+export type ModelKind = (typeof MODEL_KINDS)[number]
+
+export async function listModels(kind?: ModelKind): Promise<ModelSetDTO> {
   const search = kind ? `?kind=${encodeURIComponent(kind)}` : ''
   const res = await authFetch(`/v1/models${search}`)
   if (!res.ok) {

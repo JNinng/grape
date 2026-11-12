@@ -103,7 +103,7 @@ func (agentStubLibraryDirectory) VisibleLibraries(context.Context, biz.Identity)
 // 路由用例不触达检索。
 func agentStubSearchUsecase() *biz.KnowledgeSearchUsecase {
 	uc, err := biz.NewKnowledgeSearchUsecase(
-		agentStubVectorStore{}, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, agentStubLibraryDirectory{})
+		agentStubVectorStore{}, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, nil, agentStubLibraryDirectory{})
 	if err != nil {
 		panic("server test: build knowledge search usecase: " + err.Error())
 	}
@@ -228,7 +228,7 @@ func newAgentTestServer(t *testing.T, confServer *conf.Server, llm model.Model) 
 		nil,
 		nil,
 		nil, // AgentModelCallService（本文件用例不触达，传 nil）,
-		nil, nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))), )
+		nil, nil, nil, WebHandler(newWebFileHandler(web.DistFS(), ReservedAPIPrefixes(agentService))))
 	if err != nil {
 		t.Fatalf("build http server: %v", err)
 	}

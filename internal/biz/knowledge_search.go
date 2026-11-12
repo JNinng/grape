@@ -57,9 +57,12 @@ type KnowledgeSearchQuery struct {
 
 // KnowledgeSearchHit 是单条命中：DocumentID 是切片 ID（与留痕命中对账），
 // SourceID 是来源条目 ID（可反查条目原文）；SourceID/SourceName/Anchor
-// 取自切片 metadata，缺失为空。Score 是 RRF 融合分（Σ 1/(k+rank)，仅
-// 同次检索内可比，不代表相似度），Content 为切片原文（不做围栏包装——
-// 围栏是模型面语义）。
+// 取自切片 metadata，缺失为空。Score 是命中分：装配了重排层且本次调用
+// 成功时为 rerank 相关性分，否则（未配置重排、重排失败降级或未装配）为
+// RRF 融合分（Σ 1/(k+rank)）——两种分仅同次检索内可比、不代表相似度，
+// 跨调用与跨形态不可比。候选不足 2 条（单候选）时跳过重排，Score 同样
+// 保持 RRF 融合分。Content 为切片原文（不做围栏包装——围栏是模型面
+// 语义）。
 type KnowledgeSearchHit struct {
 	DocumentID string
 	SourceID   string
@@ -81,18 +84,22 @@ type KnowledgeLibraryDirectory interface {
 // 解析、默认空间解析、查询向量化、固定检索条件组装后直调 VectorStore
 // 契约。租户隔离由契约实现从认证 ctx 强制；库级可见性由本用例解析可见
 // 库集合并注入 kb_id IN 条件。留痕由 data 层装饰器完成，本用例只经 ctx
-// 声明查询文本与来源（缺省 console，工具链路可先声明 tool）。
+// 声明查询文本与来源（缺省 console，工具链路可先声明 tool）。reranker
+// 是可选的重排层挂点（未配置 ai.rerank.model 的部署可不装配）。
 type KnowledgeSearchUsecase struct {
 	store     VectorStore
 	embedder  Embedder
 	resolver  EmbedderResolver
+	reranker  Reranker
 	libraries KnowledgeLibraryDirectory
 	now       func() time.Time
 }
 
 // NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖，
-// 另加可见库解析接缝）。
-func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, libraries KnowledgeLibraryDirectory) (*KnowledgeSearchUsecase, error) {
+// 另加可见库解析接缝）。reranker 允许 nil：nil 即跳过重排层，检索行为
+// 与无重排一致（单测与未装配场景）；非 nil 时的可用性由重排模型解析
+// 决定（未配置按跳过处理，见 Reranker 契约）。
+func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, reranker Reranker, libraries KnowledgeLibraryDirectory) (*KnowledgeSearchUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a vector store")
 	}
@@ -105,18 +112,21 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 	if libraries == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a library directory")
 	}
-	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, libraries: libraries, now: time.Now}, nil
+	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, reranker: reranker, libraries: libraries, now: time.Now}, nil
 }
 
 // Search 在默认嵌入空间内检索调用方可见的知识库：主查询与可选变体各自
 // 独立召回（向量路与词法路同走，两路各取 2×top_k），按 Reciprocal Rank
-// Fusion 融合后取 top_k 返回；无可见库或无命中返回空切片。词法路与向量
-// 路共享同一 conditions 口径与文档宇宙（同租户同空间）；融合只在用例层，
+// Fusion 融合出融合序后取前 2×top_k 作为重排候选；装配了重排层时对候选
+// 逐段打相关性分并按分数降序重排，最后取 top_k 返回（无重排层时直接按
+// 融合序取 top_k，行为与既有口径一致）。词法路与向量路共享同一
+// conditions 口径与文档宇宙（同租户同空间）；融合与重排只在用例层，
 // 存储两路互不感知。可见库集合每次检索现场解析（权限运行时可变，不做
 // 长生命周期缓存）；身份缺失 fail-closed。错误语义：可见库解析、嵌入、
-// 向量路失败让整次检索失败（正确性依赖）；词法路失败按质量增强降级为
-// 仅向量路，记服务日志不失败。设施未启用的错误原样透传（不降级为空
-// 结果）。
+// 向量路失败让整次检索失败（正确性依赖）；词法路失败与重排层失败按
+// 质量增强降级（词法降级为仅向量路、重排降级为融合序），记服务日志
+// 不失败；重排模型未配置（ErrRerankUnavailable）按跳过该层处理，与调用
+// 失败相区分。设施未启用的错误原样透传（不降级为空结果）。
 func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchHit, error) {
 	auth, ok := IdentityFromContext(ctx)
 	if !ok {
@@ -181,9 +191,16 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		routes = append(routes, lexicalHits)
 	}
 
-	results := reciprocalRankFusion(routes, DefaultKnowledgeSearchFusionRRFK, topK)
-	hits := make([]*KnowledgeSearchHit, 0, len(results))
-	for _, r := range results {
+	// 融合序：全量融合后取前 2×top_k 作为重排候选（融合只看排名，取宽
+	// 一点给重排层留足边界召回）；重排层之后最终取 top_k。
+	fused := reciprocalRankFusion(routes, DefaultKnowledgeSearchFusionRRFK, topK*KnowledgeSearchRecallFactor)
+	fused = uc.applyRerank(ctx, query, fused)
+	if len(fused) > topK {
+		fused = fused[:topK]
+	}
+
+	hits := make([]*KnowledgeSearchHit, 0, len(fused))
+	for _, r := range fused {
 		if r == nil || r.Document == nil {
 			continue
 		}
@@ -197,6 +214,43 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		})
 	}
 	return hits, nil
+}
+
+// applyRerank 是检索管线的重排层：对融合序候选（前 2×top_k）按切片内容
+// 打相关性分，分数降序稳定重排（同分保持融合序），Score 改写为重排相关
+// 性分（无重排时 Score 保持 RRF 融合分——两种分仅同次检索内各自可比）。
+// 重排是质量增强非正确性依赖：reranker 未装配（nil）、候选不足 2 条、
+// 重排模型未配置（ErrRerankUnavailable，按跳过该层处理不告警）与其他
+// 调用失败（记服务日志）都降级为融合序继续检索。
+func (uc *KnowledgeSearchUsecase) applyRerank(ctx context.Context, query string, fused []*ScoredVectorDocument) []*ScoredVectorDocument {
+	if uc.reranker == nil || len(fused) < 2 {
+		return fused
+	}
+	documents := make([]string, 0, len(fused))
+	for _, r := range fused {
+		documents = append(documents, r.Document.Content)
+	}
+	// 模型调用留痕场景在此声明（rerank）：重排无 kb_document 行上下文，
+	// 文档 ID 恒缺省。
+	scores, err := uc.reranker.Rerank(WithModelCallScene(ctx, ModelCallScenarioRerank), query, documents)
+	if err != nil {
+		if errors.Is(err, ErrRerankUnavailable) {
+			return fused
+		}
+		slog.WarnContext(ctx, "rerank failed; falling back to fusion order", slog.Any("error", err))
+		return fused
+	}
+	if len(scores) != len(fused) {
+		// 契约要求等长返回：长度不符属实现缺陷，按层失败降级而非错序。
+		slog.WarnContext(ctx, "rerank returned mismatched scores; falling back to fusion order",
+			slog.Int("documents", len(fused)), slog.Int("scores", len(scores)))
+		return fused
+	}
+	for i, s := range scores {
+		fused[i].Score = s
+	}
+	sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+	return fused
 }
 
 // reciprocalRankFusion 是 RRF 融合的纯函数：按各路排名累加 1/(k+rank)

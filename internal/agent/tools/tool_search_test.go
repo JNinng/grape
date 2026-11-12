@@ -66,7 +66,7 @@ func newSearchToolWithStore(store biz.VectorStore, libraries biz.KnowledgeLibrar
 }
 
 func newSearchToolWithResolver(store biz.VectorStore, libraries biz.KnowledgeLibraryDirectory, embedder *testsupport.SearchTestEmbedder, resolver biz.EmbedderResolver) (tool.Tool, biz.VectorStore, *testsupport.SearchTestEmbedder, *fakeLibraryDirectory) {
-	uc, err := biz.NewKnowledgeSearchUsecase(store, embedder, resolver, libraries)
+	uc, err := biz.NewKnowledgeSearchUsecase(store, embedder, resolver, nil, libraries)
 	if err != nil {
 		panic("tools test: build knowledge search usecase: " + err.Error())
 	}

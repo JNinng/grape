@@ -224,9 +224,9 @@ func TestSessionDiscipline(t *testing.T) {
 				return err
 			}
 			// 生产种子 120_sys_dict.sql 为根租户播种模型类别/provider 枚举
-			// （9 条字典数据），不再是空集。
-			if n != 9 {
-				t.Fatalf("t-super-01 saw %d dict rows, want 9", n)
+			// （10 条字典数据），不再是空集。
+			if n != 10 {
+				t.Fatalf("t-super-01 saw %d dict rows, want 10", n)
 			}
 			return nil
 		})

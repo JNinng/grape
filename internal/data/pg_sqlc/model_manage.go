@@ -100,11 +100,11 @@ func (r *modelRepo) ListModels(ctx context.Context, auth biz.Identity, kind stri
 	return out, nil
 }
 
-// ListModelOptions 读取可见且启用的模型选项；kind 为空时合并两类。
+// ListModelOptions 读取可见且启用的模型选项；kind 为空时合并全部类别。
 func (r *modelRepo) ListModelOptions(ctx context.Context, auth biz.Identity, kind string) ([]*biz.ModelCfg, error) {
 	kinds := []string{kind}
 	if kind == "" {
-		kinds = []string{biz.ModelKindText, biz.ModelKindEmbedding}
+		kinds = []string{biz.ModelKindText, biz.ModelKindEmbedding, biz.ModelKindRerank}
 	}
 	var out []*biz.ModelCfg
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
@@ -159,21 +159,21 @@ func (r *modelRepo) CreateModel(ctx context.Context, auth biz.Identity, m *biz.M
 	var out *biz.ModelCfg
 	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
 		row, err := s.Q().InsertSysModelTenant(ctx, gen.InsertSysModelTenantParams{
-			ID:            newID(),
-			Status:        int16(m.Status),
-			Kind:          m.Kind,
-			Name:          m.Name,
-			ModelKey:      m.ModelKey,
-			Provider:      m.Provider,
-			BaseUrl:       m.BaseURL,
-			Model:         m.Model,
-			Dimension:     m.Dimension,
-			TimeoutMs:     m.TimeoutMs,
-			ApiKeyCipher:  cipherPtr(apiKeyCipher),
-			ApiKeyEnv:     m.APIKeyEnv,
-			Remark:        m.Remark,
-			CreatedBy:     auth.UserID,
-			UpdatedBy:     auth.UserID,
+			ID:           newID(),
+			Status:       int16(m.Status),
+			Kind:         m.Kind,
+			Name:         m.Name,
+			ModelKey:     m.ModelKey,
+			Provider:     m.Provider,
+			BaseUrl:      m.BaseURL,
+			Model:        m.Model,
+			Dimension:    m.Dimension,
+			TimeoutMs:    m.TimeoutMs,
+			ApiKeyCipher: cipherPtr(apiKeyCipher),
+			ApiKeyEnv:    m.APIKeyEnv,
+			Remark:       m.Remark,
+			CreatedBy:    auth.UserID,
+			UpdatedBy:    auth.UserID,
 		})
 		if err != nil {
 			return err
@@ -195,18 +195,18 @@ func (r *modelRepo) UpdateModel(ctx context.Context, auth biz.Identity, m *biz.M
 			return err
 		}
 		row, err := s.Q().UpdateSysModelTenant(ctx, gen.UpdateSysModelTenantParams{
-			Status:        int16(m.Status),
-			Name:          m.Name,
-			Provider:      m.Provider,
-			BaseUrl:       m.BaseURL,
-			Model:         m.Model,
-			Dimension:     m.Dimension,
-			TimeoutMs:     m.TimeoutMs,
-			ApiKeyCipher:  cipherPtr(apiKeyCipher),
-			ApiKeyEnv:     m.APIKeyEnv,
-			Remark:        m.Remark,
-			UpdatedBy:     auth.UserID,
-			ID:            m.ID,
+			Status:       int16(m.Status),
+			Name:         m.Name,
+			Provider:     m.Provider,
+			BaseUrl:      m.BaseURL,
+			Model:        m.Model,
+			Dimension:    m.Dimension,
+			TimeoutMs:    m.TimeoutMs,
+			ApiKeyCipher: cipherPtr(apiKeyCipher),
+			ApiKeyEnv:    m.APIKeyEnv,
+			Remark:       m.Remark,
+			UpdatedBy:    auth.UserID,
+			ID:           m.ID,
 		})
 		if err != nil {
 			return err

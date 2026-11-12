@@ -16,6 +16,7 @@
 | [ossclient](ossclient/) | 对象存储 S3 客户端设施（aws-sdk-go-v2，端点取 sys_config oss.*） |
 | [openaiembedder](openaiembedder/) | 文本向量化设施（OpenAI 兼容端点） |
 | [openaicompleter](openaicompleter/) | 单次文本生成设施（OpenAI 兼容 chat completions） |
+| [openaireranker](openaireranker/) | 检索重排设施（OpenAI 兼容 /rerank，Jina / Cohere 风格） |
 | [gsetokenizer](gsetokenizer/) | 词元切分设施（biz.Tokenizer，go-ego/gse）：中文为第一目标，词典 embed 进二进制，摄取建索引与查询分词共用同一实例 |
 | [docparse](docparse/) | 文件解析设施（biz.FileParser）：Go 内档 xlsx / docx / html 直接产 markdown，外部档（pdf / pptx / 图片）走独立解析服务 HTTP 端点 |
 
@@ -36,7 +37,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/data.go](pg_sqlc/data.go) | 双槽位（master/system）装配期校验；`Pool()` 只供无身份装配期探针，业务读写必须经事务门面 |
 | [pg_sqlc/session.go](pg_sqlc/session.go) | 三类事务门面与 RLS 会话变量注入；Scope 只从这里进入查询 |
 | [pg_sqlc/query_schema.go](pg_sqlc/query_schema.go) | 资源名→生成代码 schema 出口的纯函数注册表，只收录已暴露动态 List 的资源 |
-| [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 模型目录解析：文本模型与嵌入空间选键（租户配置 > 全局配置 > conf），按租户行 > 平台行 > conf 找端点 |
+| [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 模型目录解析：文本/重排模型与嵌入空间选键（租户配置 > 全局配置 > conf），按租户行 > 平台行 > conf 找端点；重排键完全未配置报 `ErrRerankUnavailable`（跳过该层哨兵），rerank 无 conf 兜底条目 |
 | [pg_sqlc/model_manage.go](pg_sqlc/model_manage.go) | 模型目录仓储：租户行普通 DML、平台行经受控函数、密钥密文落库 |
 | [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | AES-256-GCM 密钥加解密（`GRAPE_MODEL_SECRET_KEY`，`v1:` 前缀） |
 | [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页）；kb_library 的库级可见性经 `@scope` / `fn_check_visible` / `fn_can_operate_row` 强制，可见库枚举供检索用例与列库工具共用 |
@@ -54,6 +55,7 @@ SQL 对象的签名、属性与三态返回值见
 | [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 embed_document，输出记维度说明） |
 | [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 ingest_prefix，usage 随响应体采集） |
+| [openaireranker/openaireranker.go](openaireranker/openaireranker.go) | biz.Reranker 的 /rerank 客户端：按当前身份解析重排模型端点、HTTP 客户端按端点+超时缓存、响应 results 按 index 还原为与输入对齐的分数（不覆盖全部下标按协议错误拒绝）；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 rerank，输出只记分数条数说明） |
 | [gsetokenizer/gsetokenizer.go](gsetokenizer/gsetokenizer.go) | biz.Tokenizer 的纯 Go 分词实现（go-ego/gse）：DAG 无 HMM 确定性切分，词典/停用词 embed 装载，词元小写归一并过滤停用词；词法召回的正确性前提是摄取与查询两侧共用本实例 |
 | [docparse/docparse.go](docparse/docparse.go) | biz.FileParser 两档实现：嗅探 MIME 是唯一路由依据；外部档 POST {endpoint}/parse（嗅探事实走自定义头），未配置端点按组合错误拒绝；注入 ModelCallObserver 只在外部档留痕（无场景回落放弃该行，原件字节不落留痕记 size/sha256） |
 
@@ -83,16 +85,17 @@ Agent 审计仓储 [audit_repo.go](pg_sqlc/audit_repo.go)、检索留痕仓储
 RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原子落两表。
 
 模型调用留痕的写入方是 `biz.ModelCallObserver` 观察面
-（`ModelCallLogUsecase` 实现，wire 绑定为同一实例）：三个模型/类模型调用
-能力目录（openaicompleter / openaiembedder / docparse）在「解析出端点事实
-之后、调用终态（含 error）」构造载体并交给观察面——身份缺失放弃该行、
-场景词表由应用层把门、脱敏（`model_call` 类别 4096 rune）与错误摘要
-（512）在观察面完成、独立 5s 短超时旁路写入、失败只记日志不反噬主流程。
-场景与作用文档由调用链路经 ctx 载体声明（`biz.WithModelCallScene` /
-`WithModelCallDocument`），缺失按目录声明的缺省回落（embed→embed_document、
-completer→ingest_prefix；docparse 无回落放弃该行），不伪造其他值。
-向量产物与原件字节不落留痕（embedder 记维度说明、docparse 记
-size/sha256）。agent 对话 LLM 不经本面（会话事件流已承载，避免双写）。
+（`ModelCallLogUsecase` 实现，wire 绑定为同一实例）：四个模型/类模型调用
+能力目录（openaicompleter / openaiembedder / openaireranker / docparse）
+在「解析出端点事实之后、调用终态（含 error）」构造载体并交给观察面——
+身份缺失放弃该行、场景词表由应用层把门、脱敏（`model_call` 类别
+4096 rune）与错误摘要（512）在观察面完成、独立 5s 短超时旁路写入、失败
+只记日志不反噬主流程。场景与作用文档由调用链路经 ctx 载体声明
+（`biz.WithModelCallScene` / `WithModelCallDocument`），缺失按目录声明的
+缺省回落（embed→embed_document、completer→ingest_prefix、
+reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向量产物与
+原件字节不落留痕（embedder 记维度说明、reranker 记分数条数说明、docparse
+记 size/sha256）。agent 对话 LLM 不经本面（会话事件流已承载，避免双写）。
 
 ## 动态查询 schema 出口
 
@@ -191,6 +194,18 @@ go-ego/gse，中文为第一目标）：词典与停用词表 embed 进二进制
 单轮 user message 调用 OpenAI 兼容 chat completions；不设独立设施开关，
 租户未配置文本模型时 Complete 按 `ErrTextModelUnavailable` 拒绝，由消费方
 按质量增强降级处理（见 ingest.md）。
+
+## 检索重排设施
+
+[openaireranker](openaireranker/) 实现 `biz.Reranker`（检索重排，知识检索
+管线 RRF 融合之后的质量增强层）：每次 Rerank 经
+`biz.RerankModelCatalog.ResolveRerankModel` 按当前身份解析重排模型端点，
+POST OpenAI 兼容 /rerank（Jina / Cohere 风格），响应 results 按 index
+还原为与输入顺序对齐的分数（端点返回不覆盖全部下标按协议错误拒绝）；不设
+独立设施开关，可用性完全由重排模型解析决定——租户与全局均未配置
+`ai.rerank.model` 时按 `ErrRerankUnavailable` 拒绝（消费方按跳过该层
+处理，行为与无重排一致），键有值而行停用/软删/类别不符按配置错误拒绝
+（消费方降级为融合序并记日志）。
 
 ## 对象存储设施
 

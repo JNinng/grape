@@ -8,20 +8,20 @@
 -- 固定命名查询承担，见 queries/agent_model_call_log.sql）；日志量较大，
 -- bigserial 自增主键。
 --
--- 留痕点：写入方是管线侧三个模型/类模型调用面的 ModelCallObserver 观察
--- 面（openaicompleter 文本生成、openaiembedder 向量化、docparse 外部解析
--- ——场景词表见 biz/model_call_log.go），观察面按「解析出端点事实之后、
--- 调用终态（含 error）」记一次调用一行；失败行同样留痕（status=error +
--- error 摘要），空产出记 output 为空。租户/用户/trace_id 从认证 ctx 提取，
--- 写入经 IdentityTx（每事务 set_config）。输入/输出摘要在观察面内经
--- pkg/redact 的 model_call 类别脱敏（rune 截断 4096）后落库；向量产物
--- 与原件字节不落留痕（embedder 记维度说明、docparse 记 size/sha256）。
+-- 留痕点：写入侧是管线侧模型/类模型调用面的 ModelCallObserver 观察
+-- 面（openaicompleter 文本生成、openaiembedder 向量化、openaireranker
+-- 检索重排、docparse 外部解析——场景词表见 biz/model_call_log.go），
+-- 观察面按「解析出端点事实之后、调用终态（含 error）」记一次调用一行；
+-- 失败行同样留痕（status=error + error 摘要），空产出记 output 为空。
+-- 租户/用户/trace_id 从认证 ctx 提取，写入经 IdentityTx（每事务
+-- set_config）。输入/输出摘要在观察面内经 pkg/redact 的 model_call 类别
+-- 脱敏（rune 截断 4096）后落库；向量产物与原件字节不落留痕（embedder
+-- 记维度说明、docparse 记 size/sha256、reranker 记分数条数说明）。
 -- agent 对话 LLM 不在本表：会话事件流与 /agui/session-usage 已承载该面
 -- （见 replay.md），避免双写。
 --
 -- scenario 词表由应用层把门（biz 观察面校验），不设数据库 CHECK——
--- 词表扩展（如检索侧 rerank 等未来调用面）不伴随存量行迁移；摘要与错误
--- 列的上限同口径在应用层执行。
+-- 词表扩展不伴随存量行迁移；摘要与错误列的上限同口径在应用层执行。
 --
 -- 保留期与归档策略：本表为证据面，保留与执行口径由根目录 operations.md
 -- 「保留期与归档统一口径」统一裁定（与审计、检索留痕同一口径）。
@@ -63,19 +63,19 @@ CREATE TABLE public.agent_model_call_log
     CONSTRAINT agent_model_call_log_pkey PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE public.agent_model_call_log IS '模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义';
+COMMENT ON TABLE public.agent_model_call_log IS '模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义';
 
 COMMENT ON COLUMN public.agent_model_call_log.id IS '日志 ID，自增序列';
 COMMENT ON COLUMN public.agent_model_call_log.tenant_id IS '租户 ID，取写入事务的 app.tenant_id';
 COMMENT ON COLUMN public.agent_model_call_log.user_id IS '发起操作的用户 ID（认证身份）';
 COMMENT ON COLUMN public.agent_model_call_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL';
 COMMENT ON COLUMN public.agent_model_call_log.session_id IS 'Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表';
-COMMENT ON COLUMN public.agent_model_call_log.scenario IS '调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展（如 rerank）在 biz 常量与列注释同步';
+COMMENT ON COLUMN public.agent_model_call_log.scenario IS '调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步';
 COMMENT ON COLUMN public.agent_model_call_log.model_key IS '模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL';
 COMMENT ON COLUMN public.agent_model_call_log.endpoint IS '调用端点（协议路径完整 URL，如 {base_url}/chat/completions）：按解析现场留痕；端点事实缺失为 NULL';
 COMMENT ON COLUMN public.agent_model_call_log.document_id IS '作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL';
-COMMENT ON COLUMN public.agent_model_call_log.input_summary IS '输入摘要：completer 记 prompt、embedder 记向量化文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限';
-COMMENT ON COLUMN public.agent_model_call_log.output_summary IS '输出摘要：completer 记生成文本、embedder 记维度说明（向量不落库）、docparse 记 markdown 产物截断；空产出记空串（落库 NULL）';
+COMMENT ON COLUMN public.agent_model_call_log.input_summary IS '输入摘要：completer 记 prompt、embedder 记向量化文本、reranker 记查询文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限';
+COMMENT ON COLUMN public.agent_model_call_log.output_summary IS '输出摘要：completer 记生成文本、embedder 记维度说明（向量不落库）、reranker 记分数条数说明（分数不落库）、docparse 记 markdown 产物截断；空产出记空串（落库 NULL）';
 COMMENT ON COLUMN public.agent_model_call_log.input_tokens IS '输入 token 用量（端点 usage.prompt_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留（如维度漂移失败行）';
 COMMENT ON COLUMN public.agent_model_call_log.output_tokens IS '输出 token 用量（端点 usage.completion_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留';
 COMMENT ON COLUMN public.agent_model_call_log.duration_ms IS '调用耗时（毫秒）；未知为 NULL';

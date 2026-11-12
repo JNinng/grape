@@ -290,7 +290,7 @@ message DeleteLibraryRequest {
 
 // ListModelOptionsRequest 是 LibraryService.ListModelOptions 的输入。
 message ListModelOptionsRequest {
-  // 模型类别：text / embedding；空值返回全部。
+  // 模型类别：text / embedding / rerank；空值返回全部。
   optional string kind = 1;
 }
 

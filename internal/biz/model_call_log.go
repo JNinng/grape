@@ -12,9 +12,10 @@ import (
 	"grape/pkg/redact"
 )
 
-// Agent 模型调用留痕：管线侧模型/类模型调用面（文本生成、向量化、外部
-// 文档解析）的证据链契约。写入侧由三个能力目录（openaicompleter /
-// openaiembedder / docparse）经 ModelCallObserver 观察面消费——观察面
+// Agent 模型调用留痕：管线侧模型/类模型调用面（文本生成、向量化、检索
+// 重排、外部文档解析）的证据链契约。写入侧由四个能力目录（openaicompleter /
+// openaiembedder / openaireranker / docparse）经 ModelCallObserver 观察面
+// 消费——观察面
 // 在「解析出端点事实之后、调用终态（含 error）」构造写入载体，用例完成
 // 身份与链路事实补齐、脱敏与截断后旁路落库；查询侧供运维复现视图的手写
 // 端点消费。agent 对话 LLM 不在本域：会话事件流与 /agui/session-usage
@@ -23,10 +24,10 @@ import (
 // 留痕行的领域取值：
 //   - scenario：调用场景。由调用链路经 WithModelCallScene 在调用现场声明；
 //     缺失时按实现声明的缺省回落（embed→embed_document、
-//     completer→ingest_prefix；docparse 无回落，缺失放弃该行），不伪造
-//     其他值。词表扩展（如检索侧 rerank 等未来调用面）在此追加常量并
-//     同步 schema/99_model_call_log.sql 的列注释——表无 CHECK，词表由
-//     应用层把门；
+//     completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失
+//     放弃该行），不伪造其他值。词表扩展在此追加常量并同步
+//     schema/99_model_call_log.sql 的列注释——表无 CHECK，词表由应用层
+//     把门；
 //   - status：调用终态。成功 / 失败（失败行同样留痕——尝试即证据，与
 //     工具调用审计的终态口径一致）；空产出记 output 为空。
 const (
@@ -35,6 +36,7 @@ const (
 	ModelCallScenarioEmbedDocument = "embed_document"
 	ModelCallScenarioEmbedQuery    = "embed_query"
 	ModelCallScenarioParseDocument = "parse_document"
+	ModelCallScenarioRerank        = "rerank"
 
 	ModelCallStatusSuccess = "success"
 	ModelCallStatusError   = "error"
@@ -77,13 +79,13 @@ func ValidModelCallScenario(scenario string) bool {
 	switch scenario {
 	case ModelCallScenarioIngestSummary, ModelCallScenarioIngestPrefix,
 		ModelCallScenarioEmbedDocument, ModelCallScenarioEmbedQuery,
-		ModelCallScenarioParseDocument:
+		ModelCallScenarioParseDocument, ModelCallScenarioRerank:
 		return true
 	}
 	return false
 }
 
-// ModelCallEntry 是一次模型调用的写入侧载体：三个能力目录在调用终态
+// ModelCallEntry 是一次模型调用的写入侧载体：四个能力目录在调用终态
 // 构造，身份与租户不是入参——观察面从认证 ctx 提取（缺失放弃该行，
 // fail-closed 不伪造归属）。InputSummary / OutputSummary / Error 收未
 // 脱敏原文，脱敏与截断是观察面的落库前义务；Endpoint 收解析出的协议
@@ -181,7 +183,7 @@ type ModelCallLogRepo interface {
 	Count(ctx context.Context, filter *ModelCallFilter) (int64, error)
 }
 
-// ModelCallObserver 是模型调用留痕的观察面挂点：三个能力目录在调用终态
+// ModelCallObserver 是模型调用留痕的观察面挂点：四个能力目录在调用终态
 // 调用，实现方（ModelCallLogUsecase）负责身份补齐、脱敏截断与旁路写入。
 // 观察面缺省 nil 即不留痕（能力目录零开销跳过）；观察不改变调用结果与
 // 错误——写入失败只记日志，不反噬业务主流程。

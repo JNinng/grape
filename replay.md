@@ -15,7 +15,7 @@
 | 工具调用审计 | 一次工具调用的终态 | `public.agent_tool_call_log` | 工具执行审计包装器（含恢复路径代执行） |
 | 授权确认审计 | 一次授权终态（人工或系统决定，互斥） | `public.agent_confirmation_log` | ack 决定路由审计面 + 授权终态观察挂点 |
 | 检索留痕 | 一次检索或摄取操作 | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器 |
-| 模型调用留痕 | 管线侧一次模型/类模型调用（文本生成、向量化、外部解析） | `public.agent_model_call_log` | `biz.ModelCallObserver` 观察面（三个能力目录） |
+| 模型调用留痕 | 管线侧一次模型/类模型调用（文本生成、向量化、检索重排、外部解析） | `public.agent_model_call_log` | `biz.ModelCallObserver` 观察面（四个能力目录） |
 | 运行指标 | 进程内聚合 | Prometheus `/metrics` | `biz.AgentRunObserver` 推送 |
 | 链路与日志 | 一次入站请求的因果链 | 日志 `trace_id`/`span_id`、`x-trace-id`、OTel span | 链路中间件与 telemetry 桥接 |
 
@@ -166,7 +166,8 @@ session_id（会话）
 - `requested_top_k` 是存储契约收到的请求值（20 硬上限在其上游：两条检索
   链路都在知识检索用例统一钳制），`effective_top_k` 是实际 LIMIT（非正时
   默认 10）。console 行没有工具调用可对账。
-- 命中上限 50 条，仅存标识与数值，不含正文；rerank 两列预留，当前恒 NULL。
+- 命中上限 50 条，仅存标识与数值，不含正文；rerank 两列预留（重排在检索
+  用例层，装饰器暂未接入），当前恒 NULL。
 - 无论成败都记一行（`status` 区分）；写入独立于被装饰操作，失败只记日志；
   表为 append-only。装饰器实现与阈值见
   [internal/data/README.md](internal/data/README.md#检索留痕装饰器)。
@@ -174,11 +175,12 @@ session_id（会话）
 ### 模型调用留痕
 
 - 观察面（`biz.ModelCallObserver`，由 `ModelCallLogUsecase` 实现）覆盖管线
-  侧三个模型/类模型调用面：文本生成（openaicompleter，场景 `ingest_summary`
+  侧模型/类模型调用面：文本生成（openaicompleter，场景 `ingest_summary`
   文档摘要 / `ingest_prefix` 块前缀）、向量化（openaiembedder，场景
-  `embed_document` 摄取 / `embed_query` 检索）、外部文档解析（docparse，
-  场景 `parse_document`，类模型 OCR）。agent 对话 LLM 不在本面：会话事件
-  流与 `/agui/session-usage` 已承载（见「时间与用量事实」），避免双写。
+  `embed_document` 摄取 / `embed_query` 检索）、检索重排（openaireranker，
+  场景 `rerank`）、外部文档解析（docparse，场景 `parse_document`，类模型
+  OCR）。agent 对话 LLM 不在本面：会话事件流与 `/agui/session-usage`
+  已承载（见「时间与用量事实」），避免双写。
 - 一次调用一行，留痕点在「解析出端点事实之后、调用终态（含 error）」：
   模型/空间解析失败（无端点事实）与外部解析端点未配置（未发生调用）不留
   行；解析成功后的任何失败（协议错误、非 2xx、维度漂移）记
@@ -192,9 +194,9 @@ session_id（会话）
   mime/filename/size/sha256 事实摘要，output 记 markdown 产物截断），
   embedder 的向量产物不落留痕（output 记维度说明）。
 - 场景由调用链路经 ctx 载体声明（`biz.WithModelCallScene`），缺失时按实现
-  声明的缺省回落（embed→`embed_document`、completer→`ingest_prefix`；
-  docparse 无回落，缺失放弃该行），不伪造其他值。词表由应用层把门（表无
-  CHECK），rerank 等未来调用面只在词表留扩展位。
+  声明的缺省回落（embed→`embed_document`、completer→`ingest_prefix`、
+  reranker→`rerank`；docparse 无回落，缺失放弃该行），不伪造其他值。词表
+  由应用层把门（表无 CHECK），词表扩展随调用面演进同步 biz 常量与列注释。
 - 写入与检索留痕同一旁路纪律：身份缺失放弃该行（fail-closed 不伪造）、
   独立短超时预算（5s）、失败只记日志不反噬业务主流程；表为 append-only。
   实现与阈值见 [internal/data/README.md](internal/data/README.md#审计与留痕)。
