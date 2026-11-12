@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"grape/internal/conf"
+	"grape/pkg/secret"
 
 	"github.com/go-kratos/kratos/v3/config"
 	"github.com/go-kratos/kratos/v3/config/env"
@@ -220,5 +222,106 @@ func Test_template_when_configs_body_changes_fails_loudly(t *testing.T) {
 	}
 	if !bytes.HasSuffix(templateConfig, content) {
 		t.Errorf("template/config.yaml diverged from configs/config.yaml body; update both in the same commit")
+	}
+}
+
+// defaultModelKey 与模板占位默认值一致（32 字节本地开发密钥），用于验证
+// 环境变量覆盖确实生效。
+const defaultModelKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+// overrideModelKey 是另一份 32 字节 base64 密钥，经 KRATOS_ 前缀注入。
+const overrideModelKey = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
+
+func Test_template_secret_registry_when_loaded_passes_assembly_validation(t *testing.T) {
+	// 模板经 server 相同加载路径解析出密钥登记表，且默认材料通过装配期
+	// 校验并可用于加解密。
+	dir := t.TempDir()
+	writeTemplateToDir(t, dir)
+
+	bc := loadBootstrapViaServerPath(t, dir)
+
+	group := bc.GetSecret()["module_key_encrypt"]
+	if group == nil {
+		t.Fatal("secret.module_key_encrypt group is missing from the template")
+	}
+	if got := group.GetWrite(); got != "v1" {
+		t.Errorf("secret.module_key_encrypt.write = %q, want %q", got, "v1")
+	}
+	version := group.GetVersions()["v1"]
+	if version == nil {
+		t.Fatal("secret.module_key_encrypt.versions.v1 is missing from the template")
+	}
+	if got := version.GetKind(); got != "AES-256-GCM" {
+		t.Errorf("secret.module_key_encrypt.versions.v1.kind = %q, want %q", got, "AES-256-GCM")
+	}
+	if got := version.GetKey(); got == "" {
+		t.Error("secret.module_key_encrypt.versions.v1.key is empty, want the placeholder default")
+	}
+
+	registry, err := conf.NewSecretRegistry(bc.GetSecret())
+	if err != nil {
+		t.Fatalf("NewSecretRegistry(template) = %v, want nil", err)
+	}
+	sealer, err := registry.Sealer("module_key_encrypt")
+	if err != nil {
+		t.Fatalf("Sealer(module_key_encrypt): %v", err)
+	}
+	ct, err := sealer.Seal("payload")
+	if err != nil {
+		t.Fatalf("Seal with template registry: %v", err)
+	}
+	if got, err := registry.Open(ct); err != nil || got != "payload" {
+		t.Fatalf("Open with template registry = (%q, %v), want payload", got, err)
+	}
+}
+
+func Test_template_secret_registry_when_env_override_applied(t *testing.T) {
+	// env source 仅识别 KRATOS_ 前缀：KRATOS_MODULE_KEY_ENCRYPT_V1 覆盖
+	// 占位默认值，注册表实际使用覆盖后的材料。
+	t.Setenv("KRATOS_MODULE_KEY_ENCRYPT_V1", overrideModelKey)
+	dir := t.TempDir()
+	writeTemplateToDir(t, dir)
+
+	bc := loadBootstrapViaServerPath(t, dir)
+
+	group := bc.GetSecret()["module_key_encrypt"]
+	if group == nil {
+		t.Fatal("secret.module_key_encrypt group is missing from the template")
+	}
+	if got := group.GetVersions()["v1"].GetKey(); got != overrideModelKey {
+		t.Fatalf("secret.module_key_encrypt.versions.v1.key = %q, want the overridden value", got)
+	}
+
+	registry, err := conf.NewSecretRegistry(bc.GetSecret())
+	if err != nil {
+		t.Fatalf("NewSecretRegistry(overridden template) = %v, want nil", err)
+	}
+	sealer, err := registry.Sealer("module_key_encrypt")
+	if err != nil {
+		t.Fatalf("Sealer(module_key_encrypt): %v", err)
+	}
+	ct, err := sealer.Seal("payload")
+	if err != nil {
+		t.Fatalf("Seal with overridden registry: %v", err)
+	}
+	if got, err := registry.Open(ct); err != nil || got != "payload" {
+		t.Fatalf("Open with overridden registry = (%q, %v), want payload", got, err)
+	}
+
+	// 仓库内置默认材料构造的注册表不得解开覆盖后的密文：证明覆盖真正
+	// 进入了注册表，而非仅停留在配置字段。
+	defaultRegistry, err := conf.NewSecretRegistry(map[string]*conf.SecretGroup{
+		"module_key_encrypt": {
+			Write: "v1",
+			Versions: map[string]*conf.SecretVersion{
+				"v1": {Kind: "AES-256-GCM", Key: defaultModelKey},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewSecretRegistry(default material) = %v, want nil", err)
+	}
+	if _, err := defaultRegistry.Open(ct); !errors.Is(err, secret.ErrUnavailable) {
+		t.Fatalf("Open(overridden ciphertext) with default material = %v, want ErrUnavailable", err)
 	}
 }

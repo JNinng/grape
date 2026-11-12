@@ -2,31 +2,36 @@ package pg_sqlc
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"testing"
 	"time"
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	"grape/pkg/secret"
 )
 
 // 模型目录集成测试（真实 PostgreSQL，未设 GRAPE_TEST_* 时跳过）：平台行
 // 双租户可见、租户行覆盖平台行、停用 fail-closed、密钥加解密与唯一冲突。
 
+// modelCatalogTestCipher 用随机生成的 AES-256-GCM 材料构造 write 指针指向
+// v1 的模型密钥 Codec，与装配期登记表同路径。
 func modelCatalogTestCipher(t *testing.T) biz.SecretCipher {
 	t.Helper()
-	key := make([]byte, 32)
-	for i := range key {
-		key[i] = byte(i + 1)
-	}
-	t.Setenv(ModelSecretKeyEnv, base64.StdEncoding.EncodeToString(key))
-	cipher, cleanup, err := NewSecretCipher()
+	material, err := secret.Generate(secret.KindAES256GCM)
 	if err != nil {
-		t.Fatalf("NewSecretCipher: %v", err)
+		t.Fatalf("secret.Generate: %v", err)
 	}
-	t.Cleanup(cleanup)
-	return cipher
+	reg, err := secret.New(
+		map[string]map[string]secret.Material{
+			ModelSecretBusinessKey: {"v1": material},
+		},
+		map[string]string{ModelSecretBusinessKey: "v1"},
+	)
+	if err != nil {
+		t.Fatalf("secret.New: %v", err)
+	}
+	return NewSecretCipher(reg)
 }
 
 func modelCatalogTestResolver(t *testing.T, d *Data, cipher biz.SecretCipher) *modelResolver {

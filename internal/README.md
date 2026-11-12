@@ -7,7 +7,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 
 | 目录 | 简述职责 | 文档 |
 | --- | --- | --- |
-| conf | 配置结构定义（`conf.proto` 生成） | [conf/](conf/) |
+| conf | 配置结构定义（`conf.proto` 生成）与手写解析/装配辅助 | [conf/](conf/) |
 | server | HTTP / gRPC 构建与挂载 | [server/README.md](server/README.md) |
 | middleware | 入口中间件（认证、链路、权限、审计） | [middleware/README.md](middleware/README.md) |
 | ops | 运维出口（`/metrics`） | [ops/README.md](ops/README.md) |
@@ -99,11 +99,13 @@ task 入口与之同构，只是没有 DTO 与查询协议转换：task 只调 b
 - `biz`：仅允许为错误 reason 枚举导入 `api/...`；第三方依赖限装配与基础库
   （wire、`dynq`、kratos errors、`golang.org/x/crypto`、otel trace）；
   **禁止导入 `agent` 与任何 Agent 框架包**。
-- `data`：只为仓储接口与设施契约导入 `biz`。
+- `data`：只为仓储接口与设施契约导入 `biz`；模型密钥 Codec 另导入
+  `pkg/secret`（密钥材料由装配层注册表注入，data 只做适配）。
 - `pkg/`：与 internal 各层解耦。`pkg/redact` 被 `data`（debug tracer、
   检索留痕装饰器）、`biz`（审计注册表）、`middleware`（操作审计快照）与
   `agent`（LLM 日志）消费——data 层 debug tracer 自建同默认值实例；
-  `pkg/utils` 仅被 `middleware` 消费。
+  `pkg/secret` 被 `conf`（登记表装配适配）与 `data`（模型密钥 Codec，
+  密钥材料由装配层注册表注入）消费；`pkg/utils` 仅被 `middleware` 消费。
 
 ## 手写端点归属
 

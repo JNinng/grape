@@ -35,6 +35,7 @@
 | [dbdeploy/main.go](dbdeploy/main.go) | 数据库部署命令入口：解析参数并执行 Deploy。 |
 | [dbdeploy/options.go](dbdeploy/options.go) | 部署参数定义与 flag/env 解析校验。 |
 | [dbdeploy/deploy.go](dbdeploy/deploy.go) | 部署流程：校验清单、幂等建库、单事务按清单执行并补 CONNECT 授权。 |
+| [secretctl/main.go](secretctl/main.go) | 密钥运维命令：`algorithms` 列出支持的完整算法标识，`keygen <kind>` 生成可直接填入登记表的密钥材料（首行 `kind:`，字段行与登记表同名）。 |
 
 补充要点：
 
@@ -53,6 +54,9 @@
 - 运行服务：`go run ./cmd/server -conf <目录>`。
 - 数据库部署：`make dbdeploy ARGS="--database <库名>"`。执行顺序、
   幂等边界与升级步骤见 [deploy_db.md](../deploy_db.md)。
+- 密钥运维：`make secretctl ARGS="algorithms"` 列出算法标识；
+  `make secretctl ARGS="keygen AES-256-GCM"` 生成登记表材料。密钥只写
+  stdout，不落日志、不写文件；未知算法标识报错退出且不输出密钥。
 
 ## 测试
 
@@ -62,6 +66,10 @@
 - 模板同步：`cmd/configinit/template/config.yaml` 正文须与
   `configs/config.yaml` 一致，偏离时测试报错，防止两处配置漂移。
 - dbdeploy 参数：flag 优先于环境变量、库名格式校验、缺项报错文案。
+- secretctl：算法清单与 `pkg/secret.SupportedKinds` 同源；`keygen` 输出
+  结构（`kind` 首行 + 字段行，对称仅 `key:`）与 base64 长度；生成材料
+  经 `pkg/secret.New` 装配校验并可往返加解密；未知算法非零退出且 stdout
+  不出现密钥行。
 - 部署清单校验：真实清单通过、缺文件与 `CREATE DATABASE` /
   `CONCURRENTLY` 语句被拒、schema 序号连续与关键顺序约束。
 - 真实库部署（`GRAPE_TEST_ADMIN_DSN` 门控）：全新库往返、生产种子只含

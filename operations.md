@@ -30,6 +30,31 @@ go build -o grape ./cmd/server
   识别 `KRATOS_` 前缀——环境变量形态为 `KRATOS_<层级路径大写>`（如
   `KRATOS_DATABASE_SOURCE` 覆盖 `data.database.master.source`）；无默认值
   的占位在变量缺失时展开为空串，应用侧按必填校验拒绝启动（fail-closed）。
+- 模型密钥登记表：`secret` 段按业务键分组，形态为
+  `secret.<业务键>.write`（写入版本指针）与
+  `secret.<业务键>.versions.<版本>.<kind|key|public_key|private_key>`。
+  当前登记组为 `module_key_encrypt`，`v1` 使用 `AES-256-GCM`（`key` 为
+  base64 编码的 32 字节主密钥）。版本值经
+  `${MODULE_KEY_ENCRYPT_V1:...}` 占位注入，env source 去掉 `KRATOS_`
+  前缀后的键名即占位名，生产以 `KRATOS_MODULE_KEY_ENCRYPT_V1` 覆盖仓库
+  内置的本地开发默认密钥；该默认值是「不落生产明文」口径的显式例外，
+  禁止用于生产。登记表在装配期统一校验（组与版本非空、`write` 指针
+  指向本组已登记版本、算法标识与支持集合精确匹配、字段取用与密钥长度
+  合法），任一不满足即拒绝启动；缺少整个 `secret` 段或登记表为空同样
+  拒绝启动（密钥缺失不降级运行）。注册表启动期固化，改配置需重启。
+- 密文自描述：写入按所在业务键组的 `write` 指针选版本，输出
+  `<基础名@版本>:<nonce>:<密文+tag>`；解密按首段自动选材料，业务代码
+  不感知具体版本。密钥只来自装配期注册表、不随密文传播；加解密失败统一
+  映射为模型密钥不可用，不区分「未登记 / 格式非法 / 认证失败」。
+- 密钥运维：`make secretctl ARGS="algorithms"` 列出支持的完整算法标识；
+  `make secretctl ARGS="keygen AES-256-GCM"` 生成可直接填入登记表的材料
+  （首行 `kind:`，随后 `key:` 或 `public_key:` / `private_key:`）。密钥
+  只写标准输出，不落日志、不写文件。
+- 轮换与升级：轮换在业务键组内进行——登记新版本材料 → 组内 `write`
+  指针切到新版本 → 重启 → 存量重加密 → 确认无旧版本密文残留后下线旧
+  版本条目。复用版本号换材料会使旧密文不可解，禁止。多实例部署必须共享
+  同一份登记表与各组 `write` 指针；指针切换的滚动窗口内新旧实例各写各
+  版本（密文自描述均可解），存量重加密须在全部实例完成切换后执行。
 - LLM 与 embedding 的 api_key 只在 HTTP 客户端配置面存在，从不进日志
   （模型层 logging 回调显式排除）；口令/令牌类日志统一走
   [pkg/redact](pkg/redact/redact.go) 注册表（password/token/tool_param/

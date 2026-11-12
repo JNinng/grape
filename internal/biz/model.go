@@ -15,8 +15,8 @@ import (
 //     重排是质量增强面，调用方按未启用处理（行为与无重排一致），与
 //     「配置了但坏了」（键有值而行停用/软删/类别不符/密钥损坏，返回普通
 //     错误，按调用失败降级）相区分；
-//   - ErrModelSecretUnavailable：模型配置了密钥但主密钥缺失/密文损坏，
-//     无法解密——同样 fail-closed。
+//   - ErrModelSecretUnavailable：模型配置了密钥但登记表缺少该业务键材料/
+//     密文损坏，无法解密——同样 fail-closed。
 var (
 	ErrTextModelUnavailable      = errors.New("biz: text model unavailable")
 	ErrEmbeddingModelUnavailable = errors.New("biz: embedding model unavailable")

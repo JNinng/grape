@@ -11,6 +11,7 @@ import (
 	"grape/internal/biz"
 	"grape/internal/conf"
 	"grape/internal/data/pg_sqlc/gen"
+	"grape/pkg/secret"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -68,20 +69,16 @@ func NewModelCatalog(c *conf.Agent, v *conf.Vector, d *Data, cipher biz.SecretCi
 	return r, func() {}, nil
 }
 
-// NewEmbedderResolver 是仅嵌入侧的兼容构造器（单测与旧装配面）：等价于
-// 用环境变量密钥构造模型目录后只返回嵌入解析接口。生产装配走
+// NewEmbedderResolver 是仅嵌入侧的兼容构造器（单测与旧装配面）：用拒绝式
+// 密钥注册表构造模型目录后只返回嵌入解析接口——本构造面不涉及模型密钥
+// 密文，读到密文行时按 ErrModelSecretUnavailable 拒绝。生产装配走
 // NewModelCatalog。
 func NewEmbedderResolver(c *conf.Vector, d *Data) (biz.EmbedderResolver, func(), error) {
-	cipher, cleanup, err := NewSecretCipher()
+	r, cleanup, err := NewModelCatalog(nil, c, d, NewSecretCipher(secret.NewRejecting()))
 	if err != nil {
 		return nil, nil, err
 	}
-	r, rcleanup, err := NewModelCatalog(nil, c, d, cipher)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	return r, func() { rcleanup(); cleanup() }, nil
+	return r, cleanup, nil
 }
 
 // ResolveTextModel 解析当前身份的文本模型。

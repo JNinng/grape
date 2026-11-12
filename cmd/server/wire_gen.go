@@ -27,6 +27,7 @@ import (
 	"grape/internal/service"
 	"grape/internal/task"
 	"grape/internal/telemetry"
+	"grape/pkg/secret"
 	"log/slog"
 )
 
@@ -37,7 +38,7 @@ import (
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
-func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, confVector *conf.Vector, confTelemetry *conf.Telemetry, confOSS *conf.OSS, docParse *conf.DocParse, logger *slog.Logger) (*kratos.App, func(), error) {
+func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, confAgent *conf.Agent, confVector *conf.Vector, confTelemetry *conf.Telemetry, confOSS *conf.OSS, docParse *conf.DocParse, registry *secret.Registry, logger *slog.Logger) (*kratos.App, func(), error) {
 	setup, cleanup, err := telemetry.NewSetup(confTelemetry, logger)
 	if err != nil {
 		return nil, nil, err
@@ -123,8 +124,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	retrievalLogRepo := pg_sqlc.NewRetrievalLogRepo(pg_sqlcData)
-	registry := biz.NewRedactRegistry()
-	vectorStore, cleanup5, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, registry)
+	redactRegistry := biz.NewRedactRegistry()
+	vectorStore, cleanup5, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, redactRegistry)
 	if err != nil {
 		cleanup4()
 		cleanup3()
@@ -132,18 +133,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	secretCipher, cleanup6, err := pg_sqlc.NewSecretCipher()
+	secretCipher := pg_sqlc.NewSecretCipher(registry)
+	modelResolver, cleanup6, err := pg_sqlc.NewModelCatalog(confAgent, confVector, pg_sqlcData, secretCipher)
 	if err != nil {
-		cleanup5()
-		cleanup4()
-		cleanup3()
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	modelResolver, cleanup7, err := pg_sqlc.NewModelCatalog(confAgent, confVector, pg_sqlcData, secretCipher)
-	if err != nil {
-		cleanup6()
 		cleanup5()
 		cleanup4()
 		cleanup3()
@@ -152,10 +144,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	modelCallLogRepo := pg_sqlc.NewModelCallLogRepo(pg_sqlcData)
-	modelCallLogUsecase := biz.NewModelCallLogUsecase(modelCallLogRepo, registry)
-	embedder, cleanup8, err := openaiembedder.New(modelResolver, confVector, modelCallLogUsecase)
+	modelCallLogUsecase := biz.NewModelCallLogUsecase(modelCallLogRepo, redactRegistry)
+	embedder, cleanup7, err := openaiembedder.New(modelResolver, confVector, modelCallLogUsecase)
 	if err != nil {
-		cleanup7()
 		cleanup6()
 		cleanup5()
 		cleanup4()
@@ -164,9 +155,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	completer, cleanup9, err := openaicompleter.New(modelResolver, modelCallLogUsecase)
+	completer, cleanup8, err := openaicompleter.New(modelResolver, modelCallLogUsecase)
 	if err != nil {
-		cleanup8()
 		cleanup7()
 		cleanup6()
 		cleanup5()
@@ -178,7 +168,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	}
 	documentUsecase, err := biz.NewDocumentUsecaseDefault(vectorStore, embedder, modelResolver, completer)
 	if err != nil {
-		cleanup9()
 		cleanup8()
 		cleanup7()
 		cleanup6()
@@ -190,7 +179,19 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	knowledgeFileRepo := pg_sqlc.NewKnowledgeFileRepo(pg_sqlcData)
-	ossConfigResolver, cleanup10, err := pg_sqlc.NewOSSConfigResolver(pg_sqlcData)
+	ossConfigResolver, cleanup9, err := pg_sqlc.NewOSSConfigResolver(pg_sqlcData)
+	if err != nil {
+		cleanup8()
+		cleanup7()
+		cleanup6()
+		cleanup5()
+		cleanup4()
+		cleanup3()
+		cleanup2()
+		cleanup()
+		return nil, nil, err
+	}
+	objectStore, cleanup10, err := ossclient.New(ossConfigResolver)
 	if err != nil {
 		cleanup9()
 		cleanup8()
@@ -203,23 +204,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	objectStore, cleanup11, err := ossclient.New(ossConfigResolver)
+	fileParser, cleanup11, err := docparse.New(docParse, modelCallLogUsecase)
 	if err != nil {
-		cleanup10()
-		cleanup9()
-		cleanup8()
-		cleanup7()
-		cleanup6()
-		cleanup5()
-		cleanup4()
-		cleanup3()
-		cleanup2()
-		cleanup()
-		return nil, nil, err
-	}
-	fileParser, cleanup12, err := docparse.New(docParse, modelCallLogUsecase)
-	if err != nil {
-		cleanup11()
 		cleanup10()
 		cleanup9()
 		cleanup8()
@@ -233,9 +219,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	knowledgeUsecase := biz.NewKnowledgeUsecase(knowledgeRepo, modelRepo, vectorStore, documentUsecase, knowledgeFileRepo, objectStore, fileParser)
-	reranker, cleanup13, err := openaireranker.New(modelResolver, modelCallLogUsecase)
+	reranker, cleanup12, err := openaireranker.New(modelResolver, modelCallLogUsecase)
 	if err != nil {
-		cleanup12()
 		cleanup11()
 		cleanup10()
 		cleanup9()
@@ -249,9 +234,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver, reranker, knowledgeUsecase, retrievalLogRepo, registry)
+	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver, reranker, knowledgeUsecase, retrievalLogRepo, redactRegistry)
 	if err != nil {
-		cleanup13()
 		cleanup12()
 		cleanup11()
 		cleanup10()
@@ -270,9 +254,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	modelUsecase := biz.NewModelUsecase(modelRepo, secretCipher)
 	modelService := service.NewModelService(modelUsecase)
 	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, knowledgeService, modelService)
-	service2, cleanup14, err := agent.NewSessionService(confAgent, confData)
+	service2, cleanup13, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
-		cleanup13()
 		cleanup12()
 		cleanup11()
 		cleanup10()
@@ -292,10 +275,9 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	grantUsecase := biz.NewGrantUsecase(grantRepo)
 	runtimeMetrics := ops.NewRuntimeMetrics()
 	auditRepo := pg_sqlc.NewAuditRepo(pg_sqlcData)
-	auditUsecase := biz.NewAuditUsecase(auditRepo, registry)
-	stack, cleanup15, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, knowledgeSearchUsecase, grantUsecase, modelResolver, runtimeMetrics, auditUsecase)
+	auditUsecase := biz.NewAuditUsecase(auditRepo, redactRegistry)
+	stack, cleanup14, err := agent.NewStack(confAgent, logger, service2, vectorstoreVectorStore, userUsecase, knowledgeSearchUsecase, grantUsecase, modelResolver, runtimeMetrics, auditUsecase)
 	if err != nil {
-		cleanup14()
 		cleanup13()
 		cleanup12()
 		cleanup11()
@@ -322,9 +304,8 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
 	agentModelCallService := service.NewAgentModelCallService(modelCallLogUsecase)
-	s3Handler, cleanup16, err := oss.NewHandler(confOSS, pg_sqlcData)
+	s3Handler, cleanup15, err := oss.NewHandler(confOSS, pg_sqlcData)
 	if err != nil {
-		cleanup15()
 		cleanup14()
 		cleanup13()
 		cleanup12()
@@ -344,7 +325,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	webHandler := server.NewWebHandler(agentService)
 	httpServer, err := server.NewHTTPServer(confServer, setup, traceMiddleware, routeTimeoutMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, handler, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentService, agentSessionsService, agentEventWindowService, agentAuditService, agentRetrievalService, agentModelCallService, knowledgeService, modelService, s3Handler, webHandler)
 	if err != nil {
-		cleanup16()
 		cleanup15()
 		cleanup14()
 		cleanup13()
@@ -367,7 +347,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	maintenanceTask := task.NewMaintenanceTask(v2, logger)
 	app := newApp(logger, grpcServer, httpServer, maintenanceTask)
 	return app, func() {
-		cleanup16()
 		cleanup15()
 		cleanup14()
 		cleanup13()

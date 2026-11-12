@@ -34,6 +34,11 @@ sqlc:
 dbdeploy:
 	go run ./cmd/dbdeploy $(ARGS)
 
+.PHONY: secretctl
+# secret key operations (algorithms / keygen <kind>)
+secretctl:
+	go run ./cmd/secretctl $(ARGS)
+
 .PHONY: build
 # build
 build:

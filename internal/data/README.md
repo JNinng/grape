@@ -39,7 +39,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/query_schema.go](pg_sqlc/query_schema.go) | 资源名→生成代码 schema 出口的纯函数注册表，只收录已暴露动态 List 的资源 |
 | [pg_sqlc/config_repo.go](pg_sqlc/config_repo.go) | 模型目录解析：文本/重排模型与嵌入空间选键（租户配置 > 全局配置 > conf），按租户行 > 平台行 > conf 找端点；重排键完全未配置报 `ErrRerankUnavailable`（跳过该层哨兵），rerank 无 conf 兜底条目 |
 | [pg_sqlc/model_manage.go](pg_sqlc/model_manage.go) | 模型目录仓储：租户行普通 DML、平台行经受控函数、密钥密文落库 |
-| [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | AES-256-GCM 密钥加解密（`GRAPE_MODEL_SECRET_KEY`，`v1:` 前缀） |
+| [pg_sqlc/secret_cipher.go](pg_sqlc/secret_cipher.go) | 模型密钥加解密：`module_key_encrypt` 组写入按 `write` 指针选版本，读取按自描述密文首段自动选材料（`pkg/secret` Registry 注入） |
 | [pg_sqlc/knowledge.go](pg_sqlc/knowledge.go) | 知识库与条目仓储（动态 List + 库内固定分页）；kb_library 的库级可见性经 `@scope` / `fn_check_visible` / `fn_can_operate_row` 强制，可见库枚举供检索用例与列库工具共用 |
 | [pg_sqlc/knowledge_file.go](pg_sqlc/knowledge_file.go) | 文件介质仓储（kb_file 固定 CRUD）：行 ID 派生对象键 `kb-file/<发号 ID>`，跨租户介质行受 RLS 隔离等同不存在 |
 | [pg_sqlc/session_repo.go](pg_sqlc/session_repo.go) | 会话仓储兼介质维护：过期清理与 token_hash 索引 REINDEX 判定 |
@@ -120,8 +120,9 @@ reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向
 - 找端点：`sys_model` 当前租户行 > 平台行 > conf 对应条目；停用、软删与
   未知键一律 fail-closed，不静默回落。
 - 密钥：`api_key_cipher` 优先经 [secret_cipher.go](pg_sqlc/secret_cipher.go)
-  解密，缺失时读 `api_key_env`；主密钥缺失或密文损坏按
-  `ErrModelSecretUnavailable` 拒绝。
+  解密，缺失时读 `api_key_env`；写入侧按 `module_key_encrypt` 组的
+  `write` 指针选版本，读取按密文首段「基础名@版本」自动选材料。业务键
+  未登记、注册表缺失或密文损坏一律按 `ErrModelSecretUnavailable` 拒绝。
 - 嵌入维度本期固定 1024；平台行只能经 `98_model_write.sql` 受控函数写入。
 
 ## 检索留痕装饰器

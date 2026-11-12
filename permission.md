@@ -249,9 +249,14 @@ update/delete`；平台行写面另设 `sys:model:platform:create/update/delete`
    设施面并列例外（同属绕过路径清单）：内嵌 OSS 数据面 `oss_object` 无
    RLS、`/s3/` 挂载面经 SigV4 签名自证身份（池直连读写，不经事务门面），
    边界口径见上文「三层约束」的内嵌 OSS 段。
-9. **明文密钥的存储口径**：模型 api_key 走密文（`GRAPE_MODEL_SECRET_KEY`
-   加解密，`v1:` 前缀）；`jwt.secret` 类启动密钥经 `${ENV:default}` 占位
-   注入 conf，仓库与配置模板不落明文（见 operations.md「配置与密钥管理」）。
+9. **明文密钥的存储口径**：模型 api_key 落自描述密文
+   （`<基础名@版本>:<nonce>:<密文+tag>`，业务键 `module_key_encrypt`）：
+   密钥材料只来自装配期登记表固化的只读注册表，不随密文传播；加密按该组
+   `write` 指针选版本，解密按密文首段自动选材料；AAD 绑定完整键名与算法，
+   防止密文跨业务键或跨算法挪用；加解密失败统一映射为模型密钥不可用，
+   不区分失败点（见 [pkg/secret](pkg/secret/secret.go)）。`jwt.secret` 类
+   启动密钥经 `${ENV:default}` 占位注入 conf，仓库与配置模板不落明文（见
+   operations.md「配置与密钥管理」）。
    内嵌 OSS 的 `oss.access_key` / `oss.secret_key` 是既有口径之外的新例外：
    落 sys_config `value`（value_type=json）明文，与 `jwt.secret` 同级敏感、
    但不经 conf——S3 凭据属运营配置，需要在运行期经管理端受控写函数

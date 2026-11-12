@@ -205,3 +205,29 @@ doc_parse:
   # 单页预算；文件上传端点的解析与向量化共用 http.embedding_request_
   # timeout 的路由级预算，本值不应超过该预算。
   timeout: 50s
+
+secret:
+  # 密钥登记表：按业务键分组，形态为 secret.<业务键>.write（写入版本
+  # 指针）与 secret.<业务键>.versions.<版本>.<kind|key|public_key|
+  # private_key>。业务键由加解密消费方以代码常量（基础名）绑定，写入
+  # 版本由本组 write 指针声明，解密按密文首段「基础名@版本」自动选材料，
+  # 业务代码不感知具体版本。各业务键组指针相互独立，轮换互不影响；
+  # 装配期统一校验，任一不满足即拒绝启动。
+  module_key_encrypt:
+    # 模型密钥加密组：基础业务键 module_key_encrypt（sys_model.api_key_
+    # cipher 的加解密）。轮换在组内按版本进行：登记新版本材料 → 切换
+    # write 指针并重启 → 存量重加密 → 确认无旧版本密文残留后下线旧条目；
+    # 复用版本号换材料会使旧密文不可解，禁止。
+    write: v1
+    versions:
+      v1:
+        # 完整算法标识，不得写 AES 这类家族名。当前仅支持 AES-256-GCM，
+        # 其 key 为 base64 编码的 32 字节主密钥；对称算法不得填写
+        # public_key / private_key（非对称算法预留，字段取用正好相反）。
+        kind: AES-256-GCM
+        # 本地开发密钥（base64 解码为 32 字节），是「不落生产明文」口径
+        # 的显式例外，禁止用于生产。生产部署以环境变量
+        # KRATOS_MODULE_KEY_ENCRYPT_V1 覆盖本占位默认值（占位键名为
+        # MODULE_KEY_ENCRYPT_V1：env source 仅识别 KRATOS_ 前缀，去掉
+        # 前缀后的键名即占位名）。
+        key: ${MODULE_KEY_ENCRYPT_V1:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}

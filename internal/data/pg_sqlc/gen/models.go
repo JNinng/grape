@@ -592,7 +592,7 @@ type SysModel struct {
 	Dimension *int32 `db:"dimension" json:"dimension"`
 	// 单次调用超时（毫秒），空值回落 conf 默认 [@dynamic: exact, range @updatable: set]
 	TimeoutMs *int32 `db:"timeout_ms" json:"timeout_ms"`
-	// API key 密文（v1:base64(nonce||ciphertext)），只写不读 [@internal]
+	// API key 密文（自描述格式 module_key_encrypt@版本:nonce:密文+tag），只写不读 [@internal]
 	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
 	// API key 环境变量名（密文缺失时回退） [@dynamic: exact @updatable: set]
 	ApiKeyEnv *string `db:"api_key_env" json:"api_key_env"`

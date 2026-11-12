@@ -25,6 +25,42 @@ message Bootstrap {
   OSS oss = 8;
   // 外部文档解析服务配置。
   DocParse doc_parse = 9;
+  // 密钥登记表：按业务键分组，YAML 形态为
+  // secret.<业务键>.write / secret.<业务键>.versions.<版本>.<字段>。
+  // 业务键由加解密消费方以基础名常量绑定，写入版本由 write 指针声明；
+  // 解密按密文首段「基础名@版本」自动选材料。装配期统一校验（登记表
+  // 非空、write 指针有效、键名白名单、算法标识与密钥字段匹配），任一
+  // 不满足即拒绝启动；注册表启动期固化，改配置需重启。
+  map<string, SecretGroup> secret = 10;
+}
+
+// SecretGroup 是一个业务键的密钥版本组：write 声明写入版本指针，
+// versions 承载各版本材料。各业务键组的指针相互独立，轮换互不影响。
+message SecretGroup {
+  // 写入版本指针：必须指向本组 versions 下已登记版本。写入侧 Codec 按
+  // 「基础名 + 本指针」构造，业务代码不感知具体版本。
+  string write = 1;
+  // 版本号（字母数字下划线，如 v1、v2）→ 该版本的密钥材料。复用版本
+  // 号换材料会导致旧密文不可解：轮换须登记新版本号并切换 write 指针。
+  map<string, SecretVersion> versions = 2;
+}
+
+// SecretVersion 是单一版本条目的密钥材料。密钥字段取用由 kind 决定：
+// 对称算法用 key（不得填写 public_key / private_key），非对称算法用
+// public_key / private_key（不得填写 key）。公私钥与对称密钥统一单行
+// base64 口径：固定长度算法（如 Ed25519）编原始字节，结构化算法（如
+// RSA/EC）私钥编 DER、公钥编 SPKI DER（等价 PEM 去头尾），具体编码
+// 对象由 kind 在接入时钉死；多行 PEM 不进登记表。
+message SecretVersion {
+  // 完整算法标识（如 AES-256-GCM），必须是具体算法而非算法家族；
+  // 与当前支持集合精确匹配，家族名（如 AES）或未知变体一律拒绝。
+  string kind = 1;
+  // 对称算法密钥（base64；AES-256-GCM 解码后恰为 32 字节）。
+  string key = 2;
+  // 非对称算法公钥（预留）：单行 base64。
+  string public_key = 3;
+  // 非对称算法私钥（预留）：单行 base64。
+  string private_key = 4;
 }
 
 // OSS 是内嵌对象存储设施（gofakes3，数据落 PostgreSQL oss_object 表）的

@@ -86,6 +86,13 @@ func main() {
 		panic(err)
 	}
 
+	// 密钥登记表在装配期统一校验并固化为只读注册表：任一组/版本/材料
+	// 不合法即拒绝启动（fail-fast）。注册表启动期固化，改配置需重启。
+	secretRegistry, err := conf.NewSecretRegistry(bc.Secret)
+	if err != nil {
+		panic(err)
+	}
+
 	// 日志 sink：标准输出恒在；log.file 配置了路径时额外落盘，滚动与
 	// 保留策略由 lumberjack 承担（0 值项沿用其默认）。
 	sinks := []io.Writer{os.Stdout}
@@ -114,7 +121,7 @@ func main() {
 	)
 	log.SetDefault(logger)
 
-	app, cleanup, err := wireApp(bc.Server, bc.Data, bc.Auth, bc.Agent, bc.Vector, bc.Telemetry, bc.Oss, bc.DocParse, logger)
+	app, cleanup, err := wireApp(bc.Server, bc.Data, bc.Auth, bc.Agent, bc.Vector, bc.Telemetry, bc.Oss, bc.DocParse, secretRegistry, logger)
 	if err != nil {
 		panic(err)
 	}

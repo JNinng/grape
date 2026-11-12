@@ -53,7 +53,7 @@ COMMENT ON COLUMN public.sys_model.base_url IS 'OpenAI 兼容端点根地址 [@d
 COMMENT ON COLUMN public.sys_model.model IS '发给 provider 的模型名，可与 model_key 不同 [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.sys_model.dimension IS '嵌入维度；kind=embedding 时本期强制 1024 [@dynamic: exact, range @updatable: set]';
 COMMENT ON COLUMN public.sys_model.timeout_ms IS '单次调用超时（毫秒），空值回落 conf 默认 [@dynamic: exact, range @updatable: set]';
-COMMENT ON COLUMN public.sys_model.api_key_cipher IS 'API key 密文（v1:base64(nonce||ciphertext)），只写不读 [@internal]';
+COMMENT ON COLUMN public.sys_model.api_key_cipher IS 'API key 密文（自描述格式 module_key_encrypt@版本:nonce:密文+tag），只写不读 [@internal]';
 COMMENT ON COLUMN public.sys_model.api_key_env IS 'API key 环境变量名（密文缺失时回退） [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.sys_model.remark IS '备注 [@dynamic: fuzzy @updatable: set]';
 COMMENT ON COLUMN public.sys_model.created_by IS '创建人 [@dynamic: exact, membership]';
