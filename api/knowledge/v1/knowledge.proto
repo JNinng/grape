@@ -146,8 +146,8 @@ service DocumentService {
 
   // SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
   // 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-  // sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-  // 文本处理。
+  // sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+  // SearchHit.score），正文按原文返回，渲染方按普通文本处理。
   rpc SearchDocuments (SearchDocumentsRequest) returns (SearchDocumentsReply) {
     option (google.api.http) = {
       post: "/v1/knowledge/documents/search"
@@ -373,9 +373,12 @@ message SearchDocumentsRequest {
   int32 top_k = 3;
 }
 
-// SearchHit 是单条检索命中。
+// SearchHit 是单条检索命中（命中切片条目：检索侧的回包聚合把相邻/同节
+// 切片拼成整段回包，是 agent 工具面的语义；本消息仍逐切片映射，不含聚合
+// 进来的兄弟块）。
 message SearchHit {
-  // 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账。
+  // 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账，可经存
+  // 储点查反查切片原文。
   string document_id = 1;
   // 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。
   string source_id = 2;
@@ -383,9 +386,10 @@ message SearchHit {
   string source_name = 3;
   // 原文锚点（rune 区间描述）。
   string anchor = 4;
-  // 归一化相似度，[0,1]，越大越相似。
+  // 命中分：装配重排层且本次调用成功时为 rerank 相关性分，否则为 RRF 融
+  // 合分（Σ 1/(k+rank)）——仅同次检索内可比，不代表相似度，跨调用不可比。
   double score = 5;
-  // 切片正文原文。
+  // 切片正文原文（不做围栏包装——围栏是 agent 工具面语义）。
   string content = 6;
 }
 

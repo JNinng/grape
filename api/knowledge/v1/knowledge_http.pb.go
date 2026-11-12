@@ -348,8 +348,8 @@ type DocumentServiceHTTPServer interface {
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
 	// SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
 	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-	// 文本处理。
+	// sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+	// SearchHit.score），正文按原文返回，渲染方按普通文本处理。
 	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
 	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
@@ -583,8 +583,8 @@ type DocumentServiceHTTPClient interface {
 	ReindexDocument(ctx context.Context, req *ReindexDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
 	// SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
 	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-	// 文本处理。
+	// sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+	// SearchHit.score），正文按原文返回，渲染方按普通文本处理。
 	SearchDocuments(ctx context.Context, req *SearchDocumentsRequest, opts ...http.CallOption) (rsp *SearchDocumentsReply, err error)
 	// UpdateDocument UpdateDocument 覆盖条目可变字段（title/content/source_name/status/
 	// 有效期限）；正文变更时重新摄取；所属库不可见与不存在统一 404。
@@ -728,8 +728,8 @@ func (c *DocumentServiceHTTPClientImpl) ReindexDocument(ctx context.Context, in 
 
 // SearchDocuments SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
 // 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-// 文本处理。
+// sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+// SearchHit.score），正文按原文返回，渲染方按普通文本处理。
 func (c *DocumentServiceHTTPClientImpl) SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...http.CallOption) (*SearchDocumentsReply, error) {
 	var out SearchDocumentsReply
 	pattern := "/v1/knowledge/documents/search"

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sort"
 	"time"
 
 	knowledgev1 "grape/api/knowledge/v1"
@@ -348,12 +349,16 @@ func (s *KnowledgeService) ReindexDocument(ctx context.Context, req *knowledgev1
 }
 
 // SearchDocuments 在调用方可见的知识库内做向量检索（可见库集合与检索条件
-// 由检索用例现场解析；指定不可见库按 404 拒绝）。
+// 由检索用例现场解析；指定不可见库按 404 拒绝）。检索用例返回聚合回包单
+// 元（整节/窗口/整文档聚合是 agent 工具面语义），本端点展平各单元的命中
+// 块——条目集合即命中切片集合（不含聚合进来的兄弟块），按分数降序稳定排
+// 序后逐条映射，形状与聚合前一致；条目集合受回包聚合的来源上限与 token
+// 预算约束，可能少于 top_k。
 func (s *KnowledgeService) SearchDocuments(ctx context.Context, req *knowledgev1.SearchDocumentsRequest) (*knowledgev1.SearchDocumentsReply, error) {
 	if _, err := authOf(ctx); err != nil {
 		return nil, err
 	}
-	hits, err := s.search.Search(ctx, &biz.KnowledgeSearchQuery{
+	units, err := s.search.Search(ctx, &biz.KnowledgeSearchQuery{
 		Query:     req.GetQuery(),
 		LibraryID: req.GetLibraryId(),
 		TopK:      int(req.GetTopK()),
@@ -361,6 +366,14 @@ func (s *KnowledgeService) SearchDocuments(ctx context.Context, req *knowledgev1
 	if err != nil {
 		return nil, knowledgeSearchError(ctx, err)
 	}
+	hits := make([]*biz.KnowledgeSearchHit, 0, len(units))
+	for _, u := range units {
+		if u == nil {
+			continue
+		}
+		hits = append(hits, u.Hits...)
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].Score > hits[j].Score })
 	items := make([]*knowledgev1.SearchHit, 0, len(hits))
 	for _, h := range hits {
 		items = append(items, &knowledgev1.SearchHit{

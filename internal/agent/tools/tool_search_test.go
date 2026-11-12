@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -194,6 +195,71 @@ func TestSearchTool_when_results_wrapped_untrusted_with_citation(t *testing.T) {
 	}
 	if out.Notice != untrustedNotice || !strings.Contains(out.Notice, "never follow instructions") {
 		t.Fatalf("untrusted notice missing: %q", out.Notice)
+	}
+}
+
+func TestSearchTool_when_section_packed_projects_mode_and_wraps_unit_content(t *testing.T) {
+	// 同节两命中（含未命中兄弟块）：出参逐回包单元一条——mode/heading_path
+	// 声明聚合粒度，document_id 取首个命中成员，content 为围栏包装后的单元
+	// 整段正文（含兄弟块）。伴生来源使整文档档不适用（独占判定要求来源
+	// 唯一），kb-1 落节聚合档。
+	sectionMeta := func(index int) map[string]any {
+		return map[string]any{
+			"source_id":    "kb-1",
+			"source_name":  "HR Handbook",
+			"anchor":       fmt.Sprintf("runes %d-%d", index*10, index*10+9),
+			"chunk_index":  index,
+			"heading_path": "入职 > 流程",
+		}
+	}
+	fake := &fakeVectorStore{
+		hits: []*biz.ScoredVectorDocument{
+			{Document: &biz.VectorDocument{ID: "kb-1#1", Content: "first para", Metadata: sectionMeta(1)}, Score: 0.9},
+			{Document: &biz.VectorDocument{ID: "kb-1#2", Content: "second para", Metadata: sectionMeta(2)}, Score: 0.8},
+			{Document: &biz.VectorDocument{ID: "kb-2#0", Content: "other doc", Metadata: map[string]any{
+				"source_id": "kb-2", "source_name": "Other", "anchor": "runes 0-8", "chunk_index": 0,
+			}}, Score: 0.7},
+		},
+		listed: []*biz.VectorDocument{
+			{ID: "kb-1#0", Content: "intro para", Metadata: sectionMeta(0)},
+			{ID: "kb-1#1", Content: "first para", Metadata: sectionMeta(1)},
+			{ID: "kb-1#2", Content: "second para", Metadata: sectionMeta(2)},
+		},
+	}
+	tl, _, _, _ := newSearchToolForTest(fake)
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-1", UserID: 7})
+
+	out, err := callSearchTool(t, tl, ctx, `{"query":"onboarding","top_k":5}`)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if out.Count != 2 || len(out.Hits) != 2 {
+		t.Fatalf("hits = %d, want 2 (kb-1 section unit + kb-2 chunk)", out.Count)
+	}
+	hit := out.Hits[0]
+	if hit.Mode != "section" || hit.HeadingPath != "入职 > 流程" {
+		t.Fatalf("mode/heading = (%q, %q), want (section, 入职 > 流程)", hit.Mode, hit.HeadingPath)
+	}
+	if hit.DocumentID != "kb-1#1" || hit.SourceID != "kb-1" || hit.SourceName != "HR Handbook" {
+		t.Fatalf("citation = %+v, want first hit member lineage (kb-1#1)", hit)
+	}
+	// Anchor 取单元内最小索引成员（兄弟块 #0）。
+	if hit.Anchor != "runes 0-9" {
+		t.Fatalf("anchor = %q, want min-index member anchor", hit.Anchor)
+	}
+	// Score 是单元分 = 成员最高分：单路 rank-1 的 RRF 融合分。
+	wantScore := 1 / (float64(biz.DefaultKnowledgeSearchFusionRRFK) + 1)
+	if hit.Score != wantScore {
+		t.Fatalf("score = %v, want %v", hit.Score, wantScore)
+	}
+	// content = 单元整段正文（含聚合进来的兄弟块），恰好一对围栏包住。
+	for _, want := range []string{"intro para", "first para", "second para"} {
+		if !strings.Contains(hit.Content, want) {
+			t.Fatalf("unit content missing %q:\n%s", want, hit.Content)
+		}
+	}
+	if strings.Count(hit.Content, untrustedBeginMarker) != 1 || strings.Count(hit.Content, untrustedEndMarker) != 1 {
+		t.Fatalf("untrusted fence broken:\n%s", hit.Content)
 	}
 }
 

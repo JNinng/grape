@@ -55,21 +55,26 @@ type KnowledgeSearchQuery struct {
 	TopK      int
 }
 
-// KnowledgeSearchHit 是单条命中：DocumentID 是切片 ID（与留痕命中对账），
-// SourceID 是来源条目 ID（可反查条目原文）；SourceID/SourceName/Anchor
-// 取自切片 metadata，缺失为空。Score 是命中分：装配了重排层且本次调用
-// 成功时为 rerank 相关性分，否则（未配置重排、重排失败降级或未装配）为
-// RRF 融合分（Σ 1/(k+rank)）——两种分仅同次检索内可比、不代表相似度，
-// 跨调用与跨形态不可比。候选不足 2 条（单候选）时跳过重排，Score 同样
-// 保持 RRF 融合分。Content 为切片原文（不做围栏包装——围栏是模型面
-// 语义）。
+// KnowledgeSearchHit 是单条命中切片：作为聚合成员随 KnowledgeSearchUnit
+// 返回（console 消费方展平各单元的 Hits，条目形状与聚合前一致）。DocumentID
+// 是切片 ID（与留痕命中对账），SourceID 是来源条目 ID（可反查条目原文）；
+// SourceID/SourceName/Anchor 取自切片 metadata，缺失为空。ChunkIndex 是切
+// 片在来源内的序号（metadata 缺失为 -1），HeadingPath 是标题切分的标题链
+//（仅结构化切分非空）——两者是回包聚合（pack）的分档依据。Score 是命中
+// 分：装配了重排层且本次调用成功时为 rerank 相关性分，否则（未配置重排、
+// 重排失败降级或未装配）为 RRF 融合分（Σ 1/(k+rank)）——两种分仅同次检
+// 索内可比、不代表相似度，跨调用与跨形态不可比。候选不足 2 条（单候选）
+// 时跳过重排，Score 同样保持 RRF 融合分。Content 为切片原文（不做围栏
+// 包装——围栏是模型面语义）。
 type KnowledgeSearchHit struct {
-	DocumentID string
-	SourceID   string
-	SourceName string
-	Anchor     string
-	Score      float64
-	Content    string
+	DocumentID  string
+	SourceID    string
+	SourceName  string
+	Anchor      string
+	ChunkIndex  int
+	HeadingPath string
+	Score       float64
+	Content     string
 }
 
 // KnowledgeLibraryDirectory 是可见库集合的解析接缝：*KnowledgeUsecase
@@ -118,16 +123,21 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 // Search 在默认嵌入空间内检索调用方可见的知识库：主查询与可选变体各自
 // 独立召回（向量路与词法路同走，两路各取 2×top_k），按 Reciprocal Rank
 // Fusion 融合出融合序后取前 2×top_k 作为重排候选；装配了重排层时对候选
-// 逐段打相关性分并按分数降序重排，最后取 top_k 返回（无重排层时直接按
-// 融合序取 top_k，行为与既有口径一致）。词法路与向量路共享同一
-// conditions 口径与文档宇宙（同租户同空间）；融合与重排只在用例层，
-// 存储两路互不感知。可见库集合每次检索现场解析（权限运行时可变，不做
-// 长生命周期缓存）；身份缺失 fail-closed。错误语义：可见库解析、嵌入、
-// 向量路失败让整次检索失败（正确性依赖）；词法路失败与重排层失败按
-// 质量增强降级（词法降级为仅向量路、重排降级为融合序），记服务日志
-// 不失败；重排模型未配置（ErrRerankUnavailable）按跳过该层处理，与调用
-// 失败相区分。设施未启用的错误原样透传（不降级为空结果）。
-func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchHit, error) {
+// 逐段打相关性分并按分数降序重排，最后取 top_k（无重排层时直接按融合序
+// 取 top_k，行为与既有口径一致）。返回前做回包聚合（pack）：命中块按来源
+// 自动分档——同节多块命中拼整节、无 heading 结构的来源按 chunk_index 相邻
+// 窗口、独占命中的短文档整文档、其余小块直回——并以固定 token 预算封顶
+//（超预算按分数截断、多源保广度每源至少一块、来源数上限 5；粒度参数不
+// 暴露，与 top_k 硬钳同纪律），返回语义见 KnowledgeSearchUnit。词法路与
+// 向量路共享同一 conditions 口径与文档宇宙（同租户同空间）；融合、重排与
+// 回包聚合只在用例层，存储两路互不感知。可见库集合每次检索现场解析（权限
+// 运行时可变，不做长生命周期缓存）；身份缺失 fail-closed。错误语义：可见
+// 库解析、嵌入、向量路失败让整次检索失败（正确性依赖）；词法路失败、重排
+// 层失败与回包聚合的来源全量块拉取失败按质量增强降级（词法降级为仅向量
+// 路、重排降级为融合序、聚合降级为仅命中块直回），记服务日志不失败；重排
+// 模型未配置（ErrRerankUnavailable）按跳过该层处理，与调用失败相区分。
+// 设施未启用的错误原样透传（不降级为空结果）。
+func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchUnit, error) {
 	auth, ok := IdentityFromContext(ctx)
 	if !ok {
 		return nil, ErrSessionInvalid
@@ -142,7 +152,7 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 	}
 	if len(libraryIDs) == 0 {
 		// 无可见库：检索结果必然为空，不触达嵌入与向量设施。
-		return []*KnowledgeSearchHit{}, nil
+		return []*KnowledgeSearchUnit{}, nil
 	}
 	space, dimension, err := uc.resolver.ResolveDefaultEmbedder(ctx)
 	if err != nil {
@@ -204,16 +214,21 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		if r == nil || r.Document == nil {
 			continue
 		}
+		metadata := r.Document.Metadata
 		hits = append(hits, &KnowledgeSearchHit{
-			DocumentID: r.Document.ID,
-			SourceID:   metadataText(r.Document.Metadata, "source_id"),
-			SourceName: metadataText(r.Document.Metadata, "source_name"),
-			Anchor:     metadataText(r.Document.Metadata, "anchor"),
-			Score:      r.Score,
-			Content:    r.Document.Content,
+			DocumentID:  r.Document.ID,
+			SourceID:    metadataText(metadata, "source_id"),
+			SourceName:  metadataText(metadata, "source_name"),
+			Anchor:      metadataText(metadata, "anchor"),
+			ChunkIndex:  packChunkIndex(metadata),
+			HeadingPath: metadataText(metadata, "heading_path"),
+			Score:       r.Score,
+			Content:     r.Document.Content,
 		})
 	}
-	return hits, nil
+	// 回包聚合（pack）：命中块按来源自动分档聚合并以固定预算封顶，返回
+	// 粒度从逐切片命中变为逐回包单元（见 KnowledgeSearchUnit 契约注释）。
+	return uc.packSearchUnits(ctx, hits, space, conditions), nil
 }
 
 // applyRerank 是检索管线的重排层：对融合序候选（前 2×top_k）按切片内容

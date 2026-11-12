@@ -136,7 +136,7 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | `get_current_user` | allow | `UserUsecase.GetUser` | 无入参 |
 | `find_users_by_name` | allow | `UserUsecase.ListUsers`（contains 模糊 + 分页） | name ≤64；limit 1–20（缺省 10） |
 | `update_my_nickname` | confirm | `UserUsecase.UpdateNickname`（只改自己） | nickname ≤256 |
-| `search_internal_docs` | 未列入表（默认 allow） | `KnowledgeSearchUsecase.Search`（可见库集合 + 固定条件 + 向量检索在 biz 收口） | query ≤512；top_k 缺省 5、上限 20 由检索用例钳制；library_id 可选（十进制字符串，省略=全部可见库，非空必须在可见集合内） |
+| `search_internal_docs` | 未列入表（默认 allow） | `KnowledgeSearchUsecase.Search`（可见库集合 + 固定条件 + 双路召回融合重排 + 回包聚合在 biz 收口） | query ≤512；top_k 缺省 5、上限 20 由检索用例钳制；library_id 可选（十进制字符串，省略=全部可见库，非空必须在可见集合内）；出参逐回包单元一条（mode 标记聚合粒度） |
 | `list_knowledge_libraries` | 未列入表（默认 allow） | `KnowledgeSearchUsecase.VisibleLibraries`（与检索同一可见集合解析） | 无入参；出参至多 100 条（超出标记 truncated）；库 id 以字符串出参（int64 超 JSON number 安全范围） |
 
 检索条件（`doc_status=1`、`valid_from_unix <= now`、`valid_to_unix > now`

@@ -14,13 +14,17 @@ import (
 )
 
 // searchFakeStore 是检索端点单测的向量存储替身：只支撑 Search /
-// SearchLexical（词法路恒空，检索走仅向量路的融合序），记录收到的过滤
+// SearchLexical / List（词法路恒空，检索走仅向量路的融合序；List 供回包
+// 聚合取来源全量块，默认无块——聚合降级为仅命中块直回），记录收到的过滤
 // 参数，结果与错误可编程。
 type searchFakeStore struct {
 	biz.VectorStore
 	results []*biz.ScoredVectorDocument
 	err     error
 	filter  *biz.VectorFilter
+
+	listed []*biz.VectorDocument
+	listF  *biz.VectorFilter
 }
 
 func (s *searchFakeStore) Search(_ context.Context, _ []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
@@ -30,6 +34,11 @@ func (s *searchFakeStore) Search(_ context.Context, _ []float32, filter *biz.Vec
 
 func (s *searchFakeStore) SearchLexical(context.Context, string, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
 	return nil, nil
+}
+
+func (s *searchFakeStore) List(_ context.Context, filter *biz.VectorFilter) ([]*biz.VectorDocument, error) {
+	s.listF = filter
+	return s.listed, nil
 }
 
 // searchFakeEmbedder 产出固定 2 维向量，embedErr 注入端点故障。
@@ -115,6 +124,42 @@ func TestSearchDocuments_valid_request_returns_mapped_hits_and_total(t *testing.
 	if hit.GetDocumentId() != "12#0" || hit.GetSourceId() != "12" || hit.GetSourceName() != "员工手册" ||
 		hit.GetAnchor() != "runes 0-6" || hit.GetScore() != wantScore || hit.GetContent() != "年假 5 天" {
 		t.Fatalf("hit = %+v, want mapped fields with rrf score %f", hit, wantScore)
+	}
+}
+
+func TestSearchDocuments_pack_units_flatten_to_hit_chunks_only(t *testing.T) {
+	// 同节两命中 + 兄弟块：展平后的条目集合 = 命中切片集合（兄弟块 #0 不
+	// 入 console 回包），按分数降序。
+	store := &searchFakeStore{
+		results: []*biz.ScoredVectorDocument{
+			{Document: &biz.VectorDocument{ID: "12#1", Content: "第二段", Metadata: map[string]any{
+				"source_id": "12", "source_name": "员工手册", "anchor": "runes 10-19", "chunk_index": 1, "heading_path": "年假",
+			}}},
+			{Document: &biz.VectorDocument{ID: "12#2", Content: "第三段", Metadata: map[string]any{
+				"source_id": "12", "source_name": "员工手册", "anchor": "runes 20-29", "chunk_index": 2, "heading_path": "年假",
+			}}},
+		},
+		listed: []*biz.VectorDocument{
+			{ID: "12#0", Content: "第一段", Metadata: map[string]any{"source_id": "12", "source_name": "员工手册", "anchor": "runes 0-9", "chunk_index": 0, "heading_path": "年假"}},
+			{ID: "12#1", Content: "第二段", Metadata: map[string]any{"source_id": "12", "source_name": "员工手册", "anchor": "runes 10-19", "chunk_index": 1, "heading_path": "年假"}},
+			{ID: "12#2", Content: "第三段", Metadata: map[string]any{"source_id": "12", "source_name": "员工手册", "anchor": "runes 20-29", "chunk_index": 2, "heading_path": "年假"}},
+		},
+	}
+	svc := newSearchTestService(t, store, searchFakeEmbedder{})
+
+	reply, err := svc.SearchDocuments(searchIdentityCtx(), &knowledgev1.SearchDocumentsRequest{Query: "年假"})
+	if err != nil {
+		t.Fatalf("SearchDocuments: %v", err)
+	}
+	if reply.GetTotal() != 2 || len(reply.GetItems()) != 2 {
+		t.Fatalf("reply total/items = %d/%d, want 2/2 (siblings excluded)", reply.GetTotal(), len(reply.GetItems()))
+	}
+	if reply.GetItems()[0].GetDocumentId() != "12#1" || reply.GetItems()[1].GetDocumentId() != "12#2" {
+		t.Fatalf("items = (%s, %s), want hit chunks in score order (12#1, 12#2)",
+			reply.GetItems()[0].GetDocumentId(), reply.GetItems()[1].GetDocumentId())
+	}
+	if reply.GetItems()[0].GetContent() != "第二段" || reply.GetItems()[1].GetContent() != "第三段" {
+		t.Fatalf("contents = (%q, %q), want hit chunk contents", reply.GetItems()[0].GetContent(), reply.GetItems()[1].GetContent())
 	}
 }
 

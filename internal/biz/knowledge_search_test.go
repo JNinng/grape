@@ -14,7 +14,9 @@ var searchTestNow = time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
 
 // recordingSearchStore 是检索用例单测的向量存储替身：记录 Search /
 // SearchLexical 入参与 ctx 留痕事实，返回可编程结果；其余方法沿用
-// mockVectorStore。词法路默认返回空切片（nil results），可编程注入。
+// mockVectorStore。词法路默认返回空切片（nil results），可编程注入；
+// List 按来源回包聚合（pack）消费，lists 以 source_id 键编程来源全量块
+//（nil 键返回 nil——来源全量块不可得，聚合降级为仅命中块直回）。
 type recordingSearchStore struct {
 	mockVectorStore
 	results    []*ScoredVectorDocument
@@ -30,6 +32,19 @@ type recordingSearchStore struct {
 	query        string
 	source       string
 	session      string
+
+	lists   map[string][]*VectorDocument // 来源全量块（pack 聚合用），按 source_id 键
+	listErr error
+	listFs  []*VectorFilter // 历次 List 过滤（pack 拉取口径断言用）
+}
+
+func (s *recordingSearchStore) List(_ context.Context, filter *VectorFilter) ([]*VectorDocument, error) {
+	s.listFs = append(s.listFs, filter)
+	if s.listErr != nil {
+		return nil, s.listErr
+	}
+	source, _ := filter.Metadata["source_id"].(string)
+	return s.lists[source], nil
 }
 
 func (s *recordingSearchStore) Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error) {
@@ -284,12 +299,12 @@ func TestKnowledgeSearch_no_visible_library_returns_empty_without_facility_acces
 	embedder := &stubEmbedder{dims: 4}
 	uc := newSearchUsecaseForTest(t, store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4}, &stubLibraryDirectory{})
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if hits == nil || len(hits) != 0 {
-		t.Fatalf("hits = %#v, want empty non-nil slice", hits)
+	if units == nil || len(units) != 0 {
+		t.Fatalf("units = %#v, want empty non-nil slice", units)
 	}
 	if len(embedder.calls) != 0 || store.calls != 0 {
 		t.Fatalf("embed/store calls = %d/%d, want 0/0", len(embedder.calls), store.calls)
@@ -374,7 +389,7 @@ func TestKnowledgeSearch_VisibleLibraries_delegates_and_requires_identity(t *tes
 	}
 }
 
-func TestKnowledgeSearch_maps_hits_from_metadata_and_raw_content(t *testing.T) {
+func TestKnowledgeSearch_maps_units_from_metadata_and_raw_content(t *testing.T) {
 	store := &recordingSearchStore{results: []*ScoredVectorDocument{
 		{Document: &VectorDocument{ID: "12#0", Content: "<b>raw</b> text", Metadata: map[string]any{
 			"source_id": "12", "source_name": "handbook", "anchor": "runes 0-15",
@@ -384,32 +399,47 @@ func TestKnowledgeSearch_maps_hits_from_metadata_and_raw_content(t *testing.T) {
 	}}
 	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	// Score 是 RRF 融合分：单路命中即 1/(k+rank)，nil 文档不计名次。
 	// 期望值按运行时 float64 口径计算（k 为变量，规避常量折叠的舍入差）。
+	// 来源全量块不可得（替身未编程 lists）：聚合降级为逐命中块直回；
+	// source_id 类型不符（13 为数字）按缺失处理，命中块各自成组。
 	k := float64(DefaultKnowledgeSearchFusionRRFK)
-	want := []*KnowledgeSearchHit{
-		{DocumentID: "12#0", SourceID: "12", SourceName: "handbook", Anchor: "runes 0-15",
-			Score: 1 / (k + 1), Content: "<b>raw</b> text"},
-		{DocumentID: "13#2", Score: 1 / (k + 2), Content: "bare"},
+	want := []*KnowledgeSearchUnit{
+		{
+			Mode: KnowledgeSearchUnitModeChunk, SourceID: "12", SourceName: "handbook",
+			Anchor: "runes 0-15", Score: 1 / (k + 1), Content: "<b>raw</b> text",
+			DocumentIDs: []string{"12#0"},
+			Hits: []*KnowledgeSearchHit{{
+				DocumentID: "12#0", SourceID: "12", SourceName: "handbook",
+				Anchor: "runes 0-15", ChunkIndex: -1, Score: 1 / (k + 1), Content: "<b>raw</b> text",
+			}},
+		},
+		{
+			Mode: KnowledgeSearchUnitModeChunk, Score: 1 / (k + 2), Content: "bare",
+			DocumentIDs: []string{"13#2"},
+			Hits: []*KnowledgeSearchHit{{
+				DocumentID: "13#2", ChunkIndex: -1, Score: 1 / (k + 2), Content: "bare",
+			}},
+		},
 	}
-	if !reflect.DeepEqual(hits, want) {
-		t.Fatalf("hits = %+v, want %+v", hits, want)
+	if !reflect.DeepEqual(units, want) {
+		t.Fatalf("units = %+v, want %+v", units, want)
 	}
 }
 
 func TestKnowledgeSearch_no_results_returns_empty_hits(t *testing.T) {
 	uc := newSearchUsecaseForTest(t, &recordingSearchStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
-	if hits == nil || len(hits) != 0 {
-		t.Fatalf("hits = %#v, want empty non-nil slice", hits)
+	if units == nil || len(units) != 0 {
+		t.Fatalf("units = %#v, want empty non-nil slice", units)
 	}
 }
 
@@ -490,10 +520,11 @@ func TestKnowledgeSearch_fuses_vector_and_lexical_routes_by_rrf(t *testing.T) {
 	}
 	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	flattened, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(flattened)
 	wantOrder := []string{"d2", "d1", "d3"}
 	for i, id := range wantOrder {
 		if hits[i].DocumentID != id {
@@ -521,10 +552,11 @@ func TestKnowledgeSearch_lexical_failure_degrades_to_vector_only(t *testing.T) {
 	}
 	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search with lexical failure = %v, want degraded success", err)
 	}
+	hits := flattenUnitHits(units)
 	if len(hits) != 1 || hits[0].DocumentID != "d1" {
 		t.Fatalf("hits = %v, want vector-only result", hits)
 	}

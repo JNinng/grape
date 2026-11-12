@@ -414,7 +414,8 @@ func TestPGDocumentSearch_oversized_top_k_bounded_by_usecase_cap(t *testing.T) {
 		t.Fatalf("NewDocumentUsecase(small chunks): %v", err)
 	}
 	// 30 块同关键词（同为 e0，全部可召回），top_k 传 1000：检索用例的
-	// 统一上限必须把命中收敛到 MaxKnowledgeSearchTopK。
+	// 统一上限把命中收敛到 MaxKnowledgeSearchTopK；回包聚合后出参逐单元
+	// 一条，单元数不超过命中数（每单元至少含一个命中）。
 	if _, err := pipeline.Ingest(ctx, &biz.Document{
 		Metadata: activeDocMetadata(f.libraryA),
 		ID:       "kb-many",
@@ -423,8 +424,8 @@ func TestPGDocumentSearch_oversized_top_k_bounded_by_usecase_cap(t *testing.T) {
 		t.Fatalf("ingest: %v", err)
 	}
 	out := searchCallTool(t, f, ctx, `{"query":"gamma","top_k":1000}`)
-	if out.Count != biz.MaxKnowledgeSearchTopK {
-		t.Fatalf("hits = %d, want exactly %d (30 recallable chunks, usecase cap binds)",
+	if out.Count < 1 || out.Count > biz.MaxKnowledgeSearchTopK {
+		t.Fatalf("units = %d, want within [1, %d] (usecase cap binds, pack merges hits)",
 			out.Count, biz.MaxKnowledgeSearchTopK)
 	}
 }

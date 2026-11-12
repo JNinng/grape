@@ -1540,10 +1540,13 @@ func (x *SearchDocumentsRequest) GetTopK() int32 {
 	return 0
 }
 
-// SearchHit 是单条检索命中。
+// SearchHit 是单条检索命中（命中切片条目：检索侧的回包聚合把相邻/同节
+// 切片拼成整段回包，是 agent 工具面的语义；本消息仍逐切片映射，不含聚合
+// 进来的兄弟块）。
 type SearchHit struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账。
+	// 切片 ID（"<source_id>#<chunk_index>"），与检索留痕的命中对账，可经存
+	// 储点查反查切片原文。
 	DocumentId string `protobuf:"bytes,1,opt,name=document_id,json=documentId,proto3" json:"document_id,omitempty"`
 	// 来源条目 ID（十进制字符串），可经 GetDocument 反查条目原文。
 	SourceId string `protobuf:"bytes,2,opt,name=source_id,json=sourceId,proto3" json:"source_id,omitempty"`
@@ -1551,9 +1554,10 @@ type SearchHit struct {
 	SourceName string `protobuf:"bytes,3,opt,name=source_name,json=sourceName,proto3" json:"source_name,omitempty"`
 	// 原文锚点（rune 区间描述）。
 	Anchor string `protobuf:"bytes,4,opt,name=anchor,proto3" json:"anchor,omitempty"`
-	// 归一化相似度，[0,1]，越大越相似。
+	// 命中分：装配重排层且本次调用成功时为 rerank 相关性分，否则为 RRF 融
+	// 合分（Σ 1/(k+rank)）——仅同次检索内可比，不代表相似度，跨调用不可比。
 	Score float64 `protobuf:"fixed64,5,opt,name=score,proto3" json:"score,omitempty"`
-	// 切片正文原文。
+	// 切片正文原文（不做围栏包装——围栏是 agent 工具面语义）。
 	Content       string `protobuf:"bytes,6,opt,name=content,proto3" json:"content,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

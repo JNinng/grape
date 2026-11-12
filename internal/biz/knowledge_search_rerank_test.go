@@ -62,10 +62,11 @@ func TestKnowledgeSearch_rerank_reorders_candidates_by_scores(t *testing.T) {
 	reranker := &stubReranker{scores: []float64{0.42, 0.11, 0.97}}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(units)
 	wantOrder := []string{"d3", "d1", "d2"}
 	for i, id := range wantOrder {
 		if hits[i].DocumentID != id {
@@ -95,10 +96,11 @@ func TestKnowledgeSearch_rerank_truncates_candidates_to_recall_window(t *testing
 	reranker := &stubReranker{scores: []float64{0.4, 0.9}}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", TopK: 1})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", TopK: 1})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(units)
 	if len(reranker.documents) != 1 || len(reranker.documents[0]) != 2 {
 		t.Fatalf("rerank documents = %v, want exactly 2 (top 2*top_k of fusion)", reranker.documents)
 	}
@@ -117,10 +119,11 @@ func TestKnowledgeSearch_rerank_single_candidate_skips_layer(t *testing.T) {
 	reranker := &stubReranker{scores: []float64{0.99}}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(units)
 	if len(reranker.queries) != 0 {
 		t.Fatalf("rerank calls = %d, want 0 (single candidate skips the layer)", len(reranker.queries))
 	}
@@ -141,10 +144,11 @@ func TestKnowledgeSearch_rerank_ties_keep_fusion_order(t *testing.T) {
 	reranker := &stubReranker{scores: []float64{0.5, 0.5, 0.5}}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(units)
 	wantOrder := []string{"d1", "d2", "d3"}
 	for i, id := range wantOrder {
 		if hits[i].DocumentID != id {
@@ -163,10 +167,11 @@ func TestKnowledgeSearch_without_reranker_keeps_fusion_order(t *testing.T) {
 	}}
 	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", TopK: 2})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", TopK: 2})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	hits := flattenUnitHits(units)
 	if len(hits) != 2 {
 		t.Fatalf("hits = %d, want 2 (final top_k)", len(hits))
 	}
@@ -188,10 +193,11 @@ func TestKnowledgeSearch_rerank_unavailable_skips_layer_silently(t *testing.T) {
 	reranker := &stubReranker{err: ErrRerankUnavailable}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search with ErrRerankUnavailable = %v, want degraded success", err)
 	}
+	hits := flattenUnitHits(units)
 	k := float64(DefaultKnowledgeSearchFusionRRFK)
 	wantOrder := []string{"d1", "d2", "d3"}
 	for i, id := range wantOrder {
@@ -213,10 +219,11 @@ func TestKnowledgeSearch_rerank_failure_degrades_to_fusion_order(t *testing.T) {
 	reranker := &stubReranker{err: errors.New("rerank endpoint unavailable")}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search with rerank failure = %v, want degraded success", err)
 	}
+	hits := flattenUnitHits(units)
 	k := float64(DefaultKnowledgeSearchFusionRRFK)
 	wantOrder := []string{"d1", "d2", "d3"}
 	for i, id := range wantOrder {
@@ -237,10 +244,11 @@ func TestKnowledgeSearch_rerank_mismatched_scores_degrade_to_fusion_order(t *tes
 	reranker := &stubReranker{scores: []float64{0.9}}
 	uc := newSearchUsecaseWithReranker(t, store, reranker)
 
-	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	units, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if err != nil {
 		t.Fatalf("Search with mismatched scores = %v, want degraded success", err)
 	}
+	hits := flattenUnitHits(units)
 	k := float64(DefaultKnowledgeSearchFusionRRFK)
 	if len(hits) != 2 || hits[0].Score != 1/(k+1) || hits[1].Score != 1/(k+2) {
 		t.Fatalf("hits = %+v, want fusion order with RRF scores", hits)

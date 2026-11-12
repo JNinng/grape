@@ -393,8 +393,8 @@ type DocumentServiceClient interface {
 	ReindexDocument(ctx context.Context, in *ReindexDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	// SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
 	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-	// 文本处理。
+	// sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+	// SearchHit.score），正文按原文返回，渲染方按普通文本处理。
 	SearchDocuments(ctx context.Context, in *SearchDocumentsRequest, opts ...grpc.CallOption) (*SearchDocumentsReply, error)
 }
 
@@ -532,8 +532,8 @@ type DocumentServiceServer interface {
 	ReindexDocument(context.Context, *ReindexDocumentRequest) (*Document, error)
 	// SearchDocuments 在调用方可见的知识库内做向量检索（与 Agent 检索工具
 	// 同一用例：可见库集合现场解析、条目参与、处于有效期内），权限码
-	// sys:knowledge:query。命中按相似度降序，正文按原文返回，渲染方按普通
-	// 文本处理。
+	// sys:knowledge:query。命中按检索分降序（rerank 分或 RRF 融合分，见
+	// SearchHit.score），正文按原文返回，渲染方按普通文本处理。
 	SearchDocuments(context.Context, *SearchDocumentsRequest) (*SearchDocumentsReply, error)
 	mustEmbedUnimplementedDocumentServiceServer()
 }
