@@ -13,8 +13,9 @@ import (
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
 
-// searchFakeStore 是检索端点单测的向量存储替身：只支撑 Search，记录
-// 收到的过滤参数，结果与错误可编程。
+// searchFakeStore 是检索端点单测的向量存储替身：只支撑 Search /
+// SearchLexical（词法路恒空，检索走仅向量路的融合序），记录收到的过滤
+// 参数，结果与错误可编程。
 type searchFakeStore struct {
 	biz.VectorStore
 	results []*biz.ScoredVectorDocument
@@ -25,6 +26,10 @@ type searchFakeStore struct {
 func (s *searchFakeStore) Search(_ context.Context, _ []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
 	s.filter = filter
 	return s.results, s.err
+}
+
+func (s *searchFakeStore) SearchLexical(context.Context, string, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	return nil, nil
 }
 
 // searchFakeEmbedder 产出固定 2 维向量，embedErr 注入端点故障。
@@ -105,9 +110,11 @@ func TestSearchDocuments_valid_request_returns_mapped_hits_and_total(t *testing.
 		t.Fatalf("reply total/items = %d/%d, want 1/1", reply.GetTotal(), len(reply.GetItems()))
 	}
 	hit := reply.GetItems()[0]
+	// Score 是 RRF 融合分：词法路恒空时为单路 rank-1 的 1/(k+1)。
+	wantScore := 1 / (float64(biz.DefaultKnowledgeSearchFusionRRFK) + 1)
 	if hit.GetDocumentId() != "12#0" || hit.GetSourceId() != "12" || hit.GetSourceName() != "员工手册" ||
-		hit.GetAnchor() != "runes 0-6" || hit.GetScore() != 0.8 || hit.GetContent() != "年假 5 天" {
-		t.Fatalf("hit = %+v, want mapped fields", hit)
+		hit.GetAnchor() != "runes 0-6" || hit.GetScore() != wantScore || hit.GetContent() != "年假 5 天" {
+		t.Fatalf("hit = %+v, want mapped fields with rrf score %f", hit, wantScore)
 	}
 }
 
@@ -119,8 +126,10 @@ func TestSearchDocuments_request_fields_reach_store_filter(t *testing.T) {
 		t.Fatalf("SearchDocuments: %v", err)
 	}
 	last := store.filter.Conditions[len(store.filter.Conditions)-1]
-	if store.filter.Limit != 4 || last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || last.Values[0] != "3" {
-		t.Fatalf("filter = %+v, want limit 4 and kb_id IN [3]", store.filter)
+	// 每路召回宽度 = 2×top_k（融合只看排名，宽召回保边界）。
+	wantLimit := 4 * biz.KnowledgeSearchRecallFactor
+	if store.filter.Limit != wantLimit || last.Key != "kb_id" || last.Op != biz.VectorMetadataIn || last.Values[0] != "3" {
+		t.Fatalf("filter = %+v, want limit %d and kb_id IN [3]", store.filter, wantLimit)
 	}
 }
 

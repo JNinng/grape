@@ -73,11 +73,15 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 - **向量 SQL 不进 catalog**：`agent_document` 的存取 SQL 是手写参数化常量
   （[../vector/vector_repo.go](../vector/vector_repo.go)），pgvector 的类型与
   相似度算子超出 sqlc 映射面。表无 RLS，租户隔离由应用层强制；RLS 语句附在
-  `agent_vector.sql` 供按需启用。
+  `agent_vector.sql` 供按需启用。`lexical` 列（tsvector）与其部分 GIN 索引
+  是词法召回的索引面：内容由应用侧分词器（`biz.Tokenizer`）产出、经
+  `::tsvector` 占位符下发，`to_tsvector` 不参与产出（数据库侧不引入分词
+  扩展）；历史库升级见 deploy_db.md「升级」节。
 - **向量索引探针**：每个声明维度一个表达式部分索引，
   `(embedding::vector(N)) vector_cosine_ops WHERE embed_dim = N`；检索 SQL
   重复同一 cast 才命中。pgvector 维度超过 2000 时 vector ops 不可索引。
   HNSW 参数（`vector_cosine_ops`、m / ef_construction）固化在 DDL，不进 conf。
+  词法侧同受装配探针核对：lexical 列必须存在且为 tsvector，缺失启动即失败。
 - **会话框架表无 RLS**：`agent_*` 会话表不进 `@scope`/RLS，租户隔离靠
   userKey（`tenant_id:user_id`）应用层编码，属文档化「设施面」例外。
 - **软删过滤收敛为 `@filter`**：带 `deleted_at` 的业务表声明

@@ -120,7 +120,7 @@ func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 // （空间声明与部署索引对齐）为内层，registry 与生产装配同默认值。
 func newLoggedVectorStoreForTest(t *testing.T, d *pgsqlc.Data, logs biz.RetrievalLogRepo) biz.VectorStore {
 	t.Helper()
-	store, cleanup, err := NewVectorStore(vectorStoreConf(), d)
+	store, cleanup, err := NewVectorStore(vectorStoreConf(), d, sharedTokenizerForTest(t))
 	if err != nil {
 		t.Fatalf("build vector store: %v", err)
 	}

@@ -147,8 +147,10 @@ func TestSearchTool_when_top_k_negative_rejected_and_default_applied(t *testing.
 	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund"}`); err != nil {
 		t.Fatalf("search without top_k: %v", err)
 	}
-	if fake.searchF == nil || fake.searchF.Limit != biz.DefaultKnowledgeSearchTopK {
-		t.Fatalf("default top_k not applied: %+v", fake.searchF)
+	// 每路召回宽度 = 2×top_k（融合只看排名，宽召回保边界；RRF 后截回）。
+	wantLimit := biz.DefaultKnowledgeSearchTopK * biz.KnowledgeSearchRecallFactor
+	if fake.searchF == nil || fake.searchF.Limit != wantLimit {
+		t.Fatalf("default top_k not applied: %+v (want limit %d)", fake.searchF, wantLimit)
 	}
 }
 
@@ -174,8 +176,10 @@ func TestSearchTool_when_results_wrapped_untrusted_with_citation(t *testing.T) {
 	if hit.DocumentID != "kb-1#0" || hit.SourceID != "kb-1" || hit.SourceName != "HR Handbook" || hit.Anchor != "runes 0-43" {
 		t.Fatalf("citation fields drifted: %+v", hit)
 	}
-	if hit.Score != 0.87 {
-		t.Fatalf("score = %v, want 0.87", hit.Score)
+	// Score 是 RRF 融合分：词法路空（替身恒空）时为单路 rank-1 的 1/(k+1)。
+	wantScore := 1 / (float64(biz.DefaultKnowledgeSearchFusionRRFK) + 1)
+	if hit.Score != wantScore {
+		t.Fatalf("score = %v, want %v", hit.Score, wantScore)
 	}
 	// 不可信围栏：恰好一对真实标记，伪造标记被打散，原文仍完整在围栏内。
 	got := hit.Content
@@ -199,9 +203,11 @@ func TestSearchTool_when_top_k_oversized_clamped_by_usecase(t *testing.T) {
 	if _, err := callSearchTool(t, tl, ctx, `{"query":"refund","top_k":1000}`); err != nil {
 		t.Fatalf("search with oversized top_k: %v", err)
 	}
-	// 上限在检索用例统一钳制（工具与前端同一口径），工具无法绕过。
-	if fake.searchF == nil || fake.searchF.Limit != biz.MaxKnowledgeSearchTopK {
-		t.Fatalf("usecase clamp not applied: %+v", fake.searchF)
+	// 上限在检索用例统一钳制（工具与前端同一口径），工具无法绕过；
+	// 钳制后每路召回宽度仍是 2×top_k。
+	wantLimit := biz.MaxKnowledgeSearchTopK * biz.KnowledgeSearchRecallFactor
+	if fake.searchF == nil || fake.searchF.Limit != wantLimit {
+		t.Fatalf("usecase clamp not applied: %+v (want limit %d)", fake.searchF, wantLimit)
 	}
 }
 

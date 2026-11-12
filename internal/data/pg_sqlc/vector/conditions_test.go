@@ -166,4 +166,5 @@ func TestVectorStore_metadata_condition_ops(t *testing.T) {
 		{Key: "", Op: biz.VectorMetadataEq, Values: []any{1}},
 	}}); err == nil {
 		t.Fatal("empty condition key = nil error, want rejection")
-	}}
+	}
+}

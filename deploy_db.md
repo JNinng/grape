@@ -251,6 +251,25 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   加条目 + 对应维度索引，装配期探针逐维度对账）；单维旧表升级到多空间形状
   是结构变更，走全量重建；换默认空间的迁移靠应用侧重摄取（source_id 幂等
   覆盖并清除旧切片）。
+- **agent_document.lexical 词法索引列与 GIN 索引（agent_vector.sql）**：已有
+  `agent_document` 的历史库以表 owner 手工追加列、刷新表/列注释并建部分
+  GIN 索引（与 agent_vector.sql 逐字一致）。存量行的 lexical 保持 NULL、
+  不做一次性迁移，对条目执行重建索引（重摄取）时由应用侧分词器回填：
+
+  ```sql
+  ALTER TABLE agent.agent_document ADD COLUMN lexical tsvector NULL;
+  COMMENT ON TABLE agent.agent_document IS '租户向量文档（RAG 检索，多嵌入空间）：租户隔离由应用层适配器强制，RLS 仅作可选加强；embedder/embed_dim 与 embedding 由 CHECK 绑定，空间注册表见 conf.vector.embedders，每维度索引见本文件表达式部分 HNSW，词法索引列 lexical 由应用侧分词器产出、GIN 部分索引承接词法召回';
+  COMMENT ON COLUMN agent.agent_document.lexical IS '词法索引（tsvector）：应用侧由分词器对切片正文产出（词元按出现序带位置），Add/Update 同批填充；可空——分词为空（无有效词元）或历史库存量行（重摄回填）落 NULL，词法检索经部分 GIN 索引只扫非空行';
+  CREATE INDEX agent_document_lexical_gin
+      ON agent.agent_document USING gin (lexical)
+      WHERE lexical IS NOT NULL;
+  ```
+
+  新版本二进制的装配探针与词法召回（写入建索引 + 检索分词）依赖该列，
+  历史库须先执行上述升级再部署（缺列启动即失败）；词法索引内容在应用侧
+  产出（Tokenizer 分词构造 tsvector），数据库侧不引入分词扩展。存量切片
+  在重摄取前不参与词法召回（NULL 行被部分索引排除），混合检索自动降级为
+  仅向量路，属预期行为。
 - **95_agent_audit.sql / 97_agent_retrieval_log.sql / 99_model_call_log.sql**：
   历史库追加对象，以部署角色（与 role.sql 同一执行者）执行；裸创建，重复
   执行报错；`grape_u` 的 DML 授权由 role.sql 默认权限覆盖。

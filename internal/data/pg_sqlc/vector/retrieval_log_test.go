@@ -17,11 +17,13 @@ import (
 
 // fakeInnerStore 是内层向量仓储替身：记录调用并返回可控结果。
 type fakeInnerStore struct {
-	addErr    error
-	searchErr error
-	hits      []*biz.ScoredVectorDocument
-	listed    []*biz.VectorDocument
-	calls     []string
+	addErr     error
+	searchErr  error
+	lexicalErr error
+	hits       []*biz.ScoredVectorDocument
+	lexical    []*biz.ScoredVectorDocument
+	listed     []*biz.VectorDocument
+	calls      []string
 }
 
 func (s *fakeInnerStore) Add(_ context.Context, _ *biz.VectorDocument) error {
@@ -48,6 +50,17 @@ func (s *fakeInnerStore) Search(_ context.Context, _ []float32, _ *biz.VectorFil
 	s.calls = append(s.calls, "search")
 	if s.searchErr != nil {
 		return nil, s.searchErr
+	}
+	return s.hits, nil
+}
+
+func (s *fakeInnerStore) SearchLexical(_ context.Context, _ string, _ *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	s.calls = append(s.calls, "search_lexical")
+	if s.lexicalErr != nil {
+		return nil, s.lexicalErr
+	}
+	if s.lexical != nil {
+		return s.lexical, nil
 	}
 	return s.hits, nil
 }
@@ -438,6 +451,57 @@ func TestLoggedVectorStore_unlogged_methods_forward_without_rows(t *testing.T) {
 	}
 	if len(repo.rows) != 0 {
 		t.Fatalf("recorded rows = %d, want 0 (point reads and enumeration are not evidence)", len(repo.rows))
+	}
+}
+
+func TestLoggedVectorStore_lexical_search_records_same_row_shape_as_vector_search(t *testing.T) {
+	inner := &fakeInnerStore{hits: []*biz.ScoredVectorDocument{{
+		Document: &biz.VectorDocument{ID: "doc#1", Metadata: map[string]any{"anchor": "runes 8-16"}},
+		Score:    0.42,
+	}}}
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(inner, repo, redact.NewStandardRegistry())
+
+	filter := &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 4, Limit: 3}
+	hits, err := store.SearchLexical(retrievalTestContext("年假 政策"), "年假 政策", filter)
+	if err != nil || len(hits) != 1 {
+		t.Fatalf("lexical search = (%d hits, %v), want 1 hit", len(hits), err)
+	}
+	if len(inner.calls) != 1 || inner.calls[0] != "search_lexical" {
+		t.Fatalf("inner calls = %v, want exactly one search_lexical", inner.calls)
+	}
+	if len(repo.rows) != 1 {
+		t.Fatalf("recorded rows = %d, want 1", len(repo.rows))
+	}
+	rec := repo.rows[0]
+	switch {
+	case rec.Source != biz.RetrievalSourceTool:
+		t.Fatalf("source = %q, want tool", rec.Source)
+	case rec.Status != biz.RetrievalStatusSuccess:
+		t.Fatalf("status = %q, want success", rec.Status)
+	case rec.Embedder != "bge-m3@v1":
+		t.Fatalf("embedder = %q, want filter declaration", rec.Embedder)
+	// 查询文本记分词前原文（脱敏口径与向量检索一致）。
+	case rec.QueryText != "年假 政策":
+		t.Fatalf("query text = %q, want pre-tokenization original", rec.QueryText)
+	case rec.RequestedTopK != 3 || rec.EffectiveTopK != 3:
+		t.Fatalf("top_k = (%d, %d), want (3, 3)", rec.RequestedTopK, rec.EffectiveTopK)
+	}
+	if len(rec.Hits) != 1 || rec.Hits[0] != (biz.RetrievalHit{DocumentID: "doc#1", Score: 0.42, Anchor: "runes 8-16"}) {
+		t.Fatalf("hits = %+v, want document id/score/anchor recorded", rec.Hits)
+	}
+}
+
+func TestLoggedVectorStore_lexical_search_failure_records_error_row_and_propagates(t *testing.T) {
+	inner := &fakeInnerStore{lexicalErr: biz.ErrVectorStoreDisabled}
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(inner, repo, redact.NewStandardRegistry())
+
+	if _, err := store.SearchLexical(retrievalTestContext("q"), "q", nil); !errors.Is(err, biz.ErrVectorStoreDisabled) {
+		t.Fatalf("lexical search error = %v, want ErrVectorStoreDisabled propagated", err)
+	}
+	if len(repo.rows) != 1 || repo.rows[0].Status != biz.RetrievalStatusError {
+		t.Fatalf("recorded rows = %+v, want one error row", repo.rows)
 	}
 }
 

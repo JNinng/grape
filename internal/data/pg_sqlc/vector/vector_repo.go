@@ -36,19 +36,22 @@ const (
 	// pgvector 实现的默认一致（适配层语义不漂移）。
 	vectorDefaultLimit = 10
 
+	// vectorColumns 是读面列清单：不含 lexical（词法索引列只服务检索
+	// 排序与过滤，不回读给调用方）。
 	vectorColumns = `id, tenant_id, user_id, embedder, embed_dim, name, content, embedding, metadata, created_at, updated_at`
 
 	// vectorInsertColumns 是写入列清单：created_at/updated_at 由列默认值
-	// 生成，created_by/updated_by 复用 $3（认证用户）。
-	vectorInsertColumns = `id, tenant_id, user_id, embedder, embed_dim, name, content, embedding, metadata, created_by, updated_by`
+	// 生成，created_by/updated_by 复用 $3（认证用户）；lexical 由注入的
+	// Tokenizer 对正文分词构造（$10，::tsvector 字面量）。
+	vectorInsertColumns = `id, tenant_id, user_id, embedder, embed_dim, name, content, embedding, metadata, lexical, created_by, updated_by`
 
 	vectorInsertSQL = `INSERT INTO %s (` + vectorInsertColumns + `)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $3)`
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::tsvector, $3, $3)`
 
 	vectorSelectSQL = `SELECT ` + vectorColumns + `
 FROM %s WHERE tenant_id = $1 AND id = $2`
 
-	vectorUpdateSQL = `UPDATE %s SET embedder = $3, embed_dim = $4, name = $5, content = $6, embedding = $7, metadata = $8, updated_by = $9, updated_at = CURRENT_TIMESTAMP
+	vectorUpdateSQL = `UPDATE %s SET embedder = $3, embed_dim = $4, name = $5, content = $6, embedding = $7, metadata = $8, lexical = $9::tsvector, updated_by = $10, updated_at = CURRENT_TIMESTAMP
 WHERE tenant_id = $1 AND id = $2`
 
 	vectorDeleteSQL = `DELETE FROM %s WHERE tenant_id = $1 AND id = $2`
@@ -75,8 +78,8 @@ SELECT count(*) FROM updated`
 FROM %s WHERE tenant_id = $1%s ORDER BY created_at, id`
 
 	// vectorColumnsProbeSQL 读结构列：embedding 必须是裸 vector（无
-	// typmod，维度随行），embedder/embed_dim 必须存在——三者构成多空间
-	// 表形状，任一缺失即部署不符。
+	// typmod，维度随行），embedder/embed_dim/lexical 必须存在——前三者
+	// 构成多空间表形状，lexical 是词法索引列，任一缺失即部署不符。
 	vectorColumnsProbeSQL = `SELECT a.attname, format_type(a.atttypid, a.atttypmod)
 FROM pg_attribute a
 WHERE a.attrelid = to_regclass($1) AND a.attname = ANY($2) AND a.attisdropped = false`
@@ -99,21 +102,27 @@ var vectorIndexDefDimensionPattern = regexp.MustCompile(`::vector\((\d+)\)\) vec
 
 // vectorStore 是向量存储的介质实现。
 type vectorStore struct {
-	data   *pgsqlc.Data
-	table  string             // 已过白名单校验的表名（agent schema 内）
-	spaces map[string]int32   // 空间键 → 声明维度（conf.VectorSpaces 单一解析源）
-	dims   map[int32]struct{} // 注册表内去重维度集合（启动探针逐维度核索引）
-	indexed map[int32]struct{} // 启动探针从 pg_indexes 发现的索引维度集合
+	data      *pgsqlc.Data
+	table     string             // 已过白名单校验的表名（agent schema 内）
+	spaces    map[string]int32   // 空间键 → 声明维度（conf.VectorSpaces 单一解析源）
+	dims      map[int32]struct{} // 注册表内去重维度集合（启动探针逐维度核索引）
+	indexed   map[int32]struct{} // 启动探针从 pg_indexes 发现的索引维度集合
+	tokenizer biz.Tokenizer      // 词元切分（写入建索引与查询分词共用同一实例）
 }
 
 var _ biz.VectorStore = (*vectorStore)(nil)
 
 // NewVectorStore 构造向量存储设施。conf.vector.enabled=false 时返回禁用
-// 占位实现（不触库）；启用时 fail-fast 校验空间注册表、表名白名单与部署
-// 探针（多空间形状 + 每声明维度的表达式部分 HNSW 索引）。
-func NewVectorStore(c *conf.Vector, d *pgsqlc.Data) (biz.VectorStore, func(), error) {
+// 占位实现（不触库、不消费分词器）；启用时 fail-fast 校验分词器、空间
+// 注册表、表名白名单与部署探针（多空间形状 + lexical 词法索引列 + 每声
+// 明维度的表达式部分 HNSW 索引）。tokenizer 必填：写入侧建词法索引与
+// 查询侧分词共用同一实例，nil 即装配错误。
+func NewVectorStore(c *conf.Vector, d *pgsqlc.Data, tokenizer biz.Tokenizer) (biz.VectorStore, func(), error) {
 	if !c.GetEnabled() {
 		return &disabledVectorStore{}, func() {}, nil
+	}
+	if tokenizer == nil {
+		return nil, nil, errors.New("pg_sqlc: vector store requires a tokenizer (lexical index and query must share one instance)")
 	}
 	spaces, _, err := conf.VectorSpaces(c)
 	if err != nil {
@@ -135,7 +144,7 @@ func NewVectorStore(c *conf.Vector, d *pgsqlc.Data) (biz.VectorStore, func(), er
 	for _, dim := range spaces {
 		dims[dim] = struct{}{}
 	}
-	r := &vectorStore{data: d, table: table, spaces: spaces, dims: dims, indexed: map[int32]struct{}{}}
+	r := &vectorStore{data: d, table: table, spaces: spaces, dims: dims, indexed: map[int32]struct{}{}, tokenizer: tokenizer}
 	if err := r.probeDeployment(context.Background()); err != nil {
 		return nil, nil, err
 	}
@@ -151,7 +160,7 @@ func (r *vectorStore) probeDeployment(ctx context.Context) error {
 		return errors.New("pg_sqlc: vector probe requires an initialized database handle")
 	}
 	qualified := vectorSchema + "." + r.table
-	columns, err := r.probeColumns(ctx, qualified)
+	columns, err := r.probeColumns(ctx, qualified, []string{"embedding", "embedder", "embed_dim", "lexical"})
 	if err != nil {
 		return err
 	}
@@ -168,13 +177,19 @@ func (r *vectorStore) probeDeployment(ctx context.Context) error {
 			return fmt.Errorf("pg_sqlc: vector table %s is missing the %s column; the multi-space shape requires it, realign agent_vector.sql", qualified, name)
 		}
 	}
+	// lexical 是词法索引列：新二进制的写入与词法检索都依赖，缺失按部署
+	// 不符拒绝并指向升级清单（历史库先升级再部署新二进制）。
+	if declared, ok := columns["lexical"]; !ok {
+		return fmt.Errorf("pg_sqlc: vector table %s is missing the lexical column (tsvector); the lexical recall path requires it, apply the upgrade steps in deploy_db.md before deploying this binary", qualified)
+	} else if declared != "tsvector" {
+		return fmt.Errorf("pg_sqlc: vector table %s lexical column type is %s, expected tsvector; realign the upgrade steps in deploy_db.md", qualified, declared)
+	}
 	return r.probeIndexes(ctx, qualified)
 }
 
 // probeColumns 读结构列 → 列名 → 声明类型。
-func (r *vectorStore) probeColumns(ctx context.Context, qualified string) (map[string]string, error) {
-	rows, err := r.data.Pool().Query(ctx, vectorColumnsProbeSQL, qualified,
-		[]string{"embedding", "embedder", "embed_dim"})
+func (r *vectorStore) probeColumns(ctx context.Context, qualified string, names []string) (map[string]string, error) {
+	rows, err := r.data.Pool().Query(ctx, vectorColumnsProbeSQL, qualified, names)
 	if err != nil {
 		return nil, fmt.Errorf("pg_sqlc: probe vector table %s: %w", qualified, err)
 	}
@@ -295,14 +310,31 @@ func marshalVectorMetadata(metadata map[string]any) ([]byte, error) {
 	return raw, nil
 }
 
-// resolveSpace 对账嵌入空间声明：键必填、维度必填且向量长度等于维度。
-// 空间键若在 conf 注册表中声明，维度必须与声明一致；未在 conf 声明但
-// 维度存在表达式部分 HNSW 索引时放行——动态模型目录（sys_model）产生的
-// 空间键在装配期未知，运行期以索引维度集合为唯一校验依据（空间是否
-// 存在与端点是否可用由 EmbedderResolver / Embedder 在更上层 fail-closed）。
-// 维度无对应索引即拒绝（检索会退化为顺序扫描，且不能落库）。返回落库
-// embed_dim 列的维度值。
+// resolveSpace 对账嵌入空间声明：键必填、维度必填且向量长度等于维度，
+// 键与维度经 resolveSpaceKey 核对注册表与索引集合。空间键若在 conf 注册
+// 表中声明，维度必须与声明一致；未在 conf 声明但维度存在表达式部分 HNSW
+// 索引时放行——动态模型目录（sys_model）产生的空间键在装配期未知，运行
+// 期以索引维度集合为唯一校验依据（空间是否存在与端点是否可用由
+// EmbedderResolver / Embedder 在更上层 fail-closed）。维度无对应索引即
+// 拒绝（检索会退化为顺序扫描，且不能落库）。返回落库 embed_dim 列的
+// 维度值。
 func (r *vectorStore) resolveSpace(embedder string, dimension, length int, subject string) (int32, error) {
+	dim, err := r.resolveSpaceKey(embedder, dimension, subject)
+	if err != nil {
+		return 0, err
+	}
+	if length != dimension {
+		return 0, fmt.Errorf("pg_sqlc: %s embedding length %d does not match declared dimension %d for space %s",
+			subject, length, dimension, embedder)
+	}
+	return dim, nil
+}
+
+// resolveSpaceKey 是空间声明的键与维度对账（不带向量长度核对）：词法
+// 检索没有查询向量，与向量检索共享同一文档宇宙的对账口径（注册表声明
+// 或已建索引的维度集合），两路检索条件因此可共享。返回落库 embed_dim
+// 列的维度值。
+func (r *vectorStore) resolveSpaceKey(embedder string, dimension int, subject string) (int32, error) {
 	if embedder == "" {
 		return 0, fmt.Errorf("pg_sqlc: %s must declare an embedder space", subject)
 	}
@@ -312,10 +344,6 @@ func (r *vectorStore) resolveSpace(embedder string, dimension, length int, subje
 	if declared, ok := r.spaces[embedder]; ok && dimension != int(declared) {
 		return 0, fmt.Errorf("pg_sqlc: %s declares dimension %d for space %s, registry declares %d", subject, dimension, embedder, declared)
 	}
-	if length != dimension {
-		return 0, fmt.Errorf("pg_sqlc: %s embedding length %d does not match declared dimension %d for space %s",
-			subject, length, dimension, embedder)
-	}
 	if _, ok := r.indexed[int32(dimension)]; !ok {
 		return 0, fmt.Errorf("%w: space %s declares dimension %d with no expression hnsw index (add it to agent_vector.sql)",
 			biz.ErrEmbedderUnknown, embedder, dimension)
@@ -324,7 +352,8 @@ func (r *vectorStore) resolveSpace(embedder string, dimension, length int, subje
 }
 
 // Add 写入文档与向量。身份取认证 ctx，空间声明过注册表对账；重复 ID
-// 报唯一约束冲突。
+// 报唯一约束冲突。词法索引列与向量同批填充：注入的 Tokenizer 对正文
+// 分词构造 tsvector 字面量（分词为空落 NULL，重摄取时回填）。
 func (r *vectorStore) Add(ctx context.Context, doc *biz.VectorDocument) error {
 	auth, err := vectorIdentity(ctx)
 	if err != nil {
@@ -338,11 +367,12 @@ func (r *vectorStore) Add(ctx context.Context, doc *biz.VectorDocument) error {
 	if err != nil {
 		return err
 	}
+	lexical := lexicalVectorLiteral(r.tokenizer.Tokens(doc.Content))
 	return r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		_, err := s.Tx().Exec(ctx,
 			fmt.Sprintf(vectorInsertSQL, r.qualifiedTable()),
 			doc.ID, auth.TenantID, auth.UserID, doc.Embedder, dim, doc.Name, doc.Content,
-			pgvector.NewVector(doc.Embedding), metadata)
+			pgvector.NewVector(doc.Embedding), metadata, lexical)
 		return err
 	})
 }
@@ -369,7 +399,7 @@ func (r *vectorStore) Get(ctx context.Context, id string) (*biz.VectorDocument, 
 
 // Update 整体覆盖文档可变部分（含嵌入空间——空间变更即显式重嵌入）；
 // 0 行（不存在或跨租户）报 ErrVectorDocNotFound。ID 与归属不可借本
-// 方法变更。
+// 方法变更。词法索引列随正文同批重算（与 Add 同一 Tokenizer 口径）。
 func (r *vectorStore) Update(ctx context.Context, doc *biz.VectorDocument) error {
 	auth, err := vectorIdentity(ctx)
 	if err != nil {
@@ -383,11 +413,12 @@ func (r *vectorStore) Update(ctx context.Context, doc *biz.VectorDocument) error
 	if err != nil {
 		return err
 	}
+	lexical := lexicalVectorLiteral(r.tokenizer.Tokens(doc.Content))
 	return r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
 		tag, err := s.Tx().Exec(ctx,
 			fmt.Sprintf(vectorUpdateSQL, r.qualifiedTable()),
 			auth.TenantID, doc.ID, doc.Embedder, dim, doc.Name, doc.Content,
-			pgvector.NewVector(doc.Embedding), metadata, auth.UserID)
+			pgvector.NewVector(doc.Embedding), metadata, lexical, auth.UserID)
 		if err != nil {
 			return err
 		}
@@ -459,6 +490,84 @@ func (r *vectorStore) Search(ctx context.Context, embedding []float32, filter *b
 	args = append(args, limit)
 	sql := fmt.Sprintf("SELECT %s, %s AS score FROM %s%s ORDER BY %s LIMIT $%d",
 		vectorColumns, score, r.qualifiedTable(), where, vectorOrderExpr(dim), len(args))
+
+	var out []*biz.ScoredVectorDocument
+	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
+		rows, err := s.Tx().Query(ctx, sql, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var row vectorDocRow
+			var score float64
+			if err := rows.Scan(append(row.fields(), &score)...); err != nil {
+				return err
+			}
+			doc, err := row.toBiz()
+			if err != nil {
+				return err
+			}
+			out = append(out, &biz.ScoredVectorDocument{Document: doc, Score: score})
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SearchLexical 以查询文本做词法检索：注入的 Tokenizer 对查询分词构造
+// tsquery 字面量（OR 召回），与写入侧建索引（Add/Update 同一实例）口径
+// 一致。空间声明经 resolveSpaceKey 对账（与向量路共享同一文档宇宙），
+// 条件翻译与 Search 同一计划器，分数与排序同源（ts_rank_cd，未归一，
+// 同分以 id tie-break 保证确定性）。查询分词为空（无有效词元）直接返回
+// 空切片不触库。Limit 非正取默认页大小。
+func (r *vectorStore) SearchLexical(ctx context.Context, query string, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	auth, err := vectorIdentity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if filter == nil {
+		return nil, errors.New("pg_sqlc: lexical search filter is required (the embedder space must be declared)")
+	}
+	dim, err := r.resolveSpaceKey(filter.Embedder, filter.Dimension, "lexical search filter")
+	if err != nil {
+		return nil, err
+	}
+	queryLiteral := lexicalQueryLiteral(r.tokenizer.Tokens(query))
+	if queryLiteral == "" {
+		// 分词为空：tsquery 无法成立，空结果集是正确语义而非错误。
+		return []*biz.ScoredVectorDocument{}, nil
+	}
+	limit := vectorDefaultLimit
+	if filter.Limit > 0 {
+		limit = filter.Limit
+	}
+
+	// 过滤计划跳过 embedder 子句：检索的空间等值已由手写条件承担
+	//（$2，必填且经 resolveSpaceKey 对账），plan 只翻译 IDs/Metadata。
+	stripped := *filter
+	stripped.Embedder = ""
+	plan, err := planVectorFilter(4, &stripped)
+	if err != nil {
+		return nil, err
+	}
+	args := make([]any, 0, len(plan.args)+4)
+	args = append(args, auth.TenantID, filter.Embedder, queryLiteral)
+	args = append(args, plan.args...)
+	where := " WHERE tenant_id = $1 AND embedder = $2 AND embed_dim = " + strconv.Itoa(int(dim)) +
+		" AND lexical IS NOT NULL AND lexical @@ $3::tsquery" + plan.where()
+	score := "ts_rank_cd(lexical, $3::tsquery)"
+	if filter.MinScore > 0 {
+		args = append(args, filter.MinScore)
+		where += fmt.Sprintf(" AND %s >= $%d", score, len(args))
+	}
+	args = append(args, limit)
+	// 排序：相关性降序，同分以 id tie-break（融合只看排名，序必须确定）。
+	sql := fmt.Sprintf("SELECT %s, %s AS score FROM %s%s ORDER BY score DESC, id LIMIT $%d",
+		vectorColumns, score, r.qualifiedTable(), where, len(args))
 
 	var out []*biz.ScoredVectorDocument
 	err = r.data.IdentityTx(ctx, auth, func(s *pgsqlc.IdentityTx) error {
@@ -714,6 +823,65 @@ func vectorScoreExpr(dim int32) string {
 // vectorOrderExpr 是检索排序键：与索引表达式逐字一致的距离算子。
 func vectorOrderExpr(dim int32) string {
 	return fmt.Sprintf("(embedding::vector(%d)) <=> $1::vector(%d)", dim, dim)
+}
+
+// 词法字面量的构造边界：tsvector 词元上限 2046 字节（超长词元跳过，
+// 整体不因单个词元报错）；位置上限 16383（tsvector 的 int16 位置域，
+// 超限钳到上限）。重复词元由 PG 合并位置，无需去重。
+const (
+	lexicalTokenMaxBytes = 2046
+	lexicalMaxPosition   = 16383
+)
+
+// lexicalEscaper 是词法字面量的词元转义：tsvector/tsquery 文本输入里
+// 单引号加倍、反斜杠加倍（两者都是解析器的转义字符），其余字符原样。
+var lexicalEscaper = strings.NewReplacer(`\`, `\\`, `'`, `''`)
+
+// lexicalVectorLiteral 把词元序列渲染为 tsvector 字面量（词元按出现序带
+// 位置，`'tok':1 'tok2':2 …`）：经占位符 `::tsvector` 下发，词元永远不进
+// SQL 文本。空/超长词元跳过；无有效词元返回 nil（落 NULL——词法检索的
+// 部分索引只扫非空行）。空串与 nil 同义（pgx 参数化下 NULL 与空串参数
+// 都合法，NULL 是 schema 口径）。
+func lexicalVectorLiteral(tokens []string) any {
+	if len(tokens) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	position := 0
+	for _, token := range tokens {
+		if token == "" || len(token) >= lexicalTokenMaxBytes {
+			continue
+		}
+		position++
+		if position > lexicalMaxPosition {
+			position = lexicalMaxPosition
+		}
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "'%s':%d", lexicalEscaper.Replace(token), position)
+	}
+	if b.Len() == 0 {
+		return nil
+	}
+	return b.String()
+}
+
+// lexicalQueryLiteral 把词元序列渲染为 tsquery 字面量（`|` 连接的 OR
+// 召回，`'tok' | 'tok2'`）：经占位符 `::tsquery` 下发。无有效词元返回
+// 空串（调用方直接返回空结果集，不下发查询）。
+func lexicalQueryLiteral(tokens []string) string {
+	var b strings.Builder
+	for _, token := range tokens {
+		if token == "" || len(token) >= lexicalTokenMaxBytes {
+			continue
+		}
+		if b.Len() > 0 {
+			b.WriteString(" | ")
+		}
+		fmt.Fprintf(&b, "'%s'", lexicalEscaper.Replace(token))
+	}
+	return b.String()
 }
 
 // vectorDocRow 是 agent_document 的行载体：fields 供 pgx Scan 展开参数。
@@ -989,6 +1157,10 @@ func (*disabledVectorStore) Delete(context.Context, string) error {
 }
 
 func (*disabledVectorStore) Search(context.Context, []float32, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	return nil, biz.ErrVectorStoreDisabled
+}
+
+func (*disabledVectorStore) SearchLexical(context.Context, string, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
 	return nil, biz.ErrVectorStoreDisabled
 }
 

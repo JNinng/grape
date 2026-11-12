@@ -67,11 +67,12 @@ type MetadataCondition struct {
 // VectorFilter 是向量读面共用的过滤与分页参数。IDs、Metadata 与
 // Conditions 叠加时取交集；均空表示不过滤（Count/GetMetadata 视为租户
 // 全量，DeleteByFilter 与 UpdateMetadata 拒绝执行，见各方法注释）。
-// Embedder 为可空过滤：Search 必填（与 Dimension 成对声明检索空间并三方
-// 对账），Count/DeleteByFilter/GetMetadata/UpdateMetadata 非空时收敛到该
-// 空间、空即跨空间操作；Dimension 与 MinScore 仅 Search 消费。Limit 在
-// Search 为 0 时由实现取默认页大小、在 GetMetadata 非正为不限量（此时
-// Offset 必须为 0）；Offset 仅 GetMetadata 消费（分页枚举）。
+// Embedder 为可空过滤：Search/SearchLexical 必填（与 Dimension 成对声明
+// 检索空间并对账），Count/DeleteByFilter/GetMetadata/UpdateMetadata 非
+// 空时收敛到该空间、空即跨空间操作；Dimension 与 MinScore 仅检索两方法
+//（Search/SearchLexical）消费。Limit 在检索两方法为 0 时由实现取默认页
+// 大小、在 GetMetadata 非正为不限量（此时 Offset 必须为 0）；Offset 仅
+// GetMetadata 消费（分页枚举）。
 type VectorFilter struct {
 	IDs        []string
 	Embedder   string
@@ -83,8 +84,11 @@ type VectorFilter struct {
 	Offset     int
 }
 
-// ScoredVectorDocument 是检索命中：Score 为归一化相似度（[0,1]，越大越
-// 相似，1.0 即同向），与框架 pgvector 实现的分数语义一致。
+// ScoredVectorDocument 是检索命中。Score 的语义随检索方法不同：Search
+// 产出归一化相似度（[0,1]，越大越相似，1.0 即同向，与框架 pgvector
+// 实现的分数语义一致）；SearchLexical 产出 ts_rank_cd 相关性（未归一，
+// 跨查询不可比）。同方法内分数可比，跨方法（混合检索融合）只应使用
+// 排名。
 type ScoredVectorDocument struct {
 	Document *VectorDocument
 	Score    float64
@@ -139,6 +143,18 @@ type VectorStore interface {
 	// MinScore 过滤归一化分数。Embedder/Dimension 必填且与查询向量
 	// 长度、注册表三方对账，任一不符拒绝。
 	Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error)
+	// SearchLexical 以查询文本在 filter.Embedder 声明的空间内做词法检索
+	//（tsquery 匹配 + ts_rank_cd 排序），按相关性降序返回至多 Limit 条；
+	// Conditions/IDs/Metadata/MinScore/Limit 语义与 Search 一致，过滤条件
+	// 与租户边界取交集。Embedder/Dimension 必填且经注册表对账——词法路
+	// 与向量路必须共享同一文档宇宙（同租户同空间同条件），实现内查询
+	// 分词与写入建索引用同一 Tokenizer 实例（口径漂移即静默漏召回）。
+	//
+	// Score 是 ts_rank_cd 相关性（未归一、跨查询不可比，仅同一查询内
+	// 排序有意义）——与 Search 的归一化相似度 [0,1] 语义不同，跨方法
+	// 比较分数没有意义；融合消费方只应使用排名。查询分词为空（无有效
+	// 词元）返回空切片不触库。
+	SearchLexical(ctx context.Context, query string, filter *VectorFilter) ([]*ScoredVectorDocument, error)
 	// DeleteByFilter 按 IDs/Embedder/Metadata/Conditions 交集删除，返回
 	// 删除行数；所有条件均空时拒绝执行——租户级全量清理不设普通入口。
 	DeleteByFilter(ctx context.Context, filter *VectorFilter) (int64, error)

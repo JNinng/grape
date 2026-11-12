@@ -25,7 +25,9 @@
 --
 -- 迁移口径：本文件建表/建索引是非幂等结构 DDL，重复执行按结构 DDL
 -- 口径报错（全量重建先重建库）；存量单维度表升级到多空间形状同样走
--- 全量重建（deploy_db.md）。
+-- 全量重建（deploy_db.md）。lexical 列与其 GIN 索引是后加结构：历史库
+-- 手工 ALTER 补列与索引（语句见 deploy_db.md「升级」节），存量行的
+-- lexical 保持 NULL、不做一次性迁移，重摄取时由应用侧回填。
 --
 -- 租户隔离模型：应用层适配器是强制约束——所有读写从
 -- 认证 ctx 取 tenant_id/user_id、身份同时写入 metadata 列并在每条 SQL
@@ -62,6 +64,7 @@ CREATE TABLE agent.agent_document
     name       varchar(512)                           NULL,
     content    text                                   NOT NULL,
     embedding  vector                                 NOT NULL,
+    lexical    tsvector                               NULL,
     metadata   jsonb        DEFAULT '{}'              NOT NULL,
     created_by int8                                   NOT NULL,
     created_at timestamp(0) DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -71,7 +74,7 @@ CREATE TABLE agent.agent_document
     CONSTRAINT agent_document_dim_chk CHECK (embed_dim = vector_dims(embedding))
 );
 
-COMMENT ON TABLE agent.agent_document IS '租户向量文档（RAG 检索，多嵌入空间）：租户隔离由应用层适配器强制，RLS 仅作可选加强；embedder/embed_dim 与 embedding 由 CHECK 绑定，空间注册表见 conf.vector.embedders，每维度索引见本文件表达式部分 HNSW';
+COMMENT ON TABLE agent.agent_document IS '租户向量文档（RAG 检索，多嵌入空间）：租户隔离由应用层适配器强制，RLS 仅作可选加强；embedder/embed_dim 与 embedding 由 CHECK 绑定，空间注册表见 conf.vector.embedders，每维度索引见本文件表达式部分 HNSW，词法索引列 lexical 由应用侧分词器产出、GIN 部分索引承接词法召回';
 COMMENT ON COLUMN agent.agent_document.id IS '文档 ID（调用方生成，租户内唯一，承载框架字符串 ID）';
 COMMENT ON COLUMN agent.agent_document.tenant_id IS '租户 ID：仓储从认证 ctx 提取并强制过滤，不来自请求侧输入';
 COMMENT ON COLUMN agent.agent_document.user_id IS '写入用户 ID：仓储从认证 ctx 提取，同时冗余进 metadata';
@@ -80,6 +83,7 @@ COMMENT ON COLUMN agent.agent_document.embed_dim IS '该行向量维度：应用
 COMMENT ON COLUMN agent.agent_document.name IS '文档名/标题（可空）';
 COMMENT ON COLUMN agent.agent_document.content IS '文档正文（检索命中后回传给模型的原文）';
 COMMENT ON COLUMN agent.agent_document.embedding IS '文档向量（pgvector，float4）：裸 vector 无固定维度，维度随行（embed_dim），余弦距离只在同空间内可比';
+COMMENT ON COLUMN agent.agent_document.lexical IS '词法索引（tsvector）：应用侧由分词器对切片正文产出（词元按出现序带位置），Add/Update 同批填充；可空——分词为空（无有效词元）或历史库存量行（重摄回填）落 NULL，词法检索经部分 GIN 索引只扫非空行';
 COMMENT ON COLUMN agent.agent_document.metadata IS '文档元数据（jsonb）：含仓储注入的 tenant_id/user_id/embedder/embed_dim 与调用方自定义键值，过滤经容器运算符整值下发';
 COMMENT ON COLUMN agent.agent_document.created_by IS '创建人（认证 ctx 的用户 ID）';
 COMMENT ON COLUMN agent.agent_document.created_at IS '创建时间';
@@ -108,6 +112,17 @@ CREATE INDEX agent_document_embedding_1024_hnsw
 -- 租户内按写入时间排序（GetMetadata 分页）与租户边界扫描前缀。
 CREATE INDEX agent_document_tenant_created_idx
     ON agent.agent_document USING btree (tenant_id, created_at);
+
+-- 词法索引的部分 GIN 索引：词法召回（tsquery 匹配 + ts_rank_cd 排序）的
+-- 倒计面。部分谓词 WHERE lexical IS NOT NULL 把索引收敛到已建索引的行
+--（存量行为 NULL，重摄取时由应用侧回填）；GIN 之上不再额外分离空间键
+--——词法检索 SQL 以 embedder/embed_dim 等值与租户过滤先行收敛，GIN
+-- 命中词元倒计后由过滤条件取交集（词法路与向量路共享同一文档宇宙：
+-- 同租户同空间同条件）。分词口径在应用侧（Tokenizer），数据库侧不引入
+-- 分词扩展（zhparser/pgroonga），to_tsvector 不参与本列的产出。
+CREATE INDEX agent_document_lexical_gin
+    ON agent.agent_document USING gin (lexical)
+    WHERE lexical IS NOT NULL;
 
 -- 运行角色授权（grape_u/test_u 由 role.sql 创建，故本文件排在其后）：
 -- agent schema 使用权与向量表 DML。授权收窄到本文件自建的表，不用

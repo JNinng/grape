@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"grape/internal/biz"
 	"grape/internal/conf"
+	"grape/internal/data/gsetokenizer"
 	pgsqlc "grape/internal/data/pg_sqlc"
 	"grape/internal/data/pg_sqlc/deploy"
 
@@ -178,7 +180,7 @@ func vectorStoreConf() *conf.Vector {
 // newVectorStoreForTest 以与部署一致的配置构造向量存储（探针应通过）。
 func newVectorStoreForTest(t *testing.T, d *pgsqlc.Data) biz.VectorStore {
 	t.Helper()
-	store, cleanup, err := NewVectorStore(vectorStoreConf(), d)
+	store, cleanup, err := NewVectorStore(vectorStoreConf(), d, sharedTokenizerForTest(t))
 	if err != nil {
 		t.Fatalf("NewVectorStore = %v, want probe pass", err)
 	}
@@ -192,12 +194,35 @@ func newMultiSpaceStoreForTest(t *testing.T, d *pgsqlc.Data) biz.VectorStore {
 	t.Helper()
 	c := vectorStoreConf()
 	c.Embedders = append(c.Embedders, &conf.Vector_Embedding{Model: "bge-m3", Version: "v2", Dimension: vectorDimension})
-	store, cleanup, err := NewVectorStore(c, d)
+	store, cleanup, err := NewVectorStore(c, d, sharedTokenizerForTest(t))
 	if err != nil {
 		t.Fatalf("NewVectorStore(multi-space) = %v, want probe pass", err)
 	}
 	t.Cleanup(cleanup)
 	return store
+}
+
+// lexicalTokenizerOnce / sharedTokenizer 守护全包共享的真实分词器实例：
+// embed 词典装载一次（装载耗时明显高于单测粒度，包内复用同一实例）。
+// cleanup 是无资源占位的空操作，丢弃无副作用。
+var (
+	lexicalTokenizerOnce sync.Once
+	lexicalTokenizer     biz.Tokenizer
+)
+
+func sharedTokenizerForTest(t *testing.T) biz.Tokenizer {
+	t.Helper()
+	lexicalTokenizerOnce.Do(func() {
+		tk, _, err := gsetokenizer.New()
+		if err != nil {
+			t.Fatalf("gsetokenizer.New = %v, want nil error", err)
+		}
+		lexicalTokenizer = tk
+	})
+	if lexicalTokenizer == nil {
+		t.Fatal("shared tokenizer not initialized (previous init failed)")
+	}
+	return lexicalTokenizer
 }
 
 // addVectorDocument 是 Add 的用例包装：失败即终止测试。
@@ -768,14 +793,14 @@ func TestNewVectorStore_startup_probe_rejects_deployment_mismatch(t *testing.T) 
 	undeclared.Embedders[0].Dimension = 999
 	undeclared.Embedders[0].Version = "v999"
 	undeclared.DefaultEmbedder = "bge-m3@v999"
-	_, _, err := NewVectorStore(undeclared, d)
+	_, _, err := NewVectorStore(undeclared, d, sharedTokenizerForTest(t))
 	if err == nil || !containsAll(err.Error(), "no expression partial hnsw index for dimension 999") {
 		t.Fatalf("NewVectorStore(dimension=999) = %v, want missing-index failure", err)
 	}
 	// 表未部署（配置表名与 DDL 不符）：同样启动失败并指明处置。
 	missing := vectorStoreConf()
 	missing.TableName = "agent_document_missing"
-	_, _, err = NewVectorStore(missing, d)
+	_, _, err = NewVectorStore(missing, d, sharedTokenizerForTest(t))
 	if err == nil || !containsAll(err.Error(), "not deployed") {
 		t.Fatalf("NewVectorStore(missing table) = %v, want not-deployed failure", err)
 	}
@@ -787,6 +812,46 @@ func TestNewVectorStore_startup_probe_rejects_deployment_mismatch(t *testing.T) 
 		Embedding: unitVector(int(vectorDimension), 0),
 	})); err != nil {
 		t.Fatalf("Add after probe: %v", err)
+	}
+}
+
+func TestNewVectorStore_startup_probe_rejects_lexical_column_mismatch(t *testing.T) {
+	d := setupVectorTestDB(t)
+
+	// lexical 列缺失（历史库未执行升级清单的 ALTER）：启动即失败并指向
+	// 升级文档——新二进制的写入建索引与词法检索都依赖该列。
+	alterDocumentColumnForTest(t, "DROP COLUMN lexical")
+	_, _, err := NewVectorStore(vectorStoreConf(), d, sharedTokenizerForTest(t))
+	if err == nil || !containsAll(err.Error(), "missing the lexical column") {
+		t.Fatalf("NewVectorStore(without lexical column) = %v, want missing-lexical failure", err)
+	}
+
+	// lexical 列类型漂移（非 tsvector）：同样启动失败并指明处置——类型
+	// 不符时 tsvector 字面量与 tsquery 匹配都无法成立。
+	alterDocumentColumnForTest(t, "ADD COLUMN lexical text NULL")
+	_, _, err = NewVectorStore(vectorStoreConf(), d, sharedTokenizerForTest(t))
+	if err == nil || !containsAll(err.Error(), "expected tsvector") {
+		t.Fatalf("NewVectorStore(lexical column type text) = %v, want tsvector type failure", err)
+	}
+}
+
+// alterDocumentColumnForTest 以表 owner（部署管理员）连接执行
+// agent_document 的结构变更：模拟历史库未升级 / 列类型漂移的部署形态，
+// 供启动探针的异常分支用例使用。
+func alterDocumentColumnForTest(t *testing.T, action string) {
+	t.Helper()
+	cfg, err := pgx.ParseConfig(AdminDSNForVectorTest(t))
+	if err != nil {
+		t.Fatalf("parse admin dsn: %v", err)
+	}
+	cfg.Database = vectorTestDatabase
+	conn, err := pgx.ConnectConfig(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("connect admin: %v", err)
+	}
+	defer conn.Close(context.Background())
+	if _, err := conn.Exec(context.Background(), "ALTER TABLE agent.agent_document "+action); err != nil {
+		t.Fatalf("alter agent_document (%s): %v", action, err)
 	}
 }
 

@@ -11,11 +11,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"grape/internal/agent/internal/testsupport"
 	"grape/internal/biz"
 	"grape/internal/conf"
+	"grape/internal/data/gsetokenizer"
 	"grape/internal/data/pg_sqlc"
 	pgvector "grape/internal/data/pg_sqlc/vector"
 
@@ -81,6 +83,28 @@ func (keywordSpaceResolver) ResolveEmbeddingSpace(context.Context, string) (biz.
 	return biz.EmbeddingSpace{Key: searchSpace, Dimension: searchDimension}, nil
 }
 
+// searchTokenizer 构造全套件共享的真实分词器（gse embed 词典装载一次）；
+// 摄取与检索同走这一实例，与生产装配同形。
+var (
+	searchTokenizerOnce sync.Once
+	searchTokenizerRef  biz.Tokenizer
+)
+
+func searchTokenizer(t *testing.T) biz.Tokenizer {
+	t.Helper()
+	searchTokenizerOnce.Do(func() {
+		tk, _, err := gsetokenizer.New()
+		if err != nil {
+			t.Fatalf("gsetokenizer.New = %v, want nil error", err)
+		}
+		searchTokenizerRef = tk
+	})
+	if searchTokenizerRef == nil {
+		t.Fatal("search tokenizer not initialized (previous init failed)")
+	}
+	return searchTokenizerRef
+}
+
 func searchIdentityContext(id biz.Identity) context.Context {
 	return biz.WithIdentity(context.Background(), id)
 }
@@ -114,7 +138,7 @@ func searchNewFixture(t *testing.T) *searchFixture {
 		Embedders: []*conf.Vector_Embedding{
 			{Model: "bge-m3", Version: "v1", Dimension: searchDimension},
 		},
-	}, data)
+	}, data, searchTokenizer(t))
 	if err != nil {
 		t.Fatalf("NewVectorStore = %v, want probe pass", err)
 	}

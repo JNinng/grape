@@ -35,9 +35,10 @@ type VectorStoreSupply struct {
 }
 
 // NewVectorStoreSupply 提供向量存储的 wire 供给：构造既有 pgvector 仓储
-// （含维度探针等装配期校验）并包装为可装饰类型。
-func NewVectorStoreSupply(c *conf.Vector, d *pgsqlc.Data) (VectorStoreSupply, func(), error) {
-	store, cleanup, err := NewVectorStore(c, d)
+// （含维度探针等装配期校验）并包装为可装饰类型。tokenizer 经本跳透传
+// 进仓储：写入侧建词法索引与查询侧分词共用同一实例（wire 装配保证）。
+func NewVectorStoreSupply(c *conf.Vector, d *pgsqlc.Data, tokenizer biz.Tokenizer) (VectorStoreSupply, func(), error) {
+	store, cleanup, err := NewVectorStore(c, d, tokenizer)
 	if err != nil {
 		return VectorStoreSupply{}, nil, err
 	}
@@ -76,6 +77,19 @@ var _ biz.VectorStore = (*loggedVectorStore)(nil)
 func (s *loggedVectorStore) Search(ctx context.Context, embedding []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
 	start := time.Now()
 	hits, err := s.inner.Search(ctx, embedding, filter)
+	rec := s.buildRecord(ctx, searchSource(ctx), filter, retrievalHitList(hits), err, time.Since(start))
+	rec.QueryText = s.redactQueryText(biz.RetrievalQueryFromContext(ctx))
+	rec.RequestedTopK = requestedTopK(filter)
+	rec.EffectiveTopK = effectiveTopK(filter)
+	s.record(ctx, rec)
+	return hits, err
+}
+
+// SearchLexical 转发词法检索并留痕：行形态与 Search 同一（查询文本记
+// 分词前原文，脱敏口径不变），来源取 ctx 声明。
+func (s *loggedVectorStore) SearchLexical(ctx context.Context, query string, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	start := time.Now()
+	hits, err := s.inner.SearchLexical(ctx, query, filter)
 	rec := s.buildRecord(ctx, searchSource(ctx), filter, retrievalHitList(hits), err, time.Since(start))
 	rec.QueryText = s.redactQueryText(biz.RetrievalQueryFromContext(ctx))
 	rec.RequestedTopK = requestedTopK(filter)

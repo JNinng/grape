@@ -16,6 +16,7 @@
 | [ossclient](ossclient/) | 对象存储 S3 客户端设施（aws-sdk-go-v2，端点取 sys_config oss.*） |
 | [openaiembedder](openaiembedder/) | 文本向量化设施（OpenAI 兼容端点） |
 | [openaicompleter](openaicompleter/) | 单次文本生成设施（OpenAI 兼容 chat completions） |
+| [gsetokenizer](gsetokenizer/) | 词元切分设施（biz.Tokenizer，go-ego/gse）：中文为第一目标，词典 embed 进二进制，摄取建索引与查询分词共用同一实例 |
 | [docparse](docparse/) | 文件解析设施（biz.FileParser）：Go 内档 xlsx / docx / html 直接产 markdown，外部档（pdf / pptx / 图片）走独立解析服务 HTTP 端点 |
 
 `data` 是存储后端选择点：[provider.go](provider.go) 聚合各能力
@@ -53,6 +54,7 @@ SQL 对象的签名、属性与三态返回值见
 | [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 embed_document，输出记维度说明） |
 | [openaicompleter/openaicompleter.go](openaicompleter/openaicompleter.go) | 按当前身份解析租户文本模型端点、单轮 user message 生成与 HTTP 客户端缓存；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 ingest_prefix，usage 随响应体采集） |
+| [gsetokenizer/gsetokenizer.go](gsetokenizer/gsetokenizer.go) | biz.Tokenizer 的纯 Go 分词实现（go-ego/gse）：DAG 无 HMM 确定性切分，词典/停用词 embed 装载，词元小写归一并过滤停用词；词法召回的正确性前提是摄取与查询两侧共用本实例 |
 | [docparse/docparse.go](docparse/docparse.go) | biz.FileParser 两档实现：嗅探 MIME 是唯一路由依据；外部档 POST {endpoint}/parse（嗅探事实走自定义头），未配置端点按组合错误拒绝；注入 ModelCallObserver 只在外部档留痕（无场景回落放弃该行，原件字节不落留痕记 size/sha256） |
 
 ## 事务门面
@@ -124,9 +126,10 @@ size/sha256）。agent 对话 LLM 不经本面（会话事件流已承载，避�
 向量仓储经装饰器后对外供给（wire：`NewVectorStoreSupply` →
 `NewLoggedVectorStore`），装饰器位于仓储之上、框架适配器与摄取管线之下。
 
-- 留痕点：Search 记 query、请求/生效 top_k、过滤摘要、命中、耗时、
-  来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例缺省声明
-  `console`，agent 工具链路显式声明 `tool`）；Add/Update/DeleteByFilter
+- 留痕点：Search 与 SearchLexical 记 query、请求/生效 top_k、过滤摘要、
+  命中、耗时、来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例缺省
+  声明 `console`，agent 工具链路显式声明 `tool`；词法路的 query 记分词前
+  原文，脱敏口径与向量路一致）；Add/Update/DeleteByFilter
   记摄取侧、来源 `pipeline`；
   Get/Delete/Count/GetMetadata/List 不留痕（点读与枚举不构成召回证据）。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
@@ -144,9 +147,14 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
 
 - 检索以空间键等值 + 维度谓词命中对应维度的表达式部分 HNSW 索引；
   检索 SQL 的 `vector(N)` cast 必须与索引表达式逐字一致。
+- 词法召回（`SearchLexical`）与向量路共享同一文档宇宙：`lexical` 列由
+  Tokenizer 分词构造 tsvector（Add/Update 同批填充），查询分词构造 OR
+  tsquery，`ts_rank_cd` 排序（未归一，融合只看排名）；两路共用同一空间
+  对账与条件计划器，GIN 部分索引只覆盖已建索引行（存量 NULL 重摄回填）。
 - 表无 RLS，租户隔离由应用层强制：每条 SQL 带 tenant_id，缺认证身份
   拒绝；写入侧身份同时冗余进 metadata，请求侧伪造不生效。
-- 装配期探针校验部署表为多空间形状，从 `pg_indexes` 发现带
+- 装配期探针校验部署表为多空间形状（含 lexical 为 tsvector），从
+  `pg_indexes` 发现带
   `::vector(N)) vector_cosine_ops` 与 `embed_dim = N)` 的维度集合；conf
   声明的每个维度仍必须有索引（fail-fast），运行期空间校验以发现集合为准
   （动态模型目录产生的空间键在装配期未知）。
@@ -156,6 +164,15 @@ embed_dim 逐行声明身份，CHECK 把维度列与实际向量长度绑定。
 - 框架适配器路径在 ctx 上携带固定条件（`doc_status` / `valid_from_unix` /
   `valid_to_unix` / 可选 `kb_id`），适配器并入 VectorFilter；知识检索用例
   路径直接把固定条件放进 `VectorFilter.Conditions`，不经 ctx 载体。
+
+## 词元切分设施
+
+[gsetokenizer](gsetokenizer/) 实现 `biz.Tokenizer`（纯 Go 分词，
+go-ego/gse，中文为第一目标）：词典与停用词表 embed 进二进制（运行期不依赖
+外部词典文件），DAG 无 HMM 确定性切分，词元小写归一并过滤停用词。分词口径
+是词法召回的正确性前提——摄取写路径（切片建词法索引）与查询路径（查询
+分词）必须共用同一实现实例，wire 单例透传保证；数据库侧不引入分词扩展
+（zhparser / pgroonga 会把口径绑死在部署扩展上）。
 
 ## 文本向量化设施
 
@@ -245,7 +262,8 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   过滤、整组替换的 manageable/locked 分区与自锁保护；受控写函数拒绝
   运行角色直写。
 - **设施与介质**：诊断样本采集、会话清理与 REINDEX 判定、向量空间对账
-  与索引命中、检索留痕装饰器的转发/失败不中断/脱敏/兜底；embedding 的
+  与索引命中、词法召回的中文命中/条件口径/特殊字符 round-trip/GIN 索引
+  命中、检索留痕装饰器的转发/失败不中断/脱敏/兜底；embedding 的
   多空间路由与维度漂移、文本生成的请求形状与错误映射；内嵌 OSS 的
   Backend 存储语义（覆盖写、Range、列举、限流、复制）、/s3/ 回环的
   S3 SDK 语义与 SigV4 拒绝矩阵、ossclient 的契约错误映射与预签名；

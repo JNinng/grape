@@ -30,21 +30,42 @@ func vectorTestConf(enabled bool, dimension int32, table string) *conf.Vector {
 
 func vectorTestStore() *vectorStore {
 	return &vectorStore{
-		table:   vectorDefaultTable,
-		spaces:  map[string]int32{"bge-m3@v1": 4},
-		dims:    map[int32]struct{}{4: {}},
-		indexed: map[int32]struct{}{4: {}},
+		table:     vectorDefaultTable,
+		spaces:    map[string]int32{"bge-m3@v1": 4},
+		dims:      map[int32]struct{}{4: {}},
+		indexed:   map[int32]struct{}{4: {}},
+		tokenizer: stubTokenizer{},
 	}
 }
 
+// stubTokenizer 是单测的分词替身：固定产出可编程词元序列（不触真实
+// 词典）；真分词行为由 gsetokenizer 自身单测与介质集成测试覆盖。
+type stubTokenizer struct {
+	tokens []string
+}
+
+func (s stubTokenizer) Tokens(string) []string { return s.tokens }
+
 func TestNewVectorStore_disabled_conf_returns_disabled_store(t *testing.T) {
-	store, cleanup, err := NewVectorStore(vectorTestConf(false, 0, ""), &pgsqlc.Data{})
+	store, cleanup, err := NewVectorStore(vectorTestConf(false, 0, ""), &pgsqlc.Data{}, nil)
 	if err != nil {
 		t.Fatalf("NewVectorStore(disabled) = %v, want nil error", err)
 	}
 	defer cleanup()
 	if _, err := store.Get(context.Background(), "doc-1"); !errors.Is(err, biz.ErrVectorStoreDisabled) {
 		t.Fatalf("Get on disabled store = %v, want ErrVectorStoreDisabled", err)
+	}
+	if _, err := store.SearchLexical(context.Background(), "q", nil); !errors.Is(err, biz.ErrVectorStoreDisabled) {
+		t.Fatalf("SearchLexical on disabled store = %v, want ErrVectorStoreDisabled", err)
+	}
+}
+
+func TestNewVectorStore_enabled_conf_without_tokenizer_fails(t *testing.T) {
+	// 词法索引列的写入与查询分词共用同一 Tokenizer 实例：装配缺分词器
+	// 即拒绝，绝不以 nil 静默落到 panic。
+	_, _, err := NewVectorStore(vectorTestConf(true, 4, ""), &pgsqlc.Data{}, nil)
+	if err == nil || !strings.Contains(err.Error(), "requires a tokenizer") {
+		t.Fatalf("NewVectorStore(enabled, nil tokenizer) = %v, want tokenizer rejection", err)
 	}
 }
 
@@ -82,7 +103,7 @@ func TestNewVectorStore_invalid_spaces_fails(t *testing.T) {
 		}()},
 	}
 	for _, tc := range cases {
-		if _, _, err := NewVectorStore(tc.conf, &pgsqlc.Data{}); err == nil {
+		if _, _, err := NewVectorStore(tc.conf, &pgsqlc.Data{}, stubTokenizer{}); err == nil {
 			t.Fatalf("NewVectorStore(%s) = nil error, want failure", tc.name)
 		}
 	}
@@ -99,7 +120,7 @@ func TestNewVectorStore_invalid_table_name_fails(t *testing.T) {
 		"doc name",
 		strings.Repeat("d", 64),
 	} {
-		if _, _, err := NewVectorStore(vectorTestConf(true, 4, name), nil); err == nil {
+		if _, _, err := NewVectorStore(vectorTestConf(true, 4, name), nil, stubTokenizer{}); err == nil {
 			t.Fatalf("NewVectorStore(table=%q) = nil error, want failure", name)
 		}
 	}
@@ -109,7 +130,7 @@ func TestNewVectorStore_valid_table_name_defaults_and_passes_pattern(t *testing.
 	// 合法表名应通过白名单与空间注册表校验，进入启动探针；本用例无
 	// 数据库句柄，断言只到探针报"句柄未初始化"为止——错误文案不含
 	// 白名单/空间字样，即前两道校验已放行。
-	_, _, err := NewVectorStore(vectorTestConf(true, 4, "agent_document"), &pgsqlc.Data{})
+	_, _, err := NewVectorStore(vectorTestConf(true, 4, "agent_document"), &pgsqlc.Data{}, stubTokenizer{})
 	if err == nil {
 		t.Fatal("NewVectorStore without a database = nil error, want probe failure")
 	}
@@ -125,7 +146,7 @@ func TestNewVectorStore_table_name_without_agent_prefix_fails(t *testing.T) {
 	// agent_ 前缀强制：合法标识符但缺前缀同样在构造期
 	// 拒绝，且发生在启动探针之前（本用例传空 Data 即可安全返回错误）。
 	for _, name := range []string{"document", "vec_documents", "agentdocument"} {
-		_, _, err := NewVectorStore(vectorTestConf(true, 4, name), &pgsqlc.Data{})
+		_, _, err := NewVectorStore(vectorTestConf(true, 4, name), &pgsqlc.Data{}, stubTokenizer{})
 		if err == nil || !strings.Contains(err.Error(), "must have the agent_ prefix") {
 			t.Fatalf("NewVectorStore(table=%q) = %v, want agent_ prefix rejection", name, err)
 		}
@@ -360,5 +381,92 @@ func TestDisabledVectorStore_all_methods_rejected(t *testing.T) {
 	}
 	if _, err := store.GetMetadata(ctx, nil); !errors.Is(err, biz.ErrVectorStoreDisabled) {
 		t.Fatalf("GetMetadata = %v, want ErrVectorStoreDisabled", err)
+	}
+}
+
+func TestLexicalVectorLiteral_positions_and_merges_by_postgres(t *testing.T) {
+	// 词元按出现序带位置；重复词元交由 PG 合并，不在构造期去重。
+	if got := lexicalVectorLiteral([]string{"grape", "后端", "grape"}); got != `'grape':1 '后端':2 'grape':3` {
+		t.Fatalf("lexicalVectorLiteral = %v, want positioned lexemes", got)
+	}
+	if got := lexicalVectorLiteral(nil); got != nil {
+		t.Fatalf("lexicalVectorLiteral(nil) = %v, want nil (NULL column)", got)
+	}
+	if got := lexicalVectorLiteral([]string{}); got != nil {
+		t.Fatalf("lexicalVectorLiteral(empty) = %v, want nil (NULL column)", got)
+	}
+}
+
+func TestLexicalVectorLiteral_escapes_quotes_and_backslashes(t *testing.T) {
+	// 单引号加倍、反斜杠加倍：字面量语法安全是构造期职责（注入形态
+	// 词元也只会在 PG 端被解析为一个词元，不逃逸出字面量）。
+	got := lexicalVectorLiteral([]string{"o'brien", `back\slash`})
+	// 反斜杠在字面量内加倍（want 为两字符的 \\），与转义后的实际产物一致。
+	want := "'o''brien':1 'back" + `\\` + "slash':2"
+	if got != want {
+		t.Fatalf("lexicalVectorLiteral = %v, want %v", got, want)
+	}
+}
+
+func TestLexicalVectorLiteral_skips_empty_and_oversize_tokens(t *testing.T) {
+	// 空词元跳过；达到 tsvector 词元字节上限（2046）的词元跳过，整体
+	// 不因单个词元报错；全部无效时落 NULL。
+	oversize := strings.Repeat("长", lexicalTokenMaxBytes)
+	if got := lexicalVectorLiteral([]string{"", oversize, "ok"}); got != `'ok':1` {
+		t.Fatalf("lexicalVectorLiteral = %v, want only the valid token", got)
+	}
+	if got := lexicalVectorLiteral([]string{strings.Repeat("长", lexicalTokenMaxBytes)}); got != nil {
+		t.Fatalf("lexicalVectorLiteral(all oversize) = %v, want nil", got)
+	}
+}
+
+func TestLexicalQueryLiteral_joins_tokens_with_or_and_escapes(t *testing.T) {
+	got := lexicalQueryLiteral([]string{"年假", "o'brien", `a\b`})
+	want := "'年假' | 'o''brien' | 'a" + `\\` + "b'"
+	if got != want {
+		t.Fatalf("lexicalQueryLiteral = %v, want %v", got, want)
+	}
+	if got := lexicalQueryLiteral([]string{}); got != "" {
+		t.Fatalf("lexicalQueryLiteral(empty) = %q, want empty string", got)
+	}
+}
+
+func TestVectorStore_lexical_search_requires_declared_space(t *testing.T) {
+	// 词法检索与向量检索共享同一空间对账口径（注册表声明或已建索引
+	// 维度），任一缺失在触库之前拒绝。
+	store := vectorTestStore()
+	store.data = &pgsqlc.Data{}
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-a", UserID: 1})
+	cases := []struct {
+		name   string
+		filter *biz.VectorFilter
+		want   string
+	}{
+		{"nil filter", nil, "filter is required"},
+		{"empty space", &biz.VectorFilter{Dimension: 4}, "must declare an embedder space"},
+		{"unknown space with unindexed dimension", &biz.VectorFilter{Embedder: "other@v9", Dimension: 8}, "unknown embedder space"},
+		{"missing dimension", &biz.VectorFilter{Embedder: "bge-m3@v1"}, "positive dimension"},
+		{"registry dimension mismatch", &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 8}, "registry declares 4"},
+	}
+	for _, tc := range cases {
+		if _, err := store.SearchLexical(ctx, "grape", tc.filter); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: SearchLexical = %v, want containing %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+func TestVectorStore_lexical_search_with_blank_tokens_returns_empty_without_db(t *testing.T) {
+	// 查询分词为空：空结果集是正确语义，不触库（Data 无池也不会报
+	// 句柄错误）。
+	store := vectorTestStore()
+	store.data = &pgsqlc.Data{}
+	store.tokenizer = stubTokenizer{tokens: nil}
+	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-a", UserID: 1})
+	hits, err := store.SearchLexical(ctx, "   ", &biz.VectorFilter{Embedder: "bge-m3@v1", Dimension: 4})
+	if err != nil {
+		t.Fatalf("SearchLexical(blank tokens) = %v, want empty result", err)
+	}
+	if hits == nil || len(hits) != 0 {
+		t.Fatalf("hits = %#v, want empty non-nil slice", hits)
 	}
 }

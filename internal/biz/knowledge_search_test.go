@@ -12,19 +12,24 @@ import (
 // searchTestNow 是检索单测的固定时钟（有效期条件可精确断言）。
 var searchTestNow = time.Date(2026, 11, 9, 8, 0, 0, 0, time.UTC)
 
-// recordingSearchStore 是检索用例单测的向量存储替身：记录 Search 入参与
-// ctx 留痕事实，返回可编程结果；其余方法沿用 mockVectorStore。
+// recordingSearchStore 是检索用例单测的向量存储替身：记录 Search /
+// SearchLexical 入参与 ctx 留痕事实，返回可编程结果；其余方法沿用
+// mockVectorStore。词法路默认返回空切片（nil results），可编程注入。
 type recordingSearchStore struct {
 	mockVectorStore
-	results []*ScoredVectorDocument
-	err     error
+	results    []*ScoredVectorDocument
+	err        error
+	lexical    []*ScoredVectorDocument
+	lexicalErr error
 
-	calls   int
-	vector  []float32
-	filter  *VectorFilter
-	query   string
-	source  string
-	session string
+	calls        int // 向量路调用次数
+	lexicalCalls int
+	vector       []float32
+	filter       *VectorFilter
+	queries      []string // 词法路收到的查询文本序列
+	query        string
+	source       string
+	session      string
 }
 
 func (s *recordingSearchStore) Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error) {
@@ -35,6 +40,16 @@ func (s *recordingSearchStore) Search(ctx context.Context, embedding []float32, 
 	s.source = RetrievalSourceFromContext(ctx)
 	s.session = SessionIDFromContext(ctx)
 	return s.results, s.err
+}
+
+func (s *recordingSearchStore) SearchLexical(ctx context.Context, query string, filter *VectorFilter) ([]*ScoredVectorDocument, error) {
+	s.lexicalCalls++
+	s.queries = append(s.queries, query)
+	_ = filter
+	if s.lexicalErr != nil {
+		return nil, s.lexicalErr
+	}
+	return s.lexical, nil
 }
 
 // stubLibraryDirectory 是可见库集合替身：固定返回库列表或错误，记录调用
@@ -172,8 +187,13 @@ func TestKnowledgeSearch_top_k_maps_to_positive_clamped_limit(t *testing.T) {
 			if _, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", TopK: tc.topK}); err != nil {
 				t.Fatalf("Search: %v", err)
 			}
-			if store.filter.Limit != tc.want {
-				t.Fatalf("filter limit = %d, want %d", store.filter.Limit, tc.want)
+			// 融合只看排名：每路各取 2×top_k 的宽召回。
+			want := tc.want * KnowledgeSearchRecallFactor
+			if store.filter.Limit != want {
+				t.Fatalf("vector filter limit = %d, want %d", store.filter.Limit, want)
+			}
+			if store.lexicalCalls != 1 {
+				t.Fatalf("lexical calls = %d, want 1", store.lexicalCalls)
 			}
 		})
 	}
@@ -366,9 +386,13 @@ func TestKnowledgeSearch_maps_hits_from_metadata_and_raw_content(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
+	// Score 是 RRF 融合分：单路命中即 1/(k+rank)，nil 文档不计名次。
+	// 期望值按运行时 float64 口径计算（k 为变量，规避常量折叠的舍入差）。
+	k := float64(DefaultKnowledgeSearchFusionRRFK)
 	want := []*KnowledgeSearchHit{
-		{DocumentID: "12#0", SourceID: "12", SourceName: "handbook", Anchor: "runes 0-15", Score: 0.91, Content: "<b>raw</b> text"},
-		{DocumentID: "13#2", Score: 0.4, Content: "bare"},
+		{DocumentID: "12#0", SourceID: "12", SourceName: "handbook", Anchor: "runes 0-15",
+			Score: 1 / (k + 1), Content: "<b>raw</b> text"},
+		{DocumentID: "13#2", Score: 1 / (k + 2), Content: "bare"},
 	}
 	if !reflect.DeepEqual(hits, want) {
 		t.Fatalf("hits = %+v, want %+v", hits, want)
@@ -421,5 +445,149 @@ func TestKnowledgeSearch_vector_store_disabled_propagates(t *testing.T) {
 	_, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
 	if !errors.Is(err, ErrVectorStoreDisabled) {
 		t.Fatalf("Search = %v, want ErrVectorStoreDisabled", err)
+	}
+}
+
+func TestKnowledgeSearch_variants_recall_individually_over_both_routes(t *testing.T) {
+	store := &recordingSearchStore{}
+	embedder := &stubEmbedder{dims: 4}
+	uc := newSearchUsecaseForTest(t, store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	q := &KnowledgeSearchQuery{Query: "年假", Variants: []string{"假期 申请", "  ", "annual leave"}}
+	if _, err := uc.Search(searchCtx(), q); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	// 主查询 + 2 个非空白变体：embed 与两路召回各 3 次（空白变体被跳过）。
+	if len(embedder.calls) != 3 {
+		t.Fatalf("embed calls = %d, want 3 (main + 2 non-blank variants)", len(embedder.calls))
+	}
+	if store.calls != 3 || store.lexicalCalls != 3 {
+		t.Fatalf("route calls = (vector %d, lexical %d), want (3, 3)", store.calls, store.lexicalCalls)
+	}
+	if !reflect.DeepEqual(store.queries, []string{"年假", "假期 申请", "annual leave"}) {
+		t.Fatalf("lexical queries = %v, want main query then trimmed variants", store.queries)
+	}
+	// 变体只影响召回：留痕查询文本恒为主查询。
+	if store.query != "年假" {
+		t.Fatalf("retrieval query = %q, want main query", store.query)
+	}
+}
+
+func TestKnowledgeSearch_fuses_vector_and_lexical_routes_by_rrf(t *testing.T) {
+	// 向量路 [d1, d2] + 词法路 [d2, d3]：d2 两路累加居首，文档记录取
+	// 首次出现者（向量路的 metadata/content）。
+	store := &recordingSearchStore{
+		results: []*ScoredVectorDocument{
+			{Document: &VectorDocument{ID: "d1", Content: "vector d1", Metadata: map[string]any{"source_id": "11"}}, Score: 0.9},
+			{Document: &VectorDocument{ID: "d2", Content: "vector d2", Metadata: map[string]any{"source_id": "12"}}, Score: 0.8},
+		},
+		lexical: []*ScoredVectorDocument{
+			{Document: &VectorDocument{ID: "d2", Content: "lexical d2", Metadata: map[string]any{"source_id": "other"}}, Score: 0.7},
+			{Document: &VectorDocument{ID: "d3", Content: "lexical d3", Metadata: map[string]any{"source_id": "13"}}, Score: 0.6},
+		},
+	}
+	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	wantOrder := []string{"d2", "d1", "d3"}
+	for i, id := range wantOrder {
+		if hits[i].DocumentID != id {
+			t.Fatalf("hit %d = %s, want %s (RRF order)", i, hits[i].DocumentID, id)
+		}
+	}
+	// Score 为 RRF 分：d2 两路累加 1/(k+1)+1/(k+2)，其余各单路一次
+	//（k 为变量，运行时 float64 口径与实现一致）。
+	k := float64(DefaultKnowledgeSearchFusionRRFK)
+	if hits[0].Score != 1/(k+1)+1/(k+2) {
+		t.Fatalf("d2 score = %f, want two-route accumulation", hits[0].Score)
+	}
+	// 文档记录取首次出现（向量路）：source_id 不会被词法路的值覆盖。
+	if hits[0].SourceID != "12" || hits[0].Content != "vector d2" {
+		t.Fatalf("d2 record = (%s, %s), want first occurrence (vector route)", hits[0].SourceID, hits[0].Content)
+	}
+}
+
+func TestKnowledgeSearch_lexical_failure_degrades_to_vector_only(t *testing.T) {
+	store := &recordingSearchStore{
+		lexicalErr: errors.New("lexical index unavailable"),
+		results: []*ScoredVectorDocument{
+			{Document: &VectorDocument{ID: "d1", Content: "vector d1"}, Score: 0.9},
+		},
+	}
+	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	hits, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"})
+	if err != nil {
+		t.Fatalf("Search with lexical failure = %v, want degraded success", err)
+	}
+	if len(hits) != 1 || hits[0].DocumentID != "d1" {
+		t.Fatalf("hits = %v, want vector-only result", hits)
+	}
+	k := float64(DefaultKnowledgeSearchFusionRRFK)
+	if hits[0].Score != 1/(k+1) {
+		t.Fatalf("score = %f, want single-route rank-1 RRF score", hits[0].Score)
+	}
+}
+
+func TestKnowledgeSearch_vector_failure_fails_whole_search(t *testing.T) {
+	store := &recordingSearchStore{err: errors.New("vector index unavailable")}
+	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	if _, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape"}); err == nil ||
+		!strings.Contains(err.Error(), "vector index unavailable") {
+		t.Fatalf("Search with vector failure = %v, want whole-search failure", err)
+	}
+}
+
+func TestKnowledgeSearch_invalid_variant_returns_invalid_argument(t *testing.T) {
+	cases := map[string][]string{
+		"oversize variant":   {strings.Repeat("检", MaxKnowledgeSearchQueryRunes+1)},
+		"too many variants":  {"a", "b", "c", "d", "e"},
+		"blank entries only": {"   ", "\t"},
+	}
+	for name, variants := range cases {
+		t.Run(name, func(t *testing.T) {
+			store := &recordingSearchStore{}
+			embedder := &stubEmbedder{dims: 4}
+			uc := newSearchUsecaseForTest(t, store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+			_, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", Variants: variants})
+			// 空白-only 变体全部被跳过后等同无变体，检索照常执行；
+			// 超长与超限是非法入参。
+			if name == "blank entries only" {
+				if err != nil {
+					t.Fatalf("Search(blank-only variants) = %v, want accepted", err)
+				}
+				if store.calls != 1 || store.lexicalCalls != 1 {
+					t.Fatalf("route calls = (%d, %d), want (1, 1) (blank variants skipped)", store.calls, store.lexicalCalls)
+				}
+				return
+			}
+			if !errors.Is(err, ErrKnowledgeSearchInvalidArgument) {
+				t.Fatalf("Search(%s) = %v, want ErrKnowledgeSearchInvalidArgument", name, err)
+			}
+			if store.calls != 0 || len(embedder.calls) != 0 {
+				t.Fatalf("store/embed calls = %d/%d, want 0/0 (validate before retrieval)",
+					store.calls, len(embedder.calls))
+			}
+		})
+	}
+}
+
+func TestKnowledgeSearch_variant_count_at_limit_accepted(t *testing.T) {
+	store := &recordingSearchStore{}
+	embedder := &stubEmbedder{dims: 4}
+	uc := newSearchUsecaseForTest(t, store, embedder, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	variants := []string{"v1", "v2", "v3", "v4"}
+	if _, err := uc.Search(searchCtx(), &KnowledgeSearchQuery{Query: "grape", Variants: variants}); err != nil {
+		t.Fatalf("Search(at variant limit) = %v, want accepted", err)
+	}
+	if store.calls != MaxKnowledgeSearchQueryVariants+1 || store.lexicalCalls != MaxKnowledgeSearchQueryVariants+1 {
+		t.Fatalf("route calls = (%d, %d), want (%d, %d)",
+			store.calls, store.lexicalCalls, MaxKnowledgeSearchQueryVariants+1, MaxKnowledgeSearchQueryVariants+1)
 	}
 }

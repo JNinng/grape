@@ -95,6 +95,10 @@ func (*mockVectorStore) Delete(context.Context, string) error          { return 
 func (*mockVectorStore) Search(context.Context, []float32, *VectorFilter) ([]*ScoredVectorDocument, error) {
 	return nil, nil
 }
+
+func (*mockVectorStore) SearchLexical(context.Context, string, *VectorFilter) ([]*ScoredVectorDocument, error) {
+	return nil, nil
+}
 func (*mockVectorStore) Count(context.Context, *VectorFilter) (int64, error) {
 	return 0, nil
 }

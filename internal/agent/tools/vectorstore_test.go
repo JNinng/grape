@@ -72,6 +72,11 @@ func (f *fakeVectorStore) Search(_ context.Context, embedding []float32, filter 
 	return f.hits, nil
 }
 
+func (f *fakeVectorStore) SearchLexical(context.Context, string, *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	// 适配器只落向量检索（SearchModeVector），词法路不经本适配器。
+	return nil, nil
+}
+
 func (f *fakeVectorStore) DeleteByFilter(_ context.Context, filter *biz.VectorFilter) (int64, error) {
 	f.delByF = filter
 	return f.deleted, nil
