@@ -249,7 +249,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver, reranker, knowledgeUsecase)
+	knowledgeSearchUsecase, err := biz.NewKnowledgeSearchUsecase(vectorStore, embedder, modelResolver, reranker, knowledgeUsecase, retrievalLogRepo, registry)
 	if err != nil {
 		cleanup13()
 		cleanup12()

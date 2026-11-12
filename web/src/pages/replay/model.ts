@@ -139,6 +139,92 @@ export function parseRetrievalHits(raw: unknown): RetrievalHit[] {
   return hits
 }
 
+// RetrievalStageUnit 是留痕阶段时间线里 pack 单元的前端形态（与后端
+// retrievalPackUnit 的 jsonb 键 snake_case 对齐后归一）。
+export interface RetrievalStageUnit {
+  mode: string
+  sourceId?: string
+  documentIds: string[]
+  headingPath?: string
+  anchor?: string
+  tokens: number
+  admitted: boolean
+}
+
+// RetrievalStage 是留痕阶段时间线的单个阶段：数组顺序即执行序（召回 →
+// 融合 → 重排 → 回包）。queryText 仅召回阶段承载（记变体文本），model
+// 仅重排阶段承载；error 是阶段失败摘要（降级路径照常继续）。
+export interface RetrievalStage {
+  stage: string
+  queryText?: string
+  limit?: number
+  model?: string
+  candidates: RetrievalHit[]
+  units: RetrievalStageUnit[]
+  error?: string
+  durationMs: number
+}
+
+// parseRetrievalStageUnits 安全解析 pack 阶段的回包单元：document_ids 逐
+// 项取字符串，tokens 非有限数字按 0，admitted 非布尔按 false——损坏单元
+// 不抛错，保留可解析的部分事实。
+function parseRetrievalStageUnits(raw: unknown): RetrievalStageUnit[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const units: RetrievalStageUnit[] = []
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) {
+      continue
+    }
+    const record = item as Record<string, unknown>
+    const ids = Array.isArray(record.document_ids)
+      ? record.document_ids.filter((id): id is string => typeof id === 'string' && id !== '')
+      : []
+    units.push({
+      mode: typeof record.mode === 'string' && record.mode !== '' ? record.mode : 'chunk',
+      sourceId: typeof record.source_id === 'string' && record.source_id !== '' ? record.source_id : undefined,
+      documentIds: ids,
+      headingPath: typeof record.heading_path === 'string' && record.heading_path !== '' ? record.heading_path : undefined,
+      anchor: typeof record.anchor === 'string' && record.anchor !== '' ? record.anchor : undefined,
+      tokens: typeof record.tokens === 'number' && Number.isFinite(record.tokens) ? record.tokens : 0,
+      admitted: record.admitted === true,
+    })
+  }
+  return units
+}
+
+// parseRetrievalStages 安全解析留痕行的 stages JSON（编排层写入的阶段数
+// 组）：畸形输入（非数组、stage 键缺失）逐项丢弃而非抛错；单路直调行的
+// stages 缺省返回空数组（时间线不渲染，不伪造空阶段）。候选复用 hits 的
+// 解析口径（同形态同纪律）。
+export function parseRetrievalStages(raw: unknown): RetrievalStage[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  const stages: RetrievalStage[] = []
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) {
+      continue
+    }
+    const record = item as Record<string, unknown>
+    if (typeof record.stage !== 'string' || record.stage === '') {
+      continue
+    }
+    stages.push({
+      stage: record.stage,
+      queryText: typeof record.query_text === 'string' && record.query_text !== '' ? record.query_text : undefined,
+      limit: typeof record.limit === 'number' && Number.isFinite(record.limit) ? record.limit : undefined,
+      model: typeof record.model === 'string' && record.model !== '' ? record.model : undefined,
+      candidates: parseRetrievalHits(record.candidates),
+      units: parseRetrievalStageUnits(record.units),
+      error: typeof record.error === 'string' && record.error !== '' ? record.error : undefined,
+      durationMs: typeof record.duration_ms === 'number' && Number.isFinite(record.duration_ms) ? record.duration_ms : 0,
+    })
+  }
+  return stages
+}
+
 // toolCallAuditsFor 按回放工具调用 ID 取审计行（保持端点返回序）：回放
 // 侧点击一次工具调用时，联动高亮它的审计与确认证据。
 export function toolCallAuditsFor(toolCalls: ToolCallAudit[], toolCallId: string): ToolCallAudit[] {

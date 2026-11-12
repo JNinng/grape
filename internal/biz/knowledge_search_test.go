@@ -32,6 +32,7 @@ type recordingSearchStore struct {
 	query        string
 	source       string
 	session      string
+	suppressed   bool // ctx 是否带留痕抑制标记（编排路径断言用）
 
 	lists   map[string][]*VectorDocument // 来源全量块（pack 聚合用），按 source_id 键
 	listErr error
@@ -54,6 +55,7 @@ func (s *recordingSearchStore) Search(ctx context.Context, embedding []float32, 
 	s.query = RetrievalQueryFromContext(ctx)
 	s.source = RetrievalSourceFromContext(ctx)
 	s.session = SessionIDFromContext(ctx)
+	s.suppressed = RetrievalLogSuppressedFromContext(ctx)
 	return s.results, s.err
 }
 
@@ -91,8 +93,9 @@ func defaultSearchLibraries() *stubLibraryDirectory {
 func newSearchUsecaseForTest(t *testing.T, store VectorStore, embedder Embedder, resolver EmbedderResolver, libraries KnowledgeLibraryDirectory) *KnowledgeSearchUsecase {
 	t.Helper()
 	// 缺省不装配重排层（nil 即跳过）；重排编排用例在
-	// knowledge_search_rerank_test.go 自行构造带 reranker 的用例。
-	uc, err := NewKnowledgeSearchUsecase(store, embedder, resolver, nil, libraries)
+	// knowledge_search_rerank_test.go 自行构造带 reranker 的用例。留痕
+	// 写入面用空转替身（行内容断言在 knowledge_search_stages_test.go）。
+	uc, err := NewKnowledgeSearchUsecase(store, embedder, resolver, nil, libraries, noopSearchLogRepo{}, nil)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}
@@ -108,19 +111,23 @@ func TestNewKnowledgeSearchUsecase_missing_dependency_returns_error(t *testing.T
 	resolver := &stubResolver{space: testEmbedderSpace, dim: 4}
 	for name, fn := range map[string]func() error{
 		"nil store": func() error {
-			_, err := NewKnowledgeSearchUsecase(nil, &stubEmbedder{dims: 4}, resolver, nil, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(nil, &stubEmbedder{dims: 4}, resolver, nil, defaultSearchLibraries(), noopSearchLogRepo{}, nil)
 			return err
 		},
 		"nil embedder": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, nil, resolver, nil, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, nil, resolver, nil, defaultSearchLibraries(), noopSearchLogRepo{}, nil)
 			return err
 		},
 		"nil resolver": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, nil, nil, defaultSearchLibraries())
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, nil, nil, defaultSearchLibraries(), noopSearchLogRepo{}, nil)
 			return err
 		},
 		"nil library directory": func() error {
-			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, resolver, nil, nil)
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, resolver, nil, nil, noopSearchLogRepo{}, nil)
+			return err
+		},
+		"nil retrieval log repo": func() error {
+			_, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, resolver, nil, defaultSearchLibraries(), nil, nil)
 			return err
 		},
 	} {

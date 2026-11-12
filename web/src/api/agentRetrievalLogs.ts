@@ -3,7 +3,8 @@ import { toApiError } from './toApiError'
 
 // 检索留痕查询端点（供运维复现视图）的 DTO：字段与后端
 // service/agent_retrieval.go 的 JSON 形状对齐，时间为 UTC RFC3339。
-// queryText / filterSummary / hits 是落库时已脱敏的形态，前端直接渲染。
+// queryText / filterSummary / hits / stages 是落库时已脱敏的形态，前端直接
+// 渲染；stages 为编排层写入的阶段数组（单路直调行恒缺省，不伪造空阶段）。
 
 export interface RetrievalHit {
   documentId: string
@@ -22,8 +23,7 @@ export interface RetrievalLog {
   effectiveTopK: number | null
   filterSummary: unknown
   hits: unknown
-  rerankBefore?: string
-  rerankAfter?: string
+  stages?: unknown
   durationMs: number
   createdAt: string
 }

@@ -129,10 +129,16 @@ reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向
 向量仓储经装饰器后对外供给（wire：`NewVectorStoreSupply` →
 `NewLoggedVectorStore`），装饰器位于仓储之上、框架适配器与摄取管线之下。
 
+- 写入方有两处，共同保住「一次操作一行」：混合检索编排层（biz 知识检索
+  用例）经 ctx 抑制标记（`biz.WithRetrievalLogSuppressed`）让装饰器跳过
+  Search / SearchLexical 的逐路留痕，在完成处自写一行完整留痕（stages
+  承载「召回 → 融合 → 重排 → 回包」阶段数组，查询文本与阶段内文本的
+  retrieval 类别脱敏由编排层完成）；装饰器承接其余检索（框架侧单路直调，
+  stages 为 NULL——不伪造空阶段）与摄取侧。
 - 留痕点：Search 与 SearchLexical 记 query、请求/生效 top_k、过滤摘要、
   命中、耗时、来源取 ctx 声明（`biz.WithRetrievalSource`，知识检索用例缺省
-  声明 `console`，agent 工具链路显式声明 `tool`；词法路的 query 记分词前
-  原文，脱敏口径与向量路一致）；Add/Update/DeleteByFilter
+  声明 `console`，agent 工具链路显式声明 `tool`，未声明回落 `tool`；词法路
+  的 query 记分词前原文，脱敏口径与向量路一致）；Add/Update/DeleteByFilter
   记摄取侧、来源 `pipeline`；
   Get/Delete/Count/GetMetadata/List 不留痕（点读与枚举不构成召回证据）。
 - 每次操作一行，成败都记（status 区分）；每行一个独立 `IdentityTx`，
@@ -141,7 +147,8 @@ reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向
   query 按 4096 rune 截断；过滤摘要脱敏破坏 JSON 时降级为截断声明；
   命中最多保留 50 条。
 - top_k 请求值取存储契约收到的 Limit（0 表示未指定），生效值在未指定
-  或非正时取默认页大小 10。
+  或非正时取默认页大小 10；编排层行的 top_k 两值取归一化后的 top_k
+  （最终命中上限），过滤摘要记 `kb_ids` 可见库集合。
 
 ## 向量介质
 

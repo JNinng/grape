@@ -58,8 +58,9 @@ func (s *AgentRetrievalService) routeHandler(list func(*nethttp.Request, nethttp
 }
 
 // retrievalLogItem 是检索留痕项的响应 DTO：query_text 是落库时已脱敏的
-// 形态；过滤摘要与命中以落库的 JSON 形态原样透传（证据面渲染），
-// 落库为 NULL 的两列渲染为 null。时间以 UTC RFC3339 渲染。
+// 形态；过滤摘要、命中与阶段时间线以落库的 JSON 形态原样透传（证据面
+// 渲染），落库为 NULL 的列渲染为 null（单路直调行的 stages 为 null——
+// 不伪造空阶段）。时间以 UTC RFC3339 渲染。
 type retrievalLogItem struct {
 	ID            int64           `json:"id"`
 	Source        string          `json:"source"`
@@ -71,8 +72,7 @@ type retrievalLogItem struct {
 	EffectiveTopK *int32          `json:"effectiveTopK"`
 	FilterSummary json.RawMessage `json:"filterSummary"`
 	Hits          json.RawMessage `json:"hits"`
-	RerankBefore  string          `json:"rerankBefore,omitempty"`
-	RerankAfter   string          `json:"rerankAfter,omitempty"`
+	Stages        json.RawMessage `json:"stages"`
 	DurationMS    int64           `json:"durationMs"`
 	CreatedAt     string          `json:"createdAt"`
 }
@@ -158,8 +158,7 @@ func retrievalLogItemOf(rec *biz.RetrievalLog) retrievalLogItem {
 		TraceID:       rec.TraceID,
 		FilterSummary: rec.FilterSummary,
 		Hits:          rec.Hits,
-		RerankBefore:  rec.RerankBefore,
-		RerankAfter:   rec.RerankAfter,
+		Stages:        rec.Stages,
 		DurationMS:    rec.DurationMS,
 		CreatedAt:     rec.CreatedAt.UTC().Format(time.RFC3339),
 	}

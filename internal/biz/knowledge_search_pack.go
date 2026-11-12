@@ -113,11 +113,13 @@ type packEntry struct {
 // packSearchUnits 是回包聚合的编排入口：命中块按来源分组、按最高分截前
 // MaxSources（超出来源整体丢弃），逐来源取全量块分档聚合，最后按固定预
 // 算两段装配。来源全量块与命中块同宇宙（同空间同固定检索条件），聚合粒
-// 度不越过可见性边界。
-func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*KnowledgeSearchHit, space string, conditions []MetadataCondition) []*KnowledgeSearchUnit {
+// 度不越过可见性边界。返回回包单元与 pack 阶段留痕单元——留痕单元含装
+// 配期的全部候选单元（含被预算截断者，admitted 区分），对照 fusion 序
+// 可还原预算截断掉了谁。
+func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*KnowledgeSearchHit, space string, conditions []MetadataCondition) ([]*KnowledgeSearchUnit, []retrievalPackUnit) {
 	groups := groupPackSources(hits)
 	if len(groups) == 0 {
-		return []*KnowledgeSearchUnit{}
+		return []*KnowledgeSearchUnit{}, nil
 	}
 	singleSource := len(groups) == 1
 	if len(groups) > KnowledgeSearchPackMaxSources {
@@ -135,7 +137,41 @@ func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*K
 			entries = append(entries, e)
 		}
 	}
-	return assemblePackUnits(entries, KnowledgeSearchPackBudgetTokens)
+	units := assemblePackUnits(entries, KnowledgeSearchPackBudgetTokens)
+	return units, packStageUnits(entries, units)
+}
+
+// packStageUnits 把装配期的全部单元投影为 pack 阶段留痕单元：admitted
+// 以结果集（同一 unit 指针）判定，false 即被预算截断或同源收编。
+func packStageUnits(entries []*packEntry, admitted []*KnowledgeSearchUnit) []retrievalPackUnit {
+	if len(entries) == 0 {
+		return nil
+	}
+	inPack := make(map[*KnowledgeSearchUnit]bool, len(admitted))
+	for _, u := range admitted {
+		if u != nil {
+			inPack[u] = true
+		}
+	}
+	out := make([]retrievalPackUnit, 0, len(entries))
+	for _, e := range entries {
+		if e == nil || e.unit == nil {
+			continue
+		}
+		out = append(out, retrievalPackUnit{
+			Mode:        e.unit.Mode,
+			SourceID:    e.unit.SourceID,
+			DocumentIDs: e.unit.DocumentIDs,
+			HeadingPath: e.unit.HeadingPath,
+			Anchor:      e.unit.Anchor,
+			Tokens:      e.tokens,
+			Admitted:    inPack[e.unit],
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // packLastResortEntry 是来源的保底直回单元（命中分最高的命中块单块直回）：

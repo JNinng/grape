@@ -82,11 +82,21 @@ func newSearchTestService(t *testing.T, store biz.VectorStore, embedder biz.Embe
 
 func newSearchTestServiceWithLibraries(t *testing.T, store biz.VectorStore, embedder biz.Embedder, libraries biz.KnowledgeLibraryDirectory) *KnowledgeService {
 	t.Helper()
-	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{}, nil, libraries)
+	search, err := biz.NewKnowledgeSearchUsecase(store, embedder, searchFakeResolver{}, nil, libraries, noopSearchLogRepo{}, nil)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}
 	return NewKnowledgeService(nil, search)
+}
+
+// noopSearchLogRepo 是检索端点单测的空转留痕仓储：检索用例要求留痕写入
+// 面非 nil，本测试不做留痕行断言。
+type noopSearchLogRepo struct{}
+
+func (noopSearchLogRepo) Append(context.Context, *biz.RetrievalLogRecord) error { return nil }
+
+func (noopSearchLogRepo) List(context.Context, *biz.RetrievalLogFilter) (*biz.RetrievalLogList, error) {
+	return &biz.RetrievalLogList{}, nil
 }
 
 func searchIdentityCtx() context.Context {

@@ -12,30 +12,36 @@ import (
 // 无 reranker / 未配置 / 调用失败的降级路径与同分稳定性。分数断言用精确值。
 
 // stubReranker 是检索编排单测的重排替身：记录 query / documents / ctx 场景
-// 声明，返回可编程分数或错误。
+// 声明，返回可编程分数或错误；ModelKey 默认回报替身模型键（与真实实现
+// 「解析出端点事实后随结果报告」的口径一致）。
 type stubReranker struct {
-	scores []float64
-	err    error
+	scores   []float64
+	err      error
+	modelKey string
 
 	queries   []string
 	documents [][]string
 	scenes    []string
 }
 
-func (r *stubReranker) Rerank(ctx context.Context, query string, documents []string) ([]float64, error) {
+func (r *stubReranker) Rerank(ctx context.Context, query string, documents []string) (*RerankResult, error) {
 	r.queries = append(r.queries, query)
 	r.documents = append(r.documents, documents)
 	r.scenes = append(r.scenes, ModelCallSceneFromContext(ctx))
 	if r.err != nil {
 		return nil, r.err
 	}
-	return r.scores, nil
+	key := r.modelKey
+	if key == "" {
+		key = "stub-reranker"
+	}
+	return &RerankResult{Scores: r.scores, ModelKey: key}, nil
 }
 
 // newSearchUsecaseWithReranker 构造装配指定重排层的检索单测用例。
 func newSearchUsecaseWithReranker(t *testing.T, store VectorStore, reranker Reranker) *KnowledgeSearchUsecase {
 	t.Helper()
-	uc, err := NewKnowledgeSearchUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, reranker, defaultSearchLibraries())
+	uc, err := NewKnowledgeSearchUsecase(store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, reranker, defaultSearchLibraries(), noopSearchLogRepo{}, nil)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase: %v", err)
 	}
@@ -44,7 +50,7 @@ func newSearchUsecaseWithReranker(t *testing.T, store VectorStore, reranker Rera
 }
 
 func TestNewKnowledgeSearchUsecase_accepts_nil_reranker(t *testing.T) {
-	uc, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, defaultSearchLibraries())
+	uc, err := NewKnowledgeSearchUsecase(&recordingSearchStore{}, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, nil, defaultSearchLibraries(), noopSearchLogRepo{}, nil)
 	if err != nil {
 		t.Fatalf("NewKnowledgeSearchUsecase(nil reranker) = %v, want accepted", err)
 	}

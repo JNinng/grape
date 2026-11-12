@@ -570,3 +570,205 @@ func TestRetrievalLogRepo_unauthenticated_calls_fail_closed(t *testing.T) {
 		t.Fatal("repo list without identity = nil error, want rejection")
 	}
 }
+
+// stageLibraryDirectory 是检索编排集成测试的可见库集合替身：固定返回库 7。
+type stageLibraryDirectory struct{}
+
+func (stageLibraryDirectory) VisibleLibraries(context.Context, biz.Identity) ([]*biz.KnowledgeLibrary, error) {
+	return []*biz.KnowledgeLibrary{{ID: 7}}, nil
+}
+
+// fixedQueryEmbedder 是检索编排集成测试的替身 embedder：任意查询文本都
+// 产出基向量 e0（与 seedKnowledgeDocs 的 doc-a 同向，命中可精确断言）。
+type fixedQueryEmbedder struct{}
+
+func (fixedQueryEmbedder) Dimension(string) (int, error) { return int(vectorDimension), nil }
+
+func (fixedQueryEmbedder) Embed(context.Context, string, string) ([]float32, error) {
+	return unitVector(int(vectorDimension), 0), nil
+}
+
+// seedKnowledgeDocs 以装饰器写入满足检索固定条件的两篇文档（kb_id=7、
+// 参与态、有效期全覆盖），返回供检索的查询向量。
+func seedKnowledgeDocs(t *testing.T, store biz.VectorStore, id biz.Identity) []float32 {
+	t.Helper()
+	ctx := retrievalIdentityContext(id, false)
+	kbMeta := func(index int) map[string]any {
+		return map[string]any{
+			"source_id":       "doc",
+			"source_name":     "seed",
+			"anchor":          fmt.Sprintf("runes %d-%d", index*16, index*16+15),
+			"chunk_index":     index,
+			"kb_id":           "7",
+			"document_id":     "1",
+			"doc_status":      int(biz.KnowledgeStatusEnabled),
+			"valid_from_unix": int64(0),
+			"valid_to_unix":   int64(4102444800),
+		}
+	}
+	docs := []*biz.VectorDocument{
+		spaceDoc(&biz.VectorDocument{ID: "doc-a", Content: "grape vector alpha", Embedding: unitVector(int(vectorDimension), 0), Metadata: kbMeta(0)}),
+		spaceDoc(&biz.VectorDocument{ID: "doc-b", Content: "grape vector beta", Embedding: unitVector(int(vectorDimension), 1), Metadata: kbMeta(1)}),
+	}
+	for _, doc := range docs {
+		if err := store.Add(ctx, doc); err != nil {
+			t.Fatalf("seed document %s: %v", doc.ID, err)
+		}
+	}
+	return unitVector(int(vectorDimension), 0)
+}
+
+// newOrchestrationSearchUsecase 构造检索编排用例（真实装饰后向量仓储 +
+// 真实留痕仓储；embedder/resolver/可见库集合为替身）。
+func newOrchestrationSearchUsecase(t *testing.T, store biz.VectorStore, logs biz.RetrievalLogRepo, registry *redact.Registry) *biz.KnowledgeSearchUsecase {
+	t.Helper()
+	uc, err := biz.NewKnowledgeSearchUsecase(store, fixedQueryEmbedder{}, fixedSpaceResolver{}, nil, stageLibraryDirectory{}, logs, registry)
+	if err != nil {
+		t.Fatalf("build search usecase: %v", err)
+	}
+	return uc
+}
+
+// retrievalStageView 是留痕行 stages 数组的读侧最小投影（断言用）。
+type retrievalStageView struct {
+	Stage      string           `json:"stage"`
+	QueryText  string           `json:"query_text"`
+	Limit      int              `json:"limit"`
+	Model      string           `json:"model"`
+	Candidates []map[string]any `json:"candidates"`
+	Units      []map[string]any `json:"units"`
+	Error      string           `json:"error"`
+	DurationMS int64            `json:"duration_ms"`
+}
+
+func TestRetrievalLog_orchestration_search_writes_single_stage_row(t *testing.T) {
+	d := setupRetrievalTestDB(t)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
+	store := newLoggedVectorStoreForTest(t, d, logRepo)
+	seedKnowledgeDocs(t, store, retrievalTenantA)
+	uc := newOrchestrationSearchUsecase(t, store, logRepo, redact.NewStandardRegistry())
+
+	ctx := retrievalIdentityContext(retrievalTenantA, true)
+	ctx = biz.WithSessionID(ctx, "sess-d3-run")
+	units, err := uc.Search(ctx, &biz.KnowledgeSearchQuery{Query: "grape 检索", TopK: 2})
+	if err != nil || len(units) == 0 {
+		t.Fatalf("orchestrated search = (%d units, %v), want hits", len(units), err)
+	}
+
+	// 一次操作一行：多路调用（2 召回路 + pack 的 List）只产生一行编排
+	// 留痕，来源为缺省 console。
+	reader := biz.NewRetrievalLogUsecase(logRepo)
+	list, err := reader.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourceConsole})
+	if err != nil || list.Total != 1 {
+		t.Fatalf("console rows = (%d total, %v), want exactly one orchestration row", list.Total, err)
+	}
+	tools, err := reader.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourceTool})
+	if err != nil || tools.Total != 0 {
+		t.Fatalf("tool rows = (%d total, %v), want 0 (decorator suppressed)", tools.Total, err)
+	}
+	row := list.Items[0]
+	switch {
+	case row.Status != biz.RetrievalStatusSuccess:
+		t.Fatalf("row status = %q, want success", row.Status)
+	case row.QueryText != "grape 检索":
+		t.Fatalf("query text = %q, want the redacted main query", row.QueryText)
+	case row.RequestedTopK != 2 || row.EffectiveTopK != 2:
+		t.Fatalf("top_k = (%d, %d), want the normalized top_k on both", row.RequestedTopK, row.EffectiveTopK)
+	case row.Embedder != vectorTestSpace:
+		t.Fatalf("embedder = %q, want %s", row.Embedder, vectorTestSpace)
+	// 编排行与装饰器行同口径提取身份与链路事实：租户/用户来自认证 ctx
+	// （仓储经 IdentityTx 注入），trace 取 SpanContext，会话取 ctx 事实。
+	case row.TenantID != retrievalTenantA.TenantID || row.UserID != retrievalTenantA.UserID:
+		t.Fatalf("row owner = (%s, %d), want from authenticated identity (%s, %d)",
+			row.TenantID, row.UserID, retrievalTenantA.TenantID, retrievalTenantA.UserID)
+	case row.TraceID != trace.TraceID(retrievalTestTraceID).String():
+		t.Fatalf("trace id = %q, want %q from the span context", row.TraceID, trace.TraceID(retrievalTestTraceID).String())
+	case row.SessionID != "sess-d3-run":
+		t.Fatalf("session id = %q, want the ctx fact", row.SessionID)
+	case len(row.Hits) == 0 || len(row.Stages) == 0:
+		t.Fatalf("row = (hits %s, stages %s), want final hits and stage array", row.Hits, row.Stages)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(row.FilterSummary, &summary); err != nil {
+		t.Fatalf("unmarshal filter summary: %v", err)
+	}
+	if ids, ok := summary["kb_ids"].([]any); !ok || len(ids) != 1 || ids[0] != float64(7) {
+		t.Fatalf("filter summary = %v, want kb_ids [7]", summary)
+	}
+
+	// 阶段数组按执行序：vector → lexical → fusion → pack（未装配重排层，
+	// 不伪造 rerank 阶段）；召回阶段记变体文本与候选。
+	var stages []retrievalStageView
+	if err := json.Unmarshal(row.Stages, &stages); err != nil {
+		t.Fatalf("unmarshal stages: %v", err)
+	}
+	wantOrder := []string{biz.RetrievalStageVector, biz.RetrievalStageLexical, biz.RetrievalStageFusion, biz.RetrievalStagePack}
+	if len(stages) != len(wantOrder) {
+		t.Fatalf("stages = %d elements, want %d (%v)", len(stages), len(wantOrder), stages)
+	}
+	for i, want := range wantOrder {
+		if stages[i].Stage != want {
+			t.Fatalf("stage %d = %s, want %s (execution order)", i, stages[i].Stage, want)
+		}
+	}
+	if stages[0].QueryText != "grape 检索" || len(stages[0].Candidates) == 0 {
+		t.Fatalf("vector stage = (query %q, candidates %d), want variant text and candidates",
+			stages[0].QueryText, len(stages[0].Candidates))
+	}
+	if stages[0].Limit != 4 {
+		t.Fatalf("vector stage limit = %d, want 2*top_k", stages[0].Limit)
+	}
+	if stages[3].Limit != biz.KnowledgeSearchPackBudgetTokens || len(stages[3].Units) == 0 {
+		t.Fatalf("pack stage = (limit %d, units %d), want token budget and reply units", stages[3].Limit, len(stages[3].Units))
+	}
+}
+
+func TestRetrievalLog_orchestration_redacts_variant_queries_in_stages(t *testing.T) {
+	// 变体查询文本与主查询同口径脱敏：掩码注册表下行级与阶段级查询文本
+	// 一律掩码，多路调用仍只落一行。
+	d := setupRetrievalTestDB(t)
+	logRepo := pgsqlc.NewRetrievalLogRepo(d)
+	store := newLoggedVectorStoreForTest(t, d, logRepo)
+	seedKnowledgeDocs(t, store, retrievalTenantA)
+
+	registry := redact.NewRegistry()
+	if err := registry.Register(redact.CategoryRetrieval, redact.NewMask("[masked]")); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	uc := newOrchestrationSearchUsecase(t, store, logRepo, registry)
+
+	ctx := retrievalIdentityContext(retrievalTenantA, false)
+	units, err := uc.Search(ctx, &biz.KnowledgeSearchQuery{Query: "grape 检索", Variants: []string{"变体查询"}})
+	if err != nil || len(units) == 0 {
+		t.Fatalf("orchestrated search = (%d units, %v), want hits", len(units), err)
+	}
+
+	reader := biz.NewRetrievalLogUsecase(logRepo)
+	list, err := reader.List(ctx, &biz.RetrievalLogFilter{Source: biz.RetrievalSourceConsole})
+	if err != nil || list.Total != 1 {
+		t.Fatalf("rows = (%d total, %v), want exactly one orchestration row", list.Total, err)
+	}
+	row := list.Items[0]
+	if row.QueryText != "[masked]" {
+		t.Fatalf("row query text = %q, want masked", row.QueryText)
+	}
+	var stages []retrievalStageView
+	if err := json.Unmarshal(row.Stages, &stages); err != nil {
+		t.Fatalf("unmarshal stages: %v", err)
+	}
+	// 主查询 + 1 变体 = 两对召回阶段，查询文本都按 retrieval 类别脱敏。
+	recallQueries := make([]string, 0, 4)
+	for _, s := range stages {
+		if s.Stage == biz.RetrievalStageVector || s.Stage == biz.RetrievalStageLexical {
+			recallQueries = append(recallQueries, s.QueryText)
+		}
+	}
+	if len(recallQueries) != 4 {
+		t.Fatalf("recall stages = %d, want 4 (two queries, vector+lexical each)", len(recallQueries))
+	}
+	for _, q := range recallQueries {
+		if q != "[masked]" {
+			t.Fatalf("recall stage query = %q, want masked variant text", q)
+		}
+	}
+}

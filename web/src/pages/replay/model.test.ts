@@ -7,6 +7,7 @@ import {
   confirmationsForToolCall,
   matchesTraceId,
   parseRetrievalHits,
+  parseRetrievalStages,
   relatedChatItemIds,
   relatedToolCallIds,
   toolCallAuditsFor,
@@ -194,6 +195,93 @@ describe('parseRetrievalHits', () => {
     expect(parseRetrievalHits(undefined)).toEqual([])
     expect(parseRetrievalHits(null)).toEqual([])
     expect(parseRetrievalHits({ document_id: 'doc-1' })).toEqual([])
+  })
+})
+
+describe('parseRetrievalStages', () => {
+  const stageArray = [
+    {
+      stage: 'vector',
+      query_text: '主查询',
+      limit: 10,
+      candidates: [{ document_id: 'doc-1', score: 0.9, anchor: 'runes 0-16' }],
+      duration_ms: 12,
+    },
+    {
+      stage: 'lexical',
+      query_text: '主查询',
+      limit: 10,
+      candidates: [],
+      duration_ms: 3,
+    },
+    {
+      stage: 'fusion',
+      limit: 10,
+      candidates: [{ document_id: 'doc-1', score: 0.03 } ],
+      duration_ms: 1,
+    },
+    {
+      stage: 'rerank',
+      model: 'bge-reranker@v1',
+      limit: 5,
+      candidates: [{ document_id: 'doc-1', score: 0.97 }],
+      error: 'rerank failed: endpoint down',
+      duration_ms: 30,
+    },
+    {
+      stage: 'pack',
+      limit: 4096,
+      units: [
+        { mode: 'window', source_id: 'doc', document_ids: ['doc-1'], tokens: 120, admitted: true },
+        { mode: 'chunk', document_ids: ['doc-2'], tokens: 80, admitted: false },
+      ],
+      duration_ms: 2,
+    },
+  ]
+
+  it('parses_stage_array_into_timeline_in_execution_order', () => {
+    const stages = parseRetrievalStages(stageArray)
+    expect(stages.map((s) => s.stage)).toEqual(['vector', 'lexical', 'fusion', 'rerank', 'pack'])
+    const vector = stages[0]
+    expect(vector.queryText).toBe('主查询')
+    expect(vector.limit).toBe(10)
+    expect(vector.candidates).toEqual([{ documentId: 'doc-1', score: 0.9, anchor: 'runes 0-16' }])
+    expect(vector.durationMs).toBe(12)
+    expect(stages[2].queryText).toBeUndefined()
+    expect(stages[3].model).toBe('bge-reranker@v1')
+    expect(stages[3].error).toBe('rerank failed: endpoint down')
+  })
+
+  it('parses_pack_units_with_admission_flags', () => {
+    const stages = parseRetrievalStages(stageArray)
+    expect(stages[4].units).toEqual([
+      { mode: 'window', sourceId: 'doc', documentIds: ['doc-1'], headingPath: undefined, anchor: undefined, tokens: 120, admitted: true },
+      { mode: 'chunk', sourceId: undefined, documentIds: ['doc-2'], headingPath: undefined, anchor: undefined, tokens: 80, admitted: false },
+    ])
+  })
+
+  it('drops_malformed_stage_records_without_throwing', () => {
+    const stages = parseRetrievalStages([
+      null,
+      'text',
+      { limit: 10 },
+      { stage: '', limit: 10 },
+      { stage: 'fusion', limit: 'bad', candidates: 'bad', units: [{ mode: 'chunk' }], duration_ms: Number.NaN },
+    ])
+    expect(stages).toHaveLength(1)
+    const fusion = stages[0]
+    expect(fusion.stage).toBe('fusion')
+    expect(fusion.limit).toBeUndefined()
+    expect(fusion.candidates).toEqual([])
+    expect(fusion.units).toEqual([{ mode: 'chunk', sourceId: undefined, documentIds: [], headingPath: undefined, anchor: undefined, tokens: 0, admitted: false }])
+    expect(fusion.durationMs).toBe(0)
+  })
+
+  it('returns_an_empty_array_for_non_array_payloads_and_single_route_rows', () => {
+    // 单路直调行的 stages 落库为 NULL：时间线不渲染，不伪造空阶段。
+    expect(parseRetrievalStages(undefined)).toEqual([])
+    expect(parseRetrievalStages(null)).toEqual([])
+    expect(parseRetrievalStages({ stage: 'vector' })).toEqual([])
   })
 })
 

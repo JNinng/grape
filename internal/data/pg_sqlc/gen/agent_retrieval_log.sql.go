@@ -34,16 +34,15 @@ const insertAgentRetrievalLog = `-- name: InsertAgentRetrievalLog :one
 INSERT INTO public.agent_retrieval_log (tenant_id, user_id, trace_id, session_id,
                                         source, embedder, query_text,
                                         requested_top_k, effective_top_k,
-                                        filter_summary, hits, rerank_before,
-                                        rerank_after, duration_ms,
-                                        status, created_by)
+                                        filter_summary, hits, stages,
+                                        duration_ms, status, created_by)
 VALUES (current_setting('app.tenant_id'), $1, $2,
         $3, $4, $5,
         $6, $7,
         $8, $9,
         $10, $11, $12,
-        $13, $14, $1)
-RETURNING id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at
+        $13, $1)
+RETURNING id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, stages, duration_ms, status, created_by, created_at
 `
 
 type InsertAgentRetrievalLogParams struct {
@@ -57,8 +56,7 @@ type InsertAgentRetrievalLogParams struct {
 	EffectiveTopK *int32  `db:"effective_top_k" json:"effective_top_k"`
 	FilterSummary []byte  `db:"filter_summary" json:"filter_summary"`
 	Hits          []byte  `db:"hits" json:"hits"`
-	RerankBefore  *string `db:"rerank_before" json:"rerank_before"`
-	RerankAfter   *string `db:"rerank_after" json:"rerank_after"`
+	Stages        []byte  `db:"stages" json:"stages"`
 	DurationMs    *int32  `db:"duration_ms" json:"duration_ms"`
 	Status        string  `db:"status" json:"status"`
 }
@@ -83,8 +81,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 		arg.EffectiveTopK,
 		arg.FilterSummary,
 		arg.Hits,
-		arg.RerankBefore,
-		arg.RerankAfter,
+		arg.Stages,
 		arg.DurationMs,
 		arg.Status,
 	)
@@ -102,8 +99,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 		&i.EffectiveTopK,
 		&i.FilterSummary,
 		&i.Hits,
-		&i.RerankBefore,
-		&i.RerankAfter,
+		&i.Stages,
 		&i.DurationMs,
 		&i.Status,
 		&i.CreatedBy,
@@ -113,7 +109,7 @@ func (q *Queries) InsertAgentRetrievalLog(ctx context.Context, arg InsertAgentRe
 }
 
 const listAgentRetrievalLogs = `-- name: ListAgentRetrievalLogs :many
-SELECT id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, rerank_before, rerank_after, duration_ms, status, created_by, created_at FROM public.agent_retrieval_log
+SELECT id, tenant_id, user_id, trace_id, session_id, source, embedder, query_text, requested_top_k, effective_top_k, filter_summary, hits, stages, duration_ms, status, created_by, created_at FROM public.agent_retrieval_log
 WHERE tenant_id = current_setting('app.tenant_id', true)
   AND ($1::varchar IS NULL OR session_id = $1)
   AND ($2::varchar IS NULL OR source = $2)
@@ -156,8 +152,7 @@ func (q *Queries) ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetri
 			&i.EffectiveTopK,
 			&i.FilterSummary,
 			&i.Hits,
-			&i.RerankBefore,
-			&i.RerankAfter,
+			&i.Stages,
 			&i.DurationMs,
 			&i.Status,
 			&i.CreatedBy,

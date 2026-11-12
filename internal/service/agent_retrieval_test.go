@@ -39,6 +39,7 @@ func newRetrievalTestService(t *testing.T) (*AgentRetrievalService, *retrievalFa
 		QueryText: "grape 检索", RequestedTopK: 3, EffectiveTopK: 3,
 		FilterSummary: json.RawMessage(`{"metadata":{"source_id":"doc"}}`),
 		Hits:          json.RawMessage(`[{"document_id":"doc#0","score":0.9,"anchor":"runes 0-800"}]`),
+		Stages:        json.RawMessage(`[{"stage":"vector","query_text":"grape 检索","limit":10,"candidates":[{"document_id":"doc#0","score":0.9}],"duration_ms":4}]`),
 		DurationMS:    12, Status: biz.RetrievalStatusSuccess, CreatedAt: time.Unix(1700000000, 0),
 	}}}
 	return NewAgentRetrievalService(biz.NewRetrievalLogUsecase(repo)), repo
@@ -68,6 +69,7 @@ func TestAgentRetrieval_list_renders_redacted_row_with_evidence_fields(t *testin
 		`"effectiveTopK":3`,
 		`"filterSummary":{"metadata":{"source_id":"doc"}}`,
 		`"hits":[{"document_id":"doc#0","score":0.9,"anchor":"runes 0-800"}]`,
+		`"stages":[{"stage":"vector","query_text":"grape 检索","limit":10,"candidates":[{"document_id":"doc#0","score":0.9}],"duration_ms":4}]`,
 		`"sessionId":"sess-1"`,
 		`"traceId":"0123456789abcdef0123456789abcdef"`,
 		`"durationMs":12`,
@@ -75,6 +77,10 @@ func TestAgentRetrieval_list_renders_redacted_row_with_evidence_fields(t *testin
 		if !strings.Contains(body, want) {
 			t.Fatalf("body missing %s:\n%s", want, body)
 		}
+	}
+	// 已删除的 rerank 两列不再出现在响应形态。
+	if strings.Contains(body, "rerank") {
+		t.Fatalf("body must not carry rerank fields anymore:\n%s", body)
 	}
 	// 时间以 UTC RFC3339 渲染。
 	if !strings.Contains(body, time.Unix(1700000000, 0).UTC().Format(time.RFC3339)) {

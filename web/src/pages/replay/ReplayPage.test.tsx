@@ -204,6 +204,28 @@ beforeEach(() => {
       effectiveTopK: 5,
       filterSummary: {},
       hits: [{ document_id: 'doc-1', score: 0.9, anchor: 'chars 0-64' }],
+      stages: [
+        { stage: 'vector', query_text: 'grape', limit: 10, candidates: [{ document_id: 'doc-1', score: 0.9 }], duration_ms: 12 },
+        { stage: 'lexical', query_text: 'grape', limit: 10, candidates: [], duration_ms: 3 },
+        { stage: 'fusion', limit: 10, candidates: [{ document_id: 'doc-1', score: 0.03 }], duration_ms: 1 },
+        {
+          stage: 'rerank',
+          model: 'bge-reranker@v1',
+          limit: 5,
+          candidates: [{ document_id: 'doc-1', score: 0.97 }],
+          error: 'rerank failed: endpoint down',
+          duration_ms: 30,
+        },
+        {
+          stage: 'pack',
+          limit: 4096,
+          units: [
+            { mode: 'window', source_id: 'doc', document_ids: ['doc-1'], tokens: 120, admitted: true },
+            { mode: 'chunk', document_ids: ['doc-2'], tokens: 80, admitted: false },
+          ],
+          duration_ms: 2,
+        },
+      ],
       durationMs: 20,
       createdAt: '2026-01-01T00:00:03Z',
     },
@@ -301,6 +323,26 @@ describe('ReplayPage four-facet evidence view', () => {
     // 未选中链路：证据行中性呈现，不预高亮也不灰显。
     expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-brand-soft', 'opacity-40')
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
+  })
+
+  it('renders_the_stage_timeline_for_orchestration_retrieval_rows', async () => {
+    // 编排层写入的留痕行按阶段时间线渲染（召回 → 融合 → 重排 → 回包）：
+    // 阶段名、查询变体、重排模型、候选/单元量与被预算截断的单元数可见，
+    // 阶段失败的错误摘要同样可见。
+    renderReplay()
+    // 直接等待时间线出现（region 在数据装载前即存在，不能作为就绪信号）。
+    const timeline = await screen.findByRole('list', { name: '检索阶段' })
+    const items = within(timeline).getAllByRole('listitem')
+    expect(items).toHaveLength(5)
+    expect(items[0]).toHaveTextContent('1. 召回')
+    expect(items[0]).toHaveTextContent('「grape」')
+    expect(items[0]).toHaveTextContent('候选 1 条')
+    expect(items[2]).toHaveTextContent('3. 融合')
+    expect(items[3]).toHaveTextContent('4. 重排')
+    expect(items[3]).toHaveTextContent('bge-reranker@v1')
+    expect(items[3]).toHaveTextContent('rerank failed: endpoint down')
+    expect(items[4]).toHaveTextContent('5. 回包')
+    expect(items[4]).toHaveTextContent('单元 1/2（截断 1）')
   })
 
   it('renders_the_model_call_panel_at_page_level', async () => {

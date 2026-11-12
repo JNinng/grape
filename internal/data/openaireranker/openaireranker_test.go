@@ -72,8 +72,11 @@ func TestReranker_when_rerank_posts_jina_style_request(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Rerank: %v", err)
 	}
-	if len(got) != 2 || got[0] != 0.3 || got[1] != 0.8 {
-		t.Fatalf("scores = %v, want input-aligned [0.3, 0.8]", got)
+	if len(got.Scores) != 2 || got.Scores[0] != 0.3 || got.Scores[1] != 0.8 {
+		t.Fatalf("scores = %v, want input-aligned [0.3, 0.8]", got.Scores)
+	}
+	if got.ModelKey != "bge-reranker" {
+		t.Fatalf("model key = %q, want the resolved catalog key (reported for stage logging)", got.ModelKey)
 	}
 	var req struct {
 		Model     string   `json:"model"`
@@ -109,8 +112,8 @@ func TestReranker_when_results_out_of_order_restored_to_input_alignment(t *testi
 	if err != nil {
 		t.Fatalf("Rerank: %v", err)
 	}
-	if len(got) != 3 || got[0] != 0.1 || got[1] != 0.5 || got[2] != 0.9 {
-		t.Fatalf("scores = %v, want index-restored [0.1, 0.5, 0.9]", got)
+	if len(got.Scores) != 3 || got.Scores[0] != 0.1 || got.Scores[1] != 0.5 || got.Scores[2] != 0.9 {
+		t.Fatalf("scores = %v, want index-restored [0.1, 0.5, 0.9]", got.Scores)
 	}
 }
 
@@ -218,8 +221,8 @@ func TestReranker_when_documents_empty_returns_without_network(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Rerank(empty documents) = %v, want empty scores", err)
 	}
-	if got == nil || len(got) != 0 {
-		t.Fatalf("scores = %#v, want empty non-nil slice", got)
+	if got == nil || len(got.Scores) != 0 {
+		t.Fatalf("scores = %#v, want empty non-nil slice", got.Scores)
 	}
 }
 

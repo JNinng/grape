@@ -10,11 +10,14 @@ import (
 )
 
 // Agent 检索留痕：向量检索与摄取写入的证据链契约。
-// 写入侧由 data 层的 VectorStore 留痕装饰器消费（装饰器构造留痕行，仓储
-// 经 IdentityTx 落库），查询侧供运维复现视图的手写端点消费。检索
-// 内容（查询文本）与过滤摘要在装饰器内经 pkg/redact 注册表脱敏后落库，
-// 本域读侧直接返回已脱敏形态（与审计的摘要口径一致，复现视图不二次脱敏
-// 也不回传原文）。
+// 写入侧有两处（共同保住「一次操作一行」）：data 层的 VectorStore 留痕
+// 装饰器（单路直调检索与摄取侧，仓储经 IdentityTx 落库），以及知识检索
+// 编排层（混合检索管线，经 ctx 抑制标记让装饰器跳过逐路留痕后在完成处
+// 自写完整行，见 WithRetrievalLogSuppressed）；查询侧供运维复现视图的手写
+// 端点消费。检索内容（查询文本）与过滤摘要在写入方内经 pkg/redact 注册表
+// 脱敏后落库——编排层自写行时脱敏义务随之迁移到编排层（本包 redact 在
+// import 白名单内）；本域读侧直接返回已脱敏形态（与审计的摘要口径一致，
+// 复现视图不二次脱敏也不回传原文）。
 
 // 留痕行的领域取值：
 //   - source：检索来源。tool-agent 检索工具链路（调用检索用例前经
@@ -52,16 +55,23 @@ var ErrRetrievalLogInvalidArgument = kratoserrors.BadRequest("AGENT_RETRIEVAL_IN
 type RetrievalHit struct {
 	// DocumentID 是命中文档（切片）ID，即 agent_document.id。
 	DocumentID string `json:"document_id"`
-	// Score 是归一化相似度（[0,1]）；摄取行为无分数语义，取 0。
+	// Score 是随阶段自解释的分数，不做归一：向量召回为归一化相似度
+	//（[0,1]，越大越相似）、词法召回为 ts_rank_cd 相关性（未归一）、融合
+	// 为 RRF 分（Σ 1/(k+rank)）、重排为 rerank 模型相关性分；hits 列取最终
+	// 命中，值为 rerank 分（装配重排层时）或 RRF 融合分（未装配/降级）。
+	// 同阶段（同一次输出的同一路）内可比，跨阶段与跨方法不可比；摄取行为
+	// 无分数语义，取 0。
 	Score float64 `json:"score"`
 	// Anchor 是原文锚点（切片元数据携带的 rune 区间描述）；无锚点为空。
 	Anchor string `json:"anchor,omitempty"`
 }
 
 // RetrievalLogRecord 是一条留痕的写入侧领域模型：身份与租户不是入参——
-// 仓储经 IdentityTx 从认证 ctx 提取，trace_id/session_id/query_text 也在
-// 装饰器侧从 ctx 事实提取，调用方无法伪造归属。QueryText 与 FilterSummary
-// 收「已脱敏成型」的最终形态（脱敏与截断是装饰器的落库前义务）。
+// 仓储经 IdentityTx 从认证 ctx 提取，trace_id/session_id 在写入方从 ctx
+// 事实提取，调用方无法伪造归属。QueryText 与 FilterSummary 收「已脱敏
+// 成型」的最终形态（脱敏与截断是写入方的落库前义务：装饰器侧在其构建
+// 行时完成，编排层自写行时由编排层完成——见 knowledge_search 的阶段
+// 留痕）；Stages 同为已成型 JSON（阶段内查询文本与错误摘要已脱敏截断）。
 type RetrievalLogRecord struct {
 	// TraceID 是链路 ID（ctx SpanContext）；无链路事实为空，
 	// 落库为 NULL——链路缺失如实留空，不伪造。
@@ -76,10 +86,11 @@ type RetrievalLogRecord struct {
 	Embedder string
 	// QueryText 是已脱敏的查询文本；无查询事实（摄取侧）为空，落库 NULL。
 	QueryText string
-	// RequestedTopK 是请求的 top_k（调用方过滤条件传入值）；0 表示未
-	// 显式指定，落库 NULL。框架适配器的硬上限钳制发生在本值上游。
+	// RequestedTopK 是请求的 top_k（编排层行取归一化后的 top_k，装饰器
+	// 单路行取存储契约收到的 Limit）；0 表示未显式指定，落库 NULL。
+	// 硬上限钳制发生在本值上游。
 	RequestedTopK int
-	// EffectiveTopK 是实际生效的 LIMIT（检索行必 >0）；非检索行为 0，
+	// EffectiveTopK 是实际生效的命中上限（检索行必 >0）；非检索行为 0，
 	// 落库 NULL。
 	EffectiveTopK int
 	// FilterSummary 是过滤条件摘要（已脱敏成型的 JSON 形态载体）；
@@ -88,15 +99,20 @@ type RetrievalLogRecord struct {
 	// Hits 是命中（检索行）或作用文档（摄取行，单元素）；空为无命中，
 	// 落库 NULL。
 	Hits []RetrievalHit
+	// Stages 是检索阶段数组（已脱敏成型的 JSON 载体，见
+	// knowledge_search_stages.go 的元素形态）；装饰器单路行不携带（nil，
+	// 落库 NULL——不伪造空阶段），摄取行同样为 nil。
+	Stages json.RawMessage
 	// DurationMS 是操作耗时（毫秒）；未知为 0，落库 NULL。
 	DurationMS int64
 	// Status 是操作终态（RetrievalStatus* 常量）。
 	Status string
 }
 
-// RetrievalLog 是检索留痕的读侧完整行。FilterSummary / Hits 以落库的
-// JSON 形态透传（json.RawMessage）：命中与过滤摘要是证据面，按落库
-// 原样渲染，不做读侧重塑（同「返回脱敏后形态」口径——写入侧已脱敏）。
+// RetrievalLog 是检索留痕的读侧完整行。FilterSummary / Hits / Stages 以
+// 落库的 JSON 形态透传（json.RawMessage）：命中、过滤摘要与阶段时间线是
+// 证据面，按落库原样渲染，不做读侧重塑（同「返回脱敏后形态」口径——
+// 写入侧已脱敏）。装饰器单路行的 Stages 为 NULL（不伪造空阶段）。
 // RequestedTopK / EffectiveTopK 的 0 值渲染 NULL（未指定 / 不适用）。
 type RetrievalLog struct {
 	ID            int64
@@ -111,8 +127,7 @@ type RetrievalLog struct {
 	EffectiveTopK int32
 	FilterSummary json.RawMessage
 	Hits          json.RawMessage
-	RerankBefore  string
-	RerankAfter   string
+	Stages        json.RawMessage
 	DurationMS    int64 // 0 表示未记录
 	Status        string
 	CreatedAt     time.Time
@@ -197,15 +212,17 @@ func retrievalFilterOf(filter *RetrievalLogFilter) (*RetrievalLogFilter, error) 
 }
 
 // 留痕的 ctx 事实载体：查询文本与会话 ID 在检索工具执行现场（agent 层）
-// 提取后经 ctx 传入 data 层装饰器——框架类型不向下游渗透（agent 只导入
-// biz），data 层无从感知框架执行 ctx，这两项事实必须由能读到它们的层
-// 放入中性载体；检索来源由直调 Search 的非工具链路声明。空白值不注入
-// （留痕缺失如实留空，不伪造）。
+// 提取后经 ctx 传入写入方——框架类型不向下游渗透（agent 只导入 biz），
+// data 层无从感知框架执行 ctx，这两项事实必须由能读到它们的层放入中性
+// 载体。消费方随写入方而定：混合检索编排行由知识检索用例读取（会话与
+// 来源），未抑制的单路直调行由 data 层装饰器读取；检索来源由直调 Search
+// 的非工具链路声明。空白值不注入（留痕缺失如实留空，不伪造）。
 
 type sessionIDKey struct{}
 
 // WithSessionID 注入当前请求的 Agent 会话 ID。仅供框架适配层在执行
-// 现场调用；留痕装饰器消费，其他面不得依赖该事实的存在。
+// 现场调用；检索编排层（编排行）与留痕装饰器（未抑制的单路直调行）消费，
+// 其他面不得依赖该事实的存在。
 func WithSessionID(ctx context.Context, sessionID string) context.Context {
 	if strings.TrimSpace(sessionID) == "" {
 		return ctx
@@ -222,7 +239,8 @@ func SessionIDFromContext(ctx context.Context) string {
 type retrievalQueryKey struct{}
 
 // WithRetrievalQuery 注入本次检索的查询文本（Embedder 调用的原文）。
-// 注入的是原始文本：脱敏在装饰器落库前执行，载体只负责传递事实。
+// 注入的是原始文本：脱敏在写入方落库前执行（编排层行与装饰器行各按
+// retrieval 类别处理），载体只负责传递事实。
 func WithRetrievalQuery(ctx context.Context, query string) context.Context {
 	if strings.TrimSpace(query) == "" {
 		return ctx
@@ -230,8 +248,8 @@ func WithRetrievalQuery(ctx context.Context, query string) context.Context {
 	return context.WithValue(ctx, retrievalQueryKey{}, query)
 }
 
-// RetrievalQueryFromContext 读取查询文本事实；缺失返回空串（装饰器
-// 侧落库为 NULL，不伪造查询文本）。
+// RetrievalQueryFromContext 读取查询文本事实；缺失返回空串（写入方落库
+// 为 NULL，不伪造查询文本）。
 func RetrievalQueryFromContext(ctx context.Context) string {
 	s, _ := ctx.Value(retrievalQueryKey{}).(string)
 	return s
@@ -254,4 +272,25 @@ func WithRetrievalSource(ctx context.Context, source string) context.Context {
 func RetrievalSourceFromContext(ctx context.Context) string {
 	s, _ := ctx.Value(retrievalSourceKey{}).(string)
 	return s
+}
+
+// 留痕抑制标记：混合检索编排层一次操作会多路调用 VectorStore 的检索
+// 方法，逐路留痕会把「一次操作一行」拆成多行。编排路径在 ctx 打上本
+// 标记让装饰器跳过 Search / SearchLexical 的逐路留痕，由编排层在完成处
+// 自写一行完整留痕（stages 承载阶段数组）。摄取方法不受标记影响——
+// 摄取行的写入方始终是装饰器。
+
+type retrievalLogSuppressedKey struct{}
+
+// WithRetrievalLogSuppressed 声明本次调用链的检索留痕由编排层负责：
+// 装饰器消费该标记跳过 Search / SearchLexical 的逐路留痕。仅供检索
+// 编排层在其内部调用链上注入。
+func WithRetrievalLogSuppressed(ctx context.Context) context.Context {
+	return context.WithValue(ctx, retrievalLogSuppressedKey{}, true)
+}
+
+// RetrievalLogSuppressedFromContext 读取留痕抑制标记；未声明返回 false。
+func RetrievalLogSuppressedFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(retrievalLogSuppressedKey{}).(bool)
+	return v
 }

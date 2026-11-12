@@ -27,6 +27,18 @@ func (EmptyLibraryDirectory) VisibleLibraries(context.Context, biz.Identity) ([]
 	return nil, nil
 }
 
+// NoopRetrievalLogRepo 是测试用的留痕仓储替身：检索用例要求留痕写入面
+// 非 nil（编排路径自写一行完整留痕），不关心留痕行的测试以本替身空转。
+type NoopRetrievalLogRepo struct{}
+
+func (NoopRetrievalLogRepo) Append(context.Context, *biz.RetrievalLogRecord) error {
+	return nil
+}
+
+func (NoopRetrievalLogRepo) List(context.Context, *biz.RetrievalLogFilter) (*biz.RetrievalLogList, error) {
+	return &biz.RetrievalLogList{Items: []*biz.RetrievalLog{}}, nil
+}
+
 // NewStackKnowledgeSearch 构造可挂进测试栈的检索用例（替身向量存储 +
 // 测试 embedder/resolver + 空可见库集合）。
 func NewStackKnowledgeSearch() *biz.KnowledgeSearchUsecase {
@@ -36,6 +48,8 @@ func NewStackKnowledgeSearch() *biz.KnowledgeSearchUsecase {
 		&SearchTestResolver{Dims: 4},
 		nil, // 无重排层：测试栈不装配 reranker
 		EmptyLibraryDirectory{},
+		NoopRetrievalLogRepo{},
+		nil, // 无脱敏注册表：按「放行原值 + 截断兜底」降级
 	)
 	if err != nil {
 		panic("testsupport: build stack knowledge search usecase: " + err.Error())

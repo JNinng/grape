@@ -18,7 +18,7 @@ import (
 
 func newLibrariesToolForTest(dir *fakeLibraryDirectory) tool.Tool {
 	uc, err := biz.NewKnowledgeSearchUsecase(
-		&fakeVectorStore{}, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4}, nil, dir)
+		&fakeVectorStore{}, &testsupport.SearchTestEmbedder{Dims: 4}, &testsupport.SearchTestResolver{Dims: 4}, nil, dir, testsupport.NoopRetrievalLogRepo{}, nil)
 	if err != nil {
 		panic("tools test: build knowledge search usecase: " + err.Error())
 	}

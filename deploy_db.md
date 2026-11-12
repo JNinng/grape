@@ -293,6 +293,42 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
 - **95_agent_audit.sql / 97_agent_retrieval_log.sql / 99_model_call_log.sql**：
   历史库追加对象，以部署角色（与 role.sql 同一执行者）执行；裸创建，重复
   执行报错；`grape_u` 的 DML 授权由 role.sql 默认权限覆盖。
+- **agent_retrieval_log.stages 阶段数组（97_agent_retrieval_log.sql）**：已有
+  `agent_retrieval_log` 的历史库以表 owner 手工追加 `stages` 列、删除
+  `rerank_before` / `rerank_after` 两列并刷新列注释（与本批 97 文件逐字一致）。
+  rerank 两列自引入以来恒为 NULL（append-only 表删列安全，无数据迁移；
+  删列避免与 stages 的双写歧义）：
+
+  ```sql
+  ALTER TABLE public.agent_retrieval_log ADD COLUMN stages jsonb NULL;
+  ALTER TABLE public.agent_retrieval_log DROP COLUMN rerank_before;
+  ALTER TABLE public.agent_retrieval_log DROP COLUMN rerank_after;
+  COMMENT ON COLUMN public.agent_retrieval_log.filter_summary IS '过滤条件摘要（jsonb）：装饰器单路行记 ids/metadata/min_score 形态；编排层写入的检索行记 {"kb_ids":[…]} 可见库集合（库范围即调用方可见的过滤面）；metadata 值经 retrieval 类别脱敏；脱敏截断破坏 JSON 结构时以 {"summary_truncated": …} 摘要形态落库（应用层兜底）；无条件为 NULL';
+  COMMENT ON COLUMN public.agent_retrieval_log.hits IS '最终命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按分数降序（装配重排层时为 rerank 分、否则为 RRF 融合分——与 stages 各阶段的分数口径一致），上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）';
+  COMMENT ON COLUMN public.agent_retrieval_log.stages IS '检索阶段数组（jsonb，仅编排层写入的检索行）：数组顺序即执行序，后一阶段的输入序即前一阶段的输出序，不重复记录。元素为 {"stage","query_text","limit","model","candidates","units","error","duration_ms"}——stage 取 vector / lexical（召回路，query_text 记该路的变体文本）、fusion（RRF 融合）、rerank（model 记重排模型键）、pack（回包聚合）；candidates 为该阶段输出候选（元素形态同 hits，上限 50 条，分数按阶段自解释——向量相似度 [0,1] / 词法分 / RRF 分 / rerank 模型分，同阶段可比、跨阶段不可比，不做归一）；units 仅 pack 承载，元素为 {"mode","source_id","document_ids","heading_path","anchor","tokens","admitted"}——mode 取 chunk/window/section/document，tokens 为回包 token 量级估算，admitted 标记是否入包（对照 fusion 序与 units 可还原预算截断）；limit 为该阶段的上限，口径随阶段：召回与融合为候选条数上限（2×top_k），rerank 为输出上限（最终 top_k，candidates 记重排输入候选的重排后序、条数可为 2×top_k），pack 为回包 token 预算；error 记阶段失败摘要（候选空，降级路径由调用方继续）；duration_ms 为该阶段耗时。装饰器单路行本列为 NULL，不伪造空阶段';
+  COMMENT ON COLUMN public.agent_retrieval_log.query_text IS '检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；编排层写入的检索行记主查询文本，查询变体在各召回阶段的 stages.query_text 记录（与主查询同脱敏口径）；装饰器单路行取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document';
+  COMMENT ON COLUMN public.agent_retrieval_log.requested_top_k IS '请求的 top_k：NULL 为未显式指定。编排层写入的检索行取归一化后的 top_k（缺省 5、硬上限 20 在用例内钳制），即最终命中上限；装饰器单路行取存储契约实际收到的 Limit——top_k 硬上限钳制（20）发生在本值上游，tool 来源在框架适配器（internal/agent/tools/vectorstore.go）、console 来源在知识库检索用例（internal/biz/knowledge_search.go）；编排行的逐路召回宽度（2×top_k）在 stages 各召回阶段的 limit 记录；tool 来源的模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL';
+  COMMENT ON COLUMN public.agent_retrieval_log.effective_top_k IS '实际生效的命中上限：请求值非正（含 NULL）时取存储层默认页大小 10；编排层写入的检索行与请求值同值（最终命中上限）；非检索操作为 NULL';
+  ```
+
+  升级影响与执行顺序：本变更是**破坏性列变更**，DDL 与新二进制必须在同一
+  维护窗内一起生效，不存在「先升级 DDL 后择期换二进制」的兼容区间。
+  HEAD 二进制的生成代码按名引用 `rerank_before` / `rerank_after`（INSERT
+  列清单、`RETURNING` 与 List SELECT 三处），因此：
+
+  - DDL 先于旧二进制下线：旧二进制的留痕写入（装饰器行，含检索与摄取全部
+    来源）按名引用已删列，报 `42703 undefined_column`，装饰器只记警告、
+    行永久丢失；留痕查询端点（/v1/agent/retrieval-logs）500。检索本身仍返回
+    （留痕是旁路观察面），但窗口内无新证据行，复现/管理页不可用。
+  - 新二进制先于 DDL：新二进制的 INSERT（`stages`）与 List SELECT 同样
+    报 `42703`，装饰器行与混合检索的编排行**都**写不进（共用同一条
+    INSERT，不止编排行），检索照常返回但证据行全部丢失，查询端点 500。
+
+  因此以「停服 → 执行本批 DDL → 部署新二进制 → 启动」为执行顺序；滚动
+  更新在同一维护窗内完成，窗口内的留痕证据行不可恢复（既有历史行不受影
+  响，rerank 两列自引入以来恒为 NULL，删列无数据损失）。上方五条列注释
+  （filter_summary / hits / query_text / requested_top_k / effective_top_k）
+  为同批口径刷新，与本批 97 文件逐字一致。
 - **96_agent_grant.sql**：历史库追加对象，以超级用户执行。授权管理权限码的
   种子（菜单 252/253 与角色 101 映射）随 `050_sys_menu.sql` /
   `060_sys_role_menu.sql` 执行；已部署库在种子执行前判定返回 403，属预期

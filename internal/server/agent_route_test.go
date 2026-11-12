@@ -95,6 +95,18 @@ func (agentStubVectorStore) Search(context.Context, []float32, *biz.VectorFilter
 // agentStubLibraryDirectory 是可见库集合占位：恒无可见库。
 type agentStubLibraryDirectory struct{}
 
+// agentNoopRetrievalLogRepo 是路由测试的留痕仓储占位：检索用例要求留痕
+// 写入面非 nil，路由用例不触达检索，写入恒空转。
+type agentNoopRetrievalLogRepo struct{}
+
+func (agentNoopRetrievalLogRepo) Append(context.Context, *biz.RetrievalLogRecord) error {
+	return nil
+}
+
+func (agentNoopRetrievalLogRepo) List(context.Context, *biz.RetrievalLogFilter) (*biz.RetrievalLogList, error) {
+	return &biz.RetrievalLogList{}, nil
+}
+
 func (agentStubLibraryDirectory) VisibleLibraries(context.Context, biz.Identity) ([]*biz.KnowledgeLibrary, error) {
 	return nil, nil
 }
@@ -103,7 +115,7 @@ func (agentStubLibraryDirectory) VisibleLibraries(context.Context, biz.Identity)
 // 路由用例不触达检索。
 func agentStubSearchUsecase() *biz.KnowledgeSearchUsecase {
 	uc, err := biz.NewKnowledgeSearchUsecase(
-		agentStubVectorStore{}, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, nil, agentStubLibraryDirectory{})
+		agentStubVectorStore{}, &agentStubEmbedder{}, &agentStubEmbedderResolver{}, nil, agentStubLibraryDirectory{}, agentNoopRetrievalLogRepo{}, nil)
 	if err != nil {
 		panic("server test: build knowledge search usecase: " + err.Error())
 	}

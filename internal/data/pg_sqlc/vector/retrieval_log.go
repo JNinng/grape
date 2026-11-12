@@ -15,9 +15,12 @@ import (
 )
 
 // 检索留痕装饰器：位于向量仓储之上、框架适配器之下，检索与摄取两条链路
-// 都经它留痕（一次操作一行，失败行同样留痕）。留痕点、独立 IdentityTx、
-// 脱敏与长度兜底、top_k 口径见 internal/data/README.md 的
-// 「检索留痕装饰器」。
+// 都经它留痕（一次操作一行，失败行同样留痕）。混合检索编排路径经 ctx 抑
+// 制标记（biz.WithRetrievalLogSuppressed）让本装饰器跳过 Search /
+// SearchLexical 的逐路留痕，由编排层在完成处自写一行完整留痕（stages 承
+// 载阶段数组）；单路直调与摄取侧照常由本装饰器记行（stages 为 NULL，不
+// 伪造空阶段）。留痕点、独立 IdentityTx、脱敏与长度兜底、top_k 口径见
+// internal/data/README.md 的「检索留痕装饰器」。
 const (
 	// retrievalQueryMaxRunes 是查询文本的兜底截断上限（rune 计）。
 	retrievalQueryMaxRunes = 4096
@@ -73,8 +76,13 @@ var _ biz.VectorStore = (*loggedVectorStore)(nil)
 
 // Search 转发向量检索并留痕：无论成败都记一行（status 区分），留痕写入
 // 失败只记日志，检索结果不受影响。来源取 ctx 声明（前端检索用例声明
-// console），未声明即工具链路（tool）。
+// console），未声明即工具链路（tool）。编排路径（混合检索）经 ctx 抑制
+// 标记跳过本装饰器的逐路留痕——一次操作的多路调用只由编排层写一行完整
+// 留痕（见 biz.WithRetrievalLogSuppressed）；单路直调不受标记影响。
 func (s *loggedVectorStore) Search(ctx context.Context, embedding []float32, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	if biz.RetrievalLogSuppressedFromContext(ctx) {
+		return s.inner.Search(ctx, embedding, filter)
+	}
 	start := time.Now()
 	hits, err := s.inner.Search(ctx, embedding, filter)
 	rec := s.buildRecord(ctx, searchSource(ctx), filter, retrievalHitList(hits), err, time.Since(start))
@@ -86,8 +94,12 @@ func (s *loggedVectorStore) Search(ctx context.Context, embedding []float32, fil
 }
 
 // SearchLexical 转发词法检索并留痕：行形态与 Search 同一（查询文本记
-// 分词前原文，脱敏口径不变），来源取 ctx 声明。
+// 分词前原文，脱敏口径不变），来源取 ctx 声明；ctx 抑制标记语义与
+// Search 一致（编排路径跳过逐路留痕）。
 func (s *loggedVectorStore) SearchLexical(ctx context.Context, query string, filter *biz.VectorFilter) ([]*biz.ScoredVectorDocument, error) {
+	if biz.RetrievalLogSuppressedFromContext(ctx) {
+		return s.inner.SearchLexical(ctx, query, filter)
+	}
 	start := time.Now()
 	hits, err := s.inner.SearchLexical(ctx, query, filter)
 	rec := s.buildRecord(ctx, searchSource(ctx), filter, retrievalHitList(hits), err, time.Since(start))

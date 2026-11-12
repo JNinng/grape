@@ -98,20 +98,18 @@ type AgentRetrievalLog struct {
 	Source string `db:"source" json:"source"`
 	// 嵌入空间键（模型@版本）：本次向量操作的目标空间，与 agent_document.embedder 同一口径；检索行取过滤声明、摄取行取文档归属，声明为空时为 NULL；留痕面只记录事实、不做注册表对账——带未声明键的调用（含失败尝试的原始声明）原样落库留证
 	Embedder *string `db:"embedder" json:"embedder"`
-	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；tool/console 来源取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
+	// 检索查询文本：经 pkg/redact 的 retrieval 类别脱敏（标准注册表 512 rune 截断）+ 应用层兜底截断 4096 rune；编排层写入的检索行记主查询文本，查询变体在各召回阶段的 stages.query_text 记录（与主查询同脱敏口径）；装饰器单路行取 ctx 携带的查询事实（Embedder 调用文本），无事实时不伪造（NULL）；pipeline 来源为 NULL——摄取正文不重复留痕，经 hits 的 document_id 反查 agent_document
 	QueryText *string `db:"query_text" json:"query_text"`
-	// 请求的 top_k：调用方过滤条件传入的 Limit，NULL 为未显式指定。top_k 硬上限钳制（20）发生在本值上游——tool 来源在框架适配器（internal/agent/tools/vectorstore.go）、console 来源在知识库检索用例（internal/biz/knowledge_search.go），本值是存储契约实际收到的请求值；tool 来源的模型原始入参可对账 agent_tool_call_log 的参数摘要，console 来源无工具调用可对账。非检索操作为 NULL
+	// 请求的 top_k：NULL 为未显式指定。编排层写入的检索行取归一化后的 top_k（缺省 5、硬上限 20 在用例内钳制），即最终命中上限；装饰器单路行取存储契约实际收到的 Limit——top_k 硬上限钳制（20）发生在本值上游，tool 来源在框架适配器（internal/agent/tools/vectorstore.go）、console 来源在知识库检索用例（internal/biz/knowledge_search.go）；编排行的逐路召回宽度（2×top_k）在 stages 各召回阶段的 limit 记录；tool 来源的模型原始入参可对账 agent_tool_call_log 的参数摘要。非检索操作为 NULL
 	RequestedTopK *int32 `db:"requested_top_k" json:"requested_top_k"`
-	// 实际生效的 LIMIT：requested_top_k 非正（含 NULL）时取存储层默认页大小 10；非检索操作为 NULL
+	// 实际生效的命中上限：请求值非正（含 NULL）时取存储层默认页大小 10；编排层写入的检索行与请求值同值（最终命中上限）；非检索操作为 NULL
 	EffectiveTopK *int32 `db:"effective_top_k" json:"effective_top_k"`
-	// 过滤条件摘要（jsonb）：ids/metadata/min_score 形态，metadata 值经 retrieval 类别脱敏；脱敏截断破坏 JSON 结构时以 {"summary_truncated": …} 摘要形态落库（应用层兜底）；无条件为 NULL
+	// 过滤条件摘要（jsonb）：装饰器单路行记 ids/metadata/min_score 形态；编排层写入的检索行记 {"kb_ids":[…]} 可见库集合（库范围即调用方可见的过滤面）；metadata 值经 retrieval 类别脱敏；脱敏截断破坏 JSON 结构时以 {"summary_truncated": …} 摘要形态落库（应用层兜底）；无条件为 NULL
 	FilterSummary []byte `db:"filter_summary" json:"filter_summary"`
-	// 命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按相似度降序，上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）
+	// 最终命中数组（jsonb）：元素为 {"document_id","score","anchor"}，按分数降序（装配重排层时为 rerank 分、否则为 RRF 融合分——与 stages 各阶段的分数口径一致），上限 50 条（应用层截断，超限不再另行标记——检索上限 20 之下为防御直连契约的超大 Limit 而设）；仅存服务端产出的标识与数值，不含文档正文。检索行为记录命中；摄取行为复用本列记录作用文档（单元素，anchor 取切片元数据）
 	Hits []byte `db:"hits" json:"hits"`
-	// 预留：rerank 前的命中序（本仓未引入 reranker，检索为纯向量单路，暂无挂点恒 NULL）；引入重排时写入重排前的 document_id 序，届时同步列注释
-	RerankBefore *string `db:"rerank_before" json:"rerank_before"`
-	// 预留：rerank 后的命中序（同 rerank_before，本仓未引入 reranker 恒 NULL）
-	RerankAfter *string `db:"rerank_after" json:"rerank_after"`
+	// 检索阶段数组（jsonb，仅编排层写入的检索行）：数组顺序即执行序，后一阶段的输入序即前一阶段的输出序，不重复记录。元素为 {"stage","query_text","limit","model","candidates","units","error","duration_ms"}——stage 取 vector / lexical（召回路，query_text 记该路的变体文本）、fusion（RRF 融合）、rerank（model 记重排模型键）、pack（回包聚合）；candidates 为该阶段输出候选（元素形态同 hits，上限 50 条，分数按阶段自解释——向量相似度 [0,1] / 词法分 / RRF 分 / rerank 模型分，同阶段可比、跨阶段不可比，不做归一）；units 仅 pack 承载，元素为 {"mode","source_id","document_ids","heading_path","anchor","tokens","admitted"}——mode 取 chunk/window/section/document，tokens 为回包 token 量级估算，admitted 标记是否入包（对照 fusion 序与 units 可还原预算截断）；limit 为该阶段的上限，口径随阶段：召回与融合为候选条数上限（2×top_k），rerank 为输出上限（最终 top_k，candidates 记重排输入候选的重排后序、条数可为 2×top_k），pack 为回包 token 预算；error 记阶段失败摘要（候选空，降级路径由调用方继续）；duration_ms 为该阶段耗时。装饰器单路行本列为 NULL，不伪造空阶段
+	Stages []byte `db:"stages" json:"stages"`
 	// 操作耗时（毫秒）；未知为 NULL
 	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
 	// 操作终态：success-成功、error-失败（留痕装饰器记录尝试与结果两侧，失败行不反噬业务主流程）

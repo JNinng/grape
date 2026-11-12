@@ -67,11 +67,11 @@
 | [permission.go](permission.go) | 功能权限码常量、入口判定用例与权限码枚举；判定每请求库内直查、应用内无缓存。 |
 | [grant.go](grant.go) | Agent 工具授权：许可解析与本人/管理面吊销；管理面权限码在用例层判定。 |
 | [audit.go](audit.go) | Agent 工具调用/授权确认审计：入参校验、决定词表配对、摘要脱敏与截断。 |
-| [retrieval_log.go](retrieval_log.go) | 检索留痕查询用例与 ctx 事实载体；写入由 data 层装饰器直写、不经用例。 |
+| [retrieval_log.go](retrieval_log.go) | 检索留痕契约与查询用例：读写 DO、`RetrievalLogRepo` 端口、查询过滤校验与 ctx 事实载体（会话/查询文本/来源/留痕抑制标记）。写入方有两处——data 层装饰器（单路直调与摄取侧）与检索编排层（混合检索自写完整行，经抑制标记跳过逐路留痕），脱敏义务随写入方。 |
 | [model_call_log.go](model_call_log.go) | 模型调用留痕契约：场景词表与列宽把门、查询用例、`ModelCallObserver` 观察面（身份缺失放弃、脱敏截断、5s 短超时旁路写入、失败只记日志）与场景/文档 ctx 载体；四个能力目录经接口消费。 |
 | [embedder.go](embedder.go) | 文本向量化与默认空间解析契约；嵌入空间经 ctx 载体传给框架适配器。 |
 | [completer.go](completer.go) | 单次文本生成契约（质量增强面）：实现按当前身份解析租户文本模型，消费方必须把失败降级为主流程。 |
-| [reranker.go](reranker.go) | 检索重排契约（query + documents 逐段打分，质量增强面）与重排模型目录解析：未配置（`ErrRerankUnavailable`）按跳过该层处理，调用失败降级融合序；实现按当前身份解析租户重排模型。 |
+| [reranker.go](reranker.go) | 检索重排契约（query + documents 逐段打分，质量增强面）与重排模型目录解析：未配置（`ErrRerankUnavailable`）按跳过该层处理，调用失败降级融合序；实现按当前身份解析租户重排模型，解析出的模型键随 `RerankResult` 返回供阶段留痕记录。 |
 | [tokenizer.go](tokenizer.go) | 词元切分契约（词法召回的正确性前提）：摄取建索引与查询分词必须共用同一实现实例（口径漂移即静默漏召回），本层只声明形状不消费。 |
 | [objectstore.go](objectstore.go) | 对象存储契约（Put/Get/Delete/PresignGet/PresignPut，S3 语义）与端点解析契约：端点事实在 sys_config 的 oss.* 键，AK/SK 明文口径见 permission.md。 |
 | [document.go](document.go) | 摄取管线：按 kind 分派切分（text 区分串切段（缺省段落空行，空串关闭）+ 超长段 rune 窗口二次切分；markdown/file 标题切分，节超长回退块级装箱与固定窗口）、heading_path 元数据、逐块 embed（库级上下文检索开关开启时先为每块生成上下文前缀，文档摘要一次、前缀只拼进 embed 输入，失败降级）、按来源覆盖写入；重摄即迁移路径。 |
@@ -81,8 +81,9 @@
 | [fileparser.go](fileparser.go) | FileParser 契约与 MIME 路由档位（direct / native / external / unsupported）：嗅探 MIME 是唯一路由依据，扩展名只参与快速拒绝与纯文本的 markdown 判定；错误语义（类型不支持 / 乱码 / 过短）。 |
 | [fileidentify.go](fileidentify.go) | 文件识别三层校验：扩展名白名单快速拒绝 → 内容嗅探（mimetype）→ 完整性限流（20MB + zip 炸弹预检：entry 数 512 / 解压总量 96MB）；嗅探回落 octet-stream 时按扩展名放行，扩展名与嗅探不一致记风险日志。 |
 | [filecontent.go](filecontent.go) | 内容识别处理（解析产物入库前、切分前）：编码判定（BOM / UTF-8 严格性 / charset 判定 / GB18030 回落）→ 乱码占比阈值拒绝 → 换行规范化与规则级清洗（围栏逐字保留、孤立数字行与重复行剔除）→ 标题层级推断（第X章 / 一、 / （一） / 1.1 编号模式 + 孤行特征，跳级钳制）——heading_path 的产出点。 |
-| [knowledge_search.go](knowledge_search.go) | 知识检索用例（前端与 agent 的统一入口）：入参校验与 top_k 钳制、可选查询变体（multi-query 的 biz 入口，改写落 agent 侧）、可见库集合现场解析（`library_id` 不可见/不存在统一 `ErrLibraryNotFound`）、召回集逐条双路召回（向量 + 词法，各取 2×top_k）后 RRF 融合（Σ 1/(k+rank)，同分按首次出现序）、装配重排层时对前 2×top_k 候选重排（未配置跳过、失败降级融合序；Score 在有/无重排时分别为 rerank 分/RRF 分）取 top_k、固定检索条件（状态/有效期 + `kb_id IN` 可见库集合）、错误语义（向量路失败整次失败，词法路失败降级仅向量路）、来源缺省 console 留痕声明（调用方已声明时保留）。 |
+| [knowledge_search.go](knowledge_search.go) | 知识检索用例（前端与 agent 的统一入口）：入参校验与 top_k 钳制、可选查询变体（multi-query 的 biz 入口，改写落 agent 侧）、可见库集合现场解析（`library_id` 不可见/不存在统一 `ErrLibraryNotFound`）、召回集逐条双路召回（向量 + 词法，各取 2×top_k）后 RRF 融合（Σ 1/(k+rank)，同分按首次出现序）、装配重排层时对前 2×top_k 候选重排（未配置跳过、失败降级融合序；Score 在有/无重排时分别为 rerank 分/RRF 分）取 top_k、固定检索条件（状态/有效期 + `kb_id IN` 可见库集合）、错误语义（向量路失败整次失败，词法路失败降级仅向量路）、来源缺省 console 留痕声明（调用方已声明时保留）、编排路径自写一行完整留痕（经抑制标记跳过装饰器逐路留痕，stages 记阶段时间线，见 knowledge_search_stages.go）。 |
 | [knowledge_search_pack.go](knowledge_search_pack.go) | 检索回包聚合（pack）：命中块按来源自动分档（同节 ≥2 命中整节、无 heading 结构相邻窗口、独占命中的短文档整文档、其余直回，粒度参数不暴露与 top_k 硬钳同纪律）、来源数上限 5、经 `store.List` 取来源全量块（失败/超防线降级仅命中块直回）、固定 4K token 预算两段装配（广度段每源至少一块、深度段按分补深、整文档超预算降级并同源收编），返回 `KnowledgeSearchUnit`（console 展平 Hits、agent 工具逐单元围栏）。 |
+| [knowledge_search_stages.go](knowledge_search_stages.go) | 检索分阶段留痕（stages）：阶段元素与回包单元的落库形态、阶段收集器（候选/单元上限 50、序列化载体）与编排层的 retrieval 类别脱敏义务（512 截断 + 4096 兜底，主查询与变体同口径）。 |
 | [model.go](model.go) | 文本模型目录与密钥加解密契约；嵌入空间形状与模型类别/维度常量。 |
 | [model_manage.go](model_manage.go) | 模型目录用例：租户/平台行 CRUD、密钥只写不读、embedding 维度 1024 与 model_key 白名单校验。 |
 | [maintenance.go](maintenance.go) | 设施无关的诊断/维护契约；ops 与 task 只认契约。 |

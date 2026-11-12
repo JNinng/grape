@@ -24,9 +24,11 @@ import {
   confirmationsForToolCall,
   matchesTraceId,
   parseRetrievalHits,
+  parseRetrievalStages,
   relatedChatItemIds,
   relatedToolCallIds,
   toolCallAuditsFor,
+  type RetrievalStage,
   type TraceFacets,
 } from './model'
 import { CompactionRefPanel } from './CompactionRefPanel'
@@ -184,6 +186,78 @@ function statusChipClass(status: string): string {
 // hitRowClass 命中链路的行高亮 / 未命中行灰显（品牌软色底随主题色切换）。
 function hitRowClass(hit: boolean, dimMisses: boolean): string {
   return `${hit ? 'bg-brand-soft' : ''} ${dimMisses ? 'opacity-40' : ''}`
+}
+
+// retrievalStageLabel 是阶段取值的展示词（时间线语义：召回 → 融合 →
+// 重排 → 回包）；未知取值原样展示（形态漂移不静默吞掉）。
+function retrievalStageLabel(stage: string): string {
+  switch (stage) {
+    case 'vector':
+    case 'lexical':
+      return '召回'
+    case 'fusion':
+      return '融合'
+    case 'rerank':
+      return '重排'
+    case 'pack':
+      return '回包'
+    default:
+      return stage
+  }
+}
+
+// RetrievalStageTimeline 按执行序渲染一次检索的阶段时间线（编排层写入的
+// stages，数组顺序即执行序）：每阶段一行——阶段名、查询变体、重排模型、
+// 候选/单元量、耗时；limit 在 pack 阶段为 token 预算、其余阶段为候选上限；
+// 阶段失败的错误摘要以 danger 色可见。落库为已脱敏形态，文本按节点渲染
+//（不可信文本不走 innerHTML）。单路直调行无 stages，不渲染。
+function RetrievalStageTimeline({ stages }: { stages: RetrievalStage[] }) {
+  if (stages.length === 0) {
+    return null
+  }
+  return (
+    <ol aria-label="检索阶段" className="mt-2.5 space-y-1.5 border-t pt-2.5">
+      {stages.map((stage, index) => {
+        const admitted = stage.units.filter((u) => u.admitted).length
+        const truncated = stage.units.length - admitted
+        return (
+          <li
+            key={`${stage.stage}-${index}`}
+            className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-secondary-foreground">
+              {index + 1}. {retrievalStageLabel(stage.stage)}
+            </span>
+            {stage.queryText && (
+              <span title={stage.queryText} className="max-w-60 truncate text-foreground">
+                「{stage.queryText}」
+              </span>
+            )}
+            {stage.model && (
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">
+                {stage.model}
+              </code>
+            )}
+            {typeof stage.limit === 'number' && <span>上限 {stage.limit}{stage.stage === 'pack' ? ' tok' : ''}</span>}
+            {stage.candidates.length > 0 && <span>候选 {stage.candidates.length} 条</span>}
+            {stage.units.length > 0 && (
+              <span>
+                单元 {admitted}/{stage.units.length}
+                {truncated > 0 && `（截断 ${truncated}）`}
+              </span>
+            )}
+            {stage.durationMs > 0 && <span className="tabular-nums">{stage.durationMs} ms</span>}
+            {stage.error && (
+              <span className="inline-flex items-center gap-1 text-danger-text" title={stage.error}>
+                <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
+                <span className="max-w-80 truncate">{stage.error}</span>
+              </span>
+            )}
+          </li>
+        )
+      })}
+    </ol>
+  )
 }
 
 // EmptyNote 证据分区的空态占位：虚线框 + 居中弱化文案。
@@ -899,6 +973,7 @@ export function ReplayPage() {
                           {retrievals.map((row) => {
                             const hit = matchesTraceId(row, traceFilter)
                             const hits = parseRetrievalHits(row.hits)
+                            const stages = parseRetrievalStages(row.stages)
                             return (
                               <li
                                 key={row.id}
@@ -938,6 +1013,10 @@ export function ReplayPage() {
                                     ))}
                                   </ul>
                                 )}
+                                {/* 阶段时间线（编排层写入的行）：召回 → 融合
+                                    → 重排 → 回包，阶段失败摘要同榜可见；单
+                                    路直调行无 stages，不渲染不伪造。 */}
+                                <RetrievalStageTimeline stages={stages} />
                               </li>
                             )
                           })}

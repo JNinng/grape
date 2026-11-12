@@ -14,7 +14,7 @@
 | 会话事件流 | 会话内消息与工具事件；每次模型调用的模型型号与 token 用量（首字/思考为本轮口径） | 框架六表 `agent.agent_session_*` | 框架 `session/postgres` |
 | 工具调用审计 | 一次工具调用的终态 | `public.agent_tool_call_log` | 工具执行审计包装器（含恢复路径代执行） |
 | 授权确认审计 | 一次授权终态（人工或系统决定，互斥） | `public.agent_confirmation_log` | ack 决定路由审计面 + 授权终态观察挂点 |
-| 检索留痕 | 一次检索或摄取操作 | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器 |
+| 检索留痕 | 一次检索或摄取操作（编排检索行带阶段时间线） | `public.agent_retrieval_log` | `biz.VectorStore` 留痕装饰器与知识检索编排层 |
 | 模型调用留痕 | 管线侧一次模型/类模型调用（文本生成、向量化、检索重排、外部解析） | `public.agent_model_call_log` | `biz.ModelCallObserver` 观察面（四个能力目录） |
 | 运行指标 | 进程内聚合 | Prometheus `/metrics` | `biz.AgentRunObserver` 推送 |
 | 链路与日志 | 一次入站请求的因果链 | 日志 `trace_id`/`span_id`、`x-trace-id`、OTel span | 链路中间件与 telemetry 桥接 |
@@ -153,23 +153,38 @@ session_id（会话）
 
 ### 检索留痕
 
-- 装饰器位于向量仓储与框架适配器之间，同时覆盖检索工具、前端检索与摄取
-  管线：`Search` 记来源取 ctx 声明——知识检索用例缺省声明 `console`（前端
-  检索链路），agent 工具链路在调用前显式声明 `tool`；`Add`/`Update`/
-  `DeleteByFilter` 记来源 `pipeline`；点读、点删、枚举统计不留痕。
-- `Search` 记查询文本、`requested_top_k`/`effective_top_k`、过滤摘要、命中
-  （`document_id`/`score`/`anchor`）与耗时；摄取记作用文档（单元素命中，
-  锚点取切片元数据）与条件摘要。
+- 写入方有两处，共同保住「一次操作一行」：混合检索编排层（知识检索用例，
+  console / tool 两条来源同覆盖）在完成处自写一行完整行——编排路径经 ctx
+  标记让装饰器跳过逐路留痕；留痕装饰器承接其余检索（框架侧单路直调）与
+  摄取管线：`Add`/`Update`/`DeleteByFilter` 记来源 `pipeline`；点读、点删、
+  枚举统计不留痕。来源都取 ctx 声明——知识检索用例缺省声明 `console`，
+  agent 检索工具链路在调用前显式声明 `tool`，装饰器未声明时回落 `tool`。
+- 编排行（混合检索）的 `stages` 列承载阶段时间线：数组顺序即执行序（召回
+  → 融合 → 重排 → 回包），后一阶段的输入序即前一阶段的输出序。元素为
+  `{"stage","query_text","limit","model","candidates","units","error",
+  "duration_ms"}`——召回阶段（vector / lexical）记该路变体查询文本与候选
+  （上限 50，形态同 `hits` 元素），fusion 记 RRF 融合序，rerank 记重排模
+  型键与重排后序（对照 fusion 候选即还原重排前后序），pack 记回包单元
+  （mode / 聚合块 ID / heading_path / anchor / token 量级 / admitted，对照
+  fusion 序与 units 可看出预算截断掉了谁）。分数按阶段自解释（向量相似度
+  / 词法分 / RRF 分 / rerank 模型分），同阶段可比、跨阶段不可比。阶段失败
+  同样留痕（候选空 + 错误摘要；词法路与重排失败按质量增强降级，行 status
+  仍记操作终态）；单路直调行 stages 为 NULL（不伪造空阶段）。
+- 查询文本、`requested_top_k`/`effective_top_k`、过滤摘要、最终命中
+  （`document_id`/`score`/`anchor`）与耗时两处同口径：编排行取归一化后的
+  top_k（最终命中上限，逐路召回宽度在 stages 各召回阶段的 `limit`）、过滤
+  摘要记 `kb_ids` 可见库集合；装饰器行取存储契约收到的 Limit、过滤摘要记
+  `ids/metadata/min_score`。摄取行记作用文档（单元素命中，锚点取切片元
+  数据）与条件摘要。
 - 查询文本与会话 ID 由检索执行现场放入 ctx 事实载体（工具链路在 agent
   层、前端检索在知识检索用例）；事实缺失如实留空（前端检索与摄取管线无
   会话事实，`session_id` 为 NULL；摄取管线 `query_text` 亦为 NULL）。
-- `requested_top_k` 是存储契约收到的请求值（20 硬上限在其上游：两条检索
-  链路都在知识检索用例统一钳制），`effective_top_k` 是实际 LIMIT（非正时
-  默认 10）。console 行没有工具调用可对账。
-- 命中上限 50 条，仅存标识与数值，不含正文；rerank 两列预留（重排在检索
-  用例层，装饰器暂未接入），当前恒 NULL。
-- 无论成败都记一行（`status` 区分）；写入独立于被装饰操作，失败只记日志；
-  表为 append-only。装饰器实现与阈值见
+  `effective_top_k` 非正请求时取存储层默认 10。
+- 命中与阶段候选上限 50 条，仅存标识与数值，不含正文；查询文本（主查询
+  与变体）与过滤摘要在写入方落库前经 retrieval 类别脱敏（脱敏义务随写入
+  方迁移：编排行在编排层脱敏，装饰器行在装饰器脱敏）。
+- 无论成败都记一行（`status` 区分）；留痕写入独立于业务操作，失败只记日
+  志；表为 append-only。装饰器实现与阈值见
   [internal/data/README.md](internal/data/README.md#检索留痕装饰器)。
 
 ### 模型调用留痕
@@ -232,9 +247,10 @@ session_id（会话）
   `password`/`token` 固定掩码，`tool_param` 按键名清单对 JSON 敏感值掩码，
   `retrieval` 按 512 rune 截断，`model_call` 按 4096 rune 截断。
 - 工具审计的参数/结果摘要分别按 `tool_param` / `retrieval` 脱敏，落库前
-  再做 4096 rune 兜底；检索留痕的查询文本与过滤摘要同样处理，过滤摘要
-  截断破坏 JSON 时降级为截断声明；模型调用留痕的输入/输出摘要按
-  `model_call` 类别脱敏（4096 rune）+ 兜底截断，错误摘要另截 512。
+  再做 4096 rune 兜底；检索留痕的查询文本（主查询与各召回阶段的变体文本）
+  与过滤摘要同样处理，过滤摘要截断破坏 JSON 时降级为截断声明；模型调用
+  留痕的输入/输出摘要按 `model_call` 类别脱敏（4096 rune）+ 兜底截断，
+  错误摘要另截 512。
 - 脱敏是类别化的确定性改写，不是内容级全文识别：未登记键名、非 JSON 参数
   与自由文本可能保留原文；会话事件流本身不做脱敏，属敏感数据面。
 - 两张审计表、检索留痕表与模型调用留痕表 append-only，应用无更新/删除
@@ -284,8 +300,9 @@ session_id（会话）
    高亮。live 路径的确认行与工具行 trace 不同，看到确认行但工具面为空时
    按 `confirmation_id`/`tool_call_id` 对账。
 4. 读事实：工具行看状态、耗时、参数与结果摘要；确认行看决定、记住作用域
-   与 live/recovery 路径；检索行看查询、top_k、过滤、命中与耗时；回放项的
-   模型调用事实看模型型号、token 用量、思考与首字时长。
+   与 live/recovery 路径；检索行看查询、top_k、过滤、命中、阶段时间线
+   （召回 → 融合 → 重排 → 回包，含阶段失败摘要与被预算截断的回包单元）
+   与耗时；回放项的模型调用事实看模型型号、token 用量、思考与首字时长。
 5. 反查原文：压缩占位符经 `event-window` 按 `event_id` 取原文；检索命中经
    `document_id` 反查 `agent.agent_document`；工具参数与结果原文以会话事件
    为准。
@@ -298,7 +315,7 @@ session_id（会话）
 | --- | --- |
 | 工具未执行或报错 | 工具审计的 status/result；服务端工具错误日志 |
 | 参数或结果与预期不符 | 工具审计参数/结果摘要；会话事件原文（含压缩对照） |
-| 回答引用不实或召回缺失 | 检索留痕的 query/top_k/filter/hits；document 反查 |
+| 回答引用不实或召回缺失 | 检索留痕的 query/top_k/filter/hits 与阶段时间线（哪一路召回空了、重排是否降级、回包截断了谁）；document 反查 |
 | 确认未生效或疑似重复执行 | 确认审计的 decision/remember/path；对应工具行与 ack 路径；无确认卡时对照 `agent_tool_grant` 许可 |
 | 响应慢 | 回放流的起始时间与段内用时、模型调用事实（模型型号/token/思考与首字时长）、工具/检索耗时、OTel span；`/metrics` 聚合 |
 | 审计行缺失 | 写入失败日志、调用 ID 缺失警告、保留期与采集开关 |
@@ -356,9 +373,10 @@ WHERE tenant_id = :tenant_id AND session_id = :session_id
 ORDER BY called_at DESC, id DESC
 LIMIT 100;
 
--- 同一 trace 的检索证据（hits 为 jsonb 数组）
+-- 同一 trace 的检索证据（hits / stages 为 jsonb；stages 是编排层的
+-- 阶段时间线，单路直调行与摄取行为 NULL）
 SELECT created_at, source, status, query_text, requested_top_k,
-       effective_top_k, filter_summary, hits, duration_ms
+       effective_top_k, filter_summary, hits, stages, duration_ms
 FROM public.agent_retrieval_log
 WHERE tenant_id = :tenant_id AND trace_id = :trace_id
 ORDER BY created_at DESC, id DESC;

@@ -92,17 +92,18 @@ type rerankResponse struct {
 }
 
 // Rerank 实现 biz.Reranker：按当前身份解析重排模型端点，对 documents 逐
-// 段打相关性分。空白 query 拒绝；空 documents 直接返回空切片（不解析
+// 段打相关性分。空白 query 拒绝；空 documents 直接返回空分数（不解析
 // 模型、不触网）；响应 results 必须恰好覆盖全部输入下标（缺失、越界或
 // 重复均按协议错误处理）。模型解析成功即为端点事实成立，此后无论成败都
-// 以一次调用一行留痕（调用终态含 error）；模型解析失败无端点事实，
-// 不留行。
-func (r *dynamicReranker) Rerank(ctx context.Context, query string, documents []string) ([]float64, error) {
+// 以一次调用一行留痕（调用终态含 error），且结果携带解析出的模型键（调
+// 用失败时与错误同时返回、分数为 nil），供调用方的阶段留痕记录重排模型；
+// 模型解析失败无端点事实，不留行。
+func (r *dynamicReranker) Rerank(ctx context.Context, query string, documents []string) (*biz.RerankResult, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, errors.New("openaireranker: rerank query is required")
 	}
 	if len(documents) == 0 {
-		return []float64{}, nil
+		return &biz.RerankResult{Scores: []float64{}}, nil
 	}
 	spec, err := r.catalog.ResolveRerankModel(ctx)
 	if err != nil {
@@ -111,7 +112,11 @@ func (r *dynamicReranker) Rerank(ctx context.Context, query string, documents []
 	start := time.Now()
 	scores, usage, callErr := r.callRerank(ctx, spec, query, documents)
 	r.observeCall(ctx, spec.Key, strings.TrimRight(spec.BaseURL, "/")+"/rerank", query, len(documents), usage, callErr, time.Since(start))
-	return scores, callErr
+	result := &biz.RerankResult{ModelKey: spec.Key}
+	if callErr == nil {
+		result.Scores = scores
+	}
+	return result, callErr
 }
 
 // callRerank 执行协议调用并返回与输入顺序对齐的分数切片与用量段：端点

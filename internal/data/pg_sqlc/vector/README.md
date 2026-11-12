@@ -43,7 +43,7 @@ SQL 手写参数化落在本目录）；空间模型与探针契约见
 | --- | --- |
 | [provider.go](provider.go) | Wire ProviderSet：`NewVectorStoreSupply` → `NewLoggedVectorStore` 两跳产出对外的 `biz.VectorStore` |
 | [vector_repo.go](vector_repo.go) | 向量仓储介质实现：CRUD、余弦检索、词法检索（tsvector/tsquery 字面量构造）、条件删除/统计/枚举、空间解析与部署探针、禁用占位 |
-| [retrieval_log.go](retrieval_log.go) | 检索留痕装饰器 `loggedVectorStore` 与 wire 供给包装 `VectorStoreSupply`：检索与摄取两链路一次操作一行留痕，脱敏与长度兜底 |
+| [retrieval_log.go](retrieval_log.go) | 检索留痕装饰器 `loggedVectorStore` 与 wire 供给包装 `VectorStoreSupply`：检索与摄取两链路一次操作一行留痕，脱敏与长度兜底；混合检索编排路径经 ctx 抑制标记跳过逐路留痕（行由编排层自写） |
 | [vector_test.go](vector_test.go) | 介质集成测试（真实 PostgreSQL，`GRAPE_VECTOR_TEST_ADMIN_DSN` / `GRAPE_VECTOR_TEST_DSN` 门控）：租户隔离、空间隔离、检索命中与分页 |
 | [conditions_test.go](conditions_test.go) | metadata 条件与批量更新集成测试（同上门控）：固定条件检索、`UpdateMetadata` 只改 metadata、空过滤拒绝 |
 | [lexical_test.go](lexical_test.go) | 词法检索集成测试（同上门控）：中文命中与 ts_rank_cd 排序、conditions 口径与向量路一致、特殊字符 round-trip、跨租户不可见、空分词查询空集、GIN 索引命中 |

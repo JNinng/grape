@@ -36,7 +36,7 @@ agent 运行时的模型工具与框架向量存储适配器。工具在本包�
 | [tool_user.go](tool_user.go) | 用户工具三件套：`get_current_user` / `find_users_by_name` / `update_my_nickname`（唯一 Confirm 写），查询协议在本层组装 |
 | [tool_search.go](tool_search.go) | `search_internal_docs` 检索工具：入参边界 → 留痕 ctx 事实（来源 tool）→ `KnowledgeSearchUsecase.Search`（可见库集合/嵌入空间/固定条件/双路召回融合重排/回包聚合）→ 逐回包单元围栏包装出参 |
 | [tool_libraries.go](tool_libraries.go) | `list_knowledge_libraries` 列库工具：无入参，输出调用方可见库的 id（十进制字符串）/name/status（与检索可见集合同一解析点，供模型取 `library_id`） |
-| [retrieval_context.go](retrieval_context.go) | 检索留痕 ctx 事实接线：会话 ID（框架 Invocation）与查询文本注入 biz 中性载体，data 层留痕装饰器消费，缺失如实落 NULL |
+| [retrieval_context.go](retrieval_context.go) | 检索留痕 ctx 事实接线：会话 ID（框架 Invocation）与查询文本注入 biz 中性载体；工具链路由检索编排层读取（行由编排层自写，装饰器被抑制），查询文本载体保留给未抑制的单路直调，缺失如实落 NULL |
 | [vectorstore.go](vectorstore.go) | `vectorStoreAdapter`：biz.VectorStore 契约 → 框架 knowledge/vectorstore 形状适配，租户隔离的强制应用层适配器（top_k 20 硬上限）；方法映射与纪律详述见 [vectorstore.md](vectorstore.md) |
 
 ## 检索链路
@@ -56,6 +56,8 @@ search_internal_docs（query/top_k/library_id，library_id 为十进制字符串
         ≥2 命中整节 / 无 heading 结构相邻窗口 / 独占命中的短文档整文档 /
         其余直回，来源数上限 5、固定 4K token 预算封顶（粒度参数不暴露），
         返回 KnowledgeSearchUnit（成员含未命中兄弟块）
+      → 完成处一次写整行留痕（一次操作一行 + stages 阶段时间线，
+        装饰器逐路留痕被 ctx 抑制标记跳过）
   → 逐回包单元围栏包装出参（不可信正文 + notice + 来源/锚点/mode/
     heading_path；document_id 取单元首个命中成员，对账留痕命中）
 
@@ -72,9 +74,9 @@ list_knowledge_libraries（无入参）
 向量设施未启用时按设施缺失报错（`biz.ErrVectorStoreDisabled` 原样上抛，
 不吞错降级为空结果）。出参 `hits` 逐回包单元一条（一条可能覆盖同节的多
 个切片），`mode` 为 chunk/window/section/document 四档，工具层只消费已聚
-合的单元做围栏包装——聚合与预算都在 biz 检索编排层收口（留痕行在
-`store.Search` 时已写完，pack 事实只有落到编排层才有安放点），agent 与
-console 两条链路不存在第二套聚合口径。
+合的单元做围栏包装——聚合与预算都在 biz 检索编排层收口（留痕行由编排层
+在完成处自写，pack 事实与阶段时间线一并落到同一行），agent 与 console
+两条链路不存在第二套聚合口径。
 
 ## 新增工具
 

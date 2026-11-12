@@ -169,6 +169,8 @@ func TestLoggedVectorStore_search_forwards_and_records_row(t *testing.T) {
 		t.Fatalf("top_k = (%d, %d), want (3, 3)", rec.RequestedTopK, rec.EffectiveTopK)
 	case rec.DurationMS < 0:
 		t.Fatalf("duration = %d, want non-negative", rec.DurationMS)
+	case rec.Stages != nil:
+		t.Fatalf("stages = %s, want nil (single-route decorator rows must not fabricate empty stages)", rec.Stages)
 	}
 	if len(rec.Hits) != 1 || rec.Hits[0] != (biz.RetrievalHit{DocumentID: "doc#0", Score: 0.87, Anchor: "runes 0-800"}) {
 		t.Fatalf("hits = %+v, want document id/score/anchor recorded", rec.Hits)
@@ -351,6 +353,8 @@ func TestLoggedVectorStore_add_and_update_record_pipeline_rows(t *testing.T) {
 			t.Fatalf("row %d status = %q, want success", i, rec.Status)
 		case rec.QueryText != "" || rec.RequestedTopK != 0 || rec.EffectiveTopK != 0:
 			t.Fatalf("row %d = (%q, %d, %d), want ingest-side nulls", i, rec.QueryText, rec.RequestedTopK, rec.EffectiveTopK)
+		case rec.Stages != nil:
+			t.Fatalf("row %d stages = %s, want nil (ingest rows carry no stage timeline)", i, rec.Stages)
 		case len(rec.Hits) != 1 || rec.Hits[0] != (biz.RetrievalHit{DocumentID: "doc#0", Anchor: "runes 0-800"}):
 			t.Fatalf("row %d hits = %+v, want single affected document with anchor", i, rec.Hits)
 		}
@@ -516,6 +520,45 @@ func TestLoggedVectorStore_hits_capped_at_declared_limit(t *testing.T) {
 	store.Search(context.Background(), nil, nil)
 	if len(repo.rows[0].Hits) != retrievalMaxLoggedHits {
 		t.Fatalf("recorded hits = %d, want capped at %d", len(repo.rows[0].Hits), retrievalMaxLoggedHits)
+	}
+}
+
+func TestLoggedVectorStore_suppressed_ctx_skips_per_route_logging(t *testing.T) {
+	// 编排路径（混合检索）经 ctx 抑制标记跳过逐路留痕：Search 与
+	// SearchLexical 只转发不记行，由编排层自写一行完整留痕。
+	inner := &fakeInnerStore{hits: []*biz.ScoredVectorDocument{{Document: &biz.VectorDocument{ID: "doc#0"}, Score: 0.5}}}
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(inner, repo, redact.NewStandardRegistry())
+
+	ctx := biz.WithRetrievalLogSuppressed(retrievalTestContext("hybrid query"))
+	if _, err := store.Search(ctx, nil, &biz.VectorFilter{Limit: 3}); err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if _, err := store.SearchLexical(ctx, "hybrid query", &biz.VectorFilter{Limit: 3}); err != nil {
+		t.Fatalf("lexical search: %v", err)
+	}
+	if len(inner.calls) != 2 {
+		t.Fatalf("inner calls = %v, want both searches forwarded", inner.calls)
+	}
+	if len(repo.rows) != 0 {
+		t.Fatalf("recorded rows = %d, want 0 (orchestration owns the row)", len(repo.rows))
+	}
+}
+
+func TestLoggedVectorStore_suppression_marker_scoped_to_searches(t *testing.T) {
+	// 抑制标记只作用于检索方法：摄取方法不受标记影响，照常由装饰器记行。
+	repo := &fakeRetrievalRepo{}
+	store := newLoggedStore(&fakeInnerStore{}, repo, redact.NewStandardRegistry())
+
+	ctx := biz.WithRetrievalLogSuppressed(retrievalTestContext("q"))
+	if err := store.Add(ctx, &biz.VectorDocument{ID: "doc#0"}); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, err := store.DeleteByFilter(ctx, &biz.VectorFilter{Metadata: map[string]any{"source_id": "doc"}}); err != nil {
+		t.Fatalf("delete by filter: %v", err)
+	}
+	if len(repo.rows) != 2 {
+		t.Fatalf("recorded rows = %d, want 2 (ingest rows are always decorator-owned)", len(repo.rows))
 	}
 }
 

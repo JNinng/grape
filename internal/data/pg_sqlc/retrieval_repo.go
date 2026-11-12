@@ -37,9 +37,9 @@ func retrievalLogIdentity(ctx context.Context) (Identity, error) {
 	return auth, nil
 }
 
-// retrievalJSONMaxBytes 是 filter_summary / hits 两列的序列化字节上限
-// （应用层兜底）：命中上限 50 条、过滤摘要在装饰器侧已做脱敏截断，正常
-// 载荷远小于该值；超限按防御性降级处理。
+// retrievalJSONMaxBytes 是 filter_summary / hits / stages 三列的序列化字
+// 节上限（应用层兜底）：命中与阶段候选上限 50 条、过滤摘要在写入方侧已
+// 做脱敏截断，正常载荷远小于该值；超限按防御性降级处理。
 const retrievalJSONMaxBytes = 64 * 1024
 
 // retrievalJSONFallback 是超限降级的 jsonb 形态：保留「发生过截断」的
@@ -85,12 +85,15 @@ func (r *retrievalLogRepo) Append(ctx context.Context, rec *biz.RetrievalLogReco
 	if err != nil {
 		return err
 	}
-	var filterSummary, hits []byte
+	var filterSummary, hits, stages []byte
 	if len(rec.FilterSummary) > 0 {
 		filterSummary = marshalRetrievalJSON(rec.FilterSummary, "filter_summary")
 	}
 	if len(rec.Hits) > 0 {
 		hits = marshalRetrievalJSON(rec.Hits, "hits")
+	}
+	if len(rec.Stages) > 0 {
+		stages = marshalRetrievalJSON(json.RawMessage(rec.Stages), "stages")
 	}
 	return r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
 		_, err := s.Q().InsertAgentRetrievalLog(ctx, gen.InsertAgentRetrievalLogParams{
@@ -104,6 +107,7 @@ func (r *retrievalLogRepo) Append(ctx context.Context, rec *biz.RetrievalLogReco
 			EffectiveTopK: int32Ptr(rec.EffectiveTopK),
 			FilterSummary: filterSummary,
 			Hits:          hits,
+			Stages:        stages,
 			DurationMs:    int32Ptr(int(rec.DurationMS)),
 			Status:        rec.Status,
 		})
@@ -155,7 +159,8 @@ func (r *retrievalLogRepo) List(ctx context.Context, filter *biz.RetrievalLogFil
 }
 
 // retrievalLogToBiz 转换为领域模型；可空列 NULL 渲染为零值（top_k 的 0
-// 语义为「未指定 / 不适用」，jsonb 为 nil 载荷）。
+// 语义为「未指定 / 不适用」，jsonb 为 nil 载荷）。FilterSummary / Hits /
+// Stages 以落库字节原样透传（证据面渲染，不做读侧重塑）。
 func retrievalLogToBiz(po *gen.AgentRetrievalLog) *biz.RetrievalLog {
 	return &biz.RetrievalLog{
 		ID:            po.ID,
@@ -170,8 +175,7 @@ func retrievalLogToBiz(po *gen.AgentRetrievalLog) *biz.RetrievalLog {
 		EffectiveTopK: int32Value(po.EffectiveTopK),
 		FilterSummary: json.RawMessage(po.FilterSummary),
 		Hits:          json.RawMessage(po.Hits),
-		RerankBefore:  textValue(po.RerankBefore),
-		RerankAfter:   textValue(po.RerankAfter),
+		Stages:        json.RawMessage(po.Stages),
 		DurationMS:    int64(int32Value(po.DurationMs)),
 		Status:        po.Status,
 		CreatedAt:     tsToTime(po.CreatedAt),

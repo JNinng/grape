@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	knowledgev1 "grape/api/knowledge/v1"
+	"grape/pkg/redact"
 
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
@@ -88,23 +89,29 @@ type KnowledgeLibraryDirectory interface {
 // KnowledgeSearchUsecase 是租户内知识检索用例：入参校验、可见库集合现场
 // 解析、默认空间解析、查询向量化、固定检索条件组装后直调 VectorStore
 // 契约。租户隔离由契约实现从认证 ctx 强制；库级可见性由本用例解析可见
-// 库集合并注入 kb_id IN 条件。留痕由 data 层装饰器完成，本用例只经 ctx
-// 声明查询文本与来源（缺省 console，工具链路可先声明 tool）。reranker
-// 是可选的重排层挂点（未配置 ai.rerank.model 的部署可不装配）。
+// 库集合并注入 kb_id IN 条件。混合检索编排路径自写一行完整留痕（经
+// WithRetrievalLogSuppressed 让 data 层装饰器跳过逐路留痕，stages 承载
+// 阶段数组），查询文本与来源经 ctx 事实载体声明（缺省 console，工具链路
+// 可先声明 tool）。reranker 是可选的重排层挂点（未配置 ai.rerank.model
+// 的部署可不装配）。
 type KnowledgeSearchUsecase struct {
 	store     VectorStore
 	embedder  Embedder
 	resolver  EmbedderResolver
 	reranker  Reranker
 	libraries KnowledgeLibraryDirectory
+	logs      RetrievalLogRepo
+	registry  *redact.Registry
 	now       func() time.Time
 }
 
 // NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖，
-// 另加可见库解析接缝）。reranker 允许 nil：nil 即跳过重排层，检索行为
-// 与无重排一致（单测与未装配场景）；非 nil 时的可用性由重排模型解析
-// 决定（未配置按跳过处理，见 Reranker 契约）。
-func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, reranker Reranker, libraries KnowledgeLibraryDirectory) (*KnowledgeSearchUsecase, error) {
+// 另加可见库解析接缝与留痕写入面）。reranker 允许 nil：nil 即跳过重排
+// 层，检索行为与无重排一致（单测与未装配场景）；非 nil 时的可用性由重
+// 排模型解析决定（未配置按跳过处理，见 Reranker 契约）。logs 必填：编
+// 排路径的留痕行由本用例自写（脱敏义务随写入方迁移），registry 为共用
+// 脱敏注册表（nil 按「放行原值 + 截断兜底」降级）。
+func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, reranker Reranker, libraries KnowledgeLibraryDirectory, logs RetrievalLogRepo, registry *redact.Registry) (*KnowledgeSearchUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a vector store")
 	}
@@ -117,7 +124,10 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 	if libraries == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a library directory")
 	}
-	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, reranker: reranker, libraries: libraries, now: time.Now}, nil
+	if logs == nil {
+		return nil, errors.New("biz: knowledge search usecase requires a retrieval log repo")
+	}
+	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, reranker: reranker, libraries: libraries, logs: logs, registry: registry, now: time.Now}, nil
 }
 
 // Search 在默认嵌入空间内检索调用方可见的知识库：主查询与可选变体各自
@@ -137,6 +147,14 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 // 路、重排降级为融合序、聚合降级为仅命中块直回），记服务日志不失败；重排
 // 模型未配置（ErrRerankUnavailable）按跳过该层处理，与调用失败相区分。
 // 设施未启用的错误原样透传（不降级为空结果）。
+//
+// 留痕：编排路径自写一行完整留痕（一次操作一行）——进入召回管线后经
+// WithRetrievalLogSuppressed 让留痕装饰器跳过逐路留痕，在完成处经
+// RetrievalLogRepo.Append 写整行（stages 记召回 → 融合 → 重排 → 回包的
+// 阶段数组，阶段失败同样记录且失败行不反噬主流程；留痕写入失败只记日志）。
+// 无可见库、入参非法、身份缺失与设施解析失败不进入召回管线，不产生留痕行
+// （与装饰器只在检索方法被调用时记行的既有口径一致）。查询文本与阶段内
+// 文本的脱敏义务随写入方迁移到本层（retrieval 类别，512 截断 + 4096 兜底）。
 func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchUnit, error) {
 	auth, ok := IdentityFromContext(ctx)
 	if !ok {
@@ -151,7 +169,8 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		return nil, err
 	}
 	if len(libraryIDs) == 0 {
-		// 无可见库：检索结果必然为空，不触达嵌入与向量设施。
+		// 无可见库：检索结果必然为空，不触达嵌入与向量设施（也未进入
+		// 召回管线，不产生留痕行）。
 		return []*KnowledgeSearchUnit{}, nil
 	}
 	space, dimension, err := uc.resolver.ResolveDefaultEmbedder(ctx)
@@ -165,48 +184,138 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 	if RetrievalSourceFromContext(ctx) == "" {
 		ctx = WithRetrievalSource(ctx, RetrievalSourceConsole)
 	}
+	// 编排路径的留痕由本用例负责：打上抑制标记让装饰器跳过逐路留痕，
+	// 多路调用共用该 ctx。
+	ctx = WithRetrievalLogSuppressed(ctx)
 	conditions := knowledgeRetrievalConditions(libraryIDs, uc.now())
 
+	tracker := &retrievalStageTracker{}
+	start := uc.now()
+	run := &knowledgeSearchRun{
+		query:      query,
+		variants:   variants,
+		topK:       topK,
+		space:      space,
+		dimension:  dimension,
+		conditions: conditions,
+		embedCtx:   embedCtx,
+	}
+	units, hits, runErr := uc.runSearch(ctx, tracker, run)
+
+	// 完成处一次写完整行：status 记操作终态，stages 承载阶段时间线，
+	// hits 仍是最终命中；留痕写入失败不反噬检索（旁路观察面）。
+	uc.appendSearchLog(ctx, uc.buildSearchLogRecord(ctx, tracker, run, libraryIDs, hits, runErr, uc.now().Sub(start)))
+
+	if runErr != nil {
+		return nil, runErr
+	}
+	return units, nil
+}
+
+// knowledgeSearchRun 是一次检索编排的入参事实：归一后的主查询与变体、
+// 生效 top_k、嵌入空间与固定检索条件，以及嵌入调用的场景 ctx。
+type knowledgeSearchRun struct {
+	query      string
+	variants   []string
+	topK       int
+	space      string
+	dimension  int
+	conditions []MetadataCondition
+	embedCtx   context.Context
+}
+
+// runSearch 执行召回 → 融合 → 重排 → 回包聚合管线并沿途记录阶段留痕：
+// 返回回包单元、最终命中（top_k 截断后）与操作错误。每个阶段在其执行点
+// 记录输入 query 变体、limit、候选（截 50）、错误与耗时。
+func (uc *KnowledgeSearchUsecase) runSearch(ctx context.Context, tracker *retrievalStageTracker, run *knowledgeSearchRun) ([]*KnowledgeSearchUnit, []*KnowledgeSearchHit, error) {
 	// 召回集 = 主查询 + 变体：每条独立向量化走向量路，同一条文本走词法
 	// 路；每路 Limit = 2×top_k（融合只看排名，取宽一点保住边界召回）。
-	queries := append([]string{query}, variants...)
+	queries := append([]string{run.query}, run.variants...)
 	routes := make([][]*ScoredVectorDocument, 0, len(queries)*2)
 	for _, text := range queries {
-		vector, err := uc.embedder.Embed(embedCtx, space, text)
+		stageQuery := uc.redactRetrievalText(text)
+		stageStart := uc.now()
+		vector, err := uc.embedder.Embed(run.embedCtx, run.space, text)
 		if err != nil {
-			return nil, fmt.Errorf("biz: embed search query: %w", err)
+			// 查询向量化失败让整次检索失败（正确性依赖）：该召回阶段记
+			// 错误与空候选，失败行照常留痕。
+			tracker.add(retrievalStage{
+				Stage:      RetrievalStageVector,
+				QueryText:  stageQuery,
+				Error:      uc.redactRetrievalText("embed query failed: " + err.Error()),
+				DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+			})
+			return nil, nil, fmt.Errorf("biz: embed search query: %w", err)
 		}
 		vectorHits, err := uc.store.Search(ctx, vector, &VectorFilter{
-			Embedder:   space,
-			Dimension:  dimension,
-			Conditions: conditions,
-			Limit:      topK * KnowledgeSearchRecallFactor,
+			Embedder:   run.space,
+			Dimension:  run.dimension,
+			Conditions: run.conditions,
+			Limit:      run.topK * KnowledgeSearchRecallFactor,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("biz: search knowledge: %w", err)
+			// 向量路失败让整次检索失败（正确性依赖），阶段照常留痕。
+			tracker.add(retrievalStage{
+				Stage:      RetrievalStageVector,
+				QueryText:  stageQuery,
+				Limit:      run.topK * KnowledgeSearchRecallFactor,
+				Error:      uc.redactRetrievalText("vector search failed: " + err.Error()),
+				DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+			})
+			return nil, nil, fmt.Errorf("biz: search knowledge: %w", err)
 		}
+		tracker.add(retrievalStage{
+			Stage:      RetrievalStageVector,
+			QueryText:  stageQuery,
+			Limit:      run.topK * KnowledgeSearchRecallFactor,
+			Candidates: retrievalStageCandidates(vectorHits),
+			DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+		})
 		routes = append(routes, vectorHits)
+
+		lexicalStart := uc.now()
 		lexicalHits, err := uc.store.SearchLexical(ctx, text, &VectorFilter{
-			Embedder:   space,
-			Dimension:  dimension,
-			Conditions: conditions,
-			Limit:      topK * KnowledgeSearchRecallFactor,
+			Embedder:   run.space,
+			Dimension:  run.dimension,
+			Conditions: run.conditions,
+			Limit:      run.topK * KnowledgeSearchRecallFactor,
 		})
 		if err != nil {
-			// 词法路失败按质量增强降级：记服务日志后仅用向量路结果，
-			// 不让整次检索失败（检索可用性优先于召回质量）。
+			// 词法路失败按质量增强降级：记服务日志与阶段失败留痕后仅用
+			// 向量路结果，不让整次检索失败（检索可用性优先于召回质量）。
 			slog.WarnContext(ctx, "lexical search failed; falling back to vector-only recall", slog.Any("error", err))
+			tracker.add(retrievalStage{
+				Stage:      RetrievalStageLexical,
+				QueryText:  stageQuery,
+				Limit:      run.topK * KnowledgeSearchRecallFactor,
+				Error:      uc.redactRetrievalText("lexical search failed: " + err.Error()),
+				DurationMS: uc.now().Sub(lexicalStart).Milliseconds(),
+			})
 			continue
 		}
+		tracker.add(retrievalStage{
+			Stage:      RetrievalStageLexical,
+			QueryText:  stageQuery,
+			Limit:      run.topK * KnowledgeSearchRecallFactor,
+			Candidates: retrievalStageCandidates(lexicalHits),
+			DurationMS: uc.now().Sub(lexicalStart).Milliseconds(),
+		})
 		routes = append(routes, lexicalHits)
 	}
 
 	// 融合序：全量融合后取前 2×top_k 作为重排候选（融合只看排名，取宽
 	// 一点给重排层留足边界召回）；重排层之后最终取 top_k。
-	fused := reciprocalRankFusion(routes, DefaultKnowledgeSearchFusionRRFK, topK*KnowledgeSearchRecallFactor)
-	fused = uc.applyRerank(ctx, query, fused)
-	if len(fused) > topK {
-		fused = fused[:topK]
+	fusionStart := uc.now()
+	fused := reciprocalRankFusion(routes, DefaultKnowledgeSearchFusionRRFK, run.topK*KnowledgeSearchRecallFactor)
+	tracker.add(retrievalStage{
+		Stage:      RetrievalStageFusion,
+		Limit:      run.topK * KnowledgeSearchRecallFactor,
+		Candidates: retrievalStageCandidates(fused),
+		DurationMS: uc.now().Sub(fusionStart).Milliseconds(),
+	})
+	fused = uc.applyRerank(ctx, tracker, run.query, run.topK, fused)
+	if len(fused) > run.topK {
+		fused = fused[:run.topK]
 	}
 
 	hits := make([]*KnowledgeSearchHit, 0, len(fused))
@@ -227,17 +336,66 @@ func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearch
 		})
 	}
 	// 回包聚合（pack）：命中块按来源自动分档聚合并以固定预算封顶，返回
-	// 粒度从逐切片命中变为逐回包单元（见 KnowledgeSearchUnit 契约注释）。
-	return uc.packSearchUnits(ctx, hits, space, conditions), nil
+	// 粒度从逐切片命中变为逐回包单元（见 KnowledgeSearchUnit 契约注释）；
+	// 全部装配单元（含被预算截断者）进 pack 阶段留痕。
+	packStart := uc.now()
+	units, packUnits := uc.packSearchUnits(ctx, hits, run.space, run.conditions)
+	tracker.add(retrievalStage{
+		Stage:      RetrievalStagePack,
+		Limit:      KnowledgeSearchPackBudgetTokens,
+		Units:      packUnits,
+		DurationMS: uc.now().Sub(packStart).Milliseconds(),
+	})
+	return units, hits, nil
+}
+
+// buildSearchLogRecord 组装编排路径的完整留痕行：身份/租户不进行（仓储
+// 从认证 ctx 提取经 IdentityTx 注入），trace/session/来源取 ctx 事实，
+// 查询文本与阶段内文本已按 retrieval 类别脱敏。requested/effective top_k
+// 均取归一化后的 top_k（最终命中上限）；过滤摘要记可见库集合；hits 是
+// 最终命中；status 按操作终态取值。
+func (uc *KnowledgeSearchUsecase) buildSearchLogRecord(ctx context.Context, tracker *retrievalStageTracker, run *knowledgeSearchRun, libraryIDs []int64, hits []*KnowledgeSearchHit, opErr error, elapsed time.Duration) *RetrievalLogRecord {
+	loggedHits := make([]RetrievalHit, 0, len(hits))
+	for _, h := range hits {
+		if h == nil {
+			continue
+		}
+		loggedHits = append(loggedHits, RetrievalHit{
+			DocumentID: h.DocumentID,
+			Score:      h.Score,
+			Anchor:     h.Anchor,
+		})
+	}
+	rec := &RetrievalLogRecord{
+		TraceID:       TraceIDFromContext(ctx),
+		SessionID:     SessionIDFromContext(ctx),
+		Source:        RetrievalSourceFromContext(ctx),
+		Embedder:      run.space,
+		QueryText:     uc.redactRetrievalText(run.query),
+		RequestedTopK: run.topK,
+		EffectiveTopK: run.topK,
+		FilterSummary: map[string]any{"kb_ids": libraryIDs},
+		Hits:          loggedHits,
+		Stages:        tracker.payload(),
+		DurationMS:    elapsed.Milliseconds(),
+		Status:        RetrievalStatusSuccess,
+	}
+	if opErr != nil {
+		rec.Status = RetrievalStatusError
+	}
+	return rec
 }
 
 // applyRerank 是检索管线的重排层：对融合序候选（前 2×top_k）按切片内容
 // 打相关性分，分数降序稳定重排（同分保持融合序），Score 改写为重排相关
 // 性分（无重排时 Score 保持 RRF 融合分——两种分仅同次检索内各自可比）。
 // 重排是质量增强非正确性依赖：reranker 未装配（nil）、候选不足 2 条、
-// 重排模型未配置（ErrRerankUnavailable，按跳过该层处理不告警）与其他
-// 调用失败（记服务日志）都降级为融合序继续检索。
-func (uc *KnowledgeSearchUsecase) applyRerank(ctx context.Context, query string, fused []*ScoredVectorDocument) []*ScoredVectorDocument {
+// 重排模型未配置（ErrRerankUnavailable，按跳过该层处理不告警）时层未
+// 运行、不记 rerank 阶段（不伪造空阶段）；其他调用失败（记服务日志）与
+// 契约破坏（分数长度不符）降级为融合序继续检索，rerank 阶段照常留痕
+// （候选保持融合序 + 错误摘要）。成功时阶段候选即重排后的输出序——与
+// fusion 阶段的候选（重排前序）对照即还原重排前后序。
+func (uc *KnowledgeSearchUsecase) applyRerank(ctx context.Context, tracker *retrievalStageTracker, query string, topK int, fused []*ScoredVectorDocument) []*ScoredVectorDocument {
 	if uc.reranker == nil || len(fused) < 2 {
 		return fused
 	}
@@ -245,27 +403,63 @@ func (uc *KnowledgeSearchUsecase) applyRerank(ctx context.Context, query string,
 	for _, r := range fused {
 		documents = append(documents, r.Document.Content)
 	}
+	// 阶段留痕口径：rerank 的 limit 记输出上限（最终 top_k），candidates
+	// 记重排输入候选的重排后序（条数为 2×top_k 的召回窗口，不因输出上限
+	// 截断）——见 retrievalStage.Limit 注释与 schema/97 列注释。
+	stageStart := uc.now()
 	// 模型调用留痕场景在此声明（rerank）：重排无 kb_document 行上下文，
 	// 文档 ID 恒缺省。
-	scores, err := uc.reranker.Rerank(WithModelCallScene(ctx, ModelCallScenarioRerank), query, documents)
+	res, err := uc.reranker.Rerank(WithModelCallScene(ctx, ModelCallScenarioRerank), query, documents)
 	if err != nil {
 		if errors.Is(err, ErrRerankUnavailable) {
 			return fused
 		}
 		slog.WarnContext(ctx, "rerank failed; falling back to fusion order", slog.Any("error", err))
+		tracker.add(retrievalStage{
+			Stage:      RetrievalStageRerank,
+			Limit:      topK,
+			Model:      rerankModelKey(res),
+			Candidates: retrievalStageCandidates(fused),
+			Error:      uc.redactRetrievalText("rerank failed: " + err.Error()),
+			DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+		})
 		return fused
 	}
-	if len(scores) != len(fused) {
+	if len(res.Scores) != len(fused) {
 		// 契约要求等长返回：长度不符属实现缺陷，按层失败降级而非错序。
 		slog.WarnContext(ctx, "rerank returned mismatched scores; falling back to fusion order",
-			slog.Int("documents", len(fused)), slog.Int("scores", len(scores)))
+			slog.Int("documents", len(fused)), slog.Int("scores", len(res.Scores)))
+		tracker.add(retrievalStage{
+			Stage:      RetrievalStageRerank,
+			Limit:      topK,
+			Model:      res.ModelKey,
+			Candidates: retrievalStageCandidates(fused),
+			Error:      uc.redactRetrievalText("rerank returned mismatched scores"),
+			DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+		})
 		return fused
 	}
-	for i, s := range scores {
+	for i, s := range res.Scores {
 		fused[i].Score = s
 	}
 	sort.SliceStable(fused, func(i, j int) bool { return fused[i].Score > fused[j].Score })
+	tracker.add(retrievalStage{
+		Stage:      RetrievalStageRerank,
+		Limit:      topK,
+		Model:      res.ModelKey,
+		Candidates: retrievalStageCandidates(fused),
+		DurationMS: uc.now().Sub(stageStart).Milliseconds(),
+	})
 	return fused
+}
+
+// rerankModelKey 安全读取重排结果中的模型键：调用失败且无结果事实时为空
+// （留痕缺失如实留空，不伪造）。
+func rerankModelKey(res *RerankResult) string {
+	if res == nil {
+		return ""
+	}
+	return res.ModelKey
 }
 
 // reciprocalRankFusion 是 RRF 融合的纯函数：按各路排名累加 1/(k+rank)

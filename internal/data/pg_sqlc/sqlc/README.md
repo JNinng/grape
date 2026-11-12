@@ -36,7 +36,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
 | 15 | expose.sql | 只读判定函数、范围版本表与 bump 触发器 |
 | 16 | operate.sql | `fn_can_*` 写前判定与角色判定族 |
 | 17 | 96_agent_grant.sql | Agent 工具授权表、未撤销唯一约束与租户 RLS |
-| 18 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only）与租户 RLS |
+| 18 | schema/97_agent_retrieval_log.sql | Agent 检索留痕表（append-only，`hits` 最终命中 + `stages` 阶段时间线 jsonb）与租户 RLS |
 | 19 | schema/99_model_call_log.sql | Agent 模型调用留痕表（append-only）与租户 RLS |
 | 20 | queries/ | 写侧判定、固定 CRUD、权限查询与 Agent 审计/授权/留痕/模型调用/知识库/介质/模型/对象读写（23 个文件、197 条查询） |
 | 21 | 98_menu_write.sql | sys_menu 四个 SECURITY DEFINER 受控写函数 |
@@ -588,12 +588,14 @@ RLS 为主，读侧 WHERE 显式带同源租户谓词作应用层兜底（RLS �
 
 | 查询 | 类型 | 参数 → 返回 | 作用 |
 | --- | --- | --- | --- |
-| InsertAgentRetrievalLog | :one | 留痕字段（可空 narg）→ AgentRetrievalLog | 写入；租户取会话，写入者与用户同值 |
+| InsertAgentRetrievalLog | :one | 留痕字段（可空 narg，含 `stages` 阶段数组）→ AgentRetrievalLog | 写入；租户取会话，写入者与用户同值 |
 | ListAgentRetrievalLogs | :many | 会话/来源（可空）/limit/offset → 行集 | 按会话/来源分页（时间倒序，供回放） |
 | CountAgentRetrievalLogs | :one | 会话/来源（可空）→ int64 | 与 List 同条件计数 |
 
 租户边界与审计同型：RLS 为主，读侧 WHERE 的同源租户谓词兜底；写入侧租户
-一律取会话变量，调用方无法指定。
+一律取会话变量，调用方无法指定。`filter_summary` / `hits` / `stages` 三个
+jsonb 列由写入方（留痕装饰器或检索编排层）脱敏成型后原样落库，仓储只做
+字节上限兜底（超限降级为截断声明形态），读侧原样透传。
 
 ### agent_model_call_log.sql（Agent 模型调用留痕读写）
 
