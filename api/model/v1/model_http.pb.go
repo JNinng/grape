@@ -40,9 +40,12 @@ type ModelServiceHTTPServer interface {
 	GetModel(context.Context, *GetModelRequest) (*Model, error)
 	// ListModels ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
 	ListModels(context.Context, *ListModelsRequest) (*ModelSet, error)
-	// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。
+	// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+	// 不可变的身份列，更新协议不承载它们，客户端无法伪造。
 	UpdateModel(context.Context, *UpdateModelRequest) (*Model, error)
-	// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+	// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+	// model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+	// 伪造。
 	UpdateModelSuper(context.Context, *UpdateModelSuperRequest) (*Model, error)
 }
 
@@ -232,9 +235,12 @@ type ModelServiceHTTPClient interface {
 	GetModel(ctx context.Context, req *GetModelRequest, opts ...http.CallOption) (rsp *Model, err error)
 	// ListModels ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
 	ListModels(ctx context.Context, req *ListModelsRequest, opts ...http.CallOption) (rsp *ModelSet, err error)
-	// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。
+	// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+	// 不可变的身份列，更新协议不承载它们，客户端无法伪造。
 	UpdateModel(ctx context.Context, req *UpdateModelRequest, opts ...http.CallOption) (rsp *Model, err error)
-	// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+	// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+	// model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+	// 伪造。
 	UpdateModelSuper(ctx context.Context, req *UpdateModelSuperRequest, opts ...http.CallOption) (rsp *Model, err error)
 }
 
@@ -350,7 +356,8 @@ func (c *ModelServiceHTTPClientImpl) ListModels(ctx context.Context, in *ListMod
 	return &out, nil
 }
 
-// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。
+// UpdateModel UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+// 不可变的身份列，更新协议不承载它们，客户端无法伪造。
 func (c *ModelServiceHTTPClientImpl) UpdateModel(ctx context.Context, in *UpdateModelRequest, opts ...http.CallOption) (*Model, error) {
 	var out Model
 	pattern := "/v1/models/update"
@@ -368,7 +375,9 @@ func (c *ModelServiceHTTPClientImpl) UpdateModel(ctx context.Context, in *Update
 	return &out, nil
 }
 
-// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+// UpdateModelSuper UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+// model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+// 伪造。
 func (c *ModelServiceHTTPClientImpl) UpdateModelSuper(ctx context.Context, in *UpdateModelSuperRequest, opts ...http.CallOption) (*Model, error) {
 	var out Model
 	pattern := "/v1/models/platform/update"

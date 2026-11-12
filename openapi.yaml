@@ -1302,7 +1302,10 @@ paths:
         put:
             tags:
                 - ModelService
-            description: UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+            description: |-
+                UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+                 model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+                 伪造。
             operationId: ModelService_UpdateModelSuper
             requestBody:
                 content:
@@ -1337,7 +1340,9 @@ paths:
         put:
             tags:
                 - ModelService
-            description: UpdateModel 覆盖本租户模型行的可变字段。
+            description: |-
+                UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+                 不可变的身份列，更新协议不承载它们，客户端无法伪造。
             operationId: ModelService_UpdateModel
             requestBody:
                 content:
@@ -3739,15 +3744,56 @@ components:
                     items:
                         $ref: '#/components/schemas/model.v1.Model'
             description: ModelSet 是 ListModels 的固定集合（不分页）。
+        model.v1.ModelUpdateSpec:
+            type: object
+            properties:
+                status:
+                    type: integer
+                    description: 数据状态：0 禁用、1 启用。更新必填。
+                    format: int32
+                name:
+                    type: string
+                    description: 模型展示名。
+                provider:
+                    type: string
+                    description: provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等）。
+                baseUrl:
+                    type: string
+                    description: OpenAI 兼容端点根地址。
+                model:
+                    type: string
+                    description: 发给 provider 的模型名。
+                dimension:
+                    type: integer
+                    description: 嵌入维度；类别为 embedding 时本期必须为 1024，其余类别不携带。
+                    format: int32
+                timeoutMs:
+                    type: integer
+                    description: 单次调用超时（毫秒）。
+                    format: int32
+                apiKeyEnv:
+                    type: string
+                    description: 密钥环境变量名。
+                remark:
+                    type: string
+                    description: 备注。
+            description: |-
+                ModelUpdateSpec 是模型行创建后可变字段的变更集。不承载 kind /
+                 model_key / id / 平台标识 / 审计列：类别与 model_key 是创建后不可变的
+                 身份列，由服务端以锁定行的存量值回填，客户端无法经更新协议伪造。
         model.v1.UpdateModelRequest:
             required:
+                - id
                 - model
             type: object
             properties:
+                id:
+                    type: string
+                    description: 目标模型行 ID，必填。
                 model:
                     allOf:
-                        - $ref: '#/components/schemas/model.v1.Model'
-                    description: 携带新字段值的租户模型行。id 必填；kind/model_key 在输入中被忽略。
+                        - $ref: '#/components/schemas/model.v1.ModelUpdateSpec'
+                    description: 可变字段变更集，必填。
                 apiKey:
                     type: string
                     description: 新 API key 明文；省略表示保持原密文不变。
@@ -3757,15 +3803,23 @@ components:
             description: UpdateModelRequest 是 ModelService.UpdateModel 的输入。
         model.v1.UpdateModelSuperRequest:
             required:
+                - id
                 - model
             type: object
             properties:
+                id:
+                    type: string
+                    description: 目标模型行 ID，必填。
                 model:
-                    $ref: '#/components/schemas/model.v1.Model'
+                    allOf:
+                        - $ref: '#/components/schemas/model.v1.ModelUpdateSpec'
+                    description: 可变字段变更集，必填。
                 apiKey:
                     type: string
+                    description: 新 API key 明文；省略表示保持原密文不变。
                 clearApiKey:
                     type: boolean
+                    description: 清除已存的密钥密文。
             description: UpdateModelSuperRequest 是 ModelService.UpdateModelSuper 的输入。
         org.v1.AddUserGroupMembersReply:
             type: object

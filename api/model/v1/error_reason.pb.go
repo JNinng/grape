@@ -33,7 +33,7 @@ const (
 	ErrorReason_MODEL_INVALID_ARGUMENT ErrorReason = 2
 	// 唯一约束冲突（租户/平台内未删除行间 model_key 已被占用）。
 	ErrorReason_MODEL_ALREADY_EXISTS ErrorReason = 3
-	// 模型密钥不可用（主密钥缺失或密文损坏）。
+	// 模型密钥不可用（登记表缺少该业务键材料或密文损坏）。
 	ErrorReason_MODEL_SECRET_UNAVAILABLE ErrorReason = 4
 )
 

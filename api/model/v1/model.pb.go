@@ -424,22 +424,144 @@ func (x *ListModelsRequest) GetKind() string {
 	return ""
 }
 
+// ModelUpdateSpec 是模型行创建后可变字段的变更集。不承载 kind /
+// model_key / id / 平台标识 / 审计列：类别与 model_key 是创建后不可变的
+// 身份列，由服务端以锁定行的存量值回填，客户端无法经更新协议伪造。
+type ModelUpdateSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 数据状态：0 禁用、1 启用。更新必填。
+	Status *int32 `protobuf:"varint,1,opt,name=status,proto3,oneof" json:"status,omitempty"`
+	// 模型展示名。
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等）。
+	Provider string `protobuf:"bytes,3,opt,name=provider,proto3" json:"provider,omitempty"`
+	// OpenAI 兼容端点根地址。
+	BaseUrl *string `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3,oneof" json:"base_url,omitempty"`
+	// 发给 provider 的模型名。
+	Model string `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
+	// 嵌入维度；类别为 embedding 时本期必须为 1024，其余类别不携带。
+	Dimension *int32 `protobuf:"varint,6,opt,name=dimension,proto3,oneof" json:"dimension,omitempty"`
+	// 单次调用超时（毫秒）。
+	TimeoutMs *int32 `protobuf:"varint,7,opt,name=timeout_ms,json=timeoutMs,proto3,oneof" json:"timeout_ms,omitempty"`
+	// 密钥环境变量名。
+	ApiKeyEnv *string `protobuf:"bytes,8,opt,name=api_key_env,json=apiKeyEnv,proto3,oneof" json:"api_key_env,omitempty"`
+	// 备注。
+	Remark        *string `protobuf:"bytes,9,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ModelUpdateSpec) Reset() {
+	*x = ModelUpdateSpec{}
+	mi := &file_model_v1_model_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ModelUpdateSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ModelUpdateSpec) ProtoMessage() {}
+
+func (x *ModelUpdateSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_model_v1_model_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ModelUpdateSpec.ProtoReflect.Descriptor instead.
+func (*ModelUpdateSpec) Descriptor() ([]byte, []int) {
+	return file_model_v1_model_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ModelUpdateSpec) GetStatus() int32 {
+	if x != nil && x.Status != nil {
+		return *x.Status
+	}
+	return 0
+}
+
+func (x *ModelUpdateSpec) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ModelUpdateSpec) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *ModelUpdateSpec) GetBaseUrl() string {
+	if x != nil && x.BaseUrl != nil {
+		return *x.BaseUrl
+	}
+	return ""
+}
+
+func (x *ModelUpdateSpec) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *ModelUpdateSpec) GetDimension() int32 {
+	if x != nil && x.Dimension != nil {
+		return *x.Dimension
+	}
+	return 0
+}
+
+func (x *ModelUpdateSpec) GetTimeoutMs() int32 {
+	if x != nil && x.TimeoutMs != nil {
+		return *x.TimeoutMs
+	}
+	return 0
+}
+
+func (x *ModelUpdateSpec) GetApiKeyEnv() string {
+	if x != nil && x.ApiKeyEnv != nil {
+		return *x.ApiKeyEnv
+	}
+	return ""
+}
+
+func (x *ModelUpdateSpec) GetRemark() string {
+	if x != nil && x.Remark != nil {
+		return *x.Remark
+	}
+	return ""
+}
+
 // UpdateModelRequest 是 ModelService.UpdateModel 的输入。
 type UpdateModelRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// 携带新字段值的租户模型行。id 必填；kind/model_key 在输入中被忽略。
-	Model *Model `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	// 目标模型行 ID，必填。
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// 可变字段变更集，必填。
+	Model *ModelUpdateSpec `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
 	// 新 API key 明文；省略表示保持原密文不变。
-	ApiKey *string `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3,oneof" json:"api_key,omitempty"`
+	ApiKey *string `protobuf:"bytes,3,opt,name=api_key,json=apiKey,proto3,oneof" json:"api_key,omitempty"`
 	// 清除已存的密钥密文。
-	ClearApiKey   bool `protobuf:"varint,3,opt,name=clear_api_key,json=clearApiKey,proto3" json:"clear_api_key,omitempty"`
+	ClearApiKey   bool `protobuf:"varint,4,opt,name=clear_api_key,json=clearApiKey,proto3" json:"clear_api_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateModelRequest) Reset() {
 	*x = UpdateModelRequest{}
-	mi := &file_model_v1_model_proto_msgTypes[5]
+	mi := &file_model_v1_model_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -451,7 +573,7 @@ func (x *UpdateModelRequest) String() string {
 func (*UpdateModelRequest) ProtoMessage() {}
 
 func (x *UpdateModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_model_v1_model_proto_msgTypes[5]
+	mi := &file_model_v1_model_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -464,10 +586,17 @@ func (x *UpdateModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateModelRequest.ProtoReflect.Descriptor instead.
 func (*UpdateModelRequest) Descriptor() ([]byte, []int) {
-	return file_model_v1_model_proto_rawDescGZIP(), []int{5}
+	return file_model_v1_model_proto_rawDescGZIP(), []int{6}
 }
 
-func (x *UpdateModelRequest) GetModel() *Model {
+func (x *UpdateModelRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateModelRequest) GetModel() *ModelUpdateSpec {
 	if x != nil {
 		return x.Model
 	}
@@ -498,7 +627,7 @@ type DeleteModelRequest struct {
 
 func (x *DeleteModelRequest) Reset() {
 	*x = DeleteModelRequest{}
-	mi := &file_model_v1_model_proto_msgTypes[6]
+	mi := &file_model_v1_model_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -510,7 +639,7 @@ func (x *DeleteModelRequest) String() string {
 func (*DeleteModelRequest) ProtoMessage() {}
 
 func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_model_v1_model_proto_msgTypes[6]
+	mi := &file_model_v1_model_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -523,7 +652,7 @@ func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteModelRequest.ProtoReflect.Descriptor instead.
 func (*DeleteModelRequest) Descriptor() ([]byte, []int) {
-	return file_model_v1_model_proto_rawDescGZIP(), []int{6}
+	return file_model_v1_model_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *DeleteModelRequest) GetId() int64 {
@@ -544,7 +673,7 @@ type CreateModelSuperRequest struct {
 
 func (x *CreateModelSuperRequest) Reset() {
 	*x = CreateModelSuperRequest{}
-	mi := &file_model_v1_model_proto_msgTypes[7]
+	mi := &file_model_v1_model_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -556,7 +685,7 @@ func (x *CreateModelSuperRequest) String() string {
 func (*CreateModelSuperRequest) ProtoMessage() {}
 
 func (x *CreateModelSuperRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_model_v1_model_proto_msgTypes[7]
+	mi := &file_model_v1_model_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -569,7 +698,7 @@ func (x *CreateModelSuperRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateModelSuperRequest.ProtoReflect.Descriptor instead.
 func (*CreateModelSuperRequest) Descriptor() ([]byte, []int) {
-	return file_model_v1_model_proto_rawDescGZIP(), []int{7}
+	return file_model_v1_model_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *CreateModelSuperRequest) GetModel() *Model {
@@ -588,17 +717,22 @@ func (x *CreateModelSuperRequest) GetApiKey() string {
 
 // UpdateModelSuperRequest 是 ModelService.UpdateModelSuper 的输入。
 type UpdateModelSuperRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Model         *Model                 `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
-	ApiKey        *string                `protobuf:"bytes,2,opt,name=api_key,json=apiKey,proto3,oneof" json:"api_key,omitempty"`
-	ClearApiKey   bool                   `protobuf:"varint,3,opt,name=clear_api_key,json=clearApiKey,proto3" json:"clear_api_key,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 目标模型行 ID，必填。
+	Id int64 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	// 可变字段变更集，必填。
+	Model *ModelUpdateSpec `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	// 新 API key 明文；省略表示保持原密文不变。
+	ApiKey *string `protobuf:"bytes,3,opt,name=api_key,json=apiKey,proto3,oneof" json:"api_key,omitempty"`
+	// 清除已存的密钥密文。
+	ClearApiKey   bool `protobuf:"varint,4,opt,name=clear_api_key,json=clearApiKey,proto3" json:"clear_api_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *UpdateModelSuperRequest) Reset() {
 	*x = UpdateModelSuperRequest{}
-	mi := &file_model_v1_model_proto_msgTypes[8]
+	mi := &file_model_v1_model_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -610,7 +744,7 @@ func (x *UpdateModelSuperRequest) String() string {
 func (*UpdateModelSuperRequest) ProtoMessage() {}
 
 func (x *UpdateModelSuperRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_model_v1_model_proto_msgTypes[8]
+	mi := &file_model_v1_model_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -623,10 +757,17 @@ func (x *UpdateModelSuperRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateModelSuperRequest.ProtoReflect.Descriptor instead.
 func (*UpdateModelSuperRequest) Descriptor() ([]byte, []int) {
-	return file_model_v1_model_proto_rawDescGZIP(), []int{8}
+	return file_model_v1_model_proto_rawDescGZIP(), []int{9}
 }
 
-func (x *UpdateModelSuperRequest) GetModel() *Model {
+func (x *UpdateModelSuperRequest) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *UpdateModelSuperRequest) GetModel() *ModelUpdateSpec {
 	if x != nil {
 		return x.Model
 	}
@@ -657,7 +798,7 @@ type DeleteModelSuperRequest struct {
 
 func (x *DeleteModelSuperRequest) Reset() {
 	*x = DeleteModelSuperRequest{}
-	mi := &file_model_v1_model_proto_msgTypes[9]
+	mi := &file_model_v1_model_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -669,7 +810,7 @@ func (x *DeleteModelSuperRequest) String() string {
 func (*DeleteModelSuperRequest) ProtoMessage() {}
 
 func (x *DeleteModelSuperRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_model_v1_model_proto_msgTypes[9]
+	mi := &file_model_v1_model_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -682,7 +823,7 @@ func (x *DeleteModelSuperRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteModelSuperRequest.ProtoReflect.Descriptor instead.
 func (*DeleteModelSuperRequest) Descriptor() ([]byte, []int) {
-	return file_model_v1_model_proto_rawDescGZIP(), []int{9}
+	return file_model_v1_model_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *DeleteModelSuperRequest) GetId() int64 {
@@ -742,11 +883,30 @@ const file_model_v1_model_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\"5\n" +
 	"\x11ListModelsRequest\x12\x17\n" +
 	"\x04kind\x18\x01 \x01(\tH\x00R\x04kind\x88\x01\x01B\a\n" +
-	"\x05_kind\"\x8e\x01\n" +
-	"\x12UpdateModelRequest\x12*\n" +
-	"\x05model\x18\x01 \x01(\v2\x0f.model.v1.ModelB\x03\xe0A\x02R\x05model\x12\x1c\n" +
-	"\aapi_key\x18\x02 \x01(\tH\x00R\x06apiKey\x88\x01\x01\x12\"\n" +
-	"\rclear_api_key\x18\x03 \x01(\bR\vclearApiKeyB\n" +
+	"\x05_kind\"\xed\x02\n" +
+	"\x0fModelUpdateSpec\x12\x1b\n" +
+	"\x06status\x18\x01 \x01(\x05H\x00R\x06status\x88\x01\x01\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
+	"\bprovider\x18\x03 \x01(\tR\bprovider\x12\x1e\n" +
+	"\bbase_url\x18\x04 \x01(\tH\x01R\abaseUrl\x88\x01\x01\x12\x14\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x12!\n" +
+	"\tdimension\x18\x06 \x01(\x05H\x02R\tdimension\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"timeout_ms\x18\a \x01(\x05H\x03R\ttimeoutMs\x88\x01\x01\x12#\n" +
+	"\vapi_key_env\x18\b \x01(\tH\x04R\tapiKeyEnv\x88\x01\x01\x12\x1b\n" +
+	"\x06remark\x18\t \x01(\tH\x05R\x06remark\x88\x01\x01B\t\n" +
+	"\a_statusB\v\n" +
+	"\t_base_urlB\f\n" +
+	"\n" +
+	"_dimensionB\r\n" +
+	"\v_timeout_msB\x0e\n" +
+	"\f_api_key_envB\t\n" +
+	"\a_remark\"\xad\x01\n" +
+	"\x12UpdateModelRequest\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\x124\n" +
+	"\x05model\x18\x02 \x01(\v2\x19.model.v1.ModelUpdateSpecB\x03\xe0A\x02R\x05model\x12\x1c\n" +
+	"\aapi_key\x18\x03 \x01(\tH\x00R\x06apiKey\x88\x01\x01\x12\"\n" +
+	"\rclear_api_key\x18\x04 \x01(\bR\vclearApiKeyB\n" +
 	"\n" +
 	"\b_api_key\")\n" +
 	"\x12DeleteModelRequest\x12\x13\n" +
@@ -755,11 +915,12 @@ const file_model_v1_model_proto_rawDesc = "" +
 	"\x05model\x18\x01 \x01(\v2\x0f.model.v1.ModelB\x03\xe0A\x02R\x05model\x12\x1c\n" +
 	"\aapi_key\x18\x02 \x01(\tH\x00R\x06apiKey\x88\x01\x01B\n" +
 	"\n" +
-	"\b_api_key\"\x93\x01\n" +
-	"\x17UpdateModelSuperRequest\x12*\n" +
-	"\x05model\x18\x01 \x01(\v2\x0f.model.v1.ModelB\x03\xe0A\x02R\x05model\x12\x1c\n" +
-	"\aapi_key\x18\x02 \x01(\tH\x00R\x06apiKey\x88\x01\x01\x12\"\n" +
-	"\rclear_api_key\x18\x03 \x01(\bR\vclearApiKeyB\n" +
+	"\b_api_key\"\xb2\x01\n" +
+	"\x17UpdateModelSuperRequest\x12\x13\n" +
+	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\x124\n" +
+	"\x05model\x18\x02 \x01(\v2\x19.model.v1.ModelUpdateSpecB\x03\xe0A\x02R\x05model\x12\x1c\n" +
+	"\aapi_key\x18\x03 \x01(\tH\x00R\x06apiKey\x88\x01\x01\x12\"\n" +
+	"\rclear_api_key\x18\x04 \x01(\bR\vclearApiKeyB\n" +
 	"\n" +
 	"\b_api_key\".\n" +
 	"\x17DeleteModelSuperRequest\x12\x13\n" +
@@ -790,46 +951,47 @@ func file_model_v1_model_proto_rawDescGZIP() []byte {
 	return file_model_v1_model_proto_rawDescData
 }
 
-var file_model_v1_model_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_model_v1_model_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_model_v1_model_proto_goTypes = []any{
 	(*Model)(nil),                   // 0: model.v1.Model
 	(*ModelSet)(nil),                // 1: model.v1.ModelSet
 	(*CreateModelRequest)(nil),      // 2: model.v1.CreateModelRequest
 	(*GetModelRequest)(nil),         // 3: model.v1.GetModelRequest
 	(*ListModelsRequest)(nil),       // 4: model.v1.ListModelsRequest
-	(*UpdateModelRequest)(nil),      // 5: model.v1.UpdateModelRequest
-	(*DeleteModelRequest)(nil),      // 6: model.v1.DeleteModelRequest
-	(*CreateModelSuperRequest)(nil), // 7: model.v1.CreateModelSuperRequest
-	(*UpdateModelSuperRequest)(nil), // 8: model.v1.UpdateModelSuperRequest
-	(*DeleteModelSuperRequest)(nil), // 9: model.v1.DeleteModelSuperRequest
-	(*timestamppb.Timestamp)(nil),   // 10: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),           // 11: google.protobuf.Empty
+	(*ModelUpdateSpec)(nil),         // 5: model.v1.ModelUpdateSpec
+	(*UpdateModelRequest)(nil),      // 6: model.v1.UpdateModelRequest
+	(*DeleteModelRequest)(nil),      // 7: model.v1.DeleteModelRequest
+	(*CreateModelSuperRequest)(nil), // 8: model.v1.CreateModelSuperRequest
+	(*UpdateModelSuperRequest)(nil), // 9: model.v1.UpdateModelSuperRequest
+	(*DeleteModelSuperRequest)(nil), // 10: model.v1.DeleteModelSuperRequest
+	(*timestamppb.Timestamp)(nil),   // 11: google.protobuf.Timestamp
+	(*emptypb.Empty)(nil),           // 12: google.protobuf.Empty
 }
 var file_model_v1_model_proto_depIdxs = []int32{
-	10, // 0: model.v1.Model.created_at:type_name -> google.protobuf.Timestamp
-	10, // 1: model.v1.Model.updated_at:type_name -> google.protobuf.Timestamp
-	10, // 2: model.v1.Model.deleted_at:type_name -> google.protobuf.Timestamp
+	11, // 0: model.v1.Model.created_at:type_name -> google.protobuf.Timestamp
+	11, // 1: model.v1.Model.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 2: model.v1.Model.deleted_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: model.v1.ModelSet.items:type_name -> model.v1.Model
 	0,  // 4: model.v1.CreateModelRequest.model:type_name -> model.v1.Model
-	0,  // 5: model.v1.UpdateModelRequest.model:type_name -> model.v1.Model
+	5,  // 5: model.v1.UpdateModelRequest.model:type_name -> model.v1.ModelUpdateSpec
 	0,  // 6: model.v1.CreateModelSuperRequest.model:type_name -> model.v1.Model
-	0,  // 7: model.v1.UpdateModelSuperRequest.model:type_name -> model.v1.Model
+	5,  // 7: model.v1.UpdateModelSuperRequest.model:type_name -> model.v1.ModelUpdateSpec
 	2,  // 8: model.v1.ModelService.CreateModel:input_type -> model.v1.CreateModelRequest
 	3,  // 9: model.v1.ModelService.GetModel:input_type -> model.v1.GetModelRequest
 	4,  // 10: model.v1.ModelService.ListModels:input_type -> model.v1.ListModelsRequest
-	5,  // 11: model.v1.ModelService.UpdateModel:input_type -> model.v1.UpdateModelRequest
-	6,  // 12: model.v1.ModelService.DeleteModel:input_type -> model.v1.DeleteModelRequest
-	7,  // 13: model.v1.ModelService.CreateModelSuper:input_type -> model.v1.CreateModelSuperRequest
-	8,  // 14: model.v1.ModelService.UpdateModelSuper:input_type -> model.v1.UpdateModelSuperRequest
-	9,  // 15: model.v1.ModelService.DeleteModelSuper:input_type -> model.v1.DeleteModelSuperRequest
+	6,  // 11: model.v1.ModelService.UpdateModel:input_type -> model.v1.UpdateModelRequest
+	7,  // 12: model.v1.ModelService.DeleteModel:input_type -> model.v1.DeleteModelRequest
+	8,  // 13: model.v1.ModelService.CreateModelSuper:input_type -> model.v1.CreateModelSuperRequest
+	9,  // 14: model.v1.ModelService.UpdateModelSuper:input_type -> model.v1.UpdateModelSuperRequest
+	10, // 15: model.v1.ModelService.DeleteModelSuper:input_type -> model.v1.DeleteModelSuperRequest
 	0,  // 16: model.v1.ModelService.CreateModel:output_type -> model.v1.Model
 	0,  // 17: model.v1.ModelService.GetModel:output_type -> model.v1.Model
 	1,  // 18: model.v1.ModelService.ListModels:output_type -> model.v1.ModelSet
 	0,  // 19: model.v1.ModelService.UpdateModel:output_type -> model.v1.Model
-	11, // 20: model.v1.ModelService.DeleteModel:output_type -> google.protobuf.Empty
+	12, // 20: model.v1.ModelService.DeleteModel:output_type -> google.protobuf.Empty
 	0,  // 21: model.v1.ModelService.CreateModelSuper:output_type -> model.v1.Model
 	0,  // 22: model.v1.ModelService.UpdateModelSuper:output_type -> model.v1.Model
-	11, // 23: model.v1.ModelService.DeleteModelSuper:output_type -> google.protobuf.Empty
+	12, // 23: model.v1.ModelService.DeleteModelSuper:output_type -> google.protobuf.Empty
 	16, // [16:24] is the sub-list for method output_type
 	8,  // [8:16] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -846,15 +1008,16 @@ func file_model_v1_model_proto_init() {
 	file_model_v1_model_proto_msgTypes[2].OneofWrappers = []any{}
 	file_model_v1_model_proto_msgTypes[4].OneofWrappers = []any{}
 	file_model_v1_model_proto_msgTypes[5].OneofWrappers = []any{}
-	file_model_v1_model_proto_msgTypes[7].OneofWrappers = []any{}
+	file_model_v1_model_proto_msgTypes[6].OneofWrappers = []any{}
 	file_model_v1_model_proto_msgTypes[8].OneofWrappers = []any{}
+	file_model_v1_model_proto_msgTypes[9].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_model_v1_model_proto_rawDesc), len(file_model_v1_model_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

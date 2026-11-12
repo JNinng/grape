@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ModelDTO } from '@/api/models'
-import { createModel, listModels } from '@/api/models'
+import { createModel, listModels, updateModel, updateModelSuper } from '@/api/models'
 import { Toaster, clearToasts } from '@/components/ui/toast'
 import { SettingsLayout } from './SettingsLayout'
 import { ModelManagePage } from './ModelManagePage'
@@ -12,10 +12,15 @@ vi.mock('@/api/models', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/models')>()),
   listModels: vi.fn(),
   createModel: vi.fn(),
+  createModelSuper: vi.fn(),
+  updateModel: vi.fn(),
+  updateModelSuper: vi.fn(),
 }))
 
 const mockListModels = vi.mocked(listModels)
 const mockCreateModel = vi.mocked(createModel)
+const mockUpdateModel = vi.mocked(updateModel)
+const mockUpdateModelSuper = vi.mocked(updateModelSuper)
 
 // model 构造模型 DTO 基线：可选字段缺省即未设置（protojson 口径）。
 function model(overrides: Partial<ModelDTO> = {}): ModelDTO {
@@ -40,6 +45,8 @@ beforeEach(() => {
   clearToasts()
   mockListModels.mockResolvedValue({ items: [model()] })
   mockCreateModel.mockResolvedValue(model({ id: '6' }))
+  mockUpdateModel.mockResolvedValue(model())
+  mockUpdateModelSuper.mockResolvedValue(model({ platform: true }))
 })
 
 afterEach(() => {
@@ -110,6 +117,76 @@ describe('ModelManagePage rerank kind', () => {
   })
 })
 
+// MUTABLE_UPDATE_FIELDS 是更新协议允许的变更集字段（ModelUpdateSpec）：
+// kind / modelKey / id 是创建后不可变的身份列，不得出现在更新体中。
+const MUTABLE_UPDATE_FIELDS = [
+  'apiKeyEnv',
+  'baseUrl',
+  'dimension',
+  'model',
+  'name',
+  'provider',
+  'remark',
+  'status',
+  'timeoutMs',
+]
+
+describe('ModelManagePage edit dialog', () => {
+  it('edit_tenant_row_updates_only_mutable_fields', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findByText('Qwen3 8B')
+
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitForUpdateCall(mockUpdateModel)
+    expect(mockUpdateModel).toHaveBeenCalledTimes(1)
+    expect(mockUpdateModelSuper).not.toHaveBeenCalled()
+
+    const payload = mockUpdateModel.mock.calls[0][0]
+    expect(payload.id).toBe('5')
+    expect(payload.apiKey).toBeUndefined()
+    expect(payload.clearApiKey).toBe(false)
+    // 变更集只有可变字段：身份列不随更新协议下发。
+    expect(Object.keys(payload.model).sort()).toEqual(MUTABLE_UPDATE_FIELDS)
+    expect(payload.model).toEqual({
+      status: 1,
+      name: 'Qwen3 8B',
+      provider: 'openai',
+      baseUrl: undefined,
+      model: 'qwen3:8b',
+      dimension: undefined,
+      timeoutMs: undefined,
+      apiKeyEnv: undefined,
+      remark: undefined,
+    })
+  })
+
+  it('edit_platform_row_updates_via_super_route', async () => {
+    const user = userEvent.setup()
+    mockListModels.mockResolvedValue({ items: [model({ id: '11', platform: true })] })
+    renderPage()
+    await screen.findByText('Qwen3 8B')
+
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitForUpdateCall(mockUpdateModelSuper)
+    expect(mockUpdateModelSuper).toHaveBeenCalledTimes(1)
+    expect(mockUpdateModel).not.toHaveBeenCalled()
+
+    const payload = mockUpdateModelSuper.mock.calls[0][0]
+    expect(payload.id).toBe('11')
+    expect(Object.keys(payload.model).sort()).toEqual(MUTABLE_UPDATE_FIELDS)
+    expect(payload.model).not.toHaveProperty('kind')
+    expect(payload.model).not.toHaveProperty('modelKey')
+    expect(payload.model).not.toHaveProperty('id')
+  })
+})
+
 // waitForListCall / waitForCreateCall 等待 mock 被调用（act 环境下的
 // 异步 setState 收敛）。
 async function waitForListCall(kind: string) {
@@ -130,4 +207,14 @@ async function waitForCreateCall() {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error('createModel was not called')
+}
+
+async function waitForUpdateCall(mock: { mock: { calls: unknown[][] } }) {
+  for (let i = 0; i < 50; i++) {
+    if (mock.mock.calls.length > 0) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  throw new Error('update mock was not called')
 }

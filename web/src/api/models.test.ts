@@ -95,12 +95,13 @@ describe('model api', () => {
 
   it('updates_a_tenant_model_with_clear_api_key', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, modelDTO()))
-    await updateModel({ id: '300', status: 0, name: 'Qwen3 8B', model: 'qwen3:8b' }, undefined, true)
+    await updateModel({ id: '300', model: { status: 0, name: 'Qwen3 8B', model: 'qwen3:8b' }, clearApiKey: true })
     const call = fetchMock.mock.calls[0]
     expect(String(call[0])).toBe('/v1/models/update')
     expect(init(call).method).toBe('PUT')
     expect(body(call)).toEqual({
-      model: { id: '300', status: 0, name: 'Qwen3 8B', model: 'qwen3:8b' },
+      id: '300',
+      model: { status: 0, name: 'Qwen3 8B', model: 'qwen3:8b' },
       clearApiKey: true,
     })
   })
@@ -136,12 +137,13 @@ describe('model api', () => {
 
   it('updates_a_platform_model_on_the_super_route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, modelDTO({ platform: true })))
-    await updateModelSuper({ id: '300', status: 1, name: 'Embedding 0.6B', model: 'qwen3-embedding:0.6b', dimension: 1024 })
+    await updateModelSuper({ id: '300', model: { status: 1, name: 'Embedding 0.6B', model: 'qwen3-embedding:0.6b', dimension: 1024 } })
     const call = fetchMock.mock.calls[0]
     expect(String(call[0])).toBe('/v1/models/platform/update')
     expect(init(call).method).toBe('PUT')
     expect(body(call)).toEqual({
-      model: { id: '300', status: 1, name: 'Embedding 0.6B', model: 'qwen3-embedding:0.6b', dimension: 1024 },
+      id: '300',
+      model: { status: 1, name: 'Embedding 0.6B', model: 'qwen3-embedding:0.6b', dimension: 1024 },
     })
   })
 

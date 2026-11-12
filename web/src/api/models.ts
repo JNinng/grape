@@ -45,8 +45,10 @@ export interface CreateModelInput {
   remark?: string
 }
 
-export interface UpdateModelInput {
-  id: string
+// ModelUpdateSpec 是更新变更集：只含创建后可变字段。类别（kind）与
+// modelKey 是创建后不可变的身份列，不在此类型内，客户端无法经更新协议
+// 伪造。
+export interface ModelUpdateSpec {
   status: number
   name: string
   provider?: string
@@ -56,6 +58,13 @@ export interface UpdateModelInput {
   timeoutMs?: number
   apiKeyEnv?: string
   remark?: string
+}
+
+export interface UpdateModelInput {
+  id: string
+  model: ModelUpdateSpec
+  apiKey?: string
+  clearApiKey?: boolean
 }
 
 function compact(body: object): string {
@@ -97,11 +106,16 @@ export async function createModel(model: CreateModelInput, apiKey?: string): Pro
   return (await res.json()) as ModelDTO
 }
 
-export async function updateModel(model: UpdateModelInput, apiKey?: string, clearApiKey?: boolean): Promise<ModelDTO> {
+export async function updateModel(input: UpdateModelInput): Promise<ModelDTO> {
   const res = await authFetch('/v1/models/update', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: compact({ model, ...(apiKey ? { apiKey } : {}), ...(clearApiKey ? { clearApiKey: true } : {}) }),
+    body: compact({
+      id: input.id,
+      model: input.model,
+      ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+      ...(input.clearApiKey ? { clearApiKey: true } : {}),
+    }),
   })
   if (!res.ok) {
     throw await toApiError(res)
@@ -128,11 +142,16 @@ export async function createModelSuper(model: CreateModelInput, apiKey?: string)
   return (await res.json()) as ModelDTO
 }
 
-export async function updateModelSuper(model: UpdateModelInput, apiKey?: string, clearApiKey?: boolean): Promise<ModelDTO> {
+export async function updateModelSuper(input: UpdateModelInput): Promise<ModelDTO> {
   const res = await authFetch('/v1/models/platform/update', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: compact({ model, ...(apiKey ? { apiKey } : {}), ...(clearApiKey ? { clearApiKey: true } : {}) }),
+    body: compact({
+      id: input.id,
+      model: input.model,
+      ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+      ...(input.clearApiKey ? { clearApiKey: true } : {}),
+    }),
   })
   if (!res.ok) {
     throw await toApiError(res)

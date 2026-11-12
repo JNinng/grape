@@ -43,7 +43,8 @@ service ModelService {
     };
   }
 
-  // UpdateModel 覆盖本租户模型行的可变字段。
+  // UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+  // 不可变的身份列，更新协议不承载它们，客户端无法伪造。
   rpc UpdateModel (UpdateModelRequest) returns (Model) {
     option (google.api.http) = {
       put: "/v1/models/update"
@@ -66,7 +67,9 @@ service ModelService {
     };
   }
 
-  // UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+  // UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+  // model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+  // 伪造。
   rpc UpdateModelSuper (UpdateModelSuperRequest) returns (Model) {
     option (google.api.http) = {
       put: "/v1/models/platform/update"
@@ -149,14 +152,40 @@ message ListModelsRequest {
   optional string kind = 1;
 }
 
+// ModelUpdateSpec 是模型行创建后可变字段的变更集。不承载 kind /
+// model_key / id / 平台标识 / 审计列：类别与 model_key 是创建后不可变的
+// 身份列，由服务端以锁定行的存量值回填，客户端无法经更新协议伪造。
+message ModelUpdateSpec {
+  // 数据状态：0 禁用、1 启用。更新必填。
+  optional int32 status = 1;
+  // 模型展示名。
+  string name = 2;
+  // provider 变体（openai/deepseek/qwen/glm/minimax/kimi/hunyuan 等）。
+  string provider = 3;
+  // OpenAI 兼容端点根地址。
+  optional string base_url = 4;
+  // 发给 provider 的模型名。
+  string model = 5;
+  // 嵌入维度；类别为 embedding 时本期必须为 1024，其余类别不携带。
+  optional int32 dimension = 6;
+  // 单次调用超时（毫秒）。
+  optional int32 timeout_ms = 7;
+  // 密钥环境变量名。
+  optional string api_key_env = 8;
+  // 备注。
+  optional string remark = 9;
+}
+
 // UpdateModelRequest 是 ModelService.UpdateModel 的输入。
 message UpdateModelRequest {
-  // 携带新字段值的租户模型行。id 必填；kind/model_key 在输入中被忽略。
-  Model model = 1 [(google.api.field_behavior) = REQUIRED];
+  // 目标模型行 ID，必填。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 可变字段变更集，必填。
+  ModelUpdateSpec model = 2 [(google.api.field_behavior) = REQUIRED];
   // 新 API key 明文；省略表示保持原密文不变。
-  optional string api_key = 2;
+  optional string api_key = 3;
   // 清除已存的密钥密文。
-  bool clear_api_key = 3;
+  bool clear_api_key = 4;
 }
 
 // DeleteModelRequest 是 ModelService.DeleteModel 的输入。
@@ -172,9 +201,14 @@ message CreateModelSuperRequest {
 
 // UpdateModelSuperRequest 是 ModelService.UpdateModelSuper 的输入。
 message UpdateModelSuperRequest {
-  Model model = 1 [(google.api.field_behavior) = REQUIRED];
-  optional string api_key = 2;
-  bool clear_api_key = 3;
+  // 目标模型行 ID，必填。
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  // 可变字段变更集，必填。
+  ModelUpdateSpec model = 2 [(google.api.field_behavior) = REQUIRED];
+  // 新 API key 明文；省略表示保持原密文不变。
+  optional string api_key = 3;
+  // 清除已存的密钥密文。
+  bool clear_api_key = 4;
 }
 
 // DeleteModelSuperRequest 是 ModelService.DeleteModelSuper 的输入。

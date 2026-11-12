@@ -49,13 +49,16 @@ type ModelServiceClient interface {
 	GetModel(ctx context.Context, in *GetModelRequest, opts ...grpc.CallOption) (*Model, error)
 	// ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
 	ListModels(ctx context.Context, in *ListModelsRequest, opts ...grpc.CallOption) (*ModelSet, error)
-	// UpdateModel 覆盖本租户模型行的可变字段。
+	// UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+	// 不可变的身份列，更新协议不承载它们，客户端无法伪造。
 	UpdateModel(ctx context.Context, in *UpdateModelRequest, opts ...grpc.CallOption) (*Model, error)
 	// DeleteModel 软删除本租户模型行。
 	DeleteModel(ctx context.Context, in *DeleteModelRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	// CreateModelSuper 创建平台模型行（super 写面）。
 	CreateModelSuper(ctx context.Context, in *CreateModelSuperRequest, opts ...grpc.CallOption) (*Model, error)
-	// UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+	// UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+	// model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+	// 伪造。
 	UpdateModelSuper(ctx context.Context, in *UpdateModelSuperRequest, opts ...grpc.CallOption) (*Model, error)
 	// DeleteModelSuper 软删除平台模型行（super 写面）。
 	DeleteModelSuper(ctx context.Context, in *DeleteModelSuperRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -168,13 +171,16 @@ type ModelServiceServer interface {
 	GetModel(context.Context, *GetModelRequest) (*Model, error)
 	// ListModels 返回可见模型清单（本租户行 + 平台行，含停用；固定列表）。
 	ListModels(context.Context, *ListModelsRequest) (*ModelSet, error)
-	// UpdateModel 覆盖本租户模型行的可变字段。
+	// UpdateModel 覆盖本租户模型行的可变字段。类别与 model_key 是创建后
+	// 不可变的身份列，更新协议不承载它们，客户端无法伪造。
 	UpdateModel(context.Context, *UpdateModelRequest) (*Model, error)
 	// DeleteModel 软删除本租户模型行。
 	DeleteModel(context.Context, *DeleteModelRequest) (*emptypb.Empty, error)
 	// CreateModelSuper 创建平台模型行（super 写面）。
 	CreateModelSuper(context.Context, *CreateModelSuperRequest) (*Model, error)
-	// UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。
+	// UpdateModelSuper 覆盖平台模型行可变字段（super 写面）。类别与
+	// model_key 是创建后不可变的身份列，更新协议不承载它们，客户端无法
+	// 伪造。
 	UpdateModelSuper(context.Context, *UpdateModelSuperRequest) (*Model, error)
 	// DeleteModelSuper 软删除平台模型行（super 写面）。
 	DeleteModelSuper(context.Context, *DeleteModelSuperRequest) (*emptypb.Empty, error)

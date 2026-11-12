@@ -79,7 +79,7 @@ func (s *ModelService) UpdateModel(ctx context.Context, req *modelv1.UpdateModel
 	if in == nil || in.Status == nil {
 		return nil, biz.ErrModelInvalidArgument
 	}
-	out, err := s.uc.UpdateModel(ctx, auth, modelFromProto(in), req.ApiKey, req.GetClearApiKey())
+	out, err := s.uc.UpdateModel(ctx, auth, modelUpdateFromProto(req.GetId(), in), req.ApiKey, req.GetClearApiKey())
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +125,7 @@ func (s *ModelService) UpdateModelSuper(ctx context.Context, req *modelv1.Update
 	if in == nil || in.Status == nil {
 		return nil, biz.ErrModelInvalidArgument
 	}
-	out, err := s.uc.UpdateModelPlatform(ctx, auth, modelFromProto(in), req.ApiKey, req.GetClearApiKey())
+	out, err := s.uc.UpdateModelPlatform(ctx, auth, modelUpdateFromProto(req.GetId(), in), req.ApiKey, req.GetClearApiKey())
 	if err != nil {
 		return nil, err
 	}
@@ -151,6 +151,25 @@ func modelFromProto(in *modelv1.Model) *biz.ModelCfg {
 		Kind:      in.GetKind(),
 		Name:      in.GetName(),
 		ModelKey:  in.GetModelKey(),
+		Provider:  in.GetProvider(),
+		BaseURL:   optionalString(in.BaseUrl),
+		Model:     in.GetModel(),
+		Dimension: in.Dimension,
+		TimeoutMs: in.TimeoutMs,
+		APIKeyEnv: optionalString(in.ApiKeyEnv),
+		Remark:    optionalString(in.Remark),
+	}
+}
+
+// modelUpdateFromProto 把更新变更集映射为领域入参：只填可变字段与目标
+// ID，绝不设置 Kind / ModelKey——两者是创建后不可变的身份列，由 biz 以
+// 锁定行的存量值回填。与创建路径的 modelFromProto 分开，避免更新协议
+// 误带身份列。
+func modelUpdateFromProto(id int64, in *modelv1.ModelUpdateSpec) *biz.ModelCfg {
+	return &biz.ModelCfg{
+		ID:        id,
+		Status:    normalizeModelStatus(in.Status),
+		Name:      in.GetName(),
 		Provider:  in.GetProvider(),
 		BaseURL:   optionalString(in.BaseUrl),
 		Model:     in.GetModel(),

@@ -139,15 +139,27 @@ func (uc *ModelUsecase) CreateModel(ctx context.Context, auth Identity, m *Model
 
 // UpdateModel 覆盖租户模型行可变字段。apiKey 非 nil 且非空时替换密钥；
 // clearApiKey 清除密钥；否则保留当前密文。
+//
+// 类别与 model_key 是创建后不可变的身份列：先按 ID 锁定现有行，以存量
+// 值回填入参后再校验，不信任任何入参类别（即使调用方绕过协议伪造也以
+// 锁定行为准）。
 func (uc *ModelUsecase) UpdateModel(ctx context.Context, auth Identity, m *ModelCfg, apiKey *string, clearApiKey bool) (*ModelCfg, error) {
 	if m == nil || m.ID <= 0 {
 		return nil, ErrModelInvalidArgument
 	}
-	if err := validateModelCfg(m, true); err != nil {
+	existing, currentCipher, err := uc.repo.LockModel(ctx, auth, m.ID)
+	if err != nil {
 		return nil, err
 	}
-	_, currentCipher, err := uc.repo.LockModel(ctx, auth, m.ID)
-	if err != nil {
+	// 平台行不能经租户路径改写：LockModel 会回退命中平台行，这里与
+	// UpdateModelPlatform 对非平台行的处理对称，先返回 NotFound，避免
+	// 后续校验/加密产生不一致的错误语义。
+	if existing.Platform {
+		return nil, ErrModelNotFound
+	}
+	m.Kind = existing.Kind
+	m.ModelKey = existing.ModelKey
+	if err := validateModelCfg(m, true); err != nil {
 		return nil, err
 	}
 	cipher, err := uc.resolveUpdatedKey(apiKey, clearApiKey, currentCipher)
@@ -182,13 +194,11 @@ func (uc *ModelUsecase) CreateModelPlatform(ctx context.Context, auth Identity, 
 }
 
 // UpdateModelPlatform 覆盖平台模型行可变字段（super 写面）。平台行不命
-// 中返回 NotFound（租户行不能经本路径改写）。
+// 中返回 NotFound（租户行不能经本路径改写）。类别与 model_key 的处理与
+// 租户更新同口径：以锁定行存量值回填后再校验。
 func (uc *ModelUsecase) UpdateModelPlatform(ctx context.Context, auth Identity, m *ModelCfg, apiKey *string, clearApiKey bool) (*ModelCfg, error) {
 	if m == nil || m.ID <= 0 {
 		return nil, ErrModelInvalidArgument
-	}
-	if err := validateModelCfg(m, true); err != nil {
-		return nil, err
 	}
 	existing, currentCipher, err := uc.repo.LockModel(ctx, auth, m.ID)
 	if err != nil {
@@ -196,6 +206,11 @@ func (uc *ModelUsecase) UpdateModelPlatform(ctx context.Context, auth Identity, 
 	}
 	if !existing.Platform {
 		return nil, ErrModelNotFound
+	}
+	m.Kind = existing.Kind
+	m.ModelKey = existing.ModelKey
+	if err := validateModelCfg(m, true); err != nil {
+		return nil, err
 	}
 	cipher, err := uc.resolveUpdatedKey(apiKey, clearApiKey, currentCipher)
 	if err != nil {

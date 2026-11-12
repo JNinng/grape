@@ -312,22 +312,27 @@ function ModelDialog({
       const timeout = timeoutMs.trim() ? Number(timeoutMs) : undefined
       const dimension = kind === 'embedding' ? EMBEDDING_DIMENSION : undefined
       if (model) {
+        // 更新协议只承载可变字段：类别与 modelKey 是创建后不可变的身份列。
         const input = {
           id: model.id,
-          status: status ? 1 : 0,
-          name: name.trim(),
-          provider,
-          baseUrl: baseUrl.trim() || undefined,
-          model: modelName.trim(),
-          dimension,
-          timeoutMs: timeout,
-          apiKeyEnv: apiKeyEnv.trim() || undefined,
-          remark: remark.trim() || undefined,
+          model: {
+            status: status ? 1 : 0,
+            name: name.trim(),
+            provider,
+            baseUrl: baseUrl.trim() || undefined,
+            model: modelName.trim(),
+            dimension,
+            timeoutMs: timeout,
+            apiKeyEnv: apiKeyEnv.trim() || undefined,
+            remark: remark.trim() || undefined,
+          },
+          apiKey: apiKey.trim() || undefined,
+          clearApiKey,
         }
         if (platform) {
-          await updateModelSuper(input, apiKey.trim() || undefined, clearApiKey)
+          await updateModelSuper(input)
         } else {
-          await updateModel(input, apiKey.trim() || undefined, clearApiKey)
+          await updateModel(input)
         }
         toast.success(`模型 ${name.trim()} 已更新`)
       } else {
