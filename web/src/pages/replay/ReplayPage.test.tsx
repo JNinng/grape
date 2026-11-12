@@ -25,12 +25,22 @@ vi.mock('../../api/agentSessionUsage', () => ({
 vi.mock('../../api/agentModelCalls', () => ({
   fetchModelCalls: vi.fn(),
 }))
+vi.mock('./detailCache', () => ({
+  loadChunkDetail: vi.fn(),
+  loadDocumentDetail: vi.fn(),
+  forgetChunkDetail: vi.fn(),
+  forgetDocumentDetail: vi.fn(),
+  clearReplayDetailCache: vi.fn(),
+}))
 
 import { fetchAgentSessions } from '../../api/agentSessions'
 import { fetchConfirmationAudits, fetchToolCallAudits } from '../../api/agentAudit'
 import { fetchRetrievalLogs } from '../../api/agentRetrievalLogs'
 import { fetchSessionUsage } from '../../api/agentSessionUsage'
 import { fetchModelCalls } from '../../api/agentModelCalls'
+import type { DocumentDTO } from '../../api/knowledge'
+import { ApiError } from '../../api/toApiError'
+import { clearReplayDetailCache, loadChunkDetail, loadDocumentDetail } from './detailCache'
 import { fetchHistorySnapshot } from '../../agui/history'
 import { ThemeProvider } from '../../components/theme-provider'
 import { ReplayPage } from './ReplayPage'
@@ -42,6 +52,23 @@ const mockFetchConfirmations = vi.mocked(fetchConfirmationAudits)
 const mockFetchRetrievals = vi.mocked(fetchRetrievalLogs)
 const mockFetchSessionUsage = vi.mocked(fetchSessionUsage)
 const mockFetchModelCalls = vi.mocked(fetchModelCalls)
+const mockLoadChunkDetail = vi.mocked(loadChunkDetail)
+const mockLoadDocumentDetail = vi.mocked(loadDocumentDetail)
+const mockClearReplayDetailCache = vi.mocked(clearReplayDetailCache)
+
+function documentDTO(overrides: Partial<DocumentDTO> = {}): DocumentDTO {
+  return {
+    id: '2',
+    libraryId: '1',
+    kind: 'text',
+    title: '员工手册',
+    status: 1,
+    createdBy: '7',
+    updatedBy: '7',
+    createdAt: '2026-01-01T00:00:00Z',
+    ...overrides,
+  }
+}
 
 function loginReply(): LoginReply {
   return {
@@ -221,7 +248,7 @@ beforeEach(() => {
           limit: 4096,
           units: [
             { mode: 'window', source_id: 'doc', document_ids: ['doc-1'], tokens: 120, admitted: true },
-            { mode: 'chunk', document_ids: ['doc-2'], tokens: 80, admitted: false },
+            { mode: 'chunk', document_ids: ['doc-2'], tokens: 80, admitted: false, reason: 'truncated' },
           ],
           duration_ms: 2,
         },
@@ -261,6 +288,18 @@ beforeEach(() => {
       createdAt: '2026-01-01T00:00:04Z',
     },
   ])
+  mockLoadDocumentDetail.mockResolvedValue(documentDTO())
+  mockLoadChunkDetail.mockResolvedValue({
+    chunk: {
+      index: 0,
+      chunkId: 'doc-1',
+      anchor: 'chars 0-64',
+      content: '分片原文内容',
+      embedder: 'space@v1',
+    },
+    document: documentDTO(),
+    supersededAt: '',
+  })
 })
 
 afterEach(() => {
@@ -285,6 +324,28 @@ async function pickTraceOption(user: ReturnType<typeof userEvent.setup>, traceId
   const input = screen.getByRole('combobox', { name: 'trace 过滤' })
   await user.click(input)
   await user.click(screen.getByRole('option', { name: traceId }))
+}
+
+// retrievalRow 取指定链路的检索留痕行（收起态）。
+function retrievalRow(traceId: string): HTMLElement {
+  const region = screen.getByRole('region', { name: '检索留痕' })
+  const row = region.querySelector(`li[data-trace-id="${traceId}"]`)
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`retrieval row ${traceId} not found`)
+  }
+  return row
+}
+
+// expandRetrievalRow 点开留痕行头部（展开后阶段列表与命中才挂载）。
+async function expandRetrievalRow(user: ReturnType<typeof userEvent.setup>, traceId = 'trace-a') {
+  await user.click(within(retrievalRow(traceId)).getByRole('button', { expanded: false }))
+}
+
+// expandStage 点开时间线第 index 个阶段（0 起），展开后候选/单元表挂载。
+async function expandStage(user: ReturnType<typeof userEvent.setup>, index: number) {
+  const timeline = screen.getByRole('list', { name: '检索阶段' })
+  const items = within(timeline).getAllByRole('listitem')
+  await user.click(within(items[index]).getByRole('button', { expanded: false }))
 }
 
 describe('ReplayPage four-facet evidence view', () => {
@@ -319,30 +380,134 @@ describe('ReplayPage four-facet evidence view', () => {
     // 框架不暴露工具重试（审计恒 0），审计表不渲染重试列。
     expect(within(auditRegion).queryByRole('columnheader', { name: '重试' })).not.toBeInTheDocument()
     const retrievalRegion = screen.getByRole('region', { name: '检索留痕' })
-    expect(within(retrievalRegion).getByText('doc-1')).toBeInTheDocument()
+    // 留痕行默认收起：点开头部后命中与阶段列表才挂载。
+    const user = userEvent.setup()
+    await expandRetrievalRow(user)
+    expect(await within(retrievalRegion).findByText('doc-1')).toBeInTheDocument()
     // 未选中链路：证据行中性呈现，不预高亮也不灰显。
     expect(within(auditRegion).getByText('echo').closest('tr')).not.toHaveClass('bg-brand-soft', 'opacity-40')
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
   })
 
-  it('renders_the_stage_timeline_for_orchestration_retrieval_rows', async () => {
-    // 编排层写入的留痕行按阶段时间线渲染（召回 → 融合 → 重排 → 回包）：
-    // 阶段名、查询变体、重排模型、候选/单元量与被预算截断的单元数可见，
-    // 阶段失败的错误摘要同样可见。
+  it('renders_distinct_vector_and_lexical_stage_labels_after_expanding_the_row', async () => {
+    // 编排层写入的留痕行按阶段时间线渲染（向量召回 / 词法召回 → 融合 →
+    // 重排 → 回包）：两路召回必须可区分；阶段名、查询变体、重排模型、
+    // 候选/单元分因计数可见，阶段失败的错误摘要同样可见。行与阶段默认
+    // 收起，需逐层点开。
+    const user = userEvent.setup()
     renderReplay()
-    // 直接等待时间线出现（region 在数据装载前即存在，不能作为就绪信号）。
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
     const timeline = await screen.findByRole('list', { name: '检索阶段' })
     const items = within(timeline).getAllByRole('listitem')
     expect(items).toHaveLength(5)
-    expect(items[0]).toHaveTextContent('1. 召回')
+    expect(items[0]).toHaveTextContent('1. 向量召回')
     expect(items[0]).toHaveTextContent('「grape」')
     expect(items[0]).toHaveTextContent('候选 1 条')
+    expect(items[1]).toHaveTextContent('2. 词法召回')
     expect(items[2]).toHaveTextContent('3. 融合')
     expect(items[3]).toHaveTextContent('4. 重排')
     expect(items[3]).toHaveTextContent('bge-reranker@v1')
     expect(items[3]).toHaveTextContent('rerank failed: endpoint down')
     expect(items[4]).toHaveTextContent('5. 回包')
-    expect(items[4]).toHaveTextContent('单元 1/2（截断 1）')
+    expect(items[4]).toHaveTextContent('单元 入包 1 · 截断 1')
+    expect(items[4]).toHaveTextContent('2 ms')
+  })
+
+  it('renders_zero_duration_stage_instead_of_hiding_it', async () => {
+    // 融合/回包常为 0ms：耗时字段恒显示（0 ms），不再因 0 被隐藏。
+    mockFetchRetrievals.mockResolvedValue([
+      {
+        id: 12,
+        source: 'console',
+        status: 'success',
+        queryText: '套餐',
+        traceId: 'trace-a',
+        filterSummary: {},
+        requestedTopK: null,
+        effectiveTopK: null,
+        hits: [],
+        stages: [
+          { stage: 'vector', query_text: '套餐', limit: 10, candidates: [], duration_ms: 5 },
+          { stage: 'fusion', limit: 10, candidates: [], duration_ms: 0 },
+          { stage: 'pack', limit: 4096, units: [], duration_ms: 0 },
+        ],
+        durationMs: 5,
+        createdAt: '2026-01-01T00:00:03Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    const timeline = await screen.findByRole('list', { name: '检索阶段' })
+    const items = within(timeline).getAllByRole('listitem')
+    expect(items[1]).toHaveTextContent('0 ms')
+    expect(items[2]).toHaveTextContent('0 ms')
+  })
+
+  it('renders_merged_and_redundant_reasons_without_calling_them_truncated', async () => {
+    // 未入包原因按 reason 展示：同源收编与冗余不得写成截断；摘要行按原因
+    // 分组计数。
+    mockFetchRetrievals.mockResolvedValue([
+      {
+        id: 13,
+        source: 'tool',
+        status: 'success',
+        queryText: '套餐',
+        traceId: 'trace-a',
+        filterSummary: {},
+        requestedTopK: null,
+        effectiveTopK: null,
+        hits: [],
+        stages: [
+          {
+            stage: 'pack',
+            limit: 4096,
+            units: [
+              { mode: 'document', source_id: '2', document_ids: ['2#0#a1b2c3d4'], tokens: 100, admitted: true },
+              { mode: 'chunk', source_id: '2', document_ids: ['2#1#a1b2c3d4'], tokens: 40, admitted: false, reason: 'merged' },
+              { mode: 'chunk', source_id: '2', document_ids: ['2#2#a1b2c3d4'], tokens: 30, admitted: false, reason: 'redundant' },
+              { mode: 'chunk', source_id: '3', document_ids: ['3#0#a1b2c3d4'], tokens: 30, admitted: false, reason: 'truncated' },
+            ],
+            duration_ms: 1,
+          },
+        ],
+        durationMs: 1,
+        createdAt: '2026-01-01T00:00:03Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    const timeline = await screen.findByRole('list', { name: '检索阶段' })
+    expect(within(timeline).getByRole('listitem')).toHaveTextContent('单元 入包 1 · 截断 1 · 收编 1 · 冗余 1')
+    await expandStage(user, 0)
+    expect(screen.getByText('同源收编')).toBeInTheDocument()
+    expect(screen.getByText('冗余')).toBeInTheDocument()
+    expect(screen.getByText('截断')).toBeInTheDocument()
+    expect(screen.getAllByText('入包')).toHaveLength(1)
+  })
+
+  it('expands_stage_to_show_candidate_and_unit_detail_tables', async () => {
+    // 阶段行可点开：候选表展示名次/分片 ID/分数/锚点，单元表展示聚合粒
+    // 度、文档 ID、成员分片、章节、token 与结果。
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    await expandStage(user, 4) // pack：单元表
+    expect(screen.getByRole('columnheader', { name: '聚合粒度' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '成员分片' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'token' })).toBeInTheDocument()
+    expect(screen.getByText('window')).toBeInTheDocument()
+    expect(screen.getByText('120')).toBeInTheDocument()
+    // 向量召回阶段：候选表。
+    await expandStage(user, 0)
+    expect(screen.getByRole('columnheader', { name: '名次' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: '锚点' })).toBeInTheDocument()
+    expect(screen.getAllByText('0.9000').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders_the_model_call_panel_at_page_level', async () => {
@@ -628,5 +793,195 @@ describe('ReplayPage four-facet evidence view', () => {
     })
     expect(screen.queryByText('stale content')).toBeNull()
     expect(screen.getByText('thread-2 answer')).toBeInTheDocument()
+  })
+
+  it('rounds_hit_scores_and_labels_the_fusion_score_source', async () => {
+    // hits 原始分数是长浮点：展示修约到 4 位；有 fusion 阶段无 rerank 时
+    // 标注「融合分」。
+    mockFetchRetrievals.mockResolvedValue([
+      {
+        id: 41,
+        source: 'console',
+        status: 'success',
+        queryText: '套餐',
+        traceId: 'trace-a',
+        filterSummary: {},
+        requestedTopK: null,
+        effectiveTopK: null,
+        hits: [{ document_id: 'doc-1', score: 0.032018442622950824 }],
+        stages: [
+          { stage: 'vector', query_text: '套餐', limit: 10, candidates: [{ document_id: 'doc-1', score: 0.9 }], duration_ms: 1 },
+          { stage: 'fusion', limit: 10, candidates: [{ document_id: 'doc-1', score: 0.032018442622950824 }], duration_ms: 1 },
+        ],
+        durationMs: 5,
+        createdAt: '2026-01-01T00:00:03Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    expect(await screen.findByText('命中 1 条 · 分数来源：融合分')).toBeInTheDocument()
+    expect(screen.getAllByText('0.0320').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('labels_similarity_score_source_when_the_row_has_no_stages', async () => {
+    // 单路直调行无 stages：分数来源标注为「相似度」。
+    mockFetchRetrievals.mockResolvedValue([
+      {
+        id: 42,
+        source: 'tool',
+        status: 'success',
+        queryText: '套餐',
+        traceId: 'trace-a',
+        filterSummary: {},
+        requestedTopK: null,
+        effectiveTopK: null,
+        hits: [{ document_id: 'doc-1', score: 0.5 }],
+        durationMs: 5,
+        createdAt: '2026-01-01T00:00:03Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    expect(await screen.findByText('命中 1 条 · 分数来源：相似度')).toBeInTheDocument()
+    expect(screen.getByText('0.5000')).toBeInTheDocument()
+  })
+
+  it('opens_chunk_detail_popover_with_content_and_superseded_warning', async () => {
+    // 点分片 ID 取分片 + 文档：展示原文、序号、锚点、嵌入空间，退役行给
+    // 醒目提示。
+    mockLoadChunkDetail.mockResolvedValue({
+      chunk: {
+        index: 3,
+        chunkId: 'doc-1',
+        anchor: 'chars 64-128',
+        content: '分片原文内容',
+        embedder: 'bge-m3@v1',
+      },
+      document: documentDTO({ title: '员工手册' }),
+      supersededAt: '2026-02-03T04:05:06Z',
+    })
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    await user.click(within(retrievalRow('trace-a')).getAllByRole('button', { name: '分片 doc-1' })[0])
+    expect(await screen.findByText('分片原文内容')).toBeInTheDocument()
+    expect(mockLoadChunkDetail).toHaveBeenCalledWith('doc-1')
+    expect(screen.getByText(/已重摄淘汰，保留期内可反查/)).toBeInTheDocument()
+    expect(screen.getByText('bge-m3@v1')).toBeInTheDocument()
+    expect(screen.getByText('员工手册')).toBeInTheDocument()
+  })
+
+  it('opens_document_only_popover_from_a_unit_source_id', async () => {
+    // 点单元文档 ID 只取文档摘要（不请求分片）。
+    mockFetchRetrievals.mockResolvedValue([
+      {
+        id: 43,
+        source: 'tool',
+        status: 'success',
+        queryText: '套餐',
+        traceId: 'trace-a',
+        filterSummary: {},
+        requestedTopK: null,
+        effectiveTopK: null,
+        hits: [],
+        stages: [
+          {
+            stage: 'pack',
+            limit: 4096,
+            units: [{ mode: 'document', source_id: '2', document_ids: ['2#0#a1b2c3d4'], tokens: 10, admitted: true }],
+            duration_ms: 1,
+          },
+        ],
+        durationMs: 1,
+        createdAt: '2026-01-01T00:00:03Z',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    await expandStage(user, 0)
+    await user.click(screen.getByRole('button', { name: '文档 2' }))
+    expect(await screen.findByText('文档详情')).toBeInTheDocument()
+    expect(screen.getByText('员工手册')).toBeInTheDocument()
+    expect(mockLoadDocumentDetail).toHaveBeenCalledWith('2')
+    expect(mockLoadChunkDetail).not.toHaveBeenCalled()
+  })
+
+  it('clears_detail_cache_on_snapshot_refresh_and_thread_switch', async () => {
+    // 缓存清空挂点：初次装载、刷新快照与切换会话各清一次。
+    mockFetchSessions.mockResolvedValue([
+      { id: 'thread-1', createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T02:00:00Z' },
+      { id: 'thread-2', createdAt: '2026-01-02T00:00:00Z', updatedAt: '2026-01-02T02:00:00Z' },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    expect(mockClearReplayDetailCache).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: '刷新快照' }))
+    await waitFor(() => {
+      expect(mockFetchHistory).toHaveBeenCalledTimes(2)
+    })
+    expect(mockClearReplayDetailCache).toHaveBeenCalledTimes(2)
+
+    await user.click(screen.getByRole('button', { name: /会话 thread-2/ }))
+    await waitFor(() => {
+      expect(mockFetchHistory).toHaveBeenCalledTimes(3)
+    })
+    expect(mockClearReplayDetailCache).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows_a_retry_action_when_chunk_detail_fails_and_recovers_on_retry', async () => {
+    // 浮层加载失败给出可读文案与重试；重试命中成功响应后渲染详情。
+    mockLoadChunkDetail.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({
+      chunk: {
+        index: 0,
+        chunkId: 'doc-1',
+        anchor: 'chars 0-64',
+        content: '重试后的原文',
+        embedder: 'space@v1',
+      },
+      document: documentDTO(),
+      supersededAt: '',
+    })
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    await user.click(within(retrievalRow('trace-a')).getAllByRole('button', { name: '分片 doc-1' })[0])
+    expect(await screen.findByText('加载失败：boom')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试' }))
+    expect(await screen.findByText('重试后的原文')).toBeInTheDocument()
+    expect(mockLoadChunkDetail).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows_a_permission_message_for_the_backend_denied_reason', async () => {
+    // 后端权限拒绝 reason 为 PERM_ACCESS_DENIED：浮层给友好「无权限」文案，
+    // 不透出原始英文 reason。
+    mockLoadChunkDetail.mockRejectedValue(new ApiError('permission denied', 'PERM_ACCESS_DENIED'))
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await expandRetrievalRow(user)
+    await user.click(within(retrievalRow('trace-a')).getAllByRole('button', { name: '分片 doc-1' })[0])
+    expect(await screen.findByText(/无权限查看该内容/)).toBeInTheDocument()
+  })
+
+  it('does_not_expand_the_row_when_the_trace_button_is_clicked', async () => {
+    // 追踪按钮与展开触发器平级：点追踪只切链路，不触发展开。
+    const user = userEvent.setup()
+    renderReplay()
+    await screen.findByText('answer')
+    await user.click(within(retrievalRow('trace-a')).getByRole('button', { name: '追踪 trace-a' }))
+    expect(screen.queryByRole('list', { name: '检索阶段' })).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(retrievalRow('trace-a')).toHaveClass('bg-brand-soft')
+    })
   })
 })

@@ -215,6 +215,30 @@ func (s *KnowledgeService) ListDocumentChunks(ctx context.Context, req *knowledg
 	return &knowledgev1.DocumentChunkSet{Items: items, Total: int32(len(items))}, nil
 }
 
+// GetDocumentChunk 按切片 ID 反查分片原文与所属条目摘要（条目正文省略，
+// 避免大字段重复）。
+func (s *KnowledgeService) GetDocumentChunk(ctx context.Context, req *knowledgev1.GetDocumentChunkRequest) (*knowledgev1.DocumentChunkDetail, error) {
+	auth, err := authOf(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out, err := s.uc.GetDocumentChunk(ctx, auth, req.GetChunkId())
+	if err != nil {
+		return nil, documentChunksError(ctx, err)
+	}
+	return &knowledgev1.DocumentChunkDetail{
+		Chunk: &knowledgev1.DocumentChunk{
+			Index:    int32(out.Chunk.Index),
+			ChunkId:  out.Chunk.ID,
+			Anchor:   out.Chunk.Anchor,
+			Content:  out.Chunk.Content,
+			Embedder: out.Chunk.Embedder,
+		},
+		Document:     toProtoDocumentLite(out.Document),
+		SupersededAt: out.SupersededAt,
+	}, nil
+}
+
 // documentChunksError 映射分片查询错误：已成型的领域错误原样透传；向量
 // 设施未启用映射为能力缺失；其余执行故障对外只给固定文案，细节进服务端
 // 日志（与知识检索同一口径）。

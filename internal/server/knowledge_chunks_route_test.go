@@ -22,11 +22,16 @@ import (
 
 type chunksRouteStore struct {
 	biz.VectorStore
-	docs []*biz.VectorDocument
+	docs  []*biz.VectorDocument
+	chunk *biz.VectorDocument
 }
 
 func (s *chunksRouteStore) List(context.Context, *biz.VectorFilter) ([]*biz.VectorDocument, error) {
 	return s.docs, nil
+}
+
+func (s *chunksRouteStore) Get(context.Context, string) (*biz.VectorDocument, error) {
+	return s.chunk, nil
 }
 
 type chunksRouteRepo struct {
@@ -94,6 +99,41 @@ func TestKnowledgeChunksRoute_renders_chunks_in_index_order(t *testing.T) {
 	}
 	if strings.Index(body, `"2#0"`) > strings.Index(body, `"2#1"`) {
 		t.Fatalf("chunks out of order:\n%s", body)
+	}
+}
+
+func TestKnowledgeChunksRoute_get_document_chunk_by_encoded_chunk_id(t *testing.T) {
+	// 切片 ID 含 '#'，前端 URL 编码为 %23：路由须解码路径参数后按 ID 点查，
+	// 且 /documents/chunks/{chunk_id} 不被 /documents/{id} 吞并。
+	store := &chunksRouteStore{chunk: &biz.VectorDocument{
+		ID:       "2#0#a1b2c3d4",
+		Embedder: "space@v1",
+		Content:  "chunk body",
+		Metadata: map[string]any{
+			"document_id":   "2",
+			"anchor":        "runes 0-10",
+			"chunk_index":   float64(0),
+			"superseded_at": "2026-02-03T04:05:06Z",
+		},
+	}}
+	srv := newChunksRouteTestServer(t, store)
+
+	rec := agentDo(t, srv, http.MethodGet, "/v1/knowledge/documents/chunks/2%230%23a1b2c3d4", "any-token", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200\n%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`"chunkId":"2#0#a1b2c3d4"`, `"content":"chunk body"`, `"anchor":"runes 0-10"`,
+		`"supersededAt":"2026-02-03T04:05:06Z"`, `"title":"refund"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body missing %s:\n%s", want, body)
+		}
+	}
+	// 所属条目只回摘要，不回正文，避免大字段重复。
+	if strings.Contains(body, `"content":"refund policy"`) {
+		t.Fatalf("document content leaked into chunk detail:\n%s", body)
 	}
 }
 

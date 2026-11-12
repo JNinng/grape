@@ -22,9 +22,9 @@ import (
 // 文本，与主查询同脱敏口径）；candidates 形态对齐 RetrievalHit，每阶段
 // 上限 50（沿用 hits 列的截断口径），分数按阶段自解释（向量相似度 [0,1]
 // / 词法分 / RRF 分 / rerank 模型分），同阶段可比、跨阶段不可比，不做
-// 归一；units 仅 pack 承载（回包单元，admitted 区分入包与被预算截断）；
-// error 记阶段失败摘要（候选空，降级路径由编排层继续）；整行 status 仍
-// 记操作终态。
+// 归一；units 仅 pack 承载（回包单元，admitted 区分入包与未入包，未入包
+// 由 reason 说明原因）；error 记阶段失败摘要（候选空，降级路径由编排层
+// 继续）；整行 status 仍记操作终态。
 const (
 	// 检索阶段取值（stages 数组元素的 stage 键）。
 	RetrievalStageVector  = "vector"
@@ -32,6 +32,17 @@ const (
 	RetrievalStageFusion  = "fusion"
 	RetrievalStageRerank  = "rerank"
 	RetrievalStagePack    = "pack"
+
+	// 回包单元未入包原因取值（pack 阶段 units[].reason）：merged 为同源
+	// 收编（同源 document 单元已入包，其余单元内容被包含）；redundant 为
+	// 保底直回单元在来源已有入包单元时未入包（不参与深度补深、仅在广度段
+	// 兜底，来源已有入包单元时只会重复内容）；truncated 为预算截断（来源
+	// 整体被丢弃时保底单元同属此类）。优先级 merged > redundant >
+	// truncated，与装配期跳过顺序一致（assemblePackUnits 先跳 dead、深度
+	// 段再跳 fallbackOnly，其余按预算）。
+	RetrievalPackUnitReasonMerged    = "merged"
+	RetrievalPackUnitReasonRedundant = "redundant"
+	RetrievalPackUnitReasonTruncated = "truncated"
 
 	// RetrievalStageMaxCandidates 是单阶段候选/单元数上限（应用层截断，
 	// 与 hits 列的 50 条口径同源）。
@@ -83,8 +94,12 @@ type retrievalPackUnit struct {
 	Anchor string `json:"anchor,omitempty"`
 	// Tokens 是单元正文的 token 量级估算。
 	Tokens int `json:"tokens"`
-	// Admitted 标记该单元是否进入回包（false 即被预算截断或同源收编）。
+	// Admitted 标记该单元是否进入回包；false 时由 Reason 说明未入包原因。
 	Admitted bool `json:"admitted"`
+	// Reason 是未入包原因（RetrievalPackUnitReason* 取值）：merged 同源
+	// 收编、redundant 来源已有入包单元时的保底直回单元、truncated 预算
+	// 截断；admitted=true 时省略。
+	Reason string `json:"reason,omitempty"`
 }
 
 // retrievalStageTracker 在检索编排过程中按执行序收集阶段元素。

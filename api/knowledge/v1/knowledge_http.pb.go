@@ -319,6 +319,7 @@ func (c *LibraryServiceHTTPClientImpl) UpdateLibrary(ctx context.Context, in *Up
 const OperationDocumentServiceCreateDocument = "/knowledge.v1.DocumentService/CreateDocument"
 const OperationDocumentServiceDeleteDocument = "/knowledge.v1.DocumentService/DeleteDocument"
 const OperationDocumentServiceGetDocument = "/knowledge.v1.DocumentService/GetDocument"
+const OperationDocumentServiceGetDocumentChunk = "/knowledge.v1.DocumentService/GetDocumentChunk"
 const OperationDocumentServiceListDocumentChunks = "/knowledge.v1.DocumentService/ListDocumentChunks"
 const OperationDocumentServiceListDocuments = "/knowledge.v1.DocumentService/ListDocuments"
 const OperationDocumentServiceListLibraryDocuments = "/knowledge.v1.DocumentService/ListLibraryDocuments"
@@ -334,6 +335,10 @@ type DocumentServiceHTTPServer interface {
 	DeleteDocument(context.Context, *DeleteDocumentRequest) (*emptypb.Empty, error)
 	// GetDocument GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
+	// GetDocumentChunk GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+	// 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+	// 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+	GetDocumentChunk(context.Context, *GetDocumentChunkRequest) (*DocumentChunkDetail, error)
 	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error)
@@ -360,6 +365,7 @@ func RegisterDocumentServiceHTTPServer(s *http.Server, srv DocumentServiceHTTPSe
 	r := s.Route("/")
 	r.Handle("POST", "/v1/knowledge/documents/create", _DocumentService_CreateDocument0_HTTP_Handler(srv))
 	r.Handle("GET", "/v1/knowledge/documents/{id}/chunks", _DocumentService_ListDocumentChunks0_HTTP_Handler(srv))
+	r.Handle("GET", "/v1/knowledge/documents/chunks/{chunk_id}", _DocumentService_GetDocumentChunk0_HTTP_Handler(srv))
 	r.Handle("GET", "/v1/knowledge/documents/{id}", _DocumentService_GetDocument0_HTTP_Handler(srv))
 	r.Handle("POST", "/v1/knowledge/documents/list", _DocumentService_ListDocuments0_HTTP_Handler(srv))
 	r.Handle("GET", "/v1/knowledge/libraries/{id}/documents", _DocumentService_ListLibraryDocuments0_HTTP_Handler(srv))
@@ -406,6 +412,28 @@ func _DocumentService_ListDocumentChunks0_HTTP_Handler(srv DocumentServiceHTTPSe
 			return err
 		}
 		reply := out.(*DocumentChunkSet)
+		return ctx.Result(200, reply)
+	}
+}
+
+func _DocumentService_GetDocumentChunk0_HTTP_Handler(srv DocumentServiceHTTPServer) func(ctx http.Context) error {
+	return func(ctx http.Context) error {
+		var in GetDocumentChunkRequest
+		if err := ctx.BindQuery(&in); err != nil {
+			return err
+		}
+		if err := ctx.BindVars(&in); err != nil {
+			return err
+		}
+		http.SetOperation(ctx, OperationDocumentServiceGetDocumentChunk)
+		h := ctx.Middleware(func(ctx context.Context, req interface{}) (interface{}, error) {
+			return srv.GetDocumentChunk(ctx, req.(*GetDocumentChunkRequest))
+		})
+		out, err := h(ctx, &in)
+		if err != nil {
+			return err
+		}
+		reply := out.(*DocumentChunkDetail)
 		return ctx.Result(200, reply)
 	}
 }
@@ -569,6 +597,10 @@ type DocumentServiceHTTPClient interface {
 	DeleteDocument(ctx context.Context, req *DeleteDocumentRequest, opts ...http.CallOption) (rsp *emptypb.Empty, err error)
 	// GetDocument GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(ctx context.Context, req *GetDocumentRequest, opts ...http.CallOption) (rsp *Document, err error)
+	// GetDocumentChunk GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+	// 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+	// 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+	GetDocumentChunk(ctx context.Context, req *GetDocumentChunkRequest, opts ...http.CallOption) (rsp *DocumentChunkDetail, err error)
 	// ListDocumentChunks ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(ctx context.Context, req *ListDocumentChunksRequest, opts ...http.CallOption) (rsp *DocumentChunkSet, err error)
@@ -643,6 +675,25 @@ func (c *DocumentServiceHTTPClientImpl) GetDocument(ctx context.Context, in *Get
 	opts = append([]http.CallOption{
 		http.Accept("application/protojson"),
 		http.Operation(OperationDocumentServiceGetDocument),
+		http.PathTemplate(pattern),
+	}, opts...)
+	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// GetDocumentChunk GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+// 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+// 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+func (c *DocumentServiceHTTPClientImpl) GetDocumentChunk(ctx context.Context, in *GetDocumentChunkRequest, opts ...http.CallOption) (*DocumentChunkDetail, error) {
+	var out DocumentChunkDetail
+	pattern := "/v1/knowledge/documents/chunks/{chunk_id}"
+	path := http.BuildPath(pattern, in, http.WithQueryParams())
+	opts = append([]http.CallOption{
+		http.Accept("application/protojson"),
+		http.Operation(OperationDocumentServiceGetDocumentChunk),
 		http.PathTemplate(pattern),
 	}, opts...)
 	err := c.cc.Invoke(ctx, "GET", path, nil, &out, opts...)

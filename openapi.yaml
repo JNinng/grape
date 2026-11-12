@@ -774,6 +774,31 @@ paths:
                 "200":
                     description: OK
                     content: {}
+    /v1/knowledge/documents/chunks/{chunkId}:
+        get:
+            tags:
+                - DocumentService
+            description: |-
+                GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+                 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+                 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+            operationId: DocumentService_GetDocumentChunk
+            parameters:
+                - name: chunkId
+                  in: path
+                  description: |-
+                    切片 ID（"<source_id>#<chunk_index>#<hash8>"，历史形态
+                     "<source_id>#<chunk_index>" 同样接受）。
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/knowledge.v1.DocumentChunkDetail'
     /v1/knowledge/documents/create:
         post:
             tags:
@@ -3396,6 +3421,23 @@ components:
                     type: string
                     description: 该分片所属嵌入空间键（只读）。
             description: DocumentChunk 是条目的一个实际分片（向量表中的一行）。
+        knowledge.v1.DocumentChunkDetail:
+            type: object
+            properties:
+                chunk:
+                    allOf:
+                        - $ref: '#/components/schemas/knowledge.v1.DocumentChunk'
+                    description: 分片明细（复用 DocumentChunk；content 为原文）。
+                document:
+                    allOf:
+                        - $ref: '#/components/schemas/knowledge.v1.Document'
+                    description: 所属条目摘要（不含正文，避免大字段重复）。
+                supersededAt:
+                    type: string
+                    description: 重摄淘汰时间（RFC3339）；空表示该切片为现行分片。
+            description: |-
+                DocumentChunkDetail 是单个分片的反查结果：切片明细（原文/序号/锚点/
+                 嵌入空间）+ 所属条目摘要 + 退役标记。
         knowledge.v1.DocumentChunkSet:
             type: object
             properties:

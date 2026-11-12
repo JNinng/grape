@@ -27,10 +27,14 @@ import {
   parseRetrievalStages,
   relatedChatItemIds,
   relatedToolCallIds,
+  retrievalScoreSource,
   toolCallAuditsFor,
   type RetrievalStage,
+  type RetrievalStageUnit,
   type TraceFacets,
 } from './model'
+import { clearReplayDetailCache } from './detailCache'
+import { ChunkIdPopover, DocumentIdPopover } from './EntityPopover'
 import { CompactionRefPanel } from './CompactionRefPanel'
 import { ModelCallPanel } from './ModelCallPanel'
 import { GrapeMark } from '../../ui/icons'
@@ -188,13 +192,15 @@ function hitRowClass(hit: boolean, dimMisses: boolean): string {
   return `${hit ? 'bg-brand-soft' : ''} ${dimMisses ? 'opacity-40' : ''}`
 }
 
-// retrievalStageLabel 是阶段取值的展示词（时间线语义：召回 → 融合 →
-// 重排 → 回包）；未知取值原样展示（形态漂移不静默吞掉）。
+// retrievalStageLabel 是阶段取值的展示词（时间线语义：向量召回 / 词法召
+// 回 → 融合 → 重排 → 回包）；向量与词法两路必须可区分，未知取值原样展示
+//（形态漂移不静默吞掉）。
 function retrievalStageLabel(stage: string): string {
   switch (stage) {
     case 'vector':
+      return '向量召回'
     case 'lexical':
-      return '召回'
+      return '词法召回'
     case 'fusion':
       return '融合'
     case 'rerank':
@@ -206,11 +212,163 @@ function retrievalStageLabel(stage: string): string {
   }
 }
 
+// formatScore 把分数修约到 4 位小数：原始分数常为长浮点（如 RRF 的
+// 0.032018442622950824），展示层只保留可读精度。
+function formatScore(score: number): string {
+  return Number.isFinite(score) ? score.toFixed(4) : '—'
+}
+
+// stageUnitReasonLabel 把回包单元的落包结果映射为展示词：入包按
+// admitted，未入包按 reason（merged 同源收编 / redundant 冗余 /
+// truncated 截断）；未知 reason 中性呈现，不猜成截断。
+function stageUnitReasonLabel(unit: RetrievalStageUnit): string {
+  if (unit.admitted) {
+    return '入包'
+  }
+  switch (unit.reason) {
+    case 'merged':
+      return '同源收编'
+    case 'redundant':
+      return '冗余'
+    case 'truncated':
+      return '截断'
+    default:
+      return '未入包'
+  }
+}
+
+function stageUnitReasonClass(unit: RetrievalStageUnit): string {
+  if (unit.admitted) {
+    return 'bg-success-soft text-success-text'
+  }
+  switch (unit.reason) {
+    case 'merged':
+      return 'bg-brand-soft text-brand-text'
+    case 'truncated':
+      return 'bg-danger-soft text-danger-text'
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
+
+// stageUnitSummary 汇总 pack 单元的落包分布（按原因分组计数），供阶段
+// 摘要行一眼看出「入包几个、截断/收编/冗余各几个」。
+function stageUnitSummary(units: RetrievalStageUnit[]): string {
+  let admitted = 0
+  let merged = 0
+  let redundant = 0
+  let truncated = 0
+  let other = 0
+  for (const unit of units) {
+    if (unit.admitted) {
+      admitted++
+    } else if (unit.reason === 'merged') {
+      merged++
+    } else if (unit.reason === 'redundant') {
+      redundant++
+    } else if (unit.reason === 'truncated') {
+      truncated++
+    } else {
+      other++
+    }
+  }
+  const parts: string[] = []
+  if (admitted > 0) parts.push(`入包 ${admitted}`)
+  if (truncated > 0) parts.push(`截断 ${truncated}`)
+  if (merged > 0) parts.push(`收编 ${merged}`)
+  if (redundant > 0) parts.push(`冗余 ${redundant}`)
+  if (other > 0) parts.push(`未入包 ${other}`)
+  return parts.join(' · ')
+}
+
+// StageCandidateTable 渲染阶段候选明细：名次、分片 ID（可点开反查原
+// 文）、分数（按阶段修约 4 位）、锚点。
+function StageCandidateTable({ candidates }: { candidates: RetrievalStage['candidates'] }) {
+  return (
+    <div className="space-y-1.5">
+      <h4 className="text-xs font-medium text-muted-foreground">候选明细（{candidates.length}）</h4>
+      <Table className="min-w-[520px]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs text-muted-foreground">名次</TableHead>
+            <TableHead className="text-xs text-muted-foreground">分片 ID</TableHead>
+            <TableHead className="text-xs text-muted-foreground">分数</TableHead>
+            <TableHead className="text-xs text-muted-foreground">锚点</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {candidates.map((candidate, index) => (
+            <TableRow key={`${candidate.documentId}-${index}`}>
+              <TableCell className="tabular-nums">{index + 1}</TableCell>
+              <TableCell>
+                <ChunkIdPopover chunkId={candidate.documentId} />
+              </TableCell>
+              <TableCell className="tabular-nums">{formatScore(candidate.score)}</TableCell>
+              <TableCell className="font-mono text-xs">{candidate.anchor ?? '—'}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+// StageUnitTable 渲染回包单元明细：聚合粒度、来源文档（可点开）、成员
+// 分片（逐个可点开）、章节、token 量级与落包结果（入包 / 截断 / 同源收编
+// / 冗余，按 reason 映射）。
+function StageUnitTable({ units }: { units: RetrievalStageUnit[] }) {
+  return (
+    <div className="space-y-1.5">
+      <h4 className="text-xs font-medium text-muted-foreground">回包单元明细（{units.length}）</h4>
+      <Table className="min-w-[760px]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs text-muted-foreground">聚合粒度</TableHead>
+            <TableHead className="text-xs text-muted-foreground">文档 ID</TableHead>
+            <TableHead className="text-xs text-muted-foreground">成员分片</TableHead>
+            <TableHead className="text-xs text-muted-foreground">章节</TableHead>
+            <TableHead className="text-xs text-muted-foreground">token</TableHead>
+            <TableHead className="text-xs text-muted-foreground">结果</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {units.map((unit, index) => (
+            <TableRow key={`${unit.mode}-${unit.sourceId ?? ''}-${index}`}>
+              <TableCell className="font-mono text-xs">{unit.mode}</TableCell>
+              <TableCell>{unit.sourceId ? <DocumentIdPopover documentId={unit.sourceId} /> : '—'}</TableCell>
+              <TableCell>
+                {unit.documentIds.length === 0 ? (
+                  '—'
+                ) : (
+                  <span className="inline-flex flex-wrap gap-1">
+                    {unit.documentIds.map((id, memberIndex) => (
+                      <ChunkIdPopover key={`${id}-${memberIndex}`} chunkId={id} />
+                    ))}
+                  </span>
+                )}
+              </TableCell>
+              <TableCell className="max-w-52 truncate" title={unit.headingPath ?? undefined}>
+                {unit.headingPath ?? '—'}
+              </TableCell>
+              <TableCell className="tabular-nums">{unit.tokens}</TableCell>
+              <TableCell>
+                <Badge className={stageUnitReasonClass(unit)}>{stageUnitReasonLabel(unit)}</Badge>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 // RetrievalStageTimeline 按执行序渲染一次检索的阶段时间线（编排层写入的
-// stages，数组顺序即执行序）：每阶段一行——阶段名、查询变体、重排模型、
-// 候选/单元量、耗时；limit 在 pack 阶段为 token 预算、其余阶段为候选上限；
-// 阶段失败的错误摘要以 danger 色可见。落库为已脱敏形态，文本按节点渲染
-//（不可信文本不走 innerHTML）。单路直调行无 stages，不渲染。
+// stages，数组顺序即执行序）：每阶段一行摘要（阶段名、查询变体、重排模
+// 型、上限、候选/单元分因计数、耗时、错误摘要），行可点开查看候选明细与
+// 回包单元明细（默认收起，button + aria-expanded 键盘可达）。limit 在
+// pack 阶段为 token 预算、其余阶段为候选上限；耗时恒显示（0 ms 即不足
+// 1ms 的量级）。落库为已脱敏形态，文本按节点渲染（不可信文本不走
+// innerHTML）。单路直调行无 stages，不渲染。
 function RetrievalStageTimeline({ stages }: { stages: RetrievalStage[] }) {
   if (stages.length === 0) {
     return null
@@ -218,41 +376,54 @@ function RetrievalStageTimeline({ stages }: { stages: RetrievalStage[] }) {
   return (
     <ol aria-label="检索阶段" className="mt-2.5 space-y-1.5 border-t pt-2.5">
       {stages.map((stage, index) => {
-        const admitted = stage.units.filter((u) => u.admitted).length
-        const truncated = stage.units.length - admitted
+        const unitSummary = stageUnitSummary(stage.units)
         return (
-          <li
-            key={`${stage.stage}-${index}`}
-            className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
-          >
-            <span className="font-medium text-secondary-foreground">
-              {index + 1}. {retrievalStageLabel(stage.stage)}
-            </span>
-            {stage.queryText && (
-              <span title={stage.queryText} className="max-w-60 truncate text-foreground">
-                「{stage.queryText}」
-              </span>
-            )}
-            {stage.model && (
-              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">
-                {stage.model}
-              </code>
-            )}
-            {typeof stage.limit === 'number' && <span>上限 {stage.limit}{stage.stage === 'pack' ? ' tok' : ''}</span>}
-            {stage.candidates.length > 0 && <span>候选 {stage.candidates.length} 条</span>}
-            {stage.units.length > 0 && (
-              <span>
-                单元 {admitted}/{stage.units.length}
-                {truncated > 0 && `（截断 ${truncated}）`}
-              </span>
-            )}
-            {stage.durationMs > 0 && <span className="tabular-nums">{stage.durationMs} ms</span>}
-            {stage.error && (
-              <span className="inline-flex items-center gap-1 text-danger-text" title={stage.error}>
-                <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
-                <span className="max-w-80 truncate">{stage.error}</span>
-              </span>
-            )}
+          <li key={`${stage.stage}-${index}`}>
+            <Collapsible className="group rounded-lg border border-border bg-card">
+              <CollapsibleTrigger className="flex w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-left text-xs text-muted-foreground transition-colors select-none hover:bg-soft">
+                <span className="font-medium text-secondary-foreground">
+                  {index + 1}. {retrievalStageLabel(stage.stage)}
+                </span>
+                {stage.queryText && (
+                  <span title={stage.queryText} className="max-w-60 truncate text-foreground">
+                    「{stage.queryText}」
+                  </span>
+                )}
+                {stage.model && (
+                  <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">
+                    {stage.model}
+                  </code>
+                )}
+                {typeof stage.limit === 'number' && (
+                  <span>
+                    上限 {stage.limit}
+                    {stage.stage === 'pack' ? ' tok' : ''}
+                  </span>
+                )}
+                {stage.candidates.length > 0 && <span>候选 {stage.candidates.length} 条</span>}
+                {unitSummary !== '' && <span>单元 {unitSummary}</span>}
+                <span className="tabular-nums">{stage.durationMs} ms</span>
+                {stage.error && (
+                  <span className="inline-flex items-center gap-1 text-danger-text" title={stage.error}>
+                    <CircleAlertIcon className="size-3.5 shrink-0" aria-hidden />
+                    <span className="max-w-80 truncate">{stage.error}</span>
+                  </span>
+                )}
+                <ChevronDownIcon
+                  aria-hidden
+                  className="ml-auto size-3.5 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-3 border-t px-3 py-2.5">
+                  {stage.candidates.length > 0 && <StageCandidateTable candidates={stage.candidates} />}
+                  {stage.units.length > 0 && <StageUnitTable units={stage.units} />}
+                  {stage.candidates.length === 0 && stage.units.length === 0 && (
+                    <p className="text-xs text-muted-foreground">该阶段无候选或单元明细。</p>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           </li>
         )
       })}
@@ -609,6 +780,9 @@ export function ReplayPage() {
 
   const loadThread = useCallback(async (tid: string) => {
     const seq = ++loadSeq.current
+    // 重新装载复现数据（刷新快照 / 切换会话）即让分片与文档详情缓存全部
+    // 失效：留痕命中可能已被重摄淘汰，旧事实不得跨快照沿用。
+    clearReplayDetailCache()
     setLoading(true)
     setError(null)
     setHistoryUnavailable(false)
@@ -971,52 +1145,70 @@ export function ReplayPage() {
                       ) : (
                         <ol className="space-y-3">
                           {retrievals.map((row) => {
-                            const hit = matchesTraceId(row, traceFilter)
+                            const matched = matchesTraceId(row, traceFilter)
                             const hits = parseRetrievalHits(row.hits)
                             const stages = parseRetrievalStages(row.stages)
+                            const scoreSource = retrievalScoreSource(stages)
                             return (
                               <li
                                 key={row.id}
                                 data-trace-id={row.traceId ?? undefined}
-                                className={`rounded-xl border p-3.5 ${
-                                  hit
+                                className={`rounded-xl border ${
+                                  matched
                                     ? 'border-brand-soft-border bg-brand-soft'
                                     : 'border-border bg-soft'
-                                } ${traceFilter !== null && !hit ? 'opacity-40' : ''}`}
+                                } ${traceFilter !== null && !matched ? 'opacity-40' : ''}`}
                               >
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                                  <Badge className={statusChipClass(row.status)}>
-                                    {row.source}/{row.status}
-                                  </Badge>
-                                  <span className="text-sm text-foreground">{row.queryText ?? '（无查询文本）'}</span>
-                                  <span className="text-xs text-muted-foreground tabular-nums">
-                                    top_k {row.requestedTopK ?? '未指定'} → {row.effectiveTopK ?? '不适用'} · {row.durationMs}
-                                    ms · {formatTime(row.createdAt)}
-                                  </span>
-                                  {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />}
-                                </div>
-                                {hits.length > 0 && (
-                                  <ul aria-label="检索命中" className="mt-2.5 space-y-1.5 border-t pt-2.5">
-                                    {hits.map((hit, index) => (
-                                      <li
-                                        key={`${hit.documentId}-${index}`}
-                                        title={hit.anchor ?? undefined}
-                                        className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
-                                      >
-                                        文档{' '}
-                                        <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-secondary-foreground">
-                                          {hit.documentId}
-                                        </code>{' '}
-                                        · score {hit.score}
-                                        {hit.anchor && ` · 锚点 ${hit.anchor}`}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                )}
-                                {/* 阶段时间线（编排层写入的行）：召回 → 融合
-                                    → 重排 → 回包，阶段失败摘要同榜可见；单
-                                    路直调行无 stages，不渲染不伪造。 */}
-                                <RetrievalStageTimeline stages={stages} />
+                                <Collapsible className="group">
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 p-3.5">
+                                    <CollapsibleTrigger className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1.5 text-left select-none">
+                                      <Badge className={statusChipClass(row.status)}>
+                                        {row.source}/{row.status}
+                                      </Badge>
+                                      <span className="text-sm text-foreground">{row.queryText ?? '（无查询文本）'}</span>
+                                      <span className="text-xs text-muted-foreground tabular-nums">
+                                        top_k {row.requestedTopK ?? '未指定'} → {row.effectiveTopK ?? '不适用'} · {row.durationMs}
+                                        ms · {formatTime(row.createdAt)}
+                                      </span>
+                                      <ChevronDownIcon
+                                        aria-hidden
+                                        className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+                                      />
+                                    </CollapsibleTrigger>
+                                    {/* 追踪按钮与展开触发器平级：点追踪只切链路，
+                                        不吞掉也不触发展开。 */}
+                                    {row.traceId && <TracePickButton traceId={row.traceId} onPickTrace={pickTrace} />}
+                                  </div>
+                                  <CollapsibleContent>
+                                    <div className="space-y-3 border-t p-3.5">
+                                      {hits.length > 0 && (
+                                        <div className="space-y-1.5">
+                                          <p className="text-xs text-muted-foreground">
+                                            命中 {hits.length} 条 · 分数来源：{scoreSource}
+                                          </p>
+                                          <ul aria-label="检索命中" className="space-y-1.5">
+                                            {hits.map((item, index) => (
+                                              <li
+                                                key={`${item.documentId}-${index}`}
+                                                title={item.anchor ?? undefined}
+                                                className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
+                                              >
+                                                分片 <ChunkIdPopover chunkId={item.documentId} /> · score{' '}
+                                                <span className="tabular-nums">{formatScore(item.score)}</span>
+                                                {item.anchor && ` · 锚点 ${item.anchor}`}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                      {/* 阶段时间线（编排层写入的行）：向量/词法
+                                          召回 → 融合 → 重排 → 回包，阶段失败摘
+                                          要同榜可见；单路直调行无 stages，不渲
+                                          染不伪造。 */}
+                                      <RetrievalStageTimeline stages={stages} />
+                                    </div>
+                                  </CollapsibleContent>
+                                </Collapsible>
                               </li>
                             )
                           })}

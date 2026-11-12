@@ -142,7 +142,13 @@ func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*K
 }
 
 // packStageUnits 把装配期的全部单元投影为 pack 阶段留痕单元：admitted
-// 以结果集（同一 unit 指针）判定，false 即被预算截断或同源收编。
+// 以结果集（同一 unit 指针）判定；未入包按装配期标记归因——dead 为同源
+// 收编（merged，document 档入包后同源其余单元内容已被包含）；保底直回
+// 单元在来源已有入包单元时为冗余（redundant，不参与深度补深、只在广度
+// 段兜底，来源已有入包单元时只会重复内容），来源整体被预算丢弃时为预算
+// 截断（truncated）；其余未入包同样是预算截断。优先级 merged >
+// redundant > truncated，与装配期跳过顺序一致：广/深度段都先跳 dead、
+// 深度段再跳 fallbackOnly，余下才是预算放不下。
 func packStageUnits(entries []*packEntry, admitted []*KnowledgeSearchUnit) []retrievalPackUnit {
 	if len(entries) == 0 {
 		return nil
@@ -153,11 +159,24 @@ func packStageUnits(entries []*packEntry, admitted []*KnowledgeSearchUnit) []ret
 			inPack[u] = true
 		}
 	}
+	// sourceAdmitted 汇总来源（按装配期分组键 e.key）是否已有单元入包：
+	// 保底单元只有在来源已有入包单元时才是「冗余」；来源整体被预算丢弃
+	// 时保底单元与同源其余单元同为预算截断，不能自相矛盾。
+	sourceAdmitted := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if e == nil || e.unit == nil {
+			continue
+		}
+		if inPack[e.unit] {
+			sourceAdmitted[e.key] = true
+		}
+	}
 	out := make([]retrievalPackUnit, 0, len(entries))
 	for _, e := range entries {
 		if e == nil || e.unit == nil {
 			continue
 		}
+		admitted := inPack[e.unit]
 		out = append(out, retrievalPackUnit{
 			Mode:        e.unit.Mode,
 			SourceID:    e.unit.SourceID,
@@ -165,13 +184,32 @@ func packStageUnits(entries []*packEntry, admitted []*KnowledgeSearchUnit) []ret
 			HeadingPath: e.unit.HeadingPath,
 			Anchor:      e.unit.Anchor,
 			Tokens:      e.tokens,
-			Admitted:    inPack[e.unit],
+			Admitted:    admitted,
+			Reason:      packUnitReason(e, admitted, sourceAdmitted[e.key]),
 		})
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+// packUnitReason 归因未入包单元：入包返回空串（落库省略）；未入包按
+// dead > 来源已有入包的保底单元 > 预算 的优先级映射为 merged /
+// redundant / truncated。sourceAdmitted 说明同源是否已有单元入包——来源
+// 整体被丢弃时保底单元也是预算截断，不能标成冗余。
+func packUnitReason(e *packEntry, admitted bool, sourceAdmitted bool) string {
+	if admitted {
+		return ""
+	}
+	switch {
+	case e.dead:
+		return RetrievalPackUnitReasonMerged
+	case e.fallbackOnly && sourceAdmitted:
+		return RetrievalPackUnitReasonRedundant
+	default:
+		return RetrievalPackUnitReasonTruncated
+	}
 }
 
 // packLastResortEntry 是来源的保底直回单元（命中分最高的命中块单块直回）：

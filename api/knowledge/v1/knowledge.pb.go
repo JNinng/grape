@@ -1187,6 +1187,118 @@ func (x *DocumentChunkSet) GetTotal() int32 {
 	return 0
 }
 
+// GetDocumentChunkRequest 是 DocumentService.GetDocumentChunk 的输入。
+type GetDocumentChunkRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 切片 ID（"<source_id>#<chunk_index>#<hash8>"，历史形态
+	// "<source_id>#<chunk_index>" 同样接受）。
+	ChunkId       string `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDocumentChunkRequest) Reset() {
+	*x = GetDocumentChunkRequest{}
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDocumentChunkRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDocumentChunkRequest) ProtoMessage() {}
+
+func (x *GetDocumentChunkRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDocumentChunkRequest.ProtoReflect.Descriptor instead.
+func (*GetDocumentChunkRequest) Descriptor() ([]byte, []int) {
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *GetDocumentChunkRequest) GetChunkId() string {
+	if x != nil {
+		return x.ChunkId
+	}
+	return ""
+}
+
+// DocumentChunkDetail 是单个分片的反查结果：切片明细（原文/序号/锚点/
+// 嵌入空间）+ 所属条目摘要 + 退役标记。
+type DocumentChunkDetail struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// 分片明细（复用 DocumentChunk；content 为原文）。
+	Chunk *DocumentChunk `protobuf:"bytes,1,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	// 所属条目摘要（不含正文，避免大字段重复）。
+	Document *Document `protobuf:"bytes,2,opt,name=document,proto3" json:"document,omitempty"`
+	// 重摄淘汰时间（RFC3339）；空表示该切片为现行分片。
+	SupersededAt  string `protobuf:"bytes,3,opt,name=superseded_at,json=supersededAt,proto3" json:"superseded_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentChunkDetail) Reset() {
+	*x = DocumentChunkDetail{}
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentChunkDetail) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentChunkDetail) ProtoMessage() {}
+
+func (x *DocumentChunkDetail) ProtoReflect() protoreflect.Message {
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentChunkDetail.ProtoReflect.Descriptor instead.
+func (*DocumentChunkDetail) Descriptor() ([]byte, []int) {
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DocumentChunkDetail) GetChunk() *DocumentChunk {
+	if x != nil {
+		return x.Chunk
+	}
+	return nil
+}
+
+func (x *DocumentChunkDetail) GetDocument() *Document {
+	if x != nil {
+		return x.Document
+	}
+	return nil
+}
+
+func (x *DocumentChunkDetail) GetSupersededAt() string {
+	if x != nil {
+		return x.SupersededAt
+	}
+	return ""
+}
+
 // GetDocumentRequest 是 DocumentService.GetDocument 的输入。
 type GetDocumentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1197,7 +1309,7 @@ type GetDocumentRequest struct {
 
 func (x *GetDocumentRequest) Reset() {
 	*x = GetDocumentRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[16]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1209,7 +1321,7 @@ func (x *GetDocumentRequest) String() string {
 func (*GetDocumentRequest) ProtoMessage() {}
 
 func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[16]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1222,7 +1334,7 @@ func (x *GetDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDocumentRequest.ProtoReflect.Descriptor instead.
 func (*GetDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{16}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetDocumentRequest) GetId() int64 {
@@ -1242,7 +1354,7 @@ type ListDocumentsRequest struct {
 
 func (x *ListDocumentsRequest) Reset() {
 	*x = ListDocumentsRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[17]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1254,7 +1366,7 @@ func (x *ListDocumentsRequest) String() string {
 func (*ListDocumentsRequest) ProtoMessage() {}
 
 func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[17]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1267,7 +1379,7 @@ func (x *ListDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{17}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListDocumentsRequest) GetQuery() *v1.Query {
@@ -1292,7 +1404,7 @@ type ListLibraryDocumentsRequest struct {
 
 func (x *ListLibraryDocumentsRequest) Reset() {
 	*x = ListLibraryDocumentsRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[18]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1304,7 +1416,7 @@ func (x *ListLibraryDocumentsRequest) String() string {
 func (*ListLibraryDocumentsRequest) ProtoMessage() {}
 
 func (x *ListLibraryDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[18]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1317,7 +1429,7 @@ func (x *ListLibraryDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLibraryDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*ListLibraryDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{18}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ListLibraryDocumentsRequest) GetId() int64 {
@@ -1351,7 +1463,7 @@ type UpdateDocumentRequest struct {
 
 func (x *UpdateDocumentRequest) Reset() {
 	*x = UpdateDocumentRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[19]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1363,7 +1475,7 @@ func (x *UpdateDocumentRequest) String() string {
 func (*UpdateDocumentRequest) ProtoMessage() {}
 
 func (x *UpdateDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[19]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1376,7 +1488,7 @@ func (x *UpdateDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateDocumentRequest.ProtoReflect.Descriptor instead.
 func (*UpdateDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{19}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *UpdateDocumentRequest) GetDocument() *Document {
@@ -1396,7 +1508,7 @@ type DeleteDocumentRequest struct {
 
 func (x *DeleteDocumentRequest) Reset() {
 	*x = DeleteDocumentRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[20]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1408,7 +1520,7 @@ func (x *DeleteDocumentRequest) String() string {
 func (*DeleteDocumentRequest) ProtoMessage() {}
 
 func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[20]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1421,7 +1533,7 @@ func (x *DeleteDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteDocumentRequest.ProtoReflect.Descriptor instead.
 func (*DeleteDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{20}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DeleteDocumentRequest) GetId() int64 {
@@ -1441,7 +1553,7 @@ type ReindexDocumentRequest struct {
 
 func (x *ReindexDocumentRequest) Reset() {
 	*x = ReindexDocumentRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[21]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1453,7 +1565,7 @@ func (x *ReindexDocumentRequest) String() string {
 func (*ReindexDocumentRequest) ProtoMessage() {}
 
 func (x *ReindexDocumentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[21]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1466,7 +1578,7 @@ func (x *ReindexDocumentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReindexDocumentRequest.ProtoReflect.Descriptor instead.
 func (*ReindexDocumentRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{21}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ReindexDocumentRequest) GetId() int64 {
@@ -1493,7 +1605,7 @@ type SearchDocumentsRequest struct {
 
 func (x *SearchDocumentsRequest) Reset() {
 	*x = SearchDocumentsRequest{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[22]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1505,7 +1617,7 @@ func (x *SearchDocumentsRequest) String() string {
 func (*SearchDocumentsRequest) ProtoMessage() {}
 
 func (x *SearchDocumentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[22]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1518,7 +1630,7 @@ func (x *SearchDocumentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchDocumentsRequest.ProtoReflect.Descriptor instead.
 func (*SearchDocumentsRequest) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{22}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *SearchDocumentsRequest) GetQuery() string {
@@ -1568,7 +1680,7 @@ type SearchHit struct {
 
 func (x *SearchHit) Reset() {
 	*x = SearchHit{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[23]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1580,7 +1692,7 @@ func (x *SearchHit) String() string {
 func (*SearchHit) ProtoMessage() {}
 
 func (x *SearchHit) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[23]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1593,7 +1705,7 @@ func (x *SearchHit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchHit.ProtoReflect.Descriptor instead.
 func (*SearchHit) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{23}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *SearchHit) GetDocumentId() string {
@@ -1650,7 +1762,7 @@ type SearchDocumentsReply struct {
 
 func (x *SearchDocumentsReply) Reset() {
 	*x = SearchDocumentsReply{}
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[24]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1662,7 +1774,7 @@ func (x *SearchDocumentsReply) String() string {
 func (*SearchDocumentsReply) ProtoMessage() {}
 
 func (x *SearchDocumentsReply) ProtoReflect() protoreflect.Message {
-	mi := &file_knowledge_v1_knowledge_proto_msgTypes[24]
+	mi := &file_knowledge_v1_knowledge_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1675,7 +1787,7 @@ func (x *SearchDocumentsReply) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SearchDocumentsReply.ProtoReflect.Descriptor instead.
 func (*SearchDocumentsReply) Descriptor() ([]byte, []int) {
-	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{24}
+	return file_knowledge_v1_knowledge_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SearchDocumentsReply) GetItems() []*SearchHit {
@@ -1817,7 +1929,13 @@ const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\bembedder\x18\x05 \x01(\tR\bembedder\"[\n" +
 	"\x10DocumentChunkSet\x121\n" +
 	"\x05items\x18\x01 \x03(\v2\x1b.knowledge.v1.DocumentChunkR\x05items\x12\x14\n" +
-	"\x05total\x18\x02 \x01(\x05R\x05total\")\n" +
+	"\x05total\x18\x02 \x01(\x05R\x05total\"9\n" +
+	"\x17GetDocumentChunkRequest\x12\x1e\n" +
+	"\bchunk_id\x18\x01 \x01(\tB\x03\xe0A\x02R\achunkId\"\xa1\x01\n" +
+	"\x13DocumentChunkDetail\x121\n" +
+	"\x05chunk\x18\x01 \x01(\v2\x1b.knowledge.v1.DocumentChunkR\x05chunk\x122\n" +
+	"\bdocument\x18\x02 \x01(\v2\x16.knowledge.v1.DocumentR\bdocument\x12#\n" +
+	"\rsuperseded_at\x18\x03 \x01(\tR\fsupersededAt\")\n" +
 	"\x12GetDocumentRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\"=\n" +
 	"\x14ListDocumentsRequest\x12%\n" +
@@ -1856,10 +1974,12 @@ const file_knowledge_v1_knowledge_proto_rawDesc = "" +
 	"\rListLibraries\x12\".knowledge.v1.ListLibrariesRequest\x1a\x18.knowledge.v1.LibrarySet\"+\x82\xd3\xe4\x93\x02%:\x05query\"\x1c/v1/knowledge/libraries/list\x12{\n" +
 	"\rUpdateLibrary\x12\".knowledge.v1.UpdateLibraryRequest\x1a\x15.knowledge.v1.Library\"/\x82\xd3\xe4\x93\x02):\alibrary\x1a\x1e/v1/knowledge/libraries/update\x12q\n" +
 	"\rDeleteLibrary\x12\".knowledge.v1.DeleteLibraryRequest\x1a\x16.google.protobuf.Empty\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/knowledge/libraries/{id}\x12|\n" +
-	"\x10ListModelOptions\x12%.knowledge.v1.ListModelOptionsRequest\x1a\x1c.knowledge.v1.ModelOptionSet\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/knowledge/model-options2\x95\t\n" +
+	"\x10ListModelOptions\x12%.knowledge.v1.ListModelOptionsRequest\x1a\x1c.knowledge.v1.ModelOptionSet\"#\x82\xd3\xe4\x93\x02\x1d\x12\x1b/v1/knowledge/model-options2\xa7\n" +
+	"\n" +
 	"\x0fDocumentService\x12x\n" +
 	"\x0eCreateDocument\x12#.knowledge.v1.CreateDocumentRequest\x1a\x16.knowledge.v1.Document\")\x82\xd3\xe4\x93\x02#:\x01*\"\x1e/v1/knowledge/documents/create\x12\x8a\x01\n" +
-	"\x12ListDocumentChunks\x12'.knowledge.v1.ListDocumentChunksRequest\x1a\x1e.knowledge.v1.DocumentChunkSet\"+\x82\xd3\xe4\x93\x02%\x12#/v1/knowledge/documents/{id}/chunks\x12m\n" +
+	"\x12ListDocumentChunks\x12'.knowledge.v1.ListDocumentChunksRequest\x1a\x1e.knowledge.v1.DocumentChunkSet\"+\x82\xd3\xe4\x93\x02%\x12#/v1/knowledge/documents/{id}/chunks\x12\x8f\x01\n" +
+	"\x10GetDocumentChunk\x12%.knowledge.v1.GetDocumentChunkRequest\x1a!.knowledge.v1.DocumentChunkDetail\"1\x82\xd3\xe4\x93\x02+\x12)/v1/knowledge/documents/chunks/{chunk_id}\x12m\n" +
 	"\vGetDocument\x12 .knowledge.v1.GetDocumentRequest\x1a\x16.knowledge.v1.Document\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/knowledge/documents/{id}\x12{\n" +
 	"\rListDocuments\x12\".knowledge.v1.ListDocumentsRequest\x1a\x19.knowledge.v1.DocumentSet\"+\x82\xd3\xe4\x93\x02%:\x05query\"\x1c/v1/knowledge/documents/list\x12\x8c\x01\n" +
 	"\x14ListLibraryDocuments\x12).knowledge.v1.ListLibraryDocumentsRequest\x1a\x19.knowledge.v1.DocumentSet\".\x82\xd3\xe4\x93\x02(\x12&/v1/knowledge/libraries/{id}/documents\x12\x7f\n" +
@@ -1881,7 +2001,7 @@ func file_knowledge_v1_knowledge_proto_rawDescGZIP() []byte {
 	return file_knowledge_v1_knowledge_proto_rawDescData
 }
 
-var file_knowledge_v1_knowledge_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_knowledge_v1_knowledge_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_knowledge_v1_knowledge_proto_goTypes = []any{
 	(*Library)(nil),                     // 0: knowledge.v1.Library
 	(*LibrarySet)(nil),                  // 1: knowledge.v1.LibrarySet
@@ -1899,77 +2019,83 @@ var file_knowledge_v1_knowledge_proto_goTypes = []any{
 	(*ListDocumentChunksRequest)(nil),   // 13: knowledge.v1.ListDocumentChunksRequest
 	(*DocumentChunk)(nil),               // 14: knowledge.v1.DocumentChunk
 	(*DocumentChunkSet)(nil),            // 15: knowledge.v1.DocumentChunkSet
-	(*GetDocumentRequest)(nil),          // 16: knowledge.v1.GetDocumentRequest
-	(*ListDocumentsRequest)(nil),        // 17: knowledge.v1.ListDocumentsRequest
-	(*ListLibraryDocumentsRequest)(nil), // 18: knowledge.v1.ListLibraryDocumentsRequest
-	(*UpdateDocumentRequest)(nil),       // 19: knowledge.v1.UpdateDocumentRequest
-	(*DeleteDocumentRequest)(nil),       // 20: knowledge.v1.DeleteDocumentRequest
-	(*ReindexDocumentRequest)(nil),      // 21: knowledge.v1.ReindexDocumentRequest
-	(*SearchDocumentsRequest)(nil),      // 22: knowledge.v1.SearchDocumentsRequest
-	(*SearchHit)(nil),                   // 23: knowledge.v1.SearchHit
-	(*SearchDocumentsReply)(nil),        // 24: knowledge.v1.SearchDocumentsReply
-	(*timestamppb.Timestamp)(nil),       // 25: google.protobuf.Timestamp
-	(*v1.Query)(nil),                    // 26: query.v1.Query
-	(*emptypb.Empty)(nil),               // 27: google.protobuf.Empty
+	(*GetDocumentChunkRequest)(nil),     // 16: knowledge.v1.GetDocumentChunkRequest
+	(*DocumentChunkDetail)(nil),         // 17: knowledge.v1.DocumentChunkDetail
+	(*GetDocumentRequest)(nil),          // 18: knowledge.v1.GetDocumentRequest
+	(*ListDocumentsRequest)(nil),        // 19: knowledge.v1.ListDocumentsRequest
+	(*ListLibraryDocumentsRequest)(nil), // 20: knowledge.v1.ListLibraryDocumentsRequest
+	(*UpdateDocumentRequest)(nil),       // 21: knowledge.v1.UpdateDocumentRequest
+	(*DeleteDocumentRequest)(nil),       // 22: knowledge.v1.DeleteDocumentRequest
+	(*ReindexDocumentRequest)(nil),      // 23: knowledge.v1.ReindexDocumentRequest
+	(*SearchDocumentsRequest)(nil),      // 24: knowledge.v1.SearchDocumentsRequest
+	(*SearchHit)(nil),                   // 25: knowledge.v1.SearchHit
+	(*SearchDocumentsReply)(nil),        // 26: knowledge.v1.SearchDocumentsReply
+	(*timestamppb.Timestamp)(nil),       // 27: google.protobuf.Timestamp
+	(*v1.Query)(nil),                    // 28: query.v1.Query
+	(*emptypb.Empty)(nil),               // 29: google.protobuf.Empty
 }
 var file_knowledge_v1_knowledge_proto_depIdxs = []int32{
-	25, // 0: knowledge.v1.Library.valid_from:type_name -> google.protobuf.Timestamp
-	25, // 1: knowledge.v1.Library.valid_to:type_name -> google.protobuf.Timestamp
-	25, // 2: knowledge.v1.Library.created_at:type_name -> google.protobuf.Timestamp
-	25, // 3: knowledge.v1.Library.updated_at:type_name -> google.protobuf.Timestamp
-	25, // 4: knowledge.v1.Library.deleted_at:type_name -> google.protobuf.Timestamp
+	27, // 0: knowledge.v1.Library.valid_from:type_name -> google.protobuf.Timestamp
+	27, // 1: knowledge.v1.Library.valid_to:type_name -> google.protobuf.Timestamp
+	27, // 2: knowledge.v1.Library.created_at:type_name -> google.protobuf.Timestamp
+	27, // 3: knowledge.v1.Library.updated_at:type_name -> google.protobuf.Timestamp
+	27, // 4: knowledge.v1.Library.deleted_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: knowledge.v1.LibrarySet.items:type_name -> knowledge.v1.Library
-	25, // 6: knowledge.v1.Document.valid_from:type_name -> google.protobuf.Timestamp
-	25, // 7: knowledge.v1.Document.valid_to:type_name -> google.protobuf.Timestamp
-	25, // 8: knowledge.v1.Document.indexed_at:type_name -> google.protobuf.Timestamp
-	25, // 9: knowledge.v1.Document.created_at:type_name -> google.protobuf.Timestamp
-	25, // 10: knowledge.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
-	25, // 11: knowledge.v1.Document.deleted_at:type_name -> google.protobuf.Timestamp
+	27, // 6: knowledge.v1.Document.valid_from:type_name -> google.protobuf.Timestamp
+	27, // 7: knowledge.v1.Document.valid_to:type_name -> google.protobuf.Timestamp
+	27, // 8: knowledge.v1.Document.indexed_at:type_name -> google.protobuf.Timestamp
+	27, // 9: knowledge.v1.Document.created_at:type_name -> google.protobuf.Timestamp
+	27, // 10: knowledge.v1.Document.updated_at:type_name -> google.protobuf.Timestamp
+	27, // 11: knowledge.v1.Document.deleted_at:type_name -> google.protobuf.Timestamp
 	2,  // 12: knowledge.v1.DocumentSet.items:type_name -> knowledge.v1.Document
 	4,  // 13: knowledge.v1.ModelOptionSet.items:type_name -> knowledge.v1.ModelOption
 	0,  // 14: knowledge.v1.CreateLibraryRequest.library:type_name -> knowledge.v1.Library
-	26, // 15: knowledge.v1.ListLibrariesRequest.query:type_name -> query.v1.Query
+	28, // 15: knowledge.v1.ListLibrariesRequest.query:type_name -> query.v1.Query
 	0,  // 16: knowledge.v1.UpdateLibraryRequest.library:type_name -> knowledge.v1.Library
 	2,  // 17: knowledge.v1.CreateDocumentRequest.document:type_name -> knowledge.v1.Document
 	14, // 18: knowledge.v1.DocumentChunkSet.items:type_name -> knowledge.v1.DocumentChunk
-	26, // 19: knowledge.v1.ListDocumentsRequest.query:type_name -> query.v1.Query
-	2,  // 20: knowledge.v1.UpdateDocumentRequest.document:type_name -> knowledge.v1.Document
-	23, // 21: knowledge.v1.SearchDocumentsReply.items:type_name -> knowledge.v1.SearchHit
-	6,  // 22: knowledge.v1.LibraryService.CreateLibrary:input_type -> knowledge.v1.CreateLibraryRequest
-	7,  // 23: knowledge.v1.LibraryService.GetLibrary:input_type -> knowledge.v1.GetLibraryRequest
-	8,  // 24: knowledge.v1.LibraryService.ListLibraries:input_type -> knowledge.v1.ListLibrariesRequest
-	9,  // 25: knowledge.v1.LibraryService.UpdateLibrary:input_type -> knowledge.v1.UpdateLibraryRequest
-	10, // 26: knowledge.v1.LibraryService.DeleteLibrary:input_type -> knowledge.v1.DeleteLibraryRequest
-	11, // 27: knowledge.v1.LibraryService.ListModelOptions:input_type -> knowledge.v1.ListModelOptionsRequest
-	12, // 28: knowledge.v1.DocumentService.CreateDocument:input_type -> knowledge.v1.CreateDocumentRequest
-	13, // 29: knowledge.v1.DocumentService.ListDocumentChunks:input_type -> knowledge.v1.ListDocumentChunksRequest
-	16, // 30: knowledge.v1.DocumentService.GetDocument:input_type -> knowledge.v1.GetDocumentRequest
-	17, // 31: knowledge.v1.DocumentService.ListDocuments:input_type -> knowledge.v1.ListDocumentsRequest
-	18, // 32: knowledge.v1.DocumentService.ListLibraryDocuments:input_type -> knowledge.v1.ListLibraryDocumentsRequest
-	19, // 33: knowledge.v1.DocumentService.UpdateDocument:input_type -> knowledge.v1.UpdateDocumentRequest
-	20, // 34: knowledge.v1.DocumentService.DeleteDocument:input_type -> knowledge.v1.DeleteDocumentRequest
-	21, // 35: knowledge.v1.DocumentService.ReindexDocument:input_type -> knowledge.v1.ReindexDocumentRequest
-	22, // 36: knowledge.v1.DocumentService.SearchDocuments:input_type -> knowledge.v1.SearchDocumentsRequest
-	0,  // 37: knowledge.v1.LibraryService.CreateLibrary:output_type -> knowledge.v1.Library
-	0,  // 38: knowledge.v1.LibraryService.GetLibrary:output_type -> knowledge.v1.Library
-	1,  // 39: knowledge.v1.LibraryService.ListLibraries:output_type -> knowledge.v1.LibrarySet
-	0,  // 40: knowledge.v1.LibraryService.UpdateLibrary:output_type -> knowledge.v1.Library
-	27, // 41: knowledge.v1.LibraryService.DeleteLibrary:output_type -> google.protobuf.Empty
-	5,  // 42: knowledge.v1.LibraryService.ListModelOptions:output_type -> knowledge.v1.ModelOptionSet
-	2,  // 43: knowledge.v1.DocumentService.CreateDocument:output_type -> knowledge.v1.Document
-	15, // 44: knowledge.v1.DocumentService.ListDocumentChunks:output_type -> knowledge.v1.DocumentChunkSet
-	2,  // 45: knowledge.v1.DocumentService.GetDocument:output_type -> knowledge.v1.Document
-	3,  // 46: knowledge.v1.DocumentService.ListDocuments:output_type -> knowledge.v1.DocumentSet
-	3,  // 47: knowledge.v1.DocumentService.ListLibraryDocuments:output_type -> knowledge.v1.DocumentSet
-	2,  // 48: knowledge.v1.DocumentService.UpdateDocument:output_type -> knowledge.v1.Document
-	27, // 49: knowledge.v1.DocumentService.DeleteDocument:output_type -> google.protobuf.Empty
-	2,  // 50: knowledge.v1.DocumentService.ReindexDocument:output_type -> knowledge.v1.Document
-	24, // 51: knowledge.v1.DocumentService.SearchDocuments:output_type -> knowledge.v1.SearchDocumentsReply
-	37, // [37:52] is the sub-list for method output_type
-	22, // [22:37] is the sub-list for method input_type
-	22, // [22:22] is the sub-list for extension type_name
-	22, // [22:22] is the sub-list for extension extendee
-	0,  // [0:22] is the sub-list for field type_name
+	14, // 19: knowledge.v1.DocumentChunkDetail.chunk:type_name -> knowledge.v1.DocumentChunk
+	2,  // 20: knowledge.v1.DocumentChunkDetail.document:type_name -> knowledge.v1.Document
+	28, // 21: knowledge.v1.ListDocumentsRequest.query:type_name -> query.v1.Query
+	2,  // 22: knowledge.v1.UpdateDocumentRequest.document:type_name -> knowledge.v1.Document
+	25, // 23: knowledge.v1.SearchDocumentsReply.items:type_name -> knowledge.v1.SearchHit
+	6,  // 24: knowledge.v1.LibraryService.CreateLibrary:input_type -> knowledge.v1.CreateLibraryRequest
+	7,  // 25: knowledge.v1.LibraryService.GetLibrary:input_type -> knowledge.v1.GetLibraryRequest
+	8,  // 26: knowledge.v1.LibraryService.ListLibraries:input_type -> knowledge.v1.ListLibrariesRequest
+	9,  // 27: knowledge.v1.LibraryService.UpdateLibrary:input_type -> knowledge.v1.UpdateLibraryRequest
+	10, // 28: knowledge.v1.LibraryService.DeleteLibrary:input_type -> knowledge.v1.DeleteLibraryRequest
+	11, // 29: knowledge.v1.LibraryService.ListModelOptions:input_type -> knowledge.v1.ListModelOptionsRequest
+	12, // 30: knowledge.v1.DocumentService.CreateDocument:input_type -> knowledge.v1.CreateDocumentRequest
+	13, // 31: knowledge.v1.DocumentService.ListDocumentChunks:input_type -> knowledge.v1.ListDocumentChunksRequest
+	16, // 32: knowledge.v1.DocumentService.GetDocumentChunk:input_type -> knowledge.v1.GetDocumentChunkRequest
+	18, // 33: knowledge.v1.DocumentService.GetDocument:input_type -> knowledge.v1.GetDocumentRequest
+	19, // 34: knowledge.v1.DocumentService.ListDocuments:input_type -> knowledge.v1.ListDocumentsRequest
+	20, // 35: knowledge.v1.DocumentService.ListLibraryDocuments:input_type -> knowledge.v1.ListLibraryDocumentsRequest
+	21, // 36: knowledge.v1.DocumentService.UpdateDocument:input_type -> knowledge.v1.UpdateDocumentRequest
+	22, // 37: knowledge.v1.DocumentService.DeleteDocument:input_type -> knowledge.v1.DeleteDocumentRequest
+	23, // 38: knowledge.v1.DocumentService.ReindexDocument:input_type -> knowledge.v1.ReindexDocumentRequest
+	24, // 39: knowledge.v1.DocumentService.SearchDocuments:input_type -> knowledge.v1.SearchDocumentsRequest
+	0,  // 40: knowledge.v1.LibraryService.CreateLibrary:output_type -> knowledge.v1.Library
+	0,  // 41: knowledge.v1.LibraryService.GetLibrary:output_type -> knowledge.v1.Library
+	1,  // 42: knowledge.v1.LibraryService.ListLibraries:output_type -> knowledge.v1.LibrarySet
+	0,  // 43: knowledge.v1.LibraryService.UpdateLibrary:output_type -> knowledge.v1.Library
+	29, // 44: knowledge.v1.LibraryService.DeleteLibrary:output_type -> google.protobuf.Empty
+	5,  // 45: knowledge.v1.LibraryService.ListModelOptions:output_type -> knowledge.v1.ModelOptionSet
+	2,  // 46: knowledge.v1.DocumentService.CreateDocument:output_type -> knowledge.v1.Document
+	15, // 47: knowledge.v1.DocumentService.ListDocumentChunks:output_type -> knowledge.v1.DocumentChunkSet
+	17, // 48: knowledge.v1.DocumentService.GetDocumentChunk:output_type -> knowledge.v1.DocumentChunkDetail
+	2,  // 49: knowledge.v1.DocumentService.GetDocument:output_type -> knowledge.v1.Document
+	3,  // 50: knowledge.v1.DocumentService.ListDocuments:output_type -> knowledge.v1.DocumentSet
+	3,  // 51: knowledge.v1.DocumentService.ListLibraryDocuments:output_type -> knowledge.v1.DocumentSet
+	2,  // 52: knowledge.v1.DocumentService.UpdateDocument:output_type -> knowledge.v1.Document
+	29, // 53: knowledge.v1.DocumentService.DeleteDocument:output_type -> google.protobuf.Empty
+	2,  // 54: knowledge.v1.DocumentService.ReindexDocument:output_type -> knowledge.v1.Document
+	26, // 55: knowledge.v1.DocumentService.SearchDocuments:output_type -> knowledge.v1.SearchDocumentsReply
+	40, // [40:56] is the sub-list for method output_type
+	24, // [24:40] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_knowledge_v1_knowledge_proto_init() }
@@ -1988,7 +2114,7 @@ func file_knowledge_v1_knowledge_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_knowledge_v1_knowledge_proto_rawDesc), len(file_knowledge_v1_knowledge_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

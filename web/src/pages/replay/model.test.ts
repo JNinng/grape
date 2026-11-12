@@ -10,6 +10,7 @@ import {
   parseRetrievalStages,
   relatedChatItemIds,
   relatedToolCallIds,
+  retrievalScoreSource,
   toolCallAuditsFor,
 } from './model'
 
@@ -258,6 +259,45 @@ describe('parseRetrievalStages', () => {
       { mode: 'window', sourceId: 'doc', documentIds: ['doc-1'], headingPath: undefined, anchor: undefined, tokens: 120, admitted: true },
       { mode: 'chunk', sourceId: undefined, documentIds: ['doc-2'], headingPath: undefined, anchor: undefined, tokens: 80, admitted: false },
     ])
+  })
+
+  it('parses_known_unit_reasons_and_drops_unknown_values', () => {
+    const stages = parseRetrievalStages([
+      {
+        stage: 'pack',
+        units: [
+          { mode: 'chunk', document_ids: ['a'], admitted: false, reason: 'merged' },
+          { mode: 'chunk', document_ids: ['b'], admitted: false, reason: 'redundant' },
+          { mode: 'chunk', document_ids: ['c'], admitted: false, reason: 'truncated' },
+          { mode: 'chunk', document_ids: ['d'], admitted: false, reason: 'mystery' },
+          { mode: 'chunk', document_ids: ['e'], admitted: true, reason: 'merged' },
+        ],
+      },
+    ])
+    expect(stages[0].units.map((unit) => unit.reason)).toEqual([
+      'merged',
+      'redundant',
+      'truncated',
+      undefined,
+      'merged',
+    ])
+  })
+
+  it('derives_the_score_source_from_the_executed_stages', () => {
+    expect(retrievalScoreSource([{ stage: 'vector' } as never, { stage: 'rerank' } as never])).toBe('重排分')
+    expect(retrievalScoreSource([{ stage: 'vector' } as never, { stage: 'fusion' } as never])).toBe('融合分')
+    expect(retrievalScoreSource([])).toBe('相似度')
+  })
+
+  it('falls_back_to_fusion_source_when_the_rerank_stage_reports_an_error', () => {
+    // 重排失败降级时后端仍追加带 error 的 rerank 阶段但保持融合序分数：
+    // 分数来源必须是融合分，不能误标成重排分。
+    const stages = [
+      { stage: 'vector' } as never,
+      { stage: 'fusion' } as never,
+      { stage: 'rerank', error: 'rerank failed: endpoint down' } as never,
+    ]
+    expect(retrievalScoreSource(stages)).toBe('融合分')
   })
 
   it('drops_malformed_stage_records_without_throwing', () => {

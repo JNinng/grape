@@ -139,6 +139,10 @@ export function parseRetrievalHits(raw: unknown): RetrievalHit[] {
   return hits
 }
 
+// RetrievalStageUnitReason 是未入包原因的封闭词表：merged 同源收编、
+// redundant 保底直回单元冗余、truncated 预算截断；入包单元无原因。
+export type RetrievalStageUnitReason = 'merged' | 'redundant' | 'truncated'
+
 // RetrievalStageUnit 是留痕阶段时间线里 pack 单元的前端形态（与后端
 // retrievalPackUnit 的 jsonb 键 snake_case 对齐后归一）。
 export interface RetrievalStageUnit {
@@ -149,6 +153,9 @@ export interface RetrievalStageUnit {
   anchor?: string
   tokens: number
   admitted: boolean
+  // reason 仅在 admitted=false 时由后端写入；未知取值丢弃（形态漂移不
+  // 猜测原因，前端按「未入包」中性呈现）。
+  reason?: RetrievalStageUnitReason
 }
 
 // RetrievalStage 是留痕阶段时间线的单个阶段：数组顺序即执行序（召回 →
@@ -189,6 +196,10 @@ function parseRetrievalStageUnits(raw: unknown): RetrievalStageUnit[] {
       anchor: typeof record.anchor === 'string' && record.anchor !== '' ? record.anchor : undefined,
       tokens: typeof record.tokens === 'number' && Number.isFinite(record.tokens) ? record.tokens : 0,
       admitted: record.admitted === true,
+      reason:
+        record.reason === 'merged' || record.reason === 'redundant' || record.reason === 'truncated'
+          ? record.reason
+          : undefined,
     })
   }
   return units
@@ -223,6 +234,21 @@ export function parseRetrievalStages(raw: unknown): RetrievalStage[] {
     })
   }
   return stages
+}
+
+// retrievalScoreSource 推导留痕 hits 列表的分数来源：rerank 阶段成功
+//（无 error）才取重排分——重排失败降级时后端仍追加带 error 的 rerank
+// 阶段但保留融合序分数，不能标成重排分；否则有 fusion 阶段取融合分；
+// 否则（单路直调无 stages）取相似度。分数按阶段自解释、跨阶段不可比，
+// 标注来源避免把 RRF 分读成相似度或把降级分读成重排分。
+export function retrievalScoreSource(stages: RetrievalStage[]): string {
+  if (stages.some((stage) => stage.stage === 'rerank' && !stage.error)) {
+    return '重排分'
+  }
+  if (stages.some((stage) => stage.stage === 'fusion')) {
+    return '融合分'
+  }
+  return '相似度'
 }
 
 // toolCallAuditsFor 按回放工具调用 ID 取审计行（保持端点返回序）：回放

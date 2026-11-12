@@ -95,6 +95,15 @@ service DocumentService {
     };
   }
 
+  // GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+  // 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+  // 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+  rpc GetDocumentChunk (GetDocumentChunkRequest) returns (DocumentChunkDetail) {
+    option (google.api.http) = {
+      get: "/v1/knowledge/documents/chunks/{chunk_id}"
+    };
+  }
+
   // GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
   rpc GetDocument (GetDocumentRequest) returns (Document) {
     option (google.api.http) = {
@@ -326,6 +335,24 @@ message DocumentChunkSet {
   repeated DocumentChunk items = 1;
   // 分片数。
   int32 total = 2;
+}
+
+// GetDocumentChunkRequest 是 DocumentService.GetDocumentChunk 的输入。
+message GetDocumentChunkRequest {
+  // 切片 ID（"<source_id>#<chunk_index>#<hash8>"，历史形态
+  // "<source_id>#<chunk_index>" 同样接受）。
+  string chunk_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// DocumentChunkDetail 是单个分片的反查结果：切片明细（原文/序号/锚点/
+// 嵌入空间）+ 所属条目摘要 + 退役标记。
+message DocumentChunkDetail {
+  // 分片明细（复用 DocumentChunk；content 为原文）。
+  DocumentChunk chunk = 1;
+  // 所属条目摘要（不含正文，避免大字段重复）。
+  Document document = 2;
+  // 重摄淘汰时间（RFC3339）；空表示该切片为现行分片。
+  string superseded_at = 3;
 }
 
 // GetDocumentRequest 是 DocumentService.GetDocument 的输入。

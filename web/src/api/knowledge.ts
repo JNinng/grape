@@ -335,6 +335,65 @@ export interface KnowledgeChunkSetDTO {
   total: number
 }
 
+// DocumentChunkDetailDTO 是单个分片的反查结果：chunk 含原文，document 为
+// 所属条目摘要（不含正文），supersededAt 非空表示已被重摄淘汰（保留期内
+// 仍可反查）。
+export interface DocumentChunkDetailDTO {
+  chunk: KnowledgeChunkDTO
+  document: DocumentDTO
+  supersededAt: string
+}
+
+function normalizeDocument(partial: Partial<DocumentDTO> | undefined): DocumentDTO {
+  return {
+    id: partial?.id ?? '',
+    libraryId: partial?.libraryId ?? '',
+    kind: partial?.kind ?? '',
+    title: partial?.title ?? '',
+    content: partial?.content,
+    sourceName: partial?.sourceName,
+    status: partial?.status,
+    validFrom: partial?.validFrom,
+    validTo: partial?.validTo,
+    indexedAt: partial?.indexedAt,
+    indexedEmbedder: partial?.indexedEmbedder,
+    createdBy: partial?.createdBy ?? '',
+    updatedBy: partial?.updatedBy ?? '',
+    createdAt: partial?.createdAt ?? '',
+    updatedAt: partial?.updatedAt,
+    deletedAt: partial?.deletedAt,
+  }
+}
+
+function normalizeChunk(partial: Partial<KnowledgeChunkDTO> | undefined): KnowledgeChunkDTO {
+  return {
+    index: partial?.index ?? 0,
+    chunkId: partial?.chunkId ?? '',
+    anchor: partial?.anchor ?? '',
+    content: partial?.content ?? '',
+    embedder: partial?.embedder ?? '',
+  }
+}
+
+// getDocumentChunk 按切片 ID 反查分片原文与所属条目摘要（含退役标记）。
+// protojson 省略零值字段，命中缺省键在此补齐。
+export async function getDocumentChunk(chunkId: string): Promise<DocumentChunkDetailDTO> {
+  const res = await authFetch(`/v1/knowledge/documents/chunks/${encodeURIComponent(chunkId)}`)
+  if (!res.ok) {
+    throw await toApiError(res)
+  }
+  const detail = (await res.json()) as {
+    chunk?: Partial<KnowledgeChunkDTO>
+    document?: Partial<DocumentDTO>
+    supersededAt?: string
+  }
+  return {
+    chunk: normalizeChunk(detail.chunk),
+    document: normalizeDocument(detail.document),
+    supersededAt: detail.supersededAt ?? '',
+  }
+}
+
 // listDocumentChunks 读取条目在向量存储中的实际分片（按分片序）。
 // protojson 省略零值字段，命中缺省键在此补齐。
 export async function listDocumentChunks(documentId: string): Promise<KnowledgeChunkSetDTO> {

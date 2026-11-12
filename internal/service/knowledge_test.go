@@ -421,6 +421,86 @@ func TestListDocumentChunks_store_failure_returns_500_without_detail(t *testing.
 	}
 }
 
+// chunkDetailStore 是分片反查端点单测的向量存储替身：Get 返回可编程
+// 结果并记录收到的切片段；其余方法沿用 chunkListStore。
+type chunkDetailStore struct {
+	chunkListStore
+	doc   *biz.VectorDocument
+	err   error
+	gotID string
+}
+
+func (s *chunkDetailStore) Get(_ context.Context, id string) (*biz.VectorDocument, error) {
+	s.gotID = id
+	return s.doc, s.err
+}
+
+func TestGetDocumentChunk_passes_chunk_id_and_maps_detail(t *testing.T) {
+	store := &chunkDetailStore{doc: &biz.VectorDocument{
+		ID:       "2#1#a1b2c3d4",
+		Embedder: "space@v1",
+		Content:  "chunk body",
+		Metadata: map[string]any{
+			"document_id":   "2",
+			"anchor":        "runes 10-20",
+			"chunk_index":   float64(1),
+			"superseded_at": "2026-02-03T04:05:06Z",
+		},
+	}}
+	svc := newChunksTestService(store)
+
+	reply, err := svc.GetDocumentChunk(searchIdentityCtx(), &knowledgev1.GetDocumentChunkRequest{ChunkId: "2#1#a1b2c3d4"})
+	if err != nil {
+		t.Fatalf("GetDocumentChunk: %v", err)
+	}
+	if store.gotID != "2#1#a1b2c3d4" {
+		t.Fatalf("store Get id = %q, want request chunk id", store.gotID)
+	}
+	chunk := reply.GetChunk()
+	if chunk.GetIndex() != 1 || chunk.GetChunkId() != "2#1#a1b2c3d4" || chunk.GetAnchor() != "runes 10-20" ||
+		chunk.GetContent() != "chunk body" || chunk.GetEmbedder() != "space@v1" {
+		t.Fatalf("chunk = %+v, want mapped detail", chunk)
+	}
+	if reply.GetDocument().GetId() != 2 || reply.GetDocument().GetTitle() != "t" {
+		t.Fatalf("document = %+v, want source document summary", reply.GetDocument())
+	}
+	// 条目摘要不进正文（避免大字段重复）。
+	if reply.GetDocument().Content != nil {
+		t.Fatalf("document content = %q, want omitted", reply.GetDocument().GetContent())
+	}
+	if reply.GetSupersededAt() != "2026-02-03T04:05:06Z" {
+		t.Fatalf("superseded_at = %q, want retirement time", reply.GetSupersededAt())
+	}
+}
+
+func TestGetDocumentChunk_without_identity_returns_401(t *testing.T) {
+	svc := newChunksTestService(&chunkDetailStore{})
+
+	_, err := svc.GetDocumentChunk(context.Background(), &knowledgev1.GetDocumentChunkRequest{ChunkId: "2#0#a1b2c3d4"})
+	assertKratosError(t, err, http.StatusUnauthorized, "SESSION_INVALID")
+}
+
+func TestGetDocumentChunk_invalid_chunk_id_returns_400(t *testing.T) {
+	svc := newChunksTestService(&chunkDetailStore{})
+
+	_, err := svc.GetDocumentChunk(searchIdentityCtx(), &knowledgev1.GetDocumentChunkRequest{ChunkId: "bad"})
+	assertKratosError(t, err, http.StatusBadRequest, knowledgev1.ErrorReason_DOCUMENT_INVALID_ARGUMENT.String())
+}
+
+func TestGetDocumentChunk_missing_chunk_returns_404(t *testing.T) {
+	svc := newChunksTestService(&chunkDetailStore{err: biz.ErrVectorDocNotFound})
+
+	_, err := svc.GetDocumentChunk(searchIdentityCtx(), &knowledgev1.GetDocumentChunkRequest{ChunkId: "2#0#a1b2c3d4"})
+	assertKratosError(t, err, http.StatusNotFound, knowledgev1.ErrorReason_DOCUMENT_NOT_FOUND.String())
+}
+
+func TestGetDocumentChunk_vector_store_disabled_returns_503(t *testing.T) {
+	svc := newChunksTestService(&chunkDetailStore{err: biz.ErrVectorStoreDisabled})
+
+	_, err := svc.GetDocumentChunk(searchIdentityCtx(), &knowledgev1.GetDocumentChunkRequest{ChunkId: "2#0#a1b2c3d4"})
+	assertKratosError(t, err, http.StatusServiceUnavailable, knowledgev1.ErrorReason_DOCUMENT_CHUNKS_UNAVAILABLE.String())
+}
+
 func TestCreateLibrary_with_contextual_flag_round_trips(t *testing.T) {
 	svc := newLibraryTestService(&libraryFakeRepo{})
 	out, err := svc.CreateLibrary(searchIdentityCtx(), &knowledgev1.CreateLibraryRequest{

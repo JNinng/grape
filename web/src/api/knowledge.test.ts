@@ -6,6 +6,7 @@ import {
   createLibrary,
   deleteDocument,
   deleteLibrary,
+  getDocumentChunk,
   listDocumentChunks,
   listLibraries,
   listLibraryDocuments,
@@ -247,5 +248,52 @@ describe('knowledge chunk api', () => {
       jsonResponse(503, { code: 503, reason: 'DOCUMENT_CHUNKS_UNAVAILABLE', message: 'knowledge document chunks unavailable' }),
     )
     await expect(listDocumentChunks('200')).rejects.toThrow('knowledge document chunks unavailable')
+  })
+
+  it('get_document_chunk_encodes_the_chunk_id_and_normalizes_the_detail', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, {
+        chunk: { index: 1, chunkId: '200#1#a1b2c3d4', anchor: 'runes 10-20', content: '正文', embedder: 'space@v1' },
+        document: documentDTO({ id: '200', title: '退款政策' }),
+        supersededAt: '2026-02-03T04:05:06Z',
+      }),
+    )
+    const detail = await getDocumentChunk('200#1#a1b2c3d4')
+    expect(String(fetchMock.mock.calls[0][0])).toBe('/v1/knowledge/documents/chunks/200%231%23a1b2c3d4')
+    expect(detail.chunk).toEqual({
+      index: 1,
+      chunkId: '200#1#a1b2c3d4',
+      anchor: 'runes 10-20',
+      content: '正文',
+      embedder: 'space@v1',
+    })
+    expect(detail.document.id).toBe('200')
+    expect(detail.supersededAt).toBe('2026-02-03T04:05:06Z')
+  })
+
+  it('get_document_chunk_empty_response_normalizes_missing_fields', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}))
+    expect(await getDocumentChunk('200#0#a1b2c3d4')).toEqual({
+      chunk: { index: 0, chunkId: '', anchor: '', content: '', embedder: '' },
+      document: {
+        id: '',
+        libraryId: '',
+        kind: '',
+        title: '',
+        content: undefined,
+        sourceName: undefined,
+        status: undefined,
+        validFrom: undefined,
+        validTo: undefined,
+        indexedAt: undefined,
+        indexedEmbedder: undefined,
+        createdBy: '',
+        updatedBy: '',
+        createdAt: '',
+        updatedAt: undefined,
+        deletedAt: undefined,
+      },
+      supersededAt: '',
+    })
   })
 })

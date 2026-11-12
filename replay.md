@@ -165,11 +165,13 @@ session_id（会话）
   "duration_ms"}`——召回阶段（vector / lexical）记该路变体查询文本与候选
   （上限 50，形态同 `hits` 元素），fusion 记 RRF 融合序，rerank 记重排模
   型键与重排后序（对照 fusion 候选即还原重排前后序），pack 记回包单元
-  （mode / 聚合块 ID / heading_path / anchor / token 量级 / admitted，对照
-  fusion 序与 units 可看出预算截断掉了谁）。分数按阶段自解释（向量相似度
-  / 词法分 / RRF 分 / rerank 模型分），同阶段可比、跨阶段不可比。阶段失败
-  同样留痕（候选空 + 错误摘要；词法路与重排失败按质量增强降级，行 status
-  仍记操作终态）；单路直调行 stages 为 NULL（不伪造空阶段）。
+  （mode / 聚合块 ID / heading_path / anchor / token 量级 / admitted /
+  reason，对照 fusion 序与 units 可看出预算截断、同源收编与保底冗余各是
+  谁；reason 取 merged-同源收编 / redundant-保底直回单元 / truncated-预算
+  截断，admitted 为真时省略）。分数按阶段自解释（向量相似度 / 词法分 /
+  RRF 分 / rerank 模型分），同阶段可比、跨阶段不可比。阶段失败同样留痕
+  （候选空 + 错误摘要；词法路与重排失败按质量增强降级，行 status 仍记操
+  作终态）；单路直调行 stages 为 NULL（不伪造空阶段）。
 - 查询文本、`requested_top_k`/`effective_top_k`、过滤摘要、最终命中
   （`document_id`/`score`/`anchor`）与耗时两处同口径：编排行取归一化后的
   top_k（最终命中上限，逐路召回宽度在 stages 各召回阶段的 `limit`）、过滤
@@ -273,6 +275,7 @@ session_id（会话）
 | `GET /v1/agent/audit/tool-calls` | 工具调用审计列表或点查 | session_id 或 tool_call_id；默认 20、上限 200 |
 | `GET /v1/agent/audit/confirmations` | 授权确认审计列表或点查 | session_id 或 confirmation_id；默认 20、上限 200 |
 | `GET /v1/agent/retrieval-logs` | 检索留痕列表 | session_id/source；默认 20、上限 200 |
+| `GET /v1/knowledge/documents/chunks/{chunk_id}` | 按切片 ID 反查分片原文与所属条目摘要（含退役标记；保留期内可反查重摄淘汰的旧行） | chunk_id 为 `<source_id>#<index>#<hash8>`（兼容历史 `<source_id>#<index>`） |
 | `GET /v1/agent/model-calls` | 模型调用留痕列表（复现页「模型调用」面板） | scenario/model_key/status/document_id/created_from/created_to；默认 20、上限 200 |
 | `GET /metrics` | 运行指标 | 链外免认证、只读 |
 
@@ -301,13 +304,15 @@ session_id（会话）
    按 `confirmation_id`/`tool_call_id` 对账。
 4. 读事实：工具行看状态、耗时、参数与结果摘要；确认行看决定、记住作用域
    与 live/recovery 路径；检索行看查询、top_k、过滤、命中、阶段时间线
-   （召回 → 融合 → 重排 → 回包，含阶段失败摘要与被预算截断的回包单元）
-   与耗时；回放项的模型调用事实看模型型号、token 用量、思考与首字时长。
+   （向量/词法召回 → 融合 → 重排 → 回包，含阶段失败摘要与未入包单元的
+   原因——截断/同源收编/冗余）与耗时；回放项的模型调用事实看模型型号、
+   token 用量、思考与首字时长。
 5. 反查原文：压缩占位符经 `event-window` 按 `event_id` 取原文；检索命中经
-   `document_id` 反查 `agent.agent_document`——切片 ID 含内容哈希且重摄只
-   标记 `superseded_at` 不物理删除，保留期内旧留痕行的候选 ID 仍取到命中
-   当时的原文（管理/检索读面已看不到退役行）；工具参数与结果原文以会话
-   事件为准。
+   `GET /v1/knowledge/documents/chunks/{chunk_id}` 按切片 ID 点查原文（复现
+   页点分片 ID 即走该端点，命中产物不物理删除、重摄只标记 `superseded_at`，
+   保留期内旧留痕行的候选 ID 仍取到命中当时的原文，管理/检索读面已看不到
+   退役行；条目摘要经 `source_id`/`document_id` 反查）；工具参数与结果原文
+   以会话事件为准。
 6. 关联链路：用 `trace_id` 检索日志；telemetry 启用且该链路被采样时在
    OTel 后端看 span；用 `/metrics` 判断是否为全局或下游问题。
 7. 判定与补证：证据缺失时先查保留期、写入失败日志与链路采样，不把

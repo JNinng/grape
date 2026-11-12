@@ -348,6 +348,7 @@ var LibraryService_ServiceDesc = grpc.ServiceDesc{
 const (
 	DocumentService_CreateDocument_FullMethodName       = "/knowledge.v1.DocumentService/CreateDocument"
 	DocumentService_ListDocumentChunks_FullMethodName   = "/knowledge.v1.DocumentService/ListDocumentChunks"
+	DocumentService_GetDocumentChunk_FullMethodName     = "/knowledge.v1.DocumentService/GetDocumentChunk"
 	DocumentService_GetDocument_FullMethodName          = "/knowledge.v1.DocumentService/GetDocument"
 	DocumentService_ListDocuments_FullMethodName        = "/knowledge.v1.DocumentService/ListDocuments"
 	DocumentService_ListLibraryDocuments_FullMethodName = "/knowledge.v1.DocumentService/ListLibraryDocuments"
@@ -375,6 +376,10 @@ type DocumentServiceClient interface {
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(ctx context.Context, in *ListDocumentChunksRequest, opts ...grpc.CallOption) (*DocumentChunkSet, error)
+	// GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+	// 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+	// 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+	GetDocumentChunk(ctx context.Context, in *GetDocumentChunkRequest, opts ...grpc.CallOption) (*DocumentChunkDetail, error)
 	// GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*Document, error)
 	// ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
@@ -420,6 +425,16 @@ func (c *documentServiceClient) ListDocumentChunks(ctx context.Context, in *List
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DocumentChunkSet)
 	err := c.cc.Invoke(ctx, DocumentService_ListDocumentChunks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *documentServiceClient) GetDocumentChunk(ctx context.Context, in *GetDocumentChunkRequest, opts ...grpc.CallOption) (*DocumentChunkDetail, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DocumentChunkDetail)
+	err := c.cc.Invoke(ctx, DocumentService_GetDocumentChunk_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -514,6 +529,10 @@ type DocumentServiceServer interface {
 	// ListDocumentChunks 返回条目在向量存储中的实际分片（按分片序），
 	// 供管理页查看切分结果；分片正文按原文返回，不含向量。
 	ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error)
+	// GetDocumentChunk 按切片 ID 反查单个分片原文与所属条目摘要：检索留痕
+	// 的命中切片可能已被重摄淘汰（保留期内仍可反查原文），故不以现行分片
+	// 枚举为口径，按 ID 点查；所属库不可见与切片不存在统一 404。
+	GetDocumentChunk(context.Context, *GetDocumentChunkRequest) (*DocumentChunkDetail, error)
 	// GetDocument 按 id 查询条目（含正文；所属库不可见与不存在统一 404）。
 	GetDocument(context.Context, *GetDocumentRequest) (*Document, error)
 	// ListDocuments 按动态查询协议返回一页调用方可见库内的条目（列表不
@@ -550,6 +569,9 @@ func (UnimplementedDocumentServiceServer) CreateDocument(context.Context, *Creat
 }
 func (UnimplementedDocumentServiceServer) ListDocumentChunks(context.Context, *ListDocumentChunksRequest) (*DocumentChunkSet, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDocumentChunks not implemented")
+}
+func (UnimplementedDocumentServiceServer) GetDocumentChunk(context.Context, *GetDocumentChunkRequest) (*DocumentChunkDetail, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDocumentChunk not implemented")
 }
 func (UnimplementedDocumentServiceServer) GetDocument(context.Context, *GetDocumentRequest) (*Document, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDocument not implemented")
@@ -625,6 +647,24 @@ func _DocumentService_ListDocumentChunks_Handler(srv interface{}, ctx context.Co
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DocumentServiceServer).ListDocumentChunks(ctx, req.(*ListDocumentChunksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DocumentService_GetDocumentChunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDocumentChunkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DocumentServiceServer).GetDocumentChunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DocumentService_GetDocumentChunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DocumentServiceServer).GetDocumentChunk(ctx, req.(*GetDocumentChunkRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -769,6 +809,10 @@ var DocumentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDocumentChunks",
 			Handler:    _DocumentService_ListDocumentChunks_Handler,
+		},
+		{
+			MethodName: "GetDocumentChunk",
+			Handler:    _DocumentService_GetDocumentChunk_Handler,
 		},
 		{
 			MethodName: "GetDocument",

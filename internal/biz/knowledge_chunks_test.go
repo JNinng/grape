@@ -154,6 +154,163 @@ func TestListDocumentChunks_vector_store_disabled_propagates(t *testing.T) {
 	}
 }
 
+// chunkDetailStore 是分片反查用例的向量存储替身：Get 返回可编程结果并
+// 记录收到的切片段；其余方法沿用 mockVectorStore。
+type chunkDetailStore struct {
+	mockVectorStore
+	doc   *VectorDocument
+	err   error
+	gotID string
+}
+
+func (s *chunkDetailStore) Get(_ context.Context, id string) (*VectorDocument, error) {
+	s.gotID = id
+	return s.doc, s.err
+}
+
+func knownChunk(id string, index int, documentID string) *VectorDocument {
+	return &VectorDocument{
+		ID:       id,
+		Embedder: "space@v1",
+		Content:  "chunk body",
+		Metadata: map[string]any{
+			"document_id": documentID,
+			"anchor":      "runes 10-20",
+			"chunk_index": float64(index),
+		},
+	}
+}
+
+func TestGetDocumentChunk_current_id_form_resolves_source_and_returns_detail(t *testing.T) {
+	store := &chunkDetailStore{doc: knownChunk("2#1#a1b2c3d4", 1, "2")}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	detail, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#1#a1b2c3d4")
+	if err != nil {
+		t.Fatalf("GetDocumentChunk: %v", err)
+	}
+	if store.gotID != "2#1#a1b2c3d4" {
+		t.Fatalf("store Get id = %q, want full chunk id", store.gotID)
+	}
+	if detail.Document == nil || detail.Document.ID != 2 {
+		t.Fatalf("document = %+v, want source document 2", detail.Document)
+	}
+	want := &KnowledgeChunk{ID: "2#1#a1b2c3d4", Index: 1, Anchor: "runes 10-20", Content: "chunk body", Embedder: "space@v1"}
+	if !reflect.DeepEqual(detail.Chunk, want) {
+		t.Fatalf("chunk = %+v, want %+v", detail.Chunk, want)
+	}
+	if detail.SupersededAt != "" {
+		t.Fatalf("superseded_at = %q, want empty for current chunk", detail.SupersededAt)
+	}
+}
+
+func TestGetDocumentChunk_legacy_id_form_resolves_source(t *testing.T) {
+	store := &chunkDetailStore{doc: knownChunk("2#7", 7, "2")}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	detail, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#7")
+	if err != nil {
+		t.Fatalf("GetDocumentChunk: %v", err)
+	}
+	if detail.Chunk.Index != 7 {
+		t.Fatalf("index = %d, want 7", detail.Chunk.Index)
+	}
+	if store.gotID != "2#7" {
+		t.Fatalf("store Get id = %q, want legacy id", store.gotID)
+	}
+}
+
+func TestGetDocumentChunk_invalid_id_returns_invalid_argument(t *testing.T) {
+	for name, id := range map[string]string{
+		"empty":           "",
+		"no separator":    "2",
+		"non-numeric":     "abc#1",
+		"zero source":     "0#1",
+		"negative":        "-1#1",
+		"missing index":   "2#",
+		"non-numeric idx": "2#x",
+		"bad hash":        "2#1#zzzzzzzz",
+		"extra segment":   "2#1#a1b2c3d4#9",
+	} {
+		store := &chunkDetailStore{}
+		uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+		if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), id); !errors.Is(err, ErrDocumentInvalidArgument) {
+			t.Fatalf("%s: GetDocumentChunk(%q) = %v, want ErrDocumentInvalidArgument", name, id, err)
+		}
+		if store.gotID != "" {
+			t.Fatalf("%s: store Get called for invalid id %q", name, id)
+		}
+	}
+}
+
+func TestGetDocumentChunk_missing_document_returns_not_found_without_store_read(t *testing.T) {
+	store := &chunkDetailStore{doc: knownChunk("9#0#a1b2c3d4", 0, "9")}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{}, store)
+
+	if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "9#0#a1b2c3d4"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("GetDocumentChunk(missing document) = %v, want ErrDocumentNotFound", err)
+	}
+	if store.gotID != "" {
+		t.Fatalf("store Get called before document visibility gate")
+	}
+}
+
+func TestGetDocumentChunk_when_library_invisible_returns_not_found(t *testing.T) {
+	repo := &libraryFakeRepo{doc: chunkDoc(2)}
+	store := &chunkDetailStore{doc: knownChunk("2#0#a1b2c3d4", 0, "2")}
+	uc := newChunkListUsecase(t, repo, store)
+	repo.existing = nil // 库不可见（GetLibrary 返回 ErrLibraryNotFound）
+
+	if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#0#a1b2c3d4"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("GetDocumentChunk(invisible library) = %v, want ErrDocumentNotFound", err)
+	}
+	if store.gotID != "" {
+		t.Fatalf("store Get called for invisible library")
+	}
+}
+
+func TestGetDocumentChunk_missing_chunk_returns_not_found(t *testing.T) {
+	store := &chunkDetailStore{err: ErrVectorDocNotFound}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#0#a1b2c3d4"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("GetDocumentChunk(missing chunk) = %v, want ErrDocumentNotFound", err)
+	}
+}
+
+func TestGetDocumentChunk_document_id_mismatch_returns_not_found(t *testing.T) {
+	store := &chunkDetailStore{doc: knownChunk("2#0#a1b2c3d4", 0, "9")}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#0#a1b2c3d4"); !errors.Is(err, ErrDocumentNotFound) {
+		t.Fatalf("GetDocumentChunk(mismatched document_id) = %v, want ErrDocumentNotFound", err)
+	}
+}
+
+func TestGetDocumentChunk_superseded_chunk_exposes_retirement_time(t *testing.T) {
+	doc := knownChunk("2#0#a1b2c3d4", 0, "2")
+	doc.Metadata[VectorMetadataSupersededAt] = "2026-02-03T04:05:06Z"
+	store := &chunkDetailStore{doc: doc}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	detail, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#0#a1b2c3d4")
+	if err != nil {
+		t.Fatalf("GetDocumentChunk: %v", err)
+	}
+	if detail.SupersededAt != "2026-02-03T04:05:06Z" {
+		t.Fatalf("superseded_at = %q, want retirement time", detail.SupersededAt)
+	}
+}
+
+func TestGetDocumentChunk_vector_store_disabled_propagates(t *testing.T) {
+	store := &chunkDetailStore{err: ErrVectorStoreDisabled}
+	uc := newChunkListUsecase(t, &libraryFakeRepo{doc: chunkDoc(2)}, store)
+
+	if _, err := uc.GetDocumentChunk(ingestCtx(), libraryAuth(), "2#0#a1b2c3d4"); !errors.Is(err, ErrVectorStoreDisabled) {
+		t.Fatalf("GetDocumentChunk = %v, want ErrVectorStoreDisabled", err)
+	}
+}
+
 func TestChunkIndexOf_prefers_id_suffix_then_metadata(t *testing.T) {
 	for name, tc := range map[string]struct {
 		id       string

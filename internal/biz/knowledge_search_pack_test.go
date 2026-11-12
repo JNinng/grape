@@ -450,7 +450,7 @@ func TestKnowledgeSearchPack_assembly_drops_low_score_units_over_budget(t *testi
 	// 降级档，整源丢弃并告警；s3（1 token）入包。分数最高的 s1 与能放下的
 	// s3 保留，超预算的 s2 被截掉。
 	entries := []*packEntry{
-		packEntryFor("s1", 0.9, strings.Repeat("a", 100)), // 25 tokens
+		packEntryFor("s1", 0.9, strings.Repeat("a", 100)),  // 25 tokens
 		packEntryFor("s2", 0.5, strings.Repeat("a", 8000)), // 2000 tokens
 		packEntryFor("s3", 0.3, "b"),                       // 1 token
 	}
@@ -765,6 +765,170 @@ func TestKnowledgeSearchPack_list_rows_from_other_source_are_excluded_from_membe
 	if !reflect.DeepEqual(packUnitIDs(units[0]), []string{"S15#0", "S15#1", "S15#2"}) {
 		t.Fatalf("members = %v, want source-own chunks only (%s excluded)",
 			packUnitIDs(units[0]), alien.ID)
+	}
+}
+
+// packStageReasonFor 取 pack 阶段留痕里指定成员切片 ID 的未入包原因。
+func packStageReasonFor(units []retrievalPackUnit, documentID string) retrievalPackUnit {
+	for _, u := range units {
+		for _, id := range u.DocumentIDs {
+			if id == documentID {
+				return u
+			}
+		}
+	}
+	return retrievalPackUnit{}
+}
+
+func TestKnowledgeSearchPackStageUnits_reason_marks_same_source_merge_as_merged(t *testing.T) {
+	// document 单元入包后同源 chunk 单元被收编：留痕 reason 必须是 merged
+	//（不是截断），入包单元省略 reason。
+	docMembers := []*packChunk{
+		{id: "s1#0", index: 0, sourceID: "s1", content: "a", score: 0.9, hit: true},
+		{id: "s1#1", index: 1, sourceID: "s1", content: "b"},
+	}
+	entries := []*packEntry{
+		buildPackEntry(KnowledgeSearchUnitModeDocument, docMembers),
+		buildPackEntry(KnowledgeSearchUnitModeChunk, []*packChunk{
+			{id: "s1#1", index: 1, sourceID: "s1", content: "b", score: 0.8, hit: true},
+		}),
+	}
+	units := assemblePackUnits(entries, 4096)
+
+	stages := packStageUnits(entries, units)
+	if len(stages) != 2 {
+		t.Fatalf("stage units = %d, want 2", len(stages))
+	}
+	if !stages[0].Admitted || stages[0].Reason != "" {
+		t.Fatalf("document unit = %+v, want admitted without reason", stages[0])
+	}
+	if stages[1].Admitted || stages[1].Reason != RetrievalPackUnitReasonMerged {
+		t.Fatalf("same-source chunk unit = %+v, want reason merged", stages[1])
+	}
+}
+
+func TestKnowledgeSearchPackStageUnits_reason_marks_fallback_only_unit_as_redundant(t *testing.T) {
+	// 来源已有入包单元时保底直回单元不参与深度补深：留痕 reason 必须是
+	// redundant（不是截断）。
+	regular := packEntryFor("s1", 0.9, strings.Repeat("a", 200)) // 50 tokens, broad pass admits
+	fallback := packEntryFor("s1", 0.1, "b")
+	fallback.fallbackOnly = true
+	entries := []*packEntry{regular, fallback}
+	units := assemblePackUnits(entries, 100)
+	if len(units) != 1 {
+		t.Fatalf("units = %d, want only the regular unit admitted", len(units))
+	}
+
+	stages := packStageUnits(entries, units)
+	if got := packStageReasonFor(stages, "s1#0"); !got.Admitted || got.Reason != "" {
+		t.Fatalf("regular unit = %+v, want admitted without reason", got)
+	}
+	// 两个条目成员切片 ID 相同（s1#0），按顺序取第二个（保底）单元。
+	if stages[1].Admitted || stages[1].Reason != RetrievalPackUnitReasonRedundant {
+		t.Fatalf("fallback unit = %+v, want reason redundant", stages[1])
+	}
+}
+
+func TestKnowledgeSearchPackStageUnits_reason_marks_budget_overflow_as_truncated(t *testing.T) {
+	// 预算放不下且无收编关系的单元：留痕 reason 是 truncated。
+	entries := []*packEntry{
+		packEntryFor("s1", 0.9, "a"),                       // 1 token
+		packEntryFor("s2", 0.5, strings.Repeat("a", 8000)), // 2000 tokens, budget 45
+	}
+	units := assemblePackUnits(entries, 45)
+	if len(units) != 1 {
+		t.Fatalf("units = %d, want only s1 admitted", len(units))
+	}
+
+	stages := packStageUnits(entries, units)
+	if got := packStageReasonFor(stages, "s1#0"); !got.Admitted || got.Reason != "" {
+		t.Fatalf("admitted unit = %+v, want no reason", got)
+	}
+	if got := packStageReasonFor(stages, "s2#0"); got.Admitted || got.Reason != RetrievalPackUnitReasonTruncated {
+		t.Fatalf("over-budget unit = %+v, want reason truncated", got)
+	}
+}
+
+func TestPackUnitReason_dead_beats_fallback_only(t *testing.T) {
+	// 同时被同源收编且是保底单元时按收编归因（merged 优先于 redundant，
+	// 与装配期先跳 dead 的跳过顺序一致）。
+	e := packEntryFor("s1", 0.5, "a")
+	e.dead = true
+	e.fallbackOnly = true
+	if got := packUnitReason(e, false, true); got != RetrievalPackUnitReasonMerged {
+		t.Fatalf("packUnitReason(dead+fallbackOnly) = %q, want merged", got)
+	}
+	if got := packUnitReason(e, true, true); got != "" {
+		t.Fatalf("packUnitReason(admitted) = %q, want empty", got)
+	}
+}
+
+func TestPackUnitReason_fallback_only_without_admitted_source_is_truncated(t *testing.T) {
+	// 来源整体被预算丢弃（无任何单元入包）时，保底直回单元与同源其余单元
+	// 同为预算截断，不能标成冗余。
+	e := packEntryFor("s1", 0.5, "a")
+	e.fallbackOnly = true
+	if got := packUnitReason(e, false, false); got != RetrievalPackUnitReasonTruncated {
+		t.Fatalf("packUnitReason(fallbackOnly, source dropped) = %q, want truncated", got)
+	}
+	if got := packUnitReason(e, false, true); got != RetrievalPackUnitReasonRedundant {
+		t.Fatalf("packUnitReason(fallbackOnly, source admitted) = %q, want redundant", got)
+	}
+}
+
+func TestKnowledgeSearchPackStageUnits_dropped_source_fallback_is_truncated_end_to_end(t *testing.T) {
+	// 真实装配路径（packSearchUnits → packLastResortEntry → assemblePackUnits
+	// → packStageUnits）：5 个来源各约 1000 token，预算 4096 只装得下 4 源，
+	// 第 5 源整体被丢弃——其保底直回单元与窗口单元都应归因 truncated；正常
+	// 入包来源的保底单元才是 redundant。
+	store := &recordingSearchStore{lists: map[string][]*VectorDocument{}}
+	hits := make([]*KnowledgeSearchHit, 0, 5)
+	for i := 1; i <= 5; i++ {
+		sourceID := fmt.Sprintf("s%d", i)
+		content := strings.Repeat("a", 4000) // 1000 tokens
+		store.lists[sourceID] = []*VectorDocument{packDoc(sourceID, 0, "", content)}
+		hits = append(hits, &KnowledgeSearchHit{
+			DocumentID: sourceID + "#0",
+			SourceID:   sourceID,
+			SourceName: "name-" + sourceID,
+			ChunkIndex: 0,
+			Score:      1 / float64(i),
+			Content:    content,
+		})
+	}
+	uc := newSearchUsecaseForTest(t, store, &stubEmbedder{dims: 4}, &stubResolver{space: testEmbedderSpace, dim: 4}, defaultSearchLibraries())
+
+	units, stageUnits := uc.packSearchUnits(searchCtx(), hits, testEmbedderSpace, nil)
+	if len(units) != 4 {
+		t.Fatalf("units = %d, want 4 sources within budget", len(units))
+	}
+	admittedSources := map[string]bool{}
+	for _, u := range units {
+		admittedSources[u.SourceID] = true
+	}
+	if !admittedSources["s1"] || admittedSources["s5"] {
+		t.Fatalf("admitted sources = %v, want s1 admitted and s5 dropped", admittedSources)
+	}
+
+	var droppedReasons, admittedFallbackReasons []string
+	for _, u := range stageUnits {
+		switch {
+		case u.SourceID == "s5":
+			droppedReasons = append(droppedReasons, u.Reason)
+		case u.SourceID == "s1" && !u.Admitted:
+			admittedFallbackReasons = append(admittedFallbackReasons, u.Reason)
+		}
+	}
+	// 被丢弃来源的两个单元（窗口 + 保底直回）都必须是 truncated。
+	if !reflect.DeepEqual(droppedReasons, []string{
+		RetrievalPackUnitReasonTruncated,
+		RetrievalPackUnitReasonTruncated,
+	}) {
+		t.Fatalf("dropped source reasons = %v, want both truncated", droppedReasons)
+	}
+	// 正常入包来源的保底直回单元是 redundant。
+	if !reflect.DeepEqual(admittedFallbackReasons, []string{RetrievalPackUnitReasonRedundant}) {
+		t.Fatalf("admitted source fallback reasons = %v, want redundant", admittedFallbackReasons)
 	}
 }
 
