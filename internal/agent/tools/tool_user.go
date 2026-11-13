@@ -42,8 +42,8 @@ func NewUserTools(users *biz.UserUsecase) []tool.Tool {
 	return []tool.Tool{
 		function.NewFunctionTool(usersCurrentUser(users),
 			function.WithName(GetCurrentUserToolName),
-			function.WithDescription("Get the signed-in user's own profile. "+
-				"Takes no arguments."),
+			function.WithDescription("Get the signed-in user's own profile. Takes no arguments. "+
+				`When the user says "query personal information" or "check information", the call is made.`),
 		),
 		function.NewFunctionTool(usersFindByName(users),
 			function.WithName(FindUsersByNameToolName),
