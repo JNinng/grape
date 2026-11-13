@@ -47,7 +47,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/diagnostics.go](pg_sqlc/diagnostics.go) | PostgreSQL 原始压力指标采集（专题见 [diagnostics.md](pg_sqlc/diagnostics.md)） |
 | [pg_sqlc/vector/vector_repo.go](pg_sqlc/vector/vector_repo.go) | 多嵌入空间向量介质的装配探针、metadata 条件翻译与手写参数化 SQL |
 | [pg_sqlc/vector/retrieval_log.go](pg_sqlc/vector/retrieval_log.go) | 检索留痕装饰器与 wire 供给包装 `VectorStoreSupply` |
-| [pg_sqlc/model_call_repo.go](pg_sqlc/model_call_repo.go) | 模型调用留痕仓储（append-only 写入 + 过滤分页读）；场景/状态词表复检是落库前最后把门 |
+| [pg_sqlc/model_call_repo.go](pg_sqlc/model_call_repo.go) | 模型调用留痕仓储（append-only 写入 + 动态 List 读，租户边界由 RLS 承担）；场景/状态词表复检是落库前最后把门 |
 | [pg_sqlc/oss/server.go](pg_sqlc/oss/server.go) | 内嵌 S3 服务的 /s3/ 挂载构造（挂载决策矩阵、外层 SigV4 校验 + 前缀剥离），专题见 [pg_sqlc/oss/README.md](pg_sqlc/oss/README.md) |
 | [pg_sqlc/oss/backend.go](pg_sqlc/oss/backend.go) | gofakes3.Backend 的 PG 实现（oss_object 介质：覆盖写、Range、列举、限流、复制） |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
@@ -82,8 +82,11 @@ SQL 对象的签名、属性与三态返回值见
 Agent 审计仓储 [audit_repo.go](pg_sqlc/audit_repo.go)、检索留痕仓储
 [retrieval_repo.go](pg_sqlc/retrieval_repo.go) 与模型调用留痕仓储
 [model_call_repo.go](pg_sqlc/model_call_repo.go) 只做 append-only 写入与
-分页读；租户边界以 RLS 为主，读侧 WHERE 再带同源租户谓词作应用层兜底，
-RLS 关闭时仍不越租户。Agent 审计的批量写入在同一事务内原子落两表。
+分页读；租户边界以 RLS 为主。Agent 审计与检索留痕走固定命名查询，读侧
+WHERE 再带同源租户谓词作应用层兜底（RLS 关闭时仍不越租户）；模型调用
+留痕的读面走动态查询协议，与 `sys_login_log` / `sys_operation_log`
+同型，租户边界由 RLS 承担、应用层不重复过滤。Agent 审计的批量写入在同一
+事务内原子落两表。
 
 模型调用留痕的写入方是 `biz.ModelCallObserver` 观察面
 （`ModelCallLogUsecase` 实现，wire 绑定为同一实例）：四个模型/类模型调用
@@ -284,7 +287,9 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
 测试按主题覆盖，不逐文件列断言：
 
 - **租户隔离与事务纪律**：未设 `app.tenant_id` 读写全拒、跨租户不可见；
-  审计、检索留痕、模型调用留痕与向量面在 RLS 关闭时仍不越租户。
+  审计、检索留痕与向量面在 RLS 关闭时仍不越租户；模型调用留痕走动态
+  查询协议，租户边界由 RLS 强制（与 `sys_login_log` / `sys_operation_log`
+  同型），集成测试断言跨租户不可见与无身份拒绝。
 - **仓储读写边界**：固定 CRUD 的软删复用、唯一冲突与错误映射
   （NotFound / AlreadyExists / InvalidArgument）；动态 List 的过滤、排序、
   分页，以及 `total` 不随游标漂移。

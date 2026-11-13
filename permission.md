@@ -193,6 +193,12 @@ M ∩ 操作人可见部门集合 ≠ ∅；命中口径
 工具授权手写端点用 `agent:grant:query` / `agent:grant:revoke`；本人授权
 列表与本人吊销不设码（认证身份即凭据），判定收在 `biz.GrantUsecase`。
 
+Agent 域证据面中唯一设功能码的是模型调用留痕的管理查询：页面码
+`agent:model-call` 只做前端导航收敛，List 端点
+（`POST /v1/agent/model-calls/list`）以 `agent:model-call:query` 判定。该表
+按租户不按用户过滤（同租户全量可见），入口以功能码收敛；工具/确认审计与
+检索留痕仍只受认证与租户约束（复现视图按本人会话入口收敛）。
+
 知识库与条目共用 `sys:knowledge:query/create/update/delete`（重建索引并入
 `:update`；前端检索端点 `SearchDocuments` 并入 `:query`；模型选项端点
 `ListModelOptions` 也用 `:query`，避免知识库管理员被迫持有

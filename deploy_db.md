@@ -357,7 +357,7 @@ GRANT CONNECT ON DATABASE <库名> TO grape_u, test_u;
   预期收紧。历史库另需补建子租户计数索引：
   `CREATE INDEX IF NOT EXISTS idx_sys_tenant_parent_id ON public.sys_tenant (parent_id) WHERE deleted_at IS NULL;`
   （新库由 `schema/20_tenant.sql` 携带）。
-- **菜单种子**：历史库按 `seed.Files` 重跑补入缺失权限点（246–249/254–273/274–286，其中 274–286 为知识库与模型管理），
+- **菜单种子**：历史库按 `seed.Files` 重跑补入缺失权限点（246–249/254–273/274–288，其中 274–278 为知识库、279–286 为模型管理、287–288 为模型调用），
   不覆盖既有行；route_path/component 修正需手工 `UPDATE` 或重建库；旧演示
   范围明细（`sys_role_id_scope` 1001）不会被删除。种子补齐前新增权限码返回
   403（超级管理员同样失去这些码），补齐后恢复。

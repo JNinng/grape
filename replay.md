@@ -276,18 +276,21 @@ session_id（会话）
 | `GET /v1/agent/audit/confirmations` | 授权确认审计列表或点查 | session_id 或 confirmation_id；默认 20、上限 200 |
 | `GET /v1/agent/retrieval-logs` | 检索留痕列表 | session_id/source；默认 20、上限 200 |
 | `GET /v1/knowledge/documents/chunks/{chunk_id}` | 按切片 ID 反查分片原文与所属条目摘要（含退役标记；保留期内可反查重摄淘汰的旧行） | chunk_id 为 `<source_id>#<index>#<hash8>`（兼容历史 `<source_id>#<index>`） |
-| `GET /v1/agent/model-calls` | 模型调用留痕列表（复现页「模型调用」面板） | scenario/model_key/status/document_id/created_from/created_to；默认 20、上限 200 |
+| `POST /v1/agent/model-calls/list` | 模型调用留痕列表（系统设置「模型调用」管理页） | 动态查询协议：字段/操作符/排序/投影/分页由 `agent_model_call_log` 的列注释 DSL 声明（时间倒序缺省，默认 20、上限 200） |
 | `GET /metrics` | 运行指标 | 链外免认证、只读 |
 
 - 业务与复现端点都在 Kratos 中间件链内，缺令牌 401；参数非法 400，审计
   点查未命中或跨租户 404（不区分存在性），存储故障 500 固定文案。
 - 会话列表、事件窗口与历史快照按 userKey 归属过滤，跨用户不可见。
-- 工具/确认审计、检索留痕与模型调用留痕的查询面边界是认证 + 租户：仓储
-  经 IdentityTx 注入 `app.tenant_id`，RLS 与应用层租户谓词双重强制；它们
-  **按租户不按用户**过滤。前端只提供本人会话入口，但同租户内已认证用户若
-  持有会话 ID，可经 API 读取该会话的证据行（模型调用留痕无会话过滤项，
-  同租户全量可见）。需要用户级最小权限时，应在网关或部署层收口，或扩展
-  端点权限码与用户过滤，不要把当前边界当作按用户隔离。
+- 工具/确认审计与检索留痕的查询面边界是认证 + 租户：仓储经 IdentityTx
+  注入 `app.tenant_id`，RLS 与应用层租户谓词双重强制。模型调用留痕走
+  动态查询协议（与 `sys_login_log` / `sys_operation_log` 同型），租户边界
+  由 RLS 强制、应用层不重复过滤。各证据面都**按租户不按用户**过滤：复现
+  视图只提供本人会话入口，但同租户内已认证用户若持有会话 ID，可经 API
+  读取该会话的证据行；模型调用留痕无会话过滤项，同租户全量可见，入口以
+  `agent:model-call:query` 功能码收敛（页面在系统设置）。需要用户级最小
+  权限时，应在网关或部署层收口，或扩展端点权限码与用户过滤，不要把当前
+  边界当作按用户隔离。
 - 响应是落库时已脱敏的形态，端点不二次脱敏、不回传原文；原文只在会话
   事件面（历史快照与事件窗口）可见。
 - 留痕面与原文反查看两面权限：留痕查询（`retrieval-logs` 等）只要认证

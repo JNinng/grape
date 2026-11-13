@@ -46,7 +46,7 @@ DTO ↔ DO 转换与 `query.v1` → `dynq.Query` 协议转换，然后委托 [bi
 | [agent_event_window.go](agent_event_window.go) | `AgentEventWindowService`：会话事件窗口手写路由注册面，按 threadId + eventId 取锚点窗口（before/after 各上限 50）、跨用户 404；与会话列表同序，先于前缀通配。 |
 | [agent_audit.go](agent_audit.go) | `AgentAuditService`：工具调用与授权确认审计查询（列表/点查互斥，默认 20、上限 200；摘要为落库时已脱敏形态）。 |
 | [agent_retrieval.go](agent_retrieval.go) | `AgentRetrievalService`：检索留痕查询（会话/来源过滤，默认 20、上限 200），证据字段（含 `stages` 阶段时间线）按落库形态透传。 |
-| [agent_model_call.go](agent_model_call.go) | `AgentModelCallService`：模型调用留痕查询（场景/模型键/状态/文档/时间范围过滤，默认 20、上限 200），摘要与错误按落库形态透传。 |
+| [agent_model_call.go](agent_model_call.go) | `AgentModelCallService`：模型调用留痕只读查询（生成端点 `POST /v1/agent/model-calls/list`，走 query.v1 动态查询协议）；摘要与错误按落库形态透传，未上报的 token/文档 ID/耗时以字段缺省表示。 |
 | [knowledge.go](knowledge.go) | `KnowledgeService` 同时实现 `LibraryService` 与 `DocumentService`：库/条目 DTO 与动态 List、库内固定分页、模型选项与重建索引；`SearchDocuments` 委托知识检索用例，设施未启用映射 503 `SEARCH_UNAVAILABLE`，其余执行故障固定文案 500 `SEARCH_FAILED`、细节只进服务端日志；`ListDocumentChunks` 返回条目实际分片，`GetDocumentChunk` 按切片 ID 反查分片原文与所属条目摘要（含重摄退役标记；同类映射：503 `DOCUMENT_CHUNKS_UNAVAILABLE`、500 `DOCUMENT_CHUNKS_FAILED`）。 |
 | [knowledge_file.go](knowledge_file.go) | 文件上传手写路由（POST /v1/knowledge/documents/upload，multipart）：表单字段名与 protojson 命名一致，标题缺省取文件名去扩展名；请求体经 MaxBytesReader 限流（单文件 20MB + 编码开销）；响应以 protojson 渲染 Document、错误沿 Kratos 错误编码出口（识别拒绝即 `FILE_TYPE_UNSUPPORTED`），操作名即路径模板（认证与 `sys:knowledge:create` 生效）。 |
 | [model.go](model.go) | `ModelService`：模型目录租户 CRUD 与平台 super 写面；密钥只写不读，响应只回 `hasApiKey`。 |
