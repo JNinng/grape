@@ -87,7 +87,7 @@ func (r *modelResolver) ResolveTextModel(ctx context.Context) (biz.TextModelSpec
 	if err != nil {
 		return biz.TextModelSpec{}, err
 	}
-	key, err := r.selectedKey(ctx, auth, biz.ConfigKeyTextModel, "")
+	key, err := r.resolveModelKey(ctx, auth, biz.ConfigKeyTextModel)
 	if err != nil {
 		return biz.TextModelSpec{}, err
 	}
@@ -142,7 +142,7 @@ func (r *modelResolver) ResolveRerankModel(ctx context.Context) (biz.RerankModel
 	if err != nil {
 		return biz.RerankModelSpec{}, err
 	}
-	key, err := r.selectedKey(ctx, auth, biz.ConfigKeyRerankModel, "")
+	key, err := r.resolveModelKey(ctx, auth, biz.ConfigKeyRerankModel)
 	if err != nil {
 		return biz.RerankModelSpec{}, err
 	}
@@ -174,7 +174,7 @@ func (r *modelResolver) ResolveRerankModel(ctx context.Context) (biz.RerankModel
 }
 
 // ResolveDefaultEmbedder 解析当前身份的默认嵌入空间：租户配置
-// ai.embedding.model（兼容旧键 vector.embedder）> 全局配置 > conf 默认。
+// ai.embedding.model > 全局配置 > conf 默认。
 func (r *modelResolver) ResolveDefaultEmbedder(ctx context.Context) (string, int, error) {
 	if !r.vectorEnabled {
 		return "", 0, biz.ErrEmbedderDisabled
@@ -183,7 +183,7 @@ func (r *modelResolver) ResolveDefaultEmbedder(ctx context.Context) (string, int
 	if err != nil {
 		return "", 0, err
 	}
-	key, err := r.selectedKey(ctx, auth, biz.ConfigKeyEmbeddingModel, biz.ConfigKeyEmbedderLegacy)
+	key, err := r.resolveModelKey(ctx, auth, biz.ConfigKeyEmbeddingModel)
 	if err != nil {
 		return "", 0, err
 	}
@@ -264,20 +264,14 @@ func (r *modelResolver) resolveSpace(ctx context.Context, auth Identity, key str
 	}, nil
 }
 
-// selectedKey 选键：租户配置（主键优先、兼容旧键次之）> 全局配置。空值
-// 视为未配置；返回空串表示由调用方回落 conf 默认。
-func (r *modelResolver) selectedKey(ctx context.Context, auth Identity, key, legacyKey string) (string, error) {
+// resolveModelKey 按配置键解析生效的模型键值：租户配置 > 全局配置。
+// 空值视为未配置；返回空串表示由调用方回落 conf 默认。
+func (r *modelResolver) resolveModelKey(ctx context.Context, auth Identity, key string) (string, error) {
 	var tenantValue, globalValue string
 	err := r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
 		v, err := configValueOf(ctx, s, key)
 		if err != nil {
 			return err
-		}
-		if v == "" && legacyKey != "" {
-			v, err = configValueOf(ctx, s, legacyKey)
-			if err != nil {
-				return err
-			}
 		}
 		tenantValue = v
 		g, err := s.Q().GetSysConfigValueByKey(ctx, key)

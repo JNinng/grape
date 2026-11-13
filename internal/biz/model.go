@@ -24,13 +24,11 @@ var (
 )
 
 // 模型目录的配置键（sys_config / sys_tenant_config 的 config_key）与类别
-// 枚举。全局默认配置与租户覆盖共用同名键；旧键 vector.embedder 作为
-// ai.embedding.model 的别名保留兼容。
+// 枚举。全局默认配置与租户覆盖共用同名键。
 const (
 	ConfigKeyTextModel      = "ai.text.model"
 	ConfigKeyEmbeddingModel = "ai.embedding.model"
 	ConfigKeyRerankModel    = "ai.rerank.model"
-	ConfigKeyEmbedderLegacy = "vector.embedder"
 
 	ModelKindText      = "text"
 	ModelKindEmbedding = "embedding"

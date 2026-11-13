@@ -114,9 +114,8 @@ reranker→rerank；docparse 无回落放弃该行），不伪造其他值。向
 [config_repo.go](pg_sqlc/config_repo.go) 的模型目录解析器同时实现
 `biz.TextModelCatalog` 与 `biz.EmbedderResolver`：
 
-- 选键：租户配置（`ai.text.model` / `ai.embedding.model`，兼容旧键
-  `vector.embedder`）> 全局 `sys_config` 同名键 > conf（`agent.llm.model` /
-  `vector.default_embedder`）。
+- 选键：租户配置（`ai.text.model` / `ai.embedding.model`）> 全局
+  `sys_config` 同名键 > conf（`agent.llm.model` / `vector.default_embedder`）。
 - 找端点：`sys_model` 当前租户行 > 平台行 > conf 对应条目；停用、软删与
   未知键一律 fail-closed，不静默回落。
 - 密钥：`api_key_cipher` 优先经 [secret_cipher.go](pg_sqlc/secret_cipher.go)

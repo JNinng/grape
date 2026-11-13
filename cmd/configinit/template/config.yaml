@@ -137,7 +137,7 @@ vector:
   # 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
   # 留空取默认 agent_document。
   table_name: agent_document
-  # 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 vector.embedder
+  # 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 ai.embedding.model
   # 键）时的兜底，必须引用下方 embedders 已声明的键。
   default_embedder: ${VECTOR_EMBEDDING_MODEL:qwen3-embedding:0.6b}
   # embedders：嵌入空间清单（≥1 条）。空间键 = model（version 留空）或

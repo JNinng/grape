@@ -48,7 +48,7 @@ VALUES (8, 1, '默认文本模型', 'ai.text.model', 'deepseek-flash', 'string',
 INSERT INTO public.sys_config (id, status, "name", config_key, value, value_type, remark, created_by, created_at,
                                updated_by, updated_at, deleted_at)
 VALUES (9, 1, '默认嵌入模型', 'ai.embedding.model', 'qwen3-embedding:0.6b', 'string',
-        '全局默认嵌入模型 model_key；租户配置同名键（兼容旧键 vector.embedder）优先，键须指向可见的 embedding 模型或 conf.vector.embedders', 1,
+        '全局默认嵌入模型 model_key；租户配置同名键优先，键须指向可见的 embedding 模型或 conf.vector.embedders', 1,
         '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL) ON CONFLICT DO NOTHING;
 
 -- 内嵌 OSS（gofakes3）端点事实，value_type=json（值为 JSON 字面量）。

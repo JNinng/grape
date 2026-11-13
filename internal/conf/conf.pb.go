@@ -525,7 +525,7 @@ type Vector struct {
 	// 向量表名（agent schema 内、agent_ 前缀），必须与部署 DDL 一致；
 	// 留空取默认 agent_document。
 	TableName string `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
-	// 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 vector.embedder
+	// 全局默认嵌入空间键：租户未配置（sys_tenant_config 的 ai.embedding.model
 	// 键）时的兜底。必须引用 embedders 中已声明的键，装配期校验，未知键
 	// 拒绝启动。启用时必填。
 	DefaultEmbedder string `protobuf:"bytes,3,opt,name=default_embedder,json=defaultEmbedder,proto3" json:"default_embedder,omitempty"`

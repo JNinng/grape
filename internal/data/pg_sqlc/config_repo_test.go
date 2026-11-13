@@ -32,7 +32,7 @@ func resolverTestConf() *conf.Vector {
 // 值（平台 sys_model 行同名键）：租户未配置时的全局配置默认。
 const seededGlobalEmbedder = "qwen3-embedding:0.6b"
 
-// seedTenantEmbedder 写入（或清除）租户的 vector.embedder 配置行：经
+// seedTenantEmbedder 写入（或清除）租户的 ai.embedding.model 配置行：经
 // IdentityTx 落库（RLS FORCE 下与生产写入同路径）。
 func seedTenantEmbedder(t *testing.T, d *Data, tenantID, value string) {
 	t.Helper()
@@ -43,12 +43,12 @@ func seedTenantEmbedder(t *testing.T, d *Data, tenantID, value string) {
 	err = d.IdentityTx(context.Background(), auth, func(s *IdentityTx) error {
 		if value == "" {
 			_, err := s.Tx().Exec(context.Background(),
-				`DELETE FROM public.sys_tenant_config WHERE config_key = 'vector.embedder'`)
+				`DELETE FROM public.sys_tenant_config WHERE config_key = 'ai.embedding.model'`)
 			return err
 		}
 		_, err := s.Tx().Exec(context.Background(),
 			`INSERT INTO public.sys_tenant_config (id, status, name, config_key, value, value_type, tenant_id, created_by, updated_by)
-VALUES (990001, 1, 'default embedder', 'vector.embedder', $1, 'string', current_setting('app.tenant_id'), 1, 1)
+VALUES (990001, 1, 'default embedder', 'ai.embedding.model', $1, 'string', current_setting('app.tenant_id'), 1, 1)
 ON CONFLICT (tenant_id, config_key) WHERE deleted_at IS NULL
 DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`, value)
 		return err
@@ -152,7 +152,7 @@ func seedRawTenantEmbedder(t *testing.T, d *Data, tenantID, value string, status
 	}
 	seedSQL := fmt.Sprintf(`INSERT INTO public.sys_tenant_config
 (id, status, name, config_key, value, value_type, tenant_id, created_by, updated_by, deleted_at)
-VALUES (%[1]d, %[2]d, 'raw embedder row', 'vector.embedder', $1, 'string',
+VALUES (%[1]d, %[2]d, 'raw embedder row', 'ai.embedding.model', $1, 'string',
         current_setting('app.tenant_id'), 1, 1, %[3]s)`, id, status, deletedAt)
 	err = d.IdentityTx(context.Background(), auth, func(s *IdentityTx) error {
 		_, err := s.Tx().Exec(context.Background(), seedSQL, value)
@@ -213,7 +213,7 @@ func TestEmbedderResolver_tenant_config_update_via_repo_takes_effect(t *testing.
 	v2 := "bge-m3@v2"
 	created, err := repo.Create(context.Background(), auth, &biz.TenantConfig{
 		Status: biz.ConfigStatusEnabled, Name: "default embedder",
-		ConfigKey: biz.ConfigKeyEmbedderLegacy, Value: &v2, ValueType: "string",
+		ConfigKey: biz.ConfigKeyEmbeddingModel, Value: &v2, ValueType: "string",
 	})
 	if err != nil {
 		t.Fatalf("create embedder tenant config via repo: %v", err)
