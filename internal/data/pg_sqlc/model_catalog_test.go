@@ -49,6 +49,35 @@ func modelCatalogTestResolver(t *testing.T, d *Data, cipher biz.SecretCipher) *m
 	return r
 }
 
+// seedTextModelFixture 把全局默认文本模型指向用例自建的平台行。种子行
+// 携带环境侧密钥密文，测试用的随机材料无法解开，故不依赖种子默认值。
+func seedTextModelFixture(t *testing.T, d *Data, auth biz.Identity) {
+	t.Helper()
+	ctx := biz.WithIdentity(context.Background(), auth)
+	const modelKey = "test-text"
+	if _, err := NewModelRepo(d).CreateModelPlatform(ctx, auth, &biz.ModelCfg{
+		Status:   1,
+		Kind:     biz.ModelKindText,
+		Name:     "Test Text",
+		ModelKey: modelKey,
+		Provider: "openai",
+		BaseURL:  ptrString("http://test"),
+		Model:    modelKey,
+	}, ""); err != nil {
+		t.Fatalf("create platform text model: %v", err)
+	}
+	configs := NewConfigRepo(d)
+	cfg, err := configs.Get(ctx, auth, 8) // 种子 070 的 ai.text.model 行。
+	if err != nil {
+		t.Fatalf("get global text model config: %v", err)
+	}
+	value := modelKey
+	cfg.Value = &value
+	if _, err := configs.UpdateSuper(ctx, auth, cfg); err != nil {
+		t.Fatalf("point global text model at fixture: %v", err)
+	}
+}
+
 func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	d := setupTestDB(t)
 	cipher := modelCatalogTestCipher(t)
@@ -58,14 +87,15 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	authB := biz.Identity{TenantID: "t-test-02", UserID: 1}
 	ctxA := biz.WithIdentity(context.Background(), authA)
 	ctxB := biz.WithIdentity(context.Background(), authB)
+	seedTextModelFixture(t, d, authA)
 
-	// 平台文本模型（种子 qwen3:8b）对两个租户都可见。
+	// 平台文本模型（用例自建行）对两个租户都可见。
 	specB, err := resolver.ResolveTextModel(ctxB)
 	if err != nil {
 		t.Fatalf("resolve text model for tenant B: %v", err)
 	}
-	if specB.Model != "qwen3:8b" || specB.BaseURL != "http://127.0.0.1:11434/v1" {
-		t.Fatalf("tenant B spec = %+v, want the seeded platform row", specB)
+	if specB.Model != "test-text" || specB.BaseURL != "http://test" {
+		t.Fatalf("tenant B spec = %+v, want the fixture platform row", specB)
 	}
 
 	// 租户 A 建同名键的租户行并加密密钥：A 解析到租户行，B 仍解析平台行。
@@ -77,11 +107,11 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	created, err := repo.CreateModel(context.Background(), authA, &biz.ModelCfg{
 		Status:   1,
 		Kind:     biz.ModelKindText,
-		Name:     "Tenant Qwen",
-		ModelKey: "qwen3:8b",
+		Name:     "Tenant Text",
+		ModelKey: "test-text",
 		Provider: "openai",
 		BaseURL:  ptrString("http://tenant"),
-		Model:    "tenant-qwen",
+		Model:    "tenant-text",
 	}, encrypted)
 	if err != nil {
 		t.Fatalf("create tenant model: %v", err)
@@ -97,7 +127,7 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve text model for tenant A: %v", err)
 	}
-	if specA.Model != "tenant-qwen" || specA.APIKey != "tenant-secret" || specA.BaseURL != "http://tenant" {
+	if specA.Model != "tenant-text" || specA.APIKey != "tenant-secret" || specA.BaseURL != "http://tenant" {
 		t.Fatalf("tenant A spec = %+v, want tenant override with decrypted key", specA)
 	}
 
@@ -105,7 +135,7 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve text model for tenant B after override: %v", err)
 	}
-	if specB.Model != "qwen3:8b" || specB.APIKey != "" {
+	if specB.Model != "test-text" || specB.APIKey != "" {
 		t.Fatalf("tenant B spec = %+v, want platform row untouched", specB)
 	}
 }
@@ -116,16 +146,17 @@ func TestModelCatalog_disabled_or_deleted_selection_fails_closed(t *testing.T) {
 	resolver := modelCatalogTestResolver(t, d, cipher)
 	authA := biz.Identity{TenantID: "t-test-01", UserID: 1}
 	ctxA := biz.WithIdentity(context.Background(), authA)
+	seedTextModelFixture(t, d, authA)
 	repo := NewModelRepo(d)
 
 	created, err := repo.CreateModel(context.Background(), authA, &biz.ModelCfg{
 		Status:   1,
 		Kind:     biz.ModelKindText,
-		Name:     "Tenant Qwen",
-		ModelKey: "qwen3:8b",
+		Name:     "Tenant Text",
+		ModelKey: "test-text",
 		Provider: "openai",
 		BaseURL:  ptrString("http://tenant"),
-		Model:    "tenant-qwen",
+		Model:    "tenant-text",
 	}, "")
 	if err != nil {
 		t.Fatalf("create tenant model: %v", err)
@@ -146,7 +177,7 @@ func TestModelCatalog_disabled_or_deleted_selection_fails_closed(t *testing.T) {
 		t.Fatalf("delete tenant model: %v", err)
 	}
 	spec, err := resolver.ResolveTextModel(ctxA)
-	if err != nil || spec.Model != "qwen3:8b" {
+	if err != nil || spec.Model != "test-text" {
 		t.Fatalf("resolve after delete = (%+v, %v), want platform row", spec, err)
 	}
 }
