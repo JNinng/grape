@@ -3,7 +3,7 @@
 // 并补齐 CONNECT 授权（集成测试经 TestDeployFiles 追加测试种子）。
 //
 // 敏感口令建议经 GRAPE_DEPLOY_* 环境变量提供，避免进入 shell 历史；参数
-// 解析见 ParseOptions，部署顺序、幂等边界与升级步骤见仓库根 deploy_db.md。
+// 解析见 ParseOptions，部署顺序与幂等边界见仓库根 deploy_db.md。
 package main
 
 import (

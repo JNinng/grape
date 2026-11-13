@@ -2,7 +2,7 @@
 
 grape 单二进制（Go 后端 + 内嵌前端 SPA）的生产化部署与运维口径：多实例
 粘性、SSE 超时治理、优雅停机、保留期与归档、密钥管理、框架升级检查单。
-数据库部署与升级步骤见 [deploy_db.md](deploy_db.md)，权限模型见
+数据库部署见 [deploy_db.md](deploy_db.md)，权限模型见
 [permission.md](permission.md)，复现取证见 [replay.md](replay.md)，本文不
 重复。
 
@@ -73,7 +73,7 @@ go build -o grape ./cmd/server
 - 执行顺序的单一事实源是
   [deploy.go](internal/data/pg_sqlc/deploy/deploy.go) 的 `DeployFiles`
   清单（38 个文件），一键部署 `make dbdeploy`（单事务、失败整体回滚）；
-  手工顺序与升级步骤见 [deploy_db.md](deploy_db.md)。
+  手工顺序见 [deploy_db.md](deploy_db.md)。
 - 角色拆分（[role.sql](internal/data/pg_sqlc/sqlc/role.sql)）：`grape_u`
   供应用运行连接（非超级用户，真实承受 RLS），`test_u` 供演示/验收。口令
   以 `{{GRAPE_U_PASSWORD}}` / `{{TEST_U_PASSWORD}}` 占位，dbdeploy 执行前
@@ -103,7 +103,7 @@ go build -o grape ./cmd/server
 [internal/data/pg_sqlc/oss/README.md](internal/data/pg_sqlc/oss/README.md)。
 
 - **启用步骤**：1) 按 deploy_db.md 部署（`schema/93_oss.sql` 已入清单，
-  历史库按其「升级」节补建表）；2) 经管理端（平台根租户）配置
+  历史库需按该文件补建表，或全量重建库）；2) 经管理端（平台根租户）配置
   `oss.access_key` / `oss.secret_key`（明文口径见 permission.md「明文
   密钥的存储口径」，种子不含、缺失时装配期拒绝启动）——provider /
   endpoint / bucket / region 已随种子给出缺省；3) 打开 `oss.enabled`

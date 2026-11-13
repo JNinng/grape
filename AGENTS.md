@@ -91,7 +91,7 @@ DO 贯穿全程禁止中途换形。各层允许的 import 方向与新增资源
   功能权限码）、super 双语义、读写形态与错误语义
 - [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md)
   — SQL 对象索引与 schema 注释 DSL（函数签名/属性/三态返回值/受控写口径）
-- [deploy_db.md](deploy_db.md) — 数据库部署执行顺序与升级注意事项
+- [deploy_db.md](deploy_db.md) — 数据库部署执行顺序与幂等边界
 
 ## 按需选读
 

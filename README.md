@@ -26,7 +26,7 @@ RBAC 数据权限体系与 Agent 运行时适配（trpc-agent-go / ack），前�
 | 分层规则、依赖方向、手写端点归属、新增资源速查 | [internal/README.md](internal/README.md) |
 | 权限体系：租户边界 / 行级数据范围 / 功能权限码、读写形态、错误语义 | [permission.md](permission.md) |
 | SQL 对象索引与 schema 注释 DSL | [internal/data/pg_sqlc/sqlc/README.md](internal/data/pg_sqlc/sqlc/README.md) |
-| 数据库部署执行顺序与升级 | [deploy_db.md](deploy_db.md) |
+| 数据库部署执行顺序与幂等边界 | [deploy_db.md](deploy_db.md) |
 | 生产运维：SSE/超时、粘性、优雅停机、保留期、升级检查单 | [operations.md](operations.md) |
 | Agent 审计证据面、关联键与复现流程 | [replay.md](replay.md) |
 | 各层实现说明 | `internal/<层>/README.md`（见 [目录职责](internal/README.md#目录职责)） |

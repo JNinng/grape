@@ -5,7 +5,7 @@
 [internal/cmd/](../internal/cmd/README.md)，本目录只留分发与装配）；
 `dbdeploy` 是独立的数据库部署工具。入口目录只做装配与入口参数处理，
 业务实现收敛在 [internal/](../internal/README.md)。命令之间共享的事实
-（SQL 部署顺序、升级步骤、分层流向）不在本目录复述，按文末链接取用。
+（SQL 部署顺序、分层流向）不在本目录复述，按文末链接取用。
 
 ## 关键约束
 
@@ -63,8 +63,8 @@
   `make secretctl ARGS="keygen AES-256-GCM"` 生成登记表材料。密钥只写
   stdout，不落日志、不写文件；未知算法标识报错退出且不输出密钥。
 - 构建信息：`make version`，或 `go run ./cmd/server version`。
-- 数据库部署：`make dbdeploy ARGS="--database <库名>"`。执行顺序、
-  幂等边界与升级步骤见 [deploy_db.md](../deploy_db.md)。
+- 数据库部署：`make dbdeploy ARGS="--database <库名>"`。执行顺序与
+  幂等边界见 [deploy_db.md](../deploy_db.md)。
 
 ## 测试
 
