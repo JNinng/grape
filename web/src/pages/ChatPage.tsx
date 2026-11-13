@@ -34,6 +34,7 @@ import { getUser } from '../auth/store'
 import { GrapeMark } from '../ui/icons'
 import { ConfirmationCard } from './chat/ConfirmationCard'
 import { MessageList } from './chat/MessageList'
+import { QuestionNavigator } from './chat/QuestionNavigator'
 import { ThinkingPicker } from './chat/ThinkingPicker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -335,6 +336,24 @@ export function ChatPage() {
     }
   }
 
+  // jumpToQuestion 按用户消息 id 定位并平滑滚到该提问上沿：滚动由
+  // scrollIntoView 在滚动区内完成，滚动事件随后把贴底跟随判定为 false，
+  // 后续流式增量不会把读者拉回底部；系统开启减弱动效时退化为即时定位。
+  const jumpToQuestion = (messageId: string) => {
+    const container = scrollRef.current
+    if (container === null) {
+      return
+    }
+    const target = container.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
+    if (target === null) {
+      return
+    }
+    const reduceMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    target.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' })
+  }
+
   const handleNewThread = () => {
     setThreadId(newId('thread'))
   }
@@ -505,44 +524,48 @@ export function ChatPage() {
           </ol>
         )}
 
-        {/* overflow-y-scroll + 全局 thin 滚动条：轨道常驻，避免内容越过
-            视口高度时滚动条出现挤动消息宽度。onScroll 只更新「是否停在
-            底部」，供贴底跟随判定。 */}
-        <div
-          ref={scrollRef}
-          data-testid="chat-scroll"
-          onScroll={(event) => {
-            const el = event.currentTarget
-            stickToBottomRef.current =
-              el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_BOTTOM_THRESHOLD_PX
-          }}
-          className="min-h-0 flex-1 overflow-y-scroll"
-        >
-          <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
-            {/* 待确认时运行挂起等人决定，不呈现「正在思考」：载入提示只
-                表示模型侧仍在处理。 */}
-            <MessageList items={chat.items} running={chat.running && chat.confirmations.length === 0} />
-            {chat.confirmations.map((confirmation) => (
-              <ConfirmationCard
-                key={confirmation.confirmationId}
-                confirmation={confirmation}
-                threadId={threadId}
-                onDecided={(id) => {
-                  setChat((s) => ({
-                    ...s,
-                    confirmations: s.confirmations.filter((c) => c.confirmationId !== id),
-                  }))
-                  void refreshPending(threadId)
-                  // 决定成功与 404 已失效共用此回调：卡片移除后重拉历史
-                  // 快照，收敛续跑产物（另一端决定同路径生效）。
-                  convergeHistoryAfterDecision(threadId)
-                }}
-                onFailed={(_id, message) => {
-                  setChat((s) => ({ ...s, error: `确认提交失败：${message}` }))
-                }}
-              />
-            ))}
+        {/* 滚动区与提问导航同处一个定位容器：导航固定在右侧中部，不随
+            消息滚动。overflow-y-scroll + 全局 thin 滚动条：轨道常驻，避免
+            内容越过视口高度时滚动条出现挤动消息宽度。onScroll 只更新
+            「是否停在底部」，供贴底跟随判定。 */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scrollRef}
+            data-testid="chat-scroll"
+            onScroll={(event) => {
+              const el = event.currentTarget
+              stickToBottomRef.current =
+                el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_BOTTOM_THRESHOLD_PX
+            }}
+            className="min-h-0 flex-1 overflow-y-scroll"
+          >
+            <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
+              {/* 待确认时运行挂起等人决定，不呈现「正在思考」：载入提示只
+                  表示模型侧仍在处理。 */}
+              <MessageList items={chat.items} running={chat.running && chat.confirmations.length === 0} />
+              {chat.confirmations.map((confirmation) => (
+                <ConfirmationCard
+                  key={confirmation.confirmationId}
+                  confirmation={confirmation}
+                  threadId={threadId}
+                  onDecided={(id) => {
+                    setChat((s) => ({
+                      ...s,
+                      confirmations: s.confirmations.filter((c) => c.confirmationId !== id),
+                    }))
+                    void refreshPending(threadId)
+                    // 决定成功与 404 已失效共用此回调：卡片移除后重拉历史
+                    // 快照，收敛续跑产物（另一端决定同路径生效）。
+                    convergeHistoryAfterDecision(threadId)
+                  }}
+                  onFailed={(_id, message) => {
+                    setChat((s) => ({ ...s, error: `确认提交失败：${message}` }))
+                  }}
+                />
+              ))}
+            </div>
           </div>
+          <QuestionNavigator items={chat.items} onJump={jumpToQuestion} />
         </div>
 
         <form

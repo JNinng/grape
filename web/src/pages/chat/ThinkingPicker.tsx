@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react'
 import { BrainIcon, CheckIcon } from 'lucide-react'
 import {
   Popover,
@@ -10,9 +9,7 @@ import {
   thinkingLevelLabel,
   type ThinkingLevel,
 } from '../../agui/thinking'
-
-// 关闭延迟：指针在触发器与弹框之间移动时留出缓冲，避免闪烁。
-const CLOSE_DELAY_MS = 120
+import { useHoverPopover } from './useHoverPopover'
 
 // ThinkingPicker 是输入框左侧的思考强度控件：触发器只呈现图标与当前档位
 // 文字，悬浮（或聚焦后点开）弹出档位单选；选择即生效并关闭弹框。运行中
@@ -26,28 +23,7 @@ export function ThinkingPicker({
   onChange: (level: ThinkingLevel) => void
   disabled?: boolean
 }) {
-  const [open, setOpen] = useState(false)
-  const closeTimer = useRef<number | null>(null)
-
-  const cancelClose = () => {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current)
-      closeTimer.current = null
-    }
-  }
-
-  const scheduleClose = () => {
-    cancelClose()
-    closeTimer.current = window.setTimeout(() => setOpen(false), CLOSE_DELAY_MS)
-  }
-
-  useEffect(() => {
-    return () => {
-      if (closeTimer.current !== null) {
-        window.clearTimeout(closeTimer.current)
-      }
-    }
-  }, [])
+  const { open, setOpen, cancelClose, scheduleClose } = useHoverPopover()
 
   const choose = (level: ThinkingLevel) => {
     onChange(level)

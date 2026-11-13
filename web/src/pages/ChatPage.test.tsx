@@ -293,6 +293,57 @@ describe('ChatPage message scrolling', () => {
   })
 })
 
+describe('ChatPage question navigation', () => {
+  it('scrolls_to_the_selected_question_from_the_right_rail', async () => {
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'u-1', role: 'user', content: '第一个问题' },
+      { kind: 'message', id: 'a-1', role: 'assistant', content: '第一答' },
+      { kind: 'message', id: 'u-2', role: 'user', content: '第二个问题' },
+    ])
+    const user = userEvent.setup()
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView')
+    renderChat()
+    await screen.findByText('第二个问题')
+
+    await user.hover(screen.getByRole('button', { name: '跳转到提问 2' }))
+    await user.click(await screen.findByRole('button', { name: '第二个问题' }))
+
+    const target = document.querySelector('[data-message-id="u-2"]')
+    expect(target).not.toBeNull()
+    expect(scrollSpy.mock.instances).toContain(target)
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' })
+    scrollSpy.mockRestore()
+  })
+
+  it('jumps_without_animation_when_reduced_motion_is_requested', async () => {
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'u-1', role: 'user', content: '第一个问题' },
+      { kind: 'message', id: 'a-1', role: 'assistant', content: '第一答' },
+    ])
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+      media: '(prefers-reduced-motion: reduce)',
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    } as MediaQueryList)
+    const user = userEvent.setup()
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView')
+    renderChat()
+    await screen.findByText('第一个问题')
+
+    await user.hover(screen.getByRole('button', { name: '跳转到提问 1' }))
+    await user.click(await screen.findByRole('button', { name: '第一个问题' }))
+
+    expect(scrollSpy).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
+    scrollSpy.mockRestore()
+    matchMedia.mockRestore()
+  })
+})
+
 describe('ChatPage thinking intensity', () => {
   it('selects_the_intensity_from_the_hover_popover_and_sends_it_with_each_run', async () => {
     const user = userEvent.setup()

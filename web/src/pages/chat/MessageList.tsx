@@ -46,11 +46,16 @@ function MessageBubble({ item, className = 'max-w-[85%]' }: { item: MessageItem;
 }
 
 // MessageTurn 是带角色标签的单项消息（用户 / 系统）：标签在气泡上方，
-// 用户消息右对齐。
+// 用户消息右对齐。data-message-id 供提问导航按 id 定位滚动；scroll-mt-6
+// 让 scrollIntoView 停在气泡上沿时留出呼吸空间。
 function MessageTurn({ item }: { item: MessageItem }) {
   const isUser = item.role === 'user'
   return (
-    <article data-role={item.role} className={isUser ? 'flex flex-col items-end' : 'flex flex-col items-start'}>
+    <article
+      data-role={item.role}
+      data-message-id={item.id}
+      className={`scroll-mt-6 ${isUser ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}
+    >
       <span className="mb-1 px-1 text-xs text-muted-foreground">{roleLabel(item.role)}</span>
       <MessageBubble item={item} />
     </article>
