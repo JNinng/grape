@@ -323,7 +323,7 @@ export function DataTable<T>({
   const totalNum = total !== undefined ? Number(total) : undefined
   const canPrev = page > 1 && !loading
   const canNext = hasMore && !loading
-  // summary 是底栏左侧的总量文案；页码紧挨分页按钮展示在右侧。
+  // summary 是底栏左侧的总量文案。
   const summary =
     totalNum !== undefined
       ? `共 ${totalNum} 条`

@@ -360,11 +360,9 @@ func modelCallFilterOf(filter *ModelCallFilter) (*ModelCallFilter, error) {
 	return f, nil
 }
 
-// 留痕的 ctx 事实载体：场景与作用文档在调用现场（biz 用例）声明后经
-// ctx 传入能力目录的观察面——场景由最了解调用语义的调用方声明，能力
-// 目录只承载事实；文档 ID 在 kb_document 行上下文里已知（摄取与解析
-// 链路），管线直调（无 kb 行）缺失为 NULL，不伪造。空白/零值不注入
-// （缺失如实留空，与检索留痕载体同一纪律）。
+// 留痕的 ctx 事实载体：场景与作用文档在调用现场（biz 用例）声明后经 ctx
+// 传入能力目录的观察面——场景由最了解调用语义的调用方声明。空白/零值
+// 不注入（缺失如实留空，不伪造）。
 
 type modelCallSceneKey struct{}
 

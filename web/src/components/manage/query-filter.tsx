@@ -86,8 +86,6 @@ function opNeedsValue(op: QueryOp): boolean {
   return op !== 'is_null' && op !== 'not_null'
 }
 
-// opRenderable 过滤 API-only 操作符：操作符下拉状态 = ops 中除
-// is_null/not_null 的全部 op。
 function opRenderable(op: QueryOp): boolean {
   return opNeedsValue(op)
 }
@@ -553,7 +551,6 @@ export function QueryFilter({ fields, value, onChange, onSearch, ariaLabel = '�
           onClick={openDraft}
           onKeyDown={boxKeydown}
         >
-          {/* ＋ 图标——打开筛选弹层。 */}
             <span
               role="button"
               tabIndex={-1}

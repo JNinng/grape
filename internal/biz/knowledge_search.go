@@ -57,16 +57,12 @@ type KnowledgeSearchQuery struct {
 }
 
 // KnowledgeSearchHit 是单条命中切片：作为聚合成员随 KnowledgeSearchUnit
-// 返回（console 消费方展平各单元的 Hits，条目形状与聚合前一致）。DocumentID
-// 是切片 ID（与留痕命中对账），SourceID 是来源条目 ID（可反查条目原文）；
-// SourceID/SourceName/Anchor 取自切片 metadata，缺失为空。ChunkIndex 是切
-// 片在来源内的序号（metadata 缺失为 -1），HeadingPath 是标题切分的标题链
-//（仅结构化切分非空）——两者是回包聚合（pack）的分档依据。Score 是命中
-// 分：装配了重排层且本次调用成功时为 rerank 相关性分，否则（未配置重排、
-// 重排失败降级或未装配）为 RRF 融合分（Σ 1/(k+rank)）——两种分仅同次检
-// 索内可比、不代表相似度，跨调用与跨形态不可比。候选不足 2 条（单候选）
-// 时跳过重排，Score 同样保持 RRF 融合分。Content 为切片原文（不做围栏
-// 包装——围栏是模型面语义）。
+// 返回（console 展平各单元的 Hits，与聚合前命中形状一致）。DocumentID 是
+// 切片 ID，SourceID 是来源条目 ID；Source*/Anchor 取自切片 metadata，缺失
+// 为空。ChunkIndex/HeadingPath 是回包聚合（pack）的分档依据。Score 装配重排
+// 层且本次成功时为 rerank 相关性分，否则为 RRF 融合分——仅同次检索内可比、
+// 不代表相似度；候选不足 2 条跳过重排，Score 保持融合分。Content 为切片原文
+//（不做围栏包装——围栏是模型面语义）。
 type KnowledgeSearchHit struct {
 	DocumentID  string
 	SourceID    string
@@ -105,12 +101,11 @@ type KnowledgeSearchUsecase struct {
 	now       func() time.Time
 }
 
-// NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖，
-// 另加可见库解析接缝与留痕写入面）。reranker 允许 nil：nil 即跳过重排
-// 层，检索行为与无重排一致（单测与未装配场景）；非 nil 时的可用性由重
-// 排模型解析决定（未配置按跳过处理，见 Reranker 契约）。logs 必填：编
-// 排路径的留痕行由本用例自写（脱敏义务随写入方迁移），registry 为共用
-// 脱敏注册表（nil 按「放行原值 + 截断兜底」降级）。
+// NewKnowledgeSearchUsecase 构造检索用例（与 DocumentUsecase 同形依赖，另加
+// 可见库解析接缝与留痕写入面）。reranker 允许 nil：nil 即跳过重排层，行为与
+// 无重排一致；非 nil 时可用性由重排模型解析决定（未配置按跳过处理，见
+// Reranker 契约）。logs 必填：编排路径留痕行由本用例自写（脱敏义务随写入方），
+// registry 为共用脱敏注册表（nil 按「放行原值 + 截断兜底」降级）。
 func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver EmbedderResolver, reranker Reranker, libraries KnowledgeLibraryDirectory, logs RetrievalLogRepo, registry *redact.Registry) (*KnowledgeSearchUsecase, error) {
 	if store == nil {
 		return nil, errors.New("biz: knowledge search usecase requires a vector store")
@@ -130,31 +125,13 @@ func NewKnowledgeSearchUsecase(store VectorStore, embedder Embedder, resolver Em
 	return &KnowledgeSearchUsecase{store: store, embedder: embedder, resolver: resolver, reranker: reranker, libraries: libraries, logs: logs, registry: registry, now: time.Now}, nil
 }
 
-// Search 在默认嵌入空间内检索调用方可见的知识库：主查询与可选变体各自
-// 独立召回（向量路与词法路同走，两路各取 2×top_k），按 Reciprocal Rank
-// Fusion 融合出融合序后取前 2×top_k 作为重排候选；装配了重排层时对候选
-// 逐段打相关性分并按分数降序重排，最后取 top_k（无重排层时直接按融合序
-// 取 top_k，行为与既有口径一致）。返回前做回包聚合（pack）：命中块按来源
-// 自动分档——同节多块命中拼整节、无 heading 结构的来源按 chunk_index 相邻
-// 窗口、独占命中的短文档整文档、其余小块直回——并以固定 token 预算封顶
-//（超预算按分数截断、多源保广度每源至少一块、来源数上限 5；粒度参数不
-// 暴露，与 top_k 硬钳同纪律），返回语义见 KnowledgeSearchUnit。词法路与
-// 向量路共享同一 conditions 口径与文档宇宙（同租户同空间）；融合、重排与
-// 回包聚合只在用例层，存储两路互不感知。可见库集合每次检索现场解析（权限
-// 运行时可变，不做长生命周期缓存）；身份缺失 fail-closed。错误语义：可见
-// 库解析、嵌入、向量路失败让整次检索失败（正确性依赖）；词法路失败、重排
-// 层失败与回包聚合的来源全量块拉取失败按质量增强降级（词法降级为仅向量
-// 路、重排降级为融合序、聚合降级为仅命中块直回），记服务日志不失败；重排
-// 模型未配置（ErrRerankUnavailable）按跳过该层处理，与调用失败相区分。
-// 设施未启用的错误原样透传（不降级为空结果）。
-//
-// 留痕：编排路径自写一行完整留痕（一次操作一行）——进入召回管线后经
-// WithRetrievalLogSuppressed 让留痕装饰器跳过逐路留痕，在完成处经
-// RetrievalLogRepo.Append 写整行（stages 记召回 → 融合 → 重排 → 回包的
-// 阶段数组，阶段失败同样记录且失败行不反噬主流程；留痕写入失败只记日志）。
-// 无可见库、入参非法、身份缺失与设施解析失败不进入召回管线，不产生留痕行
-// （与装饰器只在检索方法被调用时记行的既有口径一致）。查询文本与阶段内
-// 文本的脱敏义务随写入方迁移到本层（retrieval 类别，512 截断 + 4096 兜底）。
+// Search 在默认嵌入空间内检索调用方可见的知识库：可见库集合每次检索现场
+// 解析（权限运行时可变，不做长生命周期缓存；身份缺失 fail-closed）、固定
+// 检索条件、双路召回 → RRF 融合 → 可选重排 → 取 top_k → 回包聚合（pack）。
+// 正确性依赖失败让整次检索失败；词法路、重排层与聚合的来源全量块拉取失败
+// 按质量增强降级，降级矩阵与留痕口径见 knowledge_search.md；设施未启用原样
+// 透传。编排路径自写一行完整留痕（WithRetrievalLogSuppressed 抑制逐路行，
+// stages 承载阶段数组）。
 func (uc *KnowledgeSearchUsecase) Search(ctx context.Context, q *KnowledgeSearchQuery) ([]*KnowledgeSearchUnit, error) {
 	auth, ok := IdentityFromContext(ctx)
 	if !ok {
@@ -386,15 +363,12 @@ func (uc *KnowledgeSearchUsecase) buildSearchLogRecord(ctx context.Context, trac
 	return rec
 }
 
-// applyRerank 是检索管线的重排层：对融合序候选（前 2×top_k）按切片内容
-// 打相关性分，分数降序稳定重排（同分保持融合序），Score 改写为重排相关
-// 性分（无重排时 Score 保持 RRF 融合分——两种分仅同次检索内各自可比）。
-// 重排是质量增强非正确性依赖：reranker 未装配（nil）、候选不足 2 条、
-// 重排模型未配置（ErrRerankUnavailable，按跳过该层处理不告警）时层未
-// 运行、不记 rerank 阶段（不伪造空阶段）；其他调用失败（记服务日志）与
-// 契约破坏（分数长度不符）降级为融合序继续检索，rerank 阶段照常留痕
-// （候选保持融合序 + 错误摘要）。成功时阶段候选即重排后的输出序——与
-// fusion 阶段的候选（重排前序）对照即还原重排前后序。
+// applyRerank 是检索管线的重排层：对融合序候选（前 2×top_k）按切片内容打
+// 相关性分并降序稳定重排（同分保持融合序），Score 改写为重排分（无重排保持
+// RRF 分，仅同次检索内各自可比）。重排是质量增强非正确性依赖：未装配、候选
+// 不足 2 条、模型未配置（ErrRerankUnavailable）时层未运行、不记 rerank 阶段；
+// 调用失败与分数长度不符降级为融合序继续检索，rerank 阶段照常留痕（候选
+// 保持融合序 + 错误摘要，与 fusion 阶段候选对照即还原重排前后序）。
 func (uc *KnowledgeSearchUsecase) applyRerank(ctx context.Context, tracker *retrievalStageTracker, query string, topK int, fused []*ScoredVectorDocument) []*ScoredVectorDocument {
 	if uc.reranker == nil || len(fused) < 2 {
 		return fused

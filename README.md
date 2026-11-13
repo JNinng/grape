@@ -39,7 +39,7 @@ RBAC 数据权限体系与 Agent 运行时适配（trpc-agent-go / ack），前�
 `api/**/*.pb.go`、`internal/conf/conf.pb.go`、
 `internal/data/pg_sqlc/gen/`、`cmd/server/wire_gen.go`、`openapi.yaml` 一律经
 make 目标再生成，禁止手改。`internal/data/pg_sqlc/sqlc/` 是存储侧单一事实
-源：schema 十一个文件 + `rls/operate/expose` + `96_agent_grant.sql` + `98_*`
+源：schema 十五个文件 + `rls/operate/expose` + `96_agent_grant.sql` + `98_*`
 函数声明文件 + `queries/`，动态查询能力由列注释 DSL（`@dynamic` / `@scope`
 等）声明。
 

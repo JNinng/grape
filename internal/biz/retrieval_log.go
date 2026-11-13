@@ -9,15 +9,12 @@ import (
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
 )
 
-// Agent 检索留痕：向量检索与摄取写入的证据链契约。
-// 写入侧有两处（共同保住「一次操作一行」）：data 层的 VectorStore 留痕
-// 装饰器（单路直调检索与摄取侧，仓储经 IdentityTx 落库），以及知识检索
-// 编排层（混合检索管线，经 ctx 抑制标记让装饰器跳过逐路留痕后在完成处
-// 自写完整行，见 WithRetrievalLogSuppressed）；查询侧供运维复现视图的手写
-// 端点消费。检索内容（查询文本）与过滤摘要在写入方内经 pkg/redact 注册表
-// 脱敏后落库——编排层自写行时脱敏义务随之迁移到编排层（本包 redact 在
-// import 白名单内）；本域读侧直接返回已脱敏形态（与审计的摘要口径一致，
-// 复现视图不二次脱敏也不回传原文）。
+// Agent 检索留痕：向量检索与摄取写入的证据链契约。写入侧为 data 层装饰器
+//（单路直调检索与摄取侧）与知识检索编排层（自写完整行）两处，共同保住
+// 「一次操作一行」（见 WithRetrievalLogSuppressed）；查询侧供运维复现视图的
+// 手写端点消费。检索内容与过滤摘要在写入方内经 pkg/redact 脱敏后落库——
+// 编排层自写行时脱敏义务随之迁移到编排层；本域读侧直接返回已脱敏形态
+//（复现视图不二次脱敏也不回传原文）。
 
 // 留痕行的领域取值：
 //   - source：检索来源。tool-agent 检索工具链路（调用检索用例前经
@@ -212,11 +209,8 @@ func retrievalFilterOf(filter *RetrievalLogFilter) (*RetrievalLogFilter, error) 
 }
 
 // 留痕的 ctx 事实载体：查询文本与会话 ID 在检索工具执行现场（agent 层）
-// 提取后经 ctx 传入写入方——框架类型不向下游渗透（agent 只导入 biz），
-// data 层无从感知框架执行 ctx，这两项事实必须由能读到它们的层放入中性
-// 载体。消费方随写入方而定：混合检索编排行由知识检索用例读取（会话与
-// 来源），未抑制的单路直调行由 data 层装饰器读取；检索来源由直调 Search
-// 的非工具链路声明。空白值不注入（留痕缺失如实留空，不伪造）。
+// 提取后经 ctx 传入写入方——框架类型不向下游渗透，data 层无从感知框架执行
+// ctx；消费方为编排行（知识检索用例）与未抑制的单路直调行（装饰器）。
 
 type sessionIDKey struct{}
 
@@ -274,11 +268,9 @@ func RetrievalSourceFromContext(ctx context.Context) string {
 	return s
 }
 
-// 留痕抑制标记：混合检索编排层一次操作会多路调用 VectorStore 的检索
-// 方法，逐路留痕会把「一次操作一行」拆成多行。编排路径在 ctx 打上本
-// 标记让装饰器跳过 Search / SearchLexical 的逐路留痕，由编排层在完成处
-// 自写一行完整留痕（stages 承载阶段数组）。摄取方法不受标记影响——
-// 摄取行的写入方始终是装饰器。
+// 留痕抑制标记：混合检索编排一次操作多路调用 VectorStore，逐路留痕会把
+// 「一次操作一行」拆成多行。编排路径打上本标记让装饰器跳过 Search /
+// SearchLexical 的逐路留痕，由编排层在完成处自写完整行；摄取行不受影响。
 
 type retrievalLogSuppressedKey struct{}
 

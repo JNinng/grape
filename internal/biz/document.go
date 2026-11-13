@@ -46,19 +46,14 @@ const (
 	contextPrefixSeparator = "\n\n"
 )
 
-// Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部网页
-// 抓取等不可信来源开放前，须先补来源校验与脱敏切面（对齐 pkg/redact）。
-// ID 由调用方生成且租户内唯一。
-//
-// Kind 选择切分策略（见 DocumentKind* 常量）：text 按区分串/固定窗口切分，
-// markdown / file 按标题切分；空值视为 text，未知取值在摄取时拒绝。
-// ChunkDelimiter 仅对 text 生效；ChunkSize/ChunkOverlap 两种切分共用。
-// Embedder 非空时指定摄取空间（知识库级 embedding_model_key）；空值走
-// 默认空间解析。ChunkSize/ChunkOverlap 非零时覆盖管线缺省（知识库级切分
-// 参数），零值取构造期缺省。ChunkDelimiter 非 nil 时覆盖管线缺省区分串
-// （空串即关闭分隔符切分），nil 取构造期缺省。Contextual 开启上下文前缀
-// 生成（知识库级开关）：前缀只拼进 embed 输入，块正文/锚点/metadata
-// 不变；生成失败降级为无前缀继续摄取。
+// Document 是摄取管线的领域文档来源。来源限内部可信生产方；对外部不可信
+// 来源开放前须先补来源校验与脱敏切面（对齐 pkg/redact）。ID 由调用方生成
+// 且租户内唯一。Kind 选择切分策略（见 DocumentKind* 常量）：text 按区分串/
+// 固定窗口，markdown/file 按标题切分；空值视为 text，未知取值在摄取时拒绝；
+// ChunkDelimiter 仅对 text 生效。Embedder 非空指定摄取空间，空值走默认空间
+// 解析；ChunkSize/ChunkOverlap/ChunkDelimiter 非零/非 nil 覆盖管线缺省。
+// Contextual 开启上下文前缀生成：前缀只拼进 embed 输入，生成失败降级为
+// 无前缀继续摄取。
 type Document struct {
 	ID             string
 	Kind           string
@@ -170,11 +165,10 @@ func NewDocumentUsecase(store VectorStore, embedder Embedder, resolver EmbedderR
 }
 
 // Ingest 摄取一篇内部文档：切分 → 逐块 embed → 写入向量存储。幂等语义为
-// 同来源差量对账：切片 ID 确定性派生（含内容哈希），摄取按新批 ID 对账
-// 本来源现存行——仍在新批的整行刷新（清掉退役标记，内容改回旧版本即
-// 复活）、不在新批的现行行标记退役、新 ID 写入。旧切片不物理删除，保留
-// 期内留痕行仍可反查命中当时的原文。对账与写入不在同一事务，中途失败
-// 存在短暂缺文档窗口，重摄可补偿。
+// 同来源差量对账（切片 ID 确定性派生，见 reconcileChunks）：仍在新批的整行
+// 刷新、不在新批的现行行标记退役、新 ID 写入；旧切片不物理删除，保留期内
+// 留痕行仍可反查命中当时的原文。对账与写入不在同一事务，中途失败存在短暂
+// 缺文档窗口，重摄可补偿。
 func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestResult, error) {
 	if _, ok := IdentityFromContext(ctx); !ok {
 		return nil, errors.New("biz: document ingest requires an authenticated identity")
@@ -265,17 +259,11 @@ func (u *DocumentUsecase) Ingest(ctx context.Context, doc *Document) (*IngestRes
 	return &IngestResult{DocumentID: sourceID, Chunks: len(docs), Replaced: replaced, Embedder: space}, nil
 }
 
-// reconcileChunks 按新批 ID 差量对账本来源的现存切片，替换「先删后写」的
-// 覆盖语义：
-//   - 现存且仍在新批的 ID：Update 整行刷新（内容/向量/metadata；metadata
-//     是整列替换，退役标记自然清掉——内容改回旧版本即复活）；
-//   - 现存但不在新批的现行行：MarkSuperseded 标记退役时间（保留期内仍可
-//     按留痕行的候选 ID 反查原文）；
-//   - 全新 ID：Add。
-//
-// 已退役且不在新批的行不再触碰，保留首次退役时间（清理任务以它为保留期
-// 依据）。返回本次标记退役的现行行数。对账分步执行、无跨步事务，中途
-// 失败存在短暂缺文档窗口，重摄可补偿（与旧覆盖语义同一口径）。
+// reconcileChunks 按新批 ID 差量对账本来源现存切片，替换「先删后写」：
+// 仍在新批的整行 Update（metadata 整列替换即清退役标记，内容改回旧版本
+// 即复活）；不在新批的现行行 MarkSuperseded；全新 ID Add。已退役且不在新
+// 批的行不再触碰（保留首次退役时间，清理任务以其为保留期依据）。分步执行
+// 无跨步事务，中途失败存在短暂缺文档窗口，重摄可补偿。
 func (u *DocumentUsecase) reconcileChunks(ctx context.Context, sourceID string, docs []*VectorDocument) (int64, error) {
 	existing, err := u.store.GetMetadata(ctx, &VectorFilter{Metadata: map[string]any{"source_id": sourceID}})
 	if err != nil {
@@ -317,11 +305,10 @@ func (u *DocumentUsecase) reconcileChunks(ctx context.Context, sourceID string, 
 }
 
 // contextPrefixes 生成每块的上下文前缀（本文出处 + 本块要旨）：文档级
-// 摘要只生成一次，逐块前缀共享这份摘要（每次补块正文，不做全量文档
-// 调用）。开关关闭、completer 缺失或任一次生成失败/产出为空时整篇降级
-// 为无前缀（nil），失败记服务日志——前缀是检索质量增强，降级不影响
-// 摄取正确性。返回值与 chunks 等长对齐。模型调用留痕场景在此声明：
-// 文档摘要 ingest_summary、块级前缀 ingest_prefix。
+// 摘要只生成一次，逐块前缀共享这份摘要。开关关闭、completer 缺失或任一次
+// 生成失败/产出为空时整篇降级为无前缀（nil），失败记服务日志——前缀是
+// 检索质量增强，降级不影响摄取正确性。模型调用留痕场景在此声明：文档摘要
+// ingest_summary、块级前缀 ingest_prefix。
 func (u *DocumentUsecase) contextPrefixes(ctx context.Context, doc *Document, chunks []chunk) []string {
 	if !doc.Contextual || u.completer == nil {
 		return nil
@@ -430,23 +417,20 @@ func docChunkDelimiter(def string, override *string) string {
 }
 
 // chunkID 派生切片 ID："<sourceID>#<index>#<hash8>"。hash8 取
-// sha256(嵌入空间键 + '\x00' + 切片内容) 的前 4 字节十六进制（8 字符）：
-// 内容或空间变化即出新 ID，历史 ID 永不指向新内容（重摄差量对账与留痕
-// 反查的前提）；空间键参与哈希，避免 PK (tenant_id, id) 下同内容跨空间
-// 撞 ID。NUL 分隔保证「空间键 + 内容」拼接无歧义（两者都不含 NUL）。
-// 长度：来源 ID 上限 96 + '#' + 7 位序号 + '#' + 8 = 113，在
-// agent_document.id 的 varchar(128) 内。
+// sha256(嵌入空间键 + '\x00' + 切片内容) 前 4 字节十六进制：内容或空间
+// 变化即出新 ID，历史 ID 永不指向新内容（重摄差量对账与留痕反查的前提），
+// NUL 分隔避免「空间键 + 内容」拼接歧义。长度在 agent_document.id 的
+// varchar(128) 内。
 func chunkID(sourceID string, index int, space, content string) string {
 	sum := sha256.Sum256([]byte(space + "\x00" + content))
 	return fmt.Sprintf("%s#%d#%x", sourceID, index, sum[:4])
 }
 
-// chunkMetadata 组装切片元数据：来源标识（source_id/source_name）与
-// 原文锚点（anchor，rune 区间）保证引用可追溯——检索命中可反查来源
-// 文档与原文位置。结构化切分的切片附 heading_path（标题链），供按章节
-// 过滤与整节聚合。管线保留键以服务端产出为准覆盖调用方同名键，调用方
-// 自定义键原样保留；superseded_at 是服务端保留键，调用方同名键直接剥离
-//（退役标记只经重摄差量对账写入）。
+// chunkMetadata 组装切片元数据：来源标识（source_id/source_name）与原文
+// 锚点（anchor，rune 区间）保证引用可追溯；结构化切分附 heading_path（标题
+// 链）供按章节过滤与整节聚合。管线保留键以服务端产出覆盖调用方同名键；
+// superseded_at 是服务端保留键，调用方同名键直接剥离（退役标记只经重摄
+// 差量对账写入）。
 func chunkMetadata(doc *Document, index, total int, c chunk) map[string]any {
 	metadata := make(map[string]any, len(doc.Metadata)+6)
 	for k, v := range doc.Metadata {
@@ -484,21 +468,11 @@ func chunkByKind(kind, content string, size, overlap int, delimiter string) ([]c
 }
 
 // chunkMarkdown 是 Markdown 标题切分实现（chunkText 旁的替换点，产出同
-// 「内容 + 原文 rune 锚点」形状）。按标题层级切节：ATX（#–######）与
-// Setext（=== / --- 下划线行）都识别，节含节头标题行、止于下一标题行；
-// 首个标题之前的内容自成一节（heading path 空串）。节全文不超过 size 时
-// 整节一块；超长节回退块级二次切分——段落等普通块按块边界装箱，围栏
-// 代码块与表格块保持原子不跨块截断，单个块自身超过 size 时再按固定窗口
-// 切开（嵌入输入上限优先于原子性）。ChunkOverlap 只作用于固定窗口回退，
-// 块边界是结构边界不重叠。节之间按标题层级维护标题链，ATX 取 # 数量、
-// Setext 下划线 === 为一级、--- 为二级，链按 " > " 拼接。
-//
-// 简化口径：Setext 下划线只挂到紧邻的非空行段（含多行段落，段内行以空格
-// 拼接为标题文本），不排除列表/引用等容器上下文；表格识别按表头含 "|" 且
-// 下一行是分隔行（列数一致），连续含 "|" 的非空行为表格行；制表符缩进与
-// 4 空格缩进的行不视为标题/围栏；CRLF 输入按 LF 同口径切行（行尾 '\r'
-// 不入行区间与行文本，标题/围栏判定不受影响，锚点仍为原文 rune 区间）；
-// 空 ATX 标题（###### 后无文字）只切节、不入标题链。
+// 「内容 + 原文 rune 锚点」形状）：按标题层级切节（ATX 与 Setext 都识别，
+// 节含节头、止于下一标题行，首标题前内容自成一节），节间按层级维护标题链。
+// 节不超 size 整节一块；超长节块级装箱——围栏代码块与表格块原子不跨块
+// 截断，仍超长再按固定窗口切开（ChunkOverlap 只作用于窗口回退，结构边界
+// 不重叠）。切分细则与简化口径以测试为准，职责概览见 biz/README.md 导览表。
 func chunkMarkdown(content string, size, overlap int) []chunk {
 	runes := []rune(content)
 	var out []chunk

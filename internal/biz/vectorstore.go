@@ -78,17 +78,13 @@ type MetadataCondition struct {
 	Values []any
 }
 
-// VectorFilter 是向量读面共用的过滤与分页参数。IDs、Metadata 与
-// Conditions 叠加时取交集；均空表示不过滤（Count 为租户现行切片总量——
-// 退役行剔除在实现内强制；GetMetadata/List 为租户全量含退役行；
-// DeleteByFilter / UpdateMetadata / MarkSuperseded 拒绝执行，见各方法
-// 注释）。
-// Embedder 为可空过滤：Search/SearchLexical 必填（与 Dimension 成对声明
-// 检索空间并对账），Count/DeleteByFilter/GetMetadata/UpdateMetadata 非
-// 空时收敛到该空间、空即跨空间操作；Dimension 与 MinScore 仅检索两方法
-//（Search/SearchLexical）消费。Limit 在检索两方法为 0 时由实现取默认页
-// 大小、在 GetMetadata 非正为不限量（此时 Offset 必须为 0）；Offset 仅
-// GetMetadata 消费（分页枚举）。
+// VectorFilter 是向量读面共用的过滤与分页参数。IDs、Metadata 与 Conditions
+// 叠加时取交集；均空表示不过滤（Count 为租户现行切片总量——退役行剔除在
+// 实现内强制；GetMetadata/List 为租户全量含退役行；DeleteByFilter /
+// UpdateMetadata / MarkSuperseded 拒绝执行，见各方法注释）。Embedder 可空：
+// 检索两方法必填（与 Dimension 成对声明检索空间并对账），其余方法非空收敛
+// 到该空间、空即跨空间；Dimension 与 MinScore 仅检索消费；Limit/Offset 仅
+// GetMetadata 消费（检索方法为 0 时由实现取默认页大小）。
 type VectorFilter struct {
 	IDs        []string
 	Embedder   string
@@ -161,16 +157,10 @@ type VectorStore interface {
 	// 长度、注册表三方对账，任一不符拒绝。
 	Search(ctx context.Context, embedding []float32, filter *VectorFilter) ([]*ScoredVectorDocument, error)
 	// SearchLexical 以查询文本在 filter.Embedder 声明的空间内做词法检索
-	//（tsquery 匹配 + ts_rank_cd 排序），按相关性降序返回至多 Limit 条；
-	// Conditions/IDs/Metadata/MinScore/Limit 语义与 Search 一致，过滤条件
-	// 与租户边界取交集。Embedder/Dimension 必填且经注册表对账——词法路
-	// 与向量路必须共享同一文档宇宙（同租户同空间同条件），实现内查询
-	// 分词与写入建索引用同一 Tokenizer 实例（口径漂移即静默漏召回）。
-	//
-	// Score 是 ts_rank_cd 相关性（未归一、跨查询不可比，仅同一查询内
-	// 排序有意义）——与 Search 的归一化相似度 [0,1] 语义不同，跨方法
-	// 比较分数没有意义；融合消费方只应使用排名。查询分词为空（无有效
-	// 词元）返回空切片不触库。
+	//（tsquery 匹配 + ts_rank_cd 排序），语义与对账同 Search；词法路与向量
+	// 路共享同一文档宇宙（同租户同空间同条件），查询分词与写入建索引用同一
+	// Tokenizer 实例（口径漂移即静默漏召回）。Score 是未归一的 ts_rank_cd
+	// 相关性，跨查询跨方法不可比，融合消费方只应用排名；分词为空不触库。
 	SearchLexical(ctx context.Context, query string, filter *VectorFilter) ([]*ScoredVectorDocument, error)
 	// DeleteByFilter 按 IDs/Embedder/Metadata/Conditions 交集删除，返回
 	// 删除行数；所有条件均空时拒绝执行——租户级全量清理不设普通入口。

@@ -23,7 +23,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// go build -ldflags "-X main.Version=x.y.z"
+// Name / Version 经 go build -ldflags -X 注入，注入契约见 pkg/version。
 var (
 	// Name 是编译产物的服务名。
 	Name string

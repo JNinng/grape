@@ -1,8 +1,6 @@
 //go:build wireinject
 // +build wireinject
 
-// 构建标签保证本桩文件不参与最终编译。
-
 package main
 
 import (

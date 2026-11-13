@@ -58,7 +58,7 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 
 `api/**/*.pb.go`、`internal/conf/conf.pb.go`、
 `internal/data/pg_sqlc/gen/`、`cmd/server/wire_gen.go`、`openapi.yaml` 一律
-经 make 目标再生成。`internal/data/pg_sqlc/sqlc/`（schema 十一个文件 +
+经 make 目标再生成。`internal/data/pg_sqlc/sqlc/`（schema +
 `rls/operate/expose` + `96_agent_grant.sql` + `98_*` 函数声明文件 +
 `queries/`）是单一事实源，动态查询能力由列注释 DSL（`@dynamic` / `@scope`
 等）声明。

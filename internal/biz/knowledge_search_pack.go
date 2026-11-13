@@ -9,13 +9,11 @@ import (
 )
 
 // 检索回包聚合（pack）：命中小块后按来源自动分档，聚合成面向模型的回包
-// 单元——同节多块命中拼整节、无 heading 结构的来源按 chunk_index 相邻窗
-// 口、独占命中的短文档整文档、其余小块直回。聚合与预算封顶都在检索编排
-// 层（与 RRF / rerank 同层），工具层只消费已聚合的回包单元做围栏包装——
-// 留痕行在 store.Search 调用时已写完，pack 事实只有落到编排层才有安放点。
-//
-// 分档与预算不暴露任何模型/调用方参数：模型自选粒度没有判断依据，且会打
-// 开爆 token 预算的口子，与 top_k 硬钳同一纪律（参数属代码级默认，不进
+// 单元——同节多块命中拼整节、无 heading 结构的来源按 chunk_index 相邻窗口、
+// 独占命中的短文档整文档、其余小块直回。聚合与预算封顶都在检索编排层（与
+// RRF / rerank 同层），工具层只消费已聚合的回包单元做围栏包装——留痕行在
+// store.Search 调用时已写完，pack 事实只有落到编排层才有安放点。分档与预算
+// 不暴露任何模型/调用方参数（与 top_k 硬钳同一纪律，参数属代码级默认不进
 // conf）。
 
 // 回包单元的四档粒度（与留痕 stages 规划的词汇对齐）。
@@ -26,15 +24,12 @@ const (
 	KnowledgeSearchUnitModeDocument = "document"
 )
 
-// 回包聚合纪律（代码级默认，与 top_k 硬钳同纪律，不进 conf）：
-//   - BudgetTokens：回包总预算（按确定性估算函数计 token 量级，非精确
-//     分词），超预算按分数截断；
-//   - MaxSources：参与聚合的来源数上限，超出来源整体丢弃；
-//   - SectionMinHits：同 heading_path 命中块数达到该值才整节返回；
-//   - WindowGap：相邻窗口的命中 chunk_index 差上限；
-//   - DocumentMaxChunks：整文档档的来源全量块数上限（超过不按整文档处理）；
-//   - ListGuardChunks：来源全量块经 store.List 拉取的防线上限，超线来源
-//     不做任何聚合、全部直回（成员完整性优先于聚合粒度）。
+// 回包聚合纪律（代码级默认，与 top_k 硬钳同纪律，不进 conf）：BudgetTokens
+// 回包总预算（按确定性估算函数计 token 量级，非精确分词），超预算按分数
+// 截断；MaxSources 来源数上限，超出来源整体丢弃；SectionMinHits 同
+// heading_path 命中块数门槛；WindowGap 相邻窗口的命中 chunk_index 差上限；
+// DocumentMaxChunks 整文档档的来源全量块数上限；ListGuardChunks 来源全量块
+// 拉取的防线上限，超线来源全部直回（成员完整性优先于聚合粒度）。
 const (
 	KnowledgeSearchPackBudgetTokens      = 4096
 	KnowledgeSearchPackMaxSources        = 5
@@ -45,27 +40,13 @@ const (
 )
 
 // KnowledgeSearchUnit 是检索回包的聚合单元，KnowledgeSearchUsecase.Search
-// 的返回粒度。消费方两类：console 检索展平各单元的 Hits（条目集合即命中
-// 切片集合，与聚合前的命中形状一致），agent 检索工具逐单元一条出参（mode
-// 声明聚合粒度，content 为单元整段正文）。
-//
-// 各档语义（Mode）：
-//   - chunk：成员 = 单个命中切片（无结构可聚合、单节单命中或聚合降级）。
-//   - window：无 heading 结构来源的相邻窗口，成员 = 来源全量块中落在窗口
-//     索引区间的所有块（含未命中兄弟块）。
-//   - section：同 heading_path 命中达到 SectionMinHits 的整节，成员 = 该节
-//     全量块（含未命中兄弟块）。
-//   - document：命中来源唯一且来源全量块数 ≤ DocumentMaxChunks 的整文档。
-//
-// Score 是单元分 = 成员最高分：装配了重排层且本次调用成功时为 rerank 相关
-// 性分，否则（未配置重排、重排失败降级或未装配）为 RRF 融合分——与
-// KnowledgeSearchHit.Score 同口径，两种分仅同次检索内可比、不代表相似度。
-// Content 是成员正文按 chunk_index 序以 "\n\n" 连接（不做围栏包装——围栏
-// 是模型面语义）。DocumentIDs 是全部成员切片 ID（含聚合进来的兄弟块），
-// Hits 仅本次命中的成员块——两者差集即兄弟块。HeadingPath 仅 section 档
-// 承载节路径、document 档承载首块值；chunk/window 恒空。Anchor 是单元内
-// chunk_index 最小成员的锚点。单元按 Score 降序返回（同分按来源序与最小
-// 块索引，确定性全序）。
+// 的返回粒度。消费方两类：console 展平各单元的 Hits（与聚合前命中形状一致），
+// agent 逐单元一条出参。Mode 四档：chunk 单块直回；window 无 heading 来源
+// 的相邻窗口；section 达 SectionMinHits 的整节；document 独占命中且全量块
+// 数 ≤ DocumentMaxChunks 的整文档——后三档成员含未命中兄弟块。Score = 成员
+// 最高分（rerank 分或 RRF 分，与 KnowledgeSearchHit.Score 同口径，仅同次检索
+// 内可比）；Content 按 chunk_index 序以 "\n\n" 连接。单元按 Score 降序返回
+//（同分按来源序与最小块索引，确定性全序）。
 type KnowledgeSearchUnit struct {
 	Mode        string
 	SourceID    string
@@ -111,11 +92,10 @@ type packEntry struct {
 }
 
 // packSearchUnits 是回包聚合的编排入口：命中块按来源分组、按最高分截前
-// MaxSources（超出来源整体丢弃），逐来源取全量块分档聚合，最后按固定预
-// 算两段装配。来源全量块与命中块同宇宙（同空间同固定检索条件），聚合粒
-// 度不越过可见性边界。返回回包单元与 pack 阶段留痕单元——留痕单元含装
-// 配期的全部候选单元（含被预算截断者，admitted 区分），对照 fusion 序
-// 可还原预算截断掉了谁。
+// MaxSources（超出来源整体丢弃），逐来源取全量块分档聚合，最后按固定预算
+// 两段装配。来源全量块与命中块同宇宙（同空间同固定检索条件），聚合粒度不
+// 越过可见性边界。返回回包单元与 pack 阶段留痕单元——留痕单元含装配期全部
+// 候选单元（admitted 区分入包），对照 fusion 序可还原预算截断掉了谁。
 func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*KnowledgeSearchHit, space string, conditions []MetadataCondition) ([]*KnowledgeSearchUnit, []retrievalPackUnit) {
 	groups := groupPackSources(hits)
 	if len(groups) == 0 {
@@ -141,14 +121,11 @@ func (uc *KnowledgeSearchUsecase) packSearchUnits(ctx context.Context, hits []*K
 	return units, packStageUnits(entries, units)
 }
 
-// packStageUnits 把装配期的全部单元投影为 pack 阶段留痕单元：admitted
-// 以结果集（同一 unit 指针）判定；未入包按装配期标记归因——dead 为同源
-// 收编（merged，document 档入包后同源其余单元内容已被包含）；保底直回
-// 单元在来源已有入包单元时为冗余（redundant，不参与深度补深、只在广度
-// 段兜底，来源已有入包单元时只会重复内容），来源整体被预算丢弃时为预算
-// 截断（truncated）；其余未入包同样是预算截断。优先级 merged >
-// redundant > truncated，与装配期跳过顺序一致：广/深度段都先跳 dead、
-// 深度段再跳 fallbackOnly，余下才是预算放不下。
+// packStageUnits 把装配期的全部单元投影为 pack 阶段留痕单元：admitted 以
+// 结果集（同一 unit 指针）判定；未入包按装配期标记归因——merged 同源收编
+//（dead，document 档入包后同源其余单元内容已被包含）、redundant 来源已有
+// 入包单元的保底直回、truncated 预算截断。优先级与装配期跳过顺序一致：先
+// 跳 dead、深度段再跳 fallbackOnly，余下才是预算放不下。
 func packStageUnits(entries []*packEntry, admitted []*KnowledgeSearchUnit) []retrievalPackUnit {
 	if len(entries) == 0 {
 		return nil
@@ -558,13 +535,10 @@ func sortPackEntries(entries []*packEntry) {
 }
 
 // assemblePackUnits 是回包的两段预算装配（无 I/O，仅装配侧告警）：先广度
-// 段——按来源序逐源取第一个放得下的单元（整文档超预算时自然降级到同源的
-// 窗口/直回档，一档都放不下再落到保底直回块，保证每源至少一块；保底也放
-// 不下才丢源并记警告）；后深度段——剩余单元按全序逐个尝试，放得下就收、
-// 放不下跳过继续，预算用尽即止（保底直回单元不参与深度段）。document 单
-// 元入包后收编同源其余单元（内容已被整文档包含），同源非 document 单元入
-// 包后整文档单元同样收编——同源聚合粒度互斥，内容不重复出包。返回单元按
-// 全序（Score 降序，来源首现序，最小块索引升序）排列。
+// 段——按来源序逐源取第一个放得下的单元（整文档超预算自然降级到窗口/直回
+// 档，保底也放不下才丢源并记警告，保证每源至少一块）；后深度段——剩余单元
+// 按全序逐个尝试，预算用尽即止（保底直回单元不参与深度段）。document 单元
+// 与同源其他单元互斥收编，内容不重复出包；返回按全序排列。
 func assemblePackUnits(entries []*packEntry, budget int) []*KnowledgeSearchUnit {
 	sorted := make([]*packEntry, len(entries))
 	copy(sorted, entries)

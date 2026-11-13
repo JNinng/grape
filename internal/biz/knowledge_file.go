@@ -18,15 +18,12 @@ import (
 )
 
 // 文件摄取（kind=file）用例：上传识别 → 原件落对象存储与介质行 → 目录行
-// 落库 → 解析与内容识别处理 → 摄取。失败语义分两段：
-//   - 介质成立前（识别 / 校验 / OSS 写入）失败：无任何落库副作用，识别与
-//     校验问题按 FILE_TYPE_UNSUPPORTED / DOCUMENT_INVALID_ARGUMENT 拒绝；
-//   - 介质成立后（解析 / 内容识别 / 摄取）失败：目录行与介质行保留
-//     （content 保持空），管理页可重解析——同 text 摄取失败的留痕口径，
-//     对外统一 DOCUMENT_INDEX_FAILED。
-//
-// 重解析（reindex 对 kind=file 的扩展）从介质行现场取回原件字节重走解析
-// 与摄取：解析器升级后重解析即修复历史条目，原件因此保留。
+// 落库 → 解析与内容识别处理 → 摄取。失败语义分两段：介质成立前（识别 /
+// 校验 / OSS 写入）失败无任何落库副作用，按 FILE_TYPE_UNSUPPORTED /
+// DOCUMENT_INVALID_ARGUMENT 拒绝；介质成立后（解析 / 内容识别 / 摄取）失败
+// 目录行与介质行保留（content 保持空），管理页可重解析，对外统一
+// DOCUMENT_INDEX_FAILED。重解析（reindex 对 kind=file 的扩展）从介质行现场
+// 取回原件字节重走解析与摄取：解析器升级后重解析即修复历史条目。
 
 // KnowledgeFile 是文件介质领域模型：kind=file 条目的原件元数据，对象字节
 // 在 ObjectStore（object_key 指向），表与 OSS 都不存解析产物。Sha256 是

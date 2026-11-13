@@ -90,13 +90,10 @@ function startInfo(startedAt: number | undefined, turnStart: number | undefined)
 }
 
 // usageSummary 汇总一次模型调用的事实片段：模型型号与 token 用量（含缓存
-// 与思考细分 token），以及流程级的首字与思考时长。缺项不呈现——「未上报」
-// 不能读成「为零」；事实缺失（旧会话或未开启记录）返回空数组，调用方跳过
-// 整行。
-//
-// includeRunTiming 控制流程级两项：框架只在一次运行的首个模型调用上测量
-// 首字与思考时长，并复制到后续调用的用量里，逐条呈现会重复同一数值。故只
-// 在该运行的首条事实上展示，并明确标注「本轮」。
+// 与思考细分）及流程级首字/思考时长。缺项不呈现——「未上报」不能读成
+// 「为零」；事实缺失返回空数组，调用方跳过整行。includeRunTiming 控制流程
+// 级两项：框架只在一次运行的首个模型调用上测量并复制到后续调用用量，逐条
+// 呈现会重复，故仅该运行首条展示并标注「本轮」。
 function usageSummary(fact: SessionUsageFact | undefined, includeRunTiming: boolean): string[] {
   if (fact === undefined) {
     return []

@@ -338,13 +338,11 @@ type KnowledgeDocumentChunkDetail struct {
 	SupersededAt string
 }
 
-// GetDocumentChunk 按切片 ID 反查分片原文与所属条目摘要。分片可能已被
-// 重摄淘汰（保留期内仍可反查），因此走 store.Get 点查而非现行分片枚举；
-// 鉴权沿用条目读口径——先从切片 ID 解析来源条目 ID 并以 GetDocument 判定
-// 可见性（条目不存在或所属库不可见统一 NotFound），再校验切片 metadata
-// 的 document_id 与解析来源一致（防用其他条目的切片 ID 越权读取）。
-// 切片不存在、跨租户或来源不一致同样统一 NotFound；向量设施未启用的
-// 错误原样透传（入口层映射为能力缺失）。
+// GetDocumentChunk 按切片 ID 反查分片原文与所属条目摘要。分片可能已被重摄
+// 淘汰（保留期内仍可反查），走 store.Get 点查而非现行分片枚举；鉴权沿用
+// 条目读口径——先以 GetDocument 判来源条目可见性，再校验切片 metadata 的
+// document_id 与解析来源一致（防越权）；不一致统一 NotFound，设施未启用
+// 原样透传（入口层映射为能力缺失）。
 func (uc *KnowledgeUsecase) GetDocumentChunk(ctx context.Context, auth Identity, chunkID string) (*KnowledgeDocumentChunkDetail, error) {
 	chunkID = strings.TrimSpace(chunkID)
 	sourceID, err := chunkSourceID(chunkID)

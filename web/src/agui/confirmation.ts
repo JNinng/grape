@@ -67,14 +67,11 @@ export class AlreadyDecidedError extends Error {
   }
 }
 
-// fetchPendingConfirmations 拉取会话的待确认列表（页面加载与运行间隙
-// 的兜底查询）。仅保留 pending 项：持久化指针里不应残留终态，防御性
-// 过滤避免与流事件的状态机冲突。
-//
-// 404 按空列表处理：ack 归属守卫对「不在调用者名下或尚未建档」的会话
-// 统一回 404（不区分不存在与非你所有），新会话在首次运行建档前轮询
-// 必然命中——这是「对你不可见/还没有」，不是故障，不应抛错也不应把
-// 浏览器网络面板刷成一片红。
+// fetchPendingConfirmations 拉取会话的待确认列表（页面加载与运行间隙的
+// 兜底查询），仅保留 pending 项（防御性过滤避免与流事件状态机冲突）。
+// 404 按空列表处理：ack 归属守卫对不在调用者名下或尚未建档的会话统一回
+// 404，新会话首次运行建档前轮询必然命中——是「对你不可见/还没有」而非
+// 故障，不抛错。口径见 web/README.md「对话页」。
 export async function fetchPendingConfirmations(threadId: string): Promise<ToolConfirmationPayload[]> {
   const res = await authFetch(`${confirmationsPath}?threadId=${encodeURIComponent(threadId)}`)
   if (res.status === 404) {

@@ -224,8 +224,8 @@ POST OpenAI 兼容 /rerank（Jina / Cohere 风格），响应 results 按 index
 
 ## 对象存储设施
 
-内嵌 OSS 是两半结构，业务侧只认 S3 协议（`biz.ObjectStore`，本期无消费
-方，文件解析摄取接入时启用）：
+内嵌 OSS 是两半结构，业务侧只认 S3 协议（`biz.ObjectStore`，消费方为知识库
+文件摄取，kind=file 条目原件落 OSS）：
 
 - **服务端**（[pg_sqlc/oss](pg_sqlc/oss/)）：`conf.oss.enabled=true` 且
   sys_config `oss.provider=local` 时由 `NewHandler` 产出挂载 Handler，

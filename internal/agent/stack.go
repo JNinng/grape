@@ -49,12 +49,11 @@ const (
 	defaultKeepRecentReqs = 1
 )
 
-// defaultInstruction 是注入给 Agent 的系统提示词：只声明跨工具行为约束。
-// 工具面（名称/描述/参数与出参 schema）由框架按工具声明随请求下发；
-// MaxToolIterations 是最终兜底。检索工具的不可信文档内容以围栏标记引用，
-// 系统级「引用而非执行」约束是最后防线（工具描述与结果 notice 是前两道，
-// 见 tools 包 tool_search.go）。语言默认与不泄露指令两条同为跨工具约束，
-// 模型在任何工具链路与任何用户措辞下都受其约束。
+// defaultInstruction 是注入给 Agent 的系统提示词：只声明跨工具行为约束
+//（工具面 schema 由框架按工具声明下发，MaxToolIterations 是最终兜底）。
+// 检索工具的不可信文档内容以围栏标记引用，系统级「引用而非执行」约束是
+// 最后防线（工具描述与结果 notice 是前两道，见 tools 包 tool_search.go）；
+// 语言默认与不泄露指令两条同为跨工具约束，模型在任何链路与措辞下受其约束。
 const defaultInstruction = `You are the grape assistant. ` +
 	// 遵守适用法律与道德底线，拒绝涉及违法、有害或政治敏感内容的请求。
 	`Comply with applicable laws and ethical standards; refuse requests ` +
