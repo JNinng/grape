@@ -186,12 +186,15 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 
 	runTimeout := runTimeoutOf(c)
 	// 每次运行（含恢复路径续跑）都经网关许可策略评估；缺它则分级表
-	// 形同虚设、恢复路径降级为拒绝。catalog 非 nil 时在同一 resolver 上
-	// 追加按租户解析的文本模型（agent.WithModel），许可策略保持原样。
-	runOptionResolver := gateway.RunOptionResolver()
-	if o.catalog != nil {
-		runOptionResolver = catalogRunOptionResolver(o.catalog, newTextModelCache(c.GetLlm()), runOptionResolver)
-	}
+	// 形同虚设、恢复路径降级为拒绝。同一 resolver 上追加本次运行的文本
+	// 模型（catalog 按租户解析、否则静态模型）与思考强度（forwardedProps），
+	// 许可策略保持原样。
+	runOptionResolver := runModelOptionResolver(
+		o.catalog,
+		newTextModelCache(c.GetLlm()),
+		llm,
+		gateway.RunOptionResolver(),
+	)
 	aguiRunner := aguirunner.New(coreRunner,
 		aguirunner.WithAppName(c.GetAppName()),
 		aguirunner.WithSessionService(sessions),

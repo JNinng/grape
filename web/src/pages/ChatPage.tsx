@@ -16,13 +16,25 @@ import { logout } from '../api/session'
 import { createChatAgent } from '../agui/agent'
 import { cancelRun } from '../agui/cancel'
 import { fetchPendingConfirmations } from '../agui/confirmation'
-import { applyChatEvent, initialChatState, type ChatState, type MessageItem } from '../agui/events'
+import {
+  applyChatEvent,
+  initialChatState,
+  type ChatState,
+  type MessageItem,
+} from '../agui/events'
 import { fetchHistorySnapshot } from '../agui/history'
 import { newId } from '../agui/ids'
+import {
+  buildThinkingForwardedProps,
+  loadThinkingPreference,
+  saveThinkingPreference,
+  type ThinkingLevel,
+} from '../agui/thinking'
 import { getUser } from '../auth/store'
 import { GrapeMark } from '../ui/icons'
 import { ConfirmationCard } from './chat/ConfirmationCard'
 import { MessageList } from './chat/MessageList'
+import { ThinkingPicker } from './chat/ThinkingPicker'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
@@ -58,6 +70,10 @@ const PENDING_POLL_INTERVAL_MS = 30_000
 // 或达轮次上限即停。
 const HISTORY_CONVERGENCE_DELAYS_MS = [1_000, 2_000, 2_000, 3_000, 3_000]
 
+// 贴底判定的容差：滚动位置距底部不超过该像素即视为「停在底部」，流式
+// 增量继续跟随；用户向上翻阅后不再抢滚动位置。
+const SCROLL_BOTTOM_THRESHOLD_PX = 32
+
 // sessionTitle 由会话元数据推导展示标题：框架会话无业务标题字段，取
 // 短 ID + 更新时间呈现，不伪造语义。
 function sessionTitle(session: AgentSessionMeta): string {
@@ -82,6 +98,14 @@ export function ChatPage() {
   const [sessions, setSessions] = useState<AgentSessionMeta[]>([])
   const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [logoutOpen, setLogoutOpen] = useState(false)
+  // thinkingLevel 是思考强度的本地偏好：每次运行经 forwardedProps 下发，
+  // 后端据此覆盖本次运行的模型生成配置。
+  const [thinkingLevel, setThinkingLevel] = useState(loadThinkingPreference)
+
+  const changeThinkingLevel = (level: ThinkingLevel) => {
+    setThinkingLevel(level)
+    saveThinkingPreference(level)
+  }
 
   // agentRef/runIdRef 持有进行中的运行；threadIdRef 供异步回调判定
   // 是否已切走会话（陈旧运行的回包不得写入新会话的状态）。
@@ -95,11 +119,15 @@ export function ChatPage() {
   // scrollRef 承载消息滚动区；inputRef 承载输入框（自适应增高）。
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  // stickToBottomRef 记录用户是否停在底部：只有停底时才跟随流式增量，
+  // 向上翻阅历史后不再被强行拉回；滚回底部或发送新消息即恢复跟随。
+  const stickToBottomRef = useRef(true)
 
-  // 消息 / 步骤 / 确认卡变化时贴底滚动，保证流式输出始终可见。
+  // 消息 / 步骤 / 确认卡变化时贴底滚动：仅当用户停在底部时执行，避免
+  // 阅读历史时被增量输出打断。
   useEffect(() => {
     const el = scrollRef.current
-    if (el !== null) {
+    if (el !== null && stickToBottomRef.current) {
       el.scrollTop = el.scrollHeight
     }
   }, [chat.items, chat.steps, chat.confirmations])
@@ -204,6 +232,8 @@ export function ChatPage() {
     agentRef.current = null
     runIdRef.current = null
     clearHistoryPoll()
+    // 换会话回到「跟随底部」：新会话的历史与后续输出都应贴底呈现。
+    stickToBottomRef.current = true
     setChat(initialChatState())
     setHistoryError(null)
     let cancelled = false
@@ -240,6 +270,8 @@ export function ChatPage() {
       return
     }
     setInput('')
+    // 发送即恢复跟随：新消息与其输出应贴底可见，即使此前在翻阅历史。
+    stickToBottomRef.current = true
     const tid = threadId
     const userMessage: MessageItem = { kind: 'message', id: newId('msg'), role: 'user', content: text }
     setChat((s) => ({ ...s, items: [...s.items, userMessage], running: true, error: null }))
@@ -252,7 +284,9 @@ export function ChatPage() {
     runIdRef.current = runId
 
     try {
-      await agent.runAgent({ runId }, {
+      // 思考强度随运行下发：本次运行内的全部模型调用按同一档位覆盖，
+      // 切换档位只影响后续运行（在途运行保持启动时的取值）。
+      await agent.runAgent({ runId, forwardedProps: buildThinkingForwardedProps(thinkingLevel) }, {
         onEvent: ({ event }) => {
           // 订阅器以擦除形态（BaseEvent）回调；reducer 的 default 分支
           // 忽略未知类型，此处断言回联合是安全的。
@@ -335,7 +369,9 @@ export function ChatPage() {
             </AlertDescription>
           </Alert>
         )}
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
+        {/* 滚动条常显（thin 轨道）以固定占位：内容从不满到溢出时不再因
+            滚动条出现/消失而挤动消息宽度。 */}
+        <nav className="min-h-0 flex-1 overflow-y-scroll px-3 pb-4">
           <ul aria-label="会话列表" className="space-y-1">
             {sessions.map((session) => {
               const active = session.id === threadId
@@ -469,7 +505,19 @@ export function ChatPage() {
           </ol>
         )}
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        {/* overflow-y-scroll + 全局 thin 滚动条：轨道常驻，避免内容越过
+            视口高度时滚动条出现挤动消息宽度。onScroll 只更新「是否停在
+            底部」，供贴底跟随判定。 */}
+        <div
+          ref={scrollRef}
+          data-testid="chat-scroll"
+          onScroll={(event) => {
+            const el = event.currentTarget
+            stickToBottomRef.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight <= SCROLL_BOTTOM_THRESHOLD_PX
+          }}
+          className="min-h-0 flex-1 overflow-y-scroll"
+        >
           <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
             {/* 待确认时运行挂起等人决定，不呈现「正在思考」：载入提示只
                 表示模型侧仍在处理。 */}
@@ -506,6 +554,13 @@ export function ChatPage() {
         >
           <div className="mx-auto w-full max-w-3xl">
             <div className="flex items-end gap-2 rounded-2xl border border-input bg-card p-2 shadow-xs transition focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
+              {/* 思考强度：触发器只显示图标与档位，悬浮弹出档位单选；在途
+                  运行保持启动时的取值，运行时禁用避免误解为即时生效。 */}
+              <ThinkingPicker
+                value={thinkingLevel}
+                onChange={changeThinkingLevel}
+                disabled={chat.running}
+              />
               <Textarea
                 ref={inputRef}
                 aria-label="输入消息"

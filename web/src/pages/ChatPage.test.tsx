@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -84,6 +84,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   clearSession()
+  localStorage.removeItem('grape.thinking')
   vi.resetAllMocks()
 })
 
@@ -218,6 +219,116 @@ describe('ChatPage streaming run', () => {
     expect(threadId).toBe(mockFetchHistory.mock.calls[0][0])
     expect(typeof runId).toBe('string')
     releaseRun()
+  })
+})
+
+describe('ChatPage message scrolling', () => {
+  // 设定滚动区尺寸并上报一次滚动，模拟用户当前的阅读位置。
+  function placeReader(scroller: HTMLElement, scrollHeight: number, clientHeight: number, scrollTop: number) {
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, value: scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: clientHeight })
+    scroller.scrollTop = scrollTop
+    fireEvent.scroll(scroller)
+  }
+
+  async function startRun(user: ReturnType<typeof userEvent.setup>, stub: ReturnType<typeof agentStub>) {
+    await screen.findByLabelText('会话列表')
+    await user.type(screen.getByLabelText('输入消息'), 'say ping')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(stub.runAgent).toHaveBeenCalledTimes(1))
+    return stub.runAgent.mock.calls[0][1]
+  }
+
+  async function streamText(subscriber: AgentSubscriberLike | undefined, delta: string) {
+    await act(async () => {
+      subscriber?.onEvent?.({ event: { type: 'TEXT_MESSAGE_START', messageId: 'm-1', role: 'assistant' } })
+      subscriber?.onEvent?.({ event: { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm-1', delta } })
+    })
+  }
+
+  it('follows_streaming_output_when_the_reader_is_at_the_bottom', async () => {
+    const user = userEvent.setup()
+    const stub = agentStub()
+    mockCreateAgent.mockReturnValue(stub as never)
+    renderChat()
+    const subscriber = await startRun(user, stub)
+    const scroller = screen.getByTestId('chat-scroll')
+    placeReader(scroller, 1000, 400, 600)
+
+    await streamText(subscriber, 'hello')
+
+    expect(scroller.scrollTop).toBe(1000)
+  })
+
+  it('keeps_the_reading_position_when_the_reader_scrolled_up', async () => {
+    const user = userEvent.setup()
+    const stub = agentStub()
+    mockCreateAgent.mockReturnValue(stub as never)
+    renderChat()
+    const subscriber = await startRun(user, stub)
+    const scroller = screen.getByTestId('chat-scroll')
+    placeReader(scroller, 1000, 400, 100)
+
+    await streamText(subscriber, 'hello')
+
+    expect(scroller.scrollTop).toBe(100)
+  })
+
+  it('resumes_following_after_the_reader_scrolls_back_to_the_bottom', async () => {
+    const user = userEvent.setup()
+    const stub = agentStub()
+    mockCreateAgent.mockReturnValue(stub as never)
+    renderChat()
+    const subscriber = await startRun(user, stub)
+    const scroller = screen.getByTestId('chat-scroll')
+    placeReader(scroller, 1000, 400, 100)
+    await streamText(subscriber, 'hello')
+
+    placeReader(scroller, 1000, 400, 600)
+    await act(async () => {
+      subscriber?.onEvent?.({ event: { type: 'TEXT_MESSAGE_CONTENT', messageId: 'm-1', delta: ' again' } })
+    })
+
+    expect(scroller.scrollTop).toBe(1000)
+  })
+})
+
+describe('ChatPage thinking intensity', () => {
+  it('selects_the_intensity_from_the_hover_popover_and_sends_it_with_each_run', async () => {
+    const user = userEvent.setup()
+    const stub = agentStub()
+    mockCreateAgent.mockReturnValue(stub as never)
+    renderChat()
+
+    await screen.findByLabelText('会话列表')
+    // 触发器只呈现图标与当前档位；悬浮弹出档位单选。
+    const trigger = screen.getByRole('button', { name: '思考强度：中' })
+    await user.hover(trigger)
+    await user.click(await screen.findByRole('radio', { name: '高' }))
+    expect(localStorage.getItem('grape.thinking')).toBe('high')
+    expect(screen.getByRole('button', { name: '思考强度：高' })).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('输入消息'), 'say ping')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(stub.runAgent).toHaveBeenCalledTimes(1))
+    expect(stub.runAgent.mock.calls[0][0]).toMatchObject({ forwardedProps: { thinking: 'high' } })
+  })
+
+  it('restores_the_stored_intensity_and_sends_it', async () => {
+    localStorage.setItem('grape.thinking', 'off')
+    const user = userEvent.setup()
+    const stub = agentStub()
+    mockCreateAgent.mockReturnValue(stub as never)
+    renderChat()
+
+    await screen.findByLabelText('会话列表')
+    expect(screen.getByRole('button', { name: '思考强度：关闭' })).toBeInTheDocument()
+    await user.type(screen.getByLabelText('输入消息'), 'say ping')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(stub.runAgent).toHaveBeenCalledTimes(1))
+    expect(stub.runAgent.mock.calls[0][0]).toMatchObject({ forwardedProps: { thinking: 'off' } })
   })
 })
 

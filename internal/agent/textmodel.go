@@ -71,13 +71,15 @@ func timeoutKey(d time.Duration) string {
 	return d.String()
 }
 
-// catalogRunOptionResolver 包装 ack 的许可策略解析器：先保留原许可
-// RunOption，再按本次运行的租户解析文本模型并追加 agent.WithModel。
-// 身份缺失、模型停用/未知、密钥不可用一律拒绝本次运行（fail-closed），
-// 绝不回落静态默认模型。
-func catalogRunOptionResolver(
+// runModelOptionResolver 包装 ack 的许可策略解析器：先保留原许可
+// RunOption，再确定本次运行的文本模型——catalog 非 nil 时按租户解析，
+// 否则沿用装配期静态模型——并按 forwardedProps 的思考强度覆盖本次运行的
+// 生成配置，最后追加 agent.WithModel。身份缺失、模型停用/未知、密钥不可用
+// 一律拒绝本次运行（fail-closed），绝不回落静态默认模型。
+func runModelOptionResolver(
 	catalog biz.TextModelCatalog,
 	cache *textModelCache,
+	fallback model.Model,
 	base func(ctx context.Context, input *adapter.RunAgentInput) ([]agent.RunOption, error),
 ) func(ctx context.Context, input *adapter.RunAgentInput) ([]agent.RunOption, error) {
 	return func(ctx context.Context, input *adapter.RunAgentInput) ([]agent.RunOption, error) {
@@ -85,16 +87,26 @@ func catalogRunOptionResolver(
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := biz.IdentityFromContext(ctx); !ok {
-			return nil, fmt.Errorf("agent: per-run model resolution requires an authenticated identity")
+		m := fallback
+		if catalog != nil {
+			if _, ok := biz.IdentityFromContext(ctx); !ok {
+				return nil, fmt.Errorf("agent: per-run model resolution requires an authenticated identity")
+			}
+			spec, err := catalog.ResolveTextModel(ctx)
+			if err != nil {
+				return nil, err
+			}
+			resolved, err := cache.get(spec)
+			if err != nil {
+				return nil, err
+			}
+			m = resolved
 		}
-		spec, err := catalog.ResolveTextModel(ctx)
-		if err != nil {
-			return nil, err
+		if m == nil {
+			return opts, nil
 		}
-		m, err := cache.get(spec)
-		if err != nil {
-			return nil, err
+		if level, ok := thinkingLevelFromForwardedProps(input); ok {
+			m = wrapThinkingModel(m, level)
 		}
 		return append(opts, agent.WithModel(m)), nil
 	}

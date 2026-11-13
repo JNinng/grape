@@ -35,7 +35,8 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | [stack.go](stack.go) | 骨架装配链（模型 → 工具 → ack 网关 → LLMAgent → runner → AG-UI → ServeMux）与 `Stack` 访问器；`Close` 只释放 runner。 |
 | [gateway.go](gateway.go) | ack 网关构造：静态分级表、模型面拒绝文案、userKey 取值与许可源接线。 |
 | [llm.go](llm.go) | 模型链构造：OpenAI 兼容候选，failover / hedge / logging 包装与日志脱敏。 |
-| [textmodel.go](textmodel.go) | 按租户解析的文本模型：每次运行前经模型目录取 spec、按可变字段缓存整条链并以 `agent.WithModel` 覆盖本次运行。 |
+| [textmodel.go](textmodel.go) | 按运行解析文本模型：catalog 非 nil 时经租户目录取 spec、按可变字段缓存整条链，否则用静态模型；非空时以 `agent.WithModel` 覆盖本次运行。 |
+| [thinking.go](thinking.go) | 按运行覆盖思考强度：从 `forwardedProps.thinking` 解析档位（off / low / medium / high），包装本次运行的模型并在每次请求副本上写 `GenerationConfig.ThinkingEnabled` 与 `ReasoningEffort`（保留 IterModel 能力）。 |
 | [concurrency.go](concurrency.go) | 按 userKey 的 chat 在途运行门控（超限 429），并向观测推送起止与拒绝。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：骨架、框架会话存储（预建表、TTL 翻译）、向量适配器。 |
 | [identity/](identity/) | userKey 编解码、`UserKeyFromContext`、`ErrMissingIdentity`；身份的单一代码点。 |
@@ -120,6 +121,15 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   provider/base_url/model/api_key/timeout；租户只换模型，failover/hedge/
   logging 仍从全局 conf 克隆。身份缺失、模型停用/未知、密钥不可用一律
   拒绝本次运行（fail-closed），不回落静态默认模型。
+- 运行期思考强度：[thinking.go](thinking.go) 从 `forwardedProps.thinking`
+  （封闭词表 off / low / medium / high）取本次运行的档位，把模型包装一层
+  后在每次请求副本上写 `GenerationConfig.ThinkingEnabled` 与
+  `ReasoningEffort`；LLMAgent 的生成配置在装配期固定，按运行覆盖只能
+  落在请求侧。catalog 非 nil 时包装解析出的租户模型，否则包装静态模型；
+  缺失或词表外取值视为未指定，沿用装配期生成配置。provider 不支持的档位
+  由服务端归并（如 DeepSeek v4 把 low / medium 映射为 high），本层不做
+  替换。开关按运行生效（在途运行不受后续切换影响），恢复路径续跑不带
+  forwardedProps，按缺省生成配置执行。
 
 ### 审计与观测
 

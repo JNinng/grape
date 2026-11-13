@@ -98,6 +98,18 @@ npm 构建会覆盖占位页，提交前用
   （`agui/history.ts` 手解 SSE data 行）。拿到首份 `MESSAGES_SNAPSHOT` 即
   `reader.cancel()` 返回，不等快照运行走完；不跟 follow 流——上游 track
   follow 有同毫秒事件被跳过的已知缺陷，快照即回放。
+- 思考强度（输入框左侧档位触发器）：触发器只显示图标与当前档位文字，
+  悬浮（或聚焦后回车）弹出档位单选：关闭 / 低 / 中 / 高。缺省中档，偏好
+  存 localStorage `grape.thinking`。值经 AG-UI `forwardedProps.thinking`
+  （档位字符串）随每次运行下发，后端据此覆盖本次运行的模型生成配置
+  （`agui/thinking.ts` 是这一前端契约的单一代码点）。provider 不支持的
+  档位由服务端归并（如 DeepSeek v4 把低/中映射为高）。切换只影响后续
+  运行，在途运行保持启动时的取值（运行时触发器禁用）；恢复路径续跑不带
+  forwardedProps，按后端缺省配置执行。
+- 消息流跟随：仅在用户停留底部（32px 容差）时贴底滚动流式增量与步骤，
+  向上翻阅历史后不再抢滚动位置；发送消息、切换会话与滚回底部恢复跟随。
+  消息滚动区与会话侧栏常显细滚动条轨道（`overflow-y-scroll`），避免内容
+  从不满到溢出时滚动条显隐挤动宽度。
 - 确认卡：流内 `tool_confirmation` 自定义事件（载荷与 ack `Payload`
   字段一字对齐）出卡；决定 `POST /agui/ack/confirmation`，404 视为已
   失效收敛。待确认列表 `GET /agui/ack/confirmations?threadId=` 在加载

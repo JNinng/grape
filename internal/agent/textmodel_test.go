@@ -55,7 +55,7 @@ func TestTextModelCache_different_specs_produce_distinct_models(t *testing.T) {
 	}
 }
 
-func TestCatalogRunOptionResolver_requires_identity_and_appends_model(t *testing.T) {
+func TestRunModelOptionResolver_requires_identity_and_appends_model(t *testing.T) {
 	catalog := &textModelCatalogStub{byTenant: map[string]biz.TextModelSpec{
 		"t-a": {Key: "a", Provider: "openai", Model: "model-a", BaseURL: "http://a"},
 		"t-b": {Key: "b", Provider: "openai", Model: "model-b", BaseURL: "http://b"},
@@ -64,7 +64,7 @@ func TestCatalogRunOptionResolver_requires_identity_and_appends_model(t *testing
 	base := func(context.Context, *adapter.RunAgentInput) ([]trpcagent.RunOption, error) {
 		return []trpcagent.RunOption{trpcagent.WithModelName("base-model")}, nil
 	}
-	resolver := catalogRunOptionResolver(catalog, cache, base)
+	resolver := runModelOptionResolver(catalog, cache, nil, base)
 
 	// 身份缺失：拒绝本次运行，不回落默认模型。
 	if _, err := resolver(context.Background(), &adapter.RunAgentInput{}); err == nil {
@@ -84,7 +84,7 @@ func TestCatalogRunOptionResolver_requires_identity_and_appends_model(t *testing
 	}
 
 	// 目录解析失败（停用/未知/密钥不可用）原样拒绝。
-	broken := catalogRunOptionResolver(&textModelCatalogStub{err: biz.ErrModelSecretUnavailable}, cache, base)
+	broken := runModelOptionResolver(&textModelCatalogStub{err: biz.ErrModelSecretUnavailable}, cache, nil, base)
 	ctx := biz.WithIdentity(context.Background(), biz.Identity{TenantID: "t-a", UserID: 1})
 	if _, err := broken(ctx, &adapter.RunAgentInput{}); !errors.Is(err, biz.ErrModelSecretUnavailable) {
 		t.Fatalf("resolver with catalog error = %v, want ErrModelSecretUnavailable", err)
