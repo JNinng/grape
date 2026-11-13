@@ -1,6 +1,7 @@
 import { createContext, useContext, type ComponentType } from 'react'
 import { Link, Navigate, NavLink, Outlet } from 'react-router'
 import {
+  ActivityIcon,
   ArrowLeftIcon,
   BookOpenIcon,
   BuildingIcon,
@@ -139,6 +140,13 @@ const SETTINGS_MODULES: SettingsModule[] = [
     icon: CpuIcon,
     requirement: { required: [PERM.ModelPage, PERM.ModelQuery] },
     path: '/settings/models',
+  },
+  {
+    key: 'model-calls',
+    label: '模型调用',
+    icon: ActivityIcon,
+    requirement: { required: [PERM.AgentModelCallPage, PERM.AgentModelCallQuery] },
+    path: '/settings/model-calls',
   },
 ]
 

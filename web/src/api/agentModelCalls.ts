@@ -1,62 +1,53 @@
 import { authFetch } from './http'
 import { toApiError } from './toApiError'
+import type { DynamicQuery } from './query'
 
-// 模型调用留痕查询端点（供运维复现视图）的 DTO：字段与后端
-// service/agent_model_call.go 的 JSON 形状对齐，时间为 UTC RFC3339。
-// inputSummary / outputSummary / error 是落库时已脱敏的形态，前端直接
-// 渲染；inputTokens / outputTokens / documentId 的 null 是「未上报 /
-// 无文档事实」，不以 0 冒充。
+// AgentModelCallService 各端点（api/agent/v1/model_call.proto）的前端客户端：
+// 模型调用留痕只读查询（系统设置「模型调用」管理页）。序列化口径与后端
+// jsoncodec（protojson 覆盖）一致：字段小驼峰、int64 为字符串、时间为
+// RFC3339、optional 未设置时省略。input/output 摘要与 error 是落库时已
+// 脱敏的形态，直接渲染；inputTokens / outputTokens / documentId /
+// durationMs 缺省是「未上报 / 无文档事实 / 未记录」，不以 0 冒充。
 
-export interface ModelCall {
-  id: number
+export interface ModelCallDTO {
+  id: string
+  userId: string
+  traceId?: string
   scenario: string
-  status: string
   modelKey?: string
   endpoint?: string
-  documentId: number | null
-  traceId?: string
+  documentId?: string
   inputSummary?: string
   outputSummary?: string
-  inputTokens: number | null
-  outputTokens: number | null
-  durationMs: number
+  inputTokens?: number
+  outputTokens?: number
+  durationMs?: number
+  status: string
   error?: string
+  createdBy: string
   createdAt: string
 }
 
-// ModelCallFilters 是面板的过滤条件：空串/缺省不过滤。
-export interface ModelCallFilters {
-  scenario: string
-  modelKey: string
-  status: string
+// ModelCallSetDTO 对齐 agent.v1.ModelCallLogSet。
+export interface ModelCallSetDTO {
+  items: ModelCallDTO[]
+  total?: string
+  hasMore: boolean
+  nextCursor: string
+  page: number
 }
 
-interface ModelCallsReply {
-  items?: ModelCall[]
-  total: number
-}
-
-// fetchModelCalls 拉取模型调用留痕分页列表：按场景/模型键/状态过滤
-//（可选）。归属由服务端认证身份决定，前端不传任何归属参数。
-export async function fetchModelCalls(
-  filters: ModelCallFilters = { scenario: '', modelKey: '', status: '' },
-  offset = 0,
-  limit = 50,
-): Promise<ModelCall[]> {
-  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) })
-  if (filters.scenario !== '') {
-    query.set('scenario', filters.scenario)
-  }
-  if (filters.modelKey !== '') {
-    query.set('model_key', filters.modelKey)
-  }
-  if (filters.status !== '') {
-    query.set('status', filters.status)
-  }
-  const res = await authFetch(`/v1/agent/model-calls?${query.toString()}`)
+// listModelCalls 调用 POST /v1/agent/model-calls/list（body: "query"）。
+// 零命中时响应没有 items 键，补齐为空数组。
+export async function listModelCalls(query?: DynamicQuery): Promise<ModelCallSetDTO> {
+  const res = await authFetch('/v1/agent/model-calls/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(query ?? {}),
+  })
   if (!res.ok) {
     throw await toApiError(res)
   }
-  const body = (await res.json()) as ModelCallsReply
-  return body.items ?? []
+  const set = (await res.json()) as ModelCallSetDTO
+  return { ...set, items: set.items ?? [] }
 }

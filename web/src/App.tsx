@@ -22,6 +22,7 @@ import { TenantManagePage } from './pages/settings/TenantManagePage'
 import { UserGroupManagePage } from './pages/settings/UserGroupManagePage'
 import { UserManagePage } from './pages/settings/UserManagePage'
 import { KnowledgeManagePage } from './pages/settings/KnowledgeManagePage'
+import { ModelCallManagePage } from './pages/settings/ModelCallManagePage'
 import { ModelManagePage } from './pages/settings/ModelManagePage'
 
 // App 是路由表与全局装配点：网络层会话失效（401 且刷新失败）时回到
@@ -184,6 +185,14 @@ export default function App() {
             element={
               <RequirePermission requirement={{ required: [PERM.ModelPage, PERM.ModelQuery] }}>
                 <ModelManagePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="model-calls"
+            element={
+              <RequirePermission requirement={{ required: [PERM.AgentModelCallPage, PERM.AgentModelCallQuery] }}>
+                <ModelCallManagePage />
               </RequirePermission>
             }
           />

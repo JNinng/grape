@@ -46,7 +46,7 @@ function renderLayout(initialEntry = '/settings/users') {
 }
 
 // ALL_LABELS 是静态全量模块标签（与 SETTINGS_MODULES 对齐）。
-const ALL_LABELS = ['个人中心', '用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户']
+const ALL_LABELS = ['个人中心', '用户', '部门', '用户组', '角色', '菜单', '字典', '审计日志', '会话', '配置', '租户', '知识库', '模型', '模型调用']
 
 describe('SettingsLayout navigation filtering', () => {
   it('keeps_only_the_modules_whose_permission_requirement_is_met_after_loading', async () => {
@@ -143,6 +143,9 @@ describe('SettingsLayout navigation links', () => {
       'sys:session', 'sys:session:query',
       'sys:config', 'sys:config:global:query',
       'sys:tenant', 'sys:tenant:query',
+      'sys:knowledge', 'sys:knowledge:query',
+      'sys:model', 'sys:model:query',
+      'agent:model-call', 'agent:model-call:query',
     ])
     renderLayout()
 
@@ -157,6 +160,9 @@ describe('SettingsLayout navigation links', () => {
     expect(screen.getByRole('link', { name: '会话' })).toHaveAttribute('href', '/settings/sessions')
     expect(screen.getByRole('link', { name: '配置' })).toHaveAttribute('href', '/settings/configs')
     expect(screen.getByRole('link', { name: '租户' })).toHaveAttribute('href', '/settings/tenants')
+    expect(screen.getByRole('link', { name: '知识库' })).toHaveAttribute('href', '/settings/knowledge')
+    expect(screen.getByRole('link', { name: '模型' })).toHaveAttribute('href', '/settings/models')
+    expect(screen.getByRole('link', { name: '模型调用' })).toHaveAttribute('href', '/settings/model-calls')
   })
 
   it('links_back_to_the_workspace', async () => {

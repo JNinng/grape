@@ -22,9 +22,6 @@ vi.mock('../../api/agentRetrievalLogs', () => ({
 vi.mock('../../api/agentSessionUsage', () => ({
   fetchSessionUsage: vi.fn(),
 }))
-vi.mock('../../api/agentModelCalls', () => ({
-  fetchModelCalls: vi.fn(),
-}))
 vi.mock('./detailCache', () => ({
   loadChunkDetail: vi.fn(),
   loadDocumentDetail: vi.fn(),
@@ -37,7 +34,6 @@ import { fetchAgentSessions } from '../../api/agentSessions'
 import { fetchConfirmationAudits, fetchToolCallAudits } from '../../api/agentAudit'
 import { fetchRetrievalLogs } from '../../api/agentRetrievalLogs'
 import { fetchSessionUsage } from '../../api/agentSessionUsage'
-import { fetchModelCalls } from '../../api/agentModelCalls'
 import type { DocumentDTO } from '../../api/knowledge'
 import { ApiError } from '../../api/toApiError'
 import { clearReplayDetailCache, loadChunkDetail, loadDocumentDetail } from './detailCache'
@@ -51,7 +47,6 @@ const mockFetchToolCalls = vi.mocked(fetchToolCallAudits)
 const mockFetchConfirmations = vi.mocked(fetchConfirmationAudits)
 const mockFetchRetrievals = vi.mocked(fetchRetrievalLogs)
 const mockFetchSessionUsage = vi.mocked(fetchSessionUsage)
-const mockFetchModelCalls = vi.mocked(fetchModelCalls)
 const mockLoadChunkDetail = vi.mocked(loadChunkDetail)
 const mockLoadDocumentDetail = vi.mocked(loadDocumentDetail)
 const mockClearReplayDetailCache = vi.mocked(clearReplayDetailCache)
@@ -255,37 +250,6 @@ beforeEach(() => {
       ],
       durationMs: 20,
       createdAt: '2026-01-01T00:00:03Z',
-    },
-  ])
-  mockFetchModelCalls.mockResolvedValue([
-    {
-      id: 31,
-      scenario: 'embed_document',
-      status: 'success',
-      modelKey: 'bge-m1024',
-      endpoint: 'http://embed.example/v1/embeddings',
-      documentId: 42,
-      inputSummary: 'chunk body',
-      outputSummary: 'embedding vector of 1024 dimensions (vector not persisted)',
-      inputTokens: 96,
-      outputTokens: null,
-      durationMs: 18,
-      createdAt: '2026-01-01T00:00:03Z',
-    },
-    {
-      id: 32,
-      scenario: 'parse_document',
-      status: 'error',
-      modelKey: '',
-      endpoint: 'http://ocr.example/parse',
-      documentId: 7,
-      inputSummary: 'mime=application/pdf filename=paper.pdf size=36 sha256=8181',
-      outputSummary: '',
-      inputTokens: null,
-      outputTokens: null,
-      durationMs: 1200,
-      error: 'external parse service status 422: parse failed',
-      createdAt: '2026-01-01T00:00:04Z',
     },
   ])
   mockLoadDocumentDetail.mockResolvedValue(documentDTO())
@@ -508,15 +472,6 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(screen.getByRole('columnheader', { name: '名次' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '锚点' })).toBeInTheDocument()
     expect(screen.getAllByText('0.9000').length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('renders_the_model_call_panel_at_page_level', async () => {
-    // 模型调用留痕是管线侧证据面（无会话事实），不随会话选择联动，独立
-    // 装载：页面级 region 可见并按 mock 数据渲染行事实。
-    renderReplay()
-    const region = screen.getByRole('region', { name: '模型调用' })
-    expect(await within(region).findByText('bge-m1024')).toBeInTheDocument()
-    expect(within(region).getByText('parse_document/error')).toBeInTheDocument()
   })
 
   it('renders_start_time_and_turn_latency_for_replay_items', async () => {

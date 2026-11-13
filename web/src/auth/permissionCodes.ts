@@ -92,6 +92,9 @@ export const PERM = {
   ModelPlatformCreate: 'sys:model:platform:create',
   ModelPlatformUpdate: 'sys:model:platform:update',
   ModelPlatformDelete: 'sys:model:platform:delete',
+
+  AgentModelCallPage: 'agent:model-call',
+  AgentModelCallQuery: 'agent:model-call:query',
 } as const
 
 export type PermissionCode = (typeof PERM)[keyof typeof PERM]

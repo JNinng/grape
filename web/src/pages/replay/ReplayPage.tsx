@@ -36,7 +36,6 @@ import {
 import { clearReplayDetailCache } from './detailCache'
 import { ChunkIdPopover, DocumentIdPopover } from './EntityPopover'
 import { CompactionRefPanel } from './CompactionRefPanel'
-import { ModelCallPanel } from './ModelCallPanel'
 import { GrapeMark } from '../../ui/icons'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -1216,11 +1215,6 @@ export function ReplayPage() {
                 </section>
               </>
             )}
-
-            {/* 模型调用留痕是管线侧证据面（摄取摘要/块前缀/向量化/外部
-                解析，无会话事实），不随会话选择联动，独立装载与过滤；
-                摘要与产物为落库时已脱敏形态，行展开原样渲染。 */}
-            <ModelCallPanel />
           </div>
         </div>
       </section>
