@@ -45,7 +45,7 @@ bucket 即命名空间，查询走 sqlc 固定命名查询）。业务客户端�
 | [server.go](server.go) | `NewHandler` 挂载构造（装配期 sys_config 读取、决策矩阵）与 `signedPrefixHandler`（外层 SigV4 + 前缀剥离） |
 | [backend.go](backend.go) | `gofakes3.Backend` 的 PG 实现：覆盖写、Range substr 切片、列举归并、桶生命周期、限流、复制与元数据 jsonb 编解码 |
 | [backend_unit_test.go](backend_unit_test.go) | 纯单元测试：LIKE 转义、元数据编解码、配置值解码、etag 引号口径 |
-| [oss_pg_test.go](oss_pg_test.go) | 集成测试（真实 PostgreSQL，`GRAPE_OSS_TEST_ADMIN_DSN` / `GRAPE_OSS_TEST_DSN` 门控，自建 `grape_oss_test` 库）：Backend 存储语义、/s3/ 回环的 SDK 语义与 SigV4 拒绝矩阵、挂载决策矩阵、grape_u 授权 |
+| [oss_pg_test.go](oss_pg_test.go) | 集成测试（真实 PostgreSQL，`GRAPE_OSS_TEST_ADMIN_DSN` / `GRAPE_OSS_TEST_DSN` 门控，从模板库克隆独立测试库）：Backend 存储语义、/s3/ 回环的 SDK 语义与 SigV4 拒绝矩阵、挂载决策矩阵、grape_u 授权 |
 
 ## 测试
 

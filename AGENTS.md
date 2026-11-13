@@ -51,7 +51,7 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 
 测试与被测代码同目录（`*_test.go` / `*.test.ts`），按层隔离：`service` 用假
 仓储隔离传输适配，`biz` mock 仓储接口只验证用例，`data` 以真实 PostgreSQL
-集成测试验证存储边界（自建临时库、按部署清单装载 SQL、以 `grape_u` 运行）。
+集成测试验证存储边界。测试库机制、环境变量与运行命令见 [test.md](test.md)；
 覆盖主题见各层 README 的「测试」一节。
 
 ## 生成物禁止手改

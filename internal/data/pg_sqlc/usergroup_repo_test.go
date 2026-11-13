@@ -89,6 +89,7 @@ func softDeleteUserRow(t *testing.T, d *Data, auth biz.Identity, id int64) {
 }
 
 func TestUserGroupRepo_create_writes_fields_and_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantEmpty)
 	owner := int64(5)
@@ -113,6 +114,7 @@ func TestUserGroupRepo_create_writes_fields_and_tenant(t *testing.T) {
 }
 
 func TestUserGroupRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -123,6 +125,7 @@ func TestUserGroupRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
 }
 
 func TestUserGroupRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -133,6 +136,7 @@ func TestUserGroupRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 }
 
 func TestUserGroupRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 组 1 属 t-test-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	other := groupAuth(groupTenantEmpty)
@@ -144,6 +148,7 @@ func TestUserGroupRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 }
 
 func TestUserGroupRepo_get_by_id_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewUserGroupRepo(d).GetByID(context.Background(), groupAuth(groupTenantSeeded), 424242)
@@ -153,6 +158,7 @@ func TestUserGroupRepo_get_by_id_missing_maps_not_found(t *testing.T) {
 }
 
 func TestUserGroupRepo_list_filters_by_code_prefix_with_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -170,6 +176,7 @@ func TestUserGroupRepo_list_filters_by_code_prefix_with_total(t *testing.T) {
 }
 
 func TestUserGroupRepo_list_rejects_unknown_field(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewUserGroupRepo(d).List(context.Background(), groupAuth(groupTenantSeeded),
@@ -180,6 +187,7 @@ func TestUserGroupRepo_list_rejects_unknown_field(t *testing.T) {
 }
 
 func TestUserGroupRepo_update_changes_name_status_remark(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantEmpty)
 	repo := NewUserGroupRepo(d)
@@ -202,6 +210,7 @@ func TestUserGroupRepo_update_changes_name_status_remark(t *testing.T) {
 }
 
 func TestUserGroupRepo_update_keeps_code_immutable(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantEmpty)
 	repo := NewUserGroupRepo(d)
@@ -221,6 +230,7 @@ func TestUserGroupRepo_update_keeps_code_immutable(t *testing.T) {
 }
 
 func TestUserGroupRepo_update_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewUserGroupRepo(d).Update(context.Background(), groupAuth(groupTenantSeeded),
@@ -231,6 +241,7 @@ func TestUserGroupRepo_update_missing_maps_not_found(t *testing.T) {
 }
 
 func TestUserGroupRepo_delete_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewUserGroupRepo(d).SoftDelete(context.Background(), groupAuth(groupTenantSeeded), 424242)
@@ -240,6 +251,7 @@ func TestUserGroupRepo_delete_missing_maps_not_found(t *testing.T) {
 }
 
 func TestUserGroupRepo_delete_soft_deletes_and_mapping_rows_remain(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 	repo := NewUserGroupRepo(d)
@@ -263,6 +275,7 @@ func TestUserGroupRepo_delete_soft_deletes_and_mapping_rows_remain(t *testing.T)
 }
 
 func TestUserGroupRepo_list_members_returns_display_fields_in_added_order(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -285,6 +298,7 @@ func TestUserGroupRepo_list_members_returns_display_fields_in_added_order(t *tes
 }
 
 func TestUserGroupRepo_add_members_returns_added_count(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 	repo := NewUserGroupRepo(d)
@@ -304,6 +318,7 @@ func TestUserGroupRepo_add_members_returns_added_count(t *testing.T) {
 }
 
 func TestUserGroupRepo_add_members_duplicate_is_idempotent_skip(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -319,6 +334,7 @@ func TestUserGroupRepo_add_members_duplicate_is_idempotent_skip(t *testing.T) {
 }
 
 func TestUserGroupRepo_add_members_unknown_user_rejects_and_writes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -333,6 +349,7 @@ func TestUserGroupRepo_add_members_unknown_user_rejects_and_writes_nothing(t *te
 }
 
 func TestUserGroupRepo_add_members_cross_tenant_user_rejects(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 用户 5 属 t-test-02；t-test-01 身份经 RLS 不可见，等同不存在。
 	auth := groupAuth(groupTenantSeeded)
@@ -347,6 +364,7 @@ func TestUserGroupRepo_add_members_cross_tenant_user_rejects(t *testing.T) {
 }
 
 func TestUserGroupRepo_add_members_missing_group_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewUserGroupRepo(d).AddMembers(context.Background(), groupAuth(groupTenantSeeded), 424242, []int64{2})
@@ -356,6 +374,7 @@ func TestUserGroupRepo_add_members_missing_group_maps_not_found(t *testing.T) {
 }
 
 func TestUserGroupRepo_remove_members_deletes_rows_and_returns_removed(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 	repo := NewUserGroupRepo(d)
@@ -380,6 +399,7 @@ func TestUserGroupRepo_remove_members_deletes_rows_and_returns_removed(t *testin
 }
 
 func TestUserGroupRepo_remove_non_member_is_idempotent_zero(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -397,6 +417,7 @@ func TestUserGroupRepo_remove_non_member_is_idempotent_zero(t *testing.T) {
 }
 
 func TestUserGroupRepo_remove_members_missing_group_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewUserGroupRepo(d).RemoveMembers(context.Background(), groupAuth(groupTenantSeeded), 424242, []int64{2})
@@ -406,6 +427,7 @@ func TestUserGroupRepo_remove_members_missing_group_maps_not_found(t *testing.T)
 }
 
 func TestUserGroupRepo_list_members_hides_soft_deleted_user(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := groupAuth(groupTenantSeeded)
 
@@ -421,6 +443,7 @@ func TestUserGroupRepo_list_members_hides_soft_deleted_user(t *testing.T) {
 }
 
 func TestUserGroupRepo_list_members_hides_cross_tenant_group(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	other := groupAuth(groupTenantEmpty)
 
@@ -431,6 +454,7 @@ func TestUserGroupRepo_list_members_hides_cross_tenant_group(t *testing.T) {
 }
 
 func TestUserGroupRepo_list_members_paginates_by_offset(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	seeded := groupAuth(groupTenantSeeded)
 

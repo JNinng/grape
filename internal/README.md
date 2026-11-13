@@ -196,5 +196,5 @@ README 的「测试」一节：[biz](biz/README.md)、[service](service/README.m
 与 [encoding/jsoncodec](encoding/jsoncodec/README.md)。
 
 新增测试沿用分层职责：`service` 用假仓储隔离传输适配，`biz` mock 仓储接口
-只验证用例逻辑，`data` 以真实 PostgreSQL 集成测试验证存储边界（自建临时库、
-按部署清单装载 SQL、以 `grape_u` 运行角色断言语义）。
+只验证用例逻辑，`data` 以真实 PostgreSQL 集成测试验证存储边界（从模板库
+克隆独立测试库、以 `grape_u` 运行角色断言语义）。

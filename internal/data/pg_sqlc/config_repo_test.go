@@ -59,6 +59,7 @@ DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`, value)
 }
 
 func TestEmbedderResolver_tenant_config_overrides_global_default(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	resolver, cleanup, err := NewEmbedderResolver(resolverTestConf(), d)
 	if err != nil {
@@ -89,6 +90,7 @@ func TestEmbedderResolver_tenant_config_overrides_global_default(t *testing.T) {
 }
 
 func TestEmbedderResolver_unknown_tenant_value_rejected_without_fallback(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	resolver, cleanup, err := NewEmbedderResolver(resolverTestConf(), d)
 	if err != nil {
@@ -113,6 +115,7 @@ func TestEmbedderResolver_unknown_tenant_value_rejected_without_fallback(t *test
 }
 
 func TestEmbedderResolver_unauthenticated_and_disabled_fail(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	resolver, cleanup, err := NewEmbedderResolver(resolverTestConf(), d)
 	if err != nil {
@@ -164,6 +167,7 @@ VALUES (%[1]d, %[2]d, 'raw embedder row', 'ai.embedding.model', $1, 'string',
 }
 
 func TestEmbedderResolver_disabled_or_deleted_config_rows_fall_back_to_global(t *testing.T) {
+	t.Parallel()
 	// 解析只认启用的活配置行：status=0 的禁用行与软删除行都等价于
 	// 「未配置」，回落全局默认。
 	d := setupTestDB(t)
@@ -197,6 +201,7 @@ func TestNewEmbedderResolver_invalid_spaces_fails(t *testing.T) {
 }
 
 func TestEmbedderResolver_tenant_config_update_via_repo_takes_effect(t *testing.T) {
+	t.Parallel()
 	// 管理写路径（TenantConfigRepo.Create/Update）与既有消费路径
 	//（NewEmbedderResolver）兼容：配置经仓储写入后，解析器立即读到新值
 	//（无缓存，唯一索引点读）。

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,10 +49,8 @@ func TestTokenLookupValidate(t *testing.T) {
 
 // 存储边界集成测试（真实 PostgreSQL，未设 GRAPE_TEST_ADMIN_DSN /
 // GRAPE_TEST_DSN 时跳过）：覆盖会话门面、RLS/@scope 运行纪律与用户/会话
-// 仓储，断言基于 sqlc/seed/ 与 sqlc/test_seed.sql 的种子事实。测试自重建
-// grape_pgsqlc_test 库并按部署清单全量装载。
-
-const testDatabase = "grape_pgsqlc_test"
+// 仓储，断言基于 sqlc/seed/ 与 sqlc/test_seed.sql 的种子事实。测试从
+// 模板库（deploy.TestTemplateDatabase）克隆全新独立库，测试间互不干扰。
 
 // 测试环境角色口令：与上方 GRAPE_TEST_DSN 示例一致。role.sql 的口令
 // 占位符装载前按此替换（干净集群上角色不存在时按真实口令创建）。
@@ -62,7 +59,9 @@ const (
 	testTestUPassword  = "test_u_pwd"
 )
 
-// setupTestDB 重建测试库、按序装载部署文件并返回门面所属的连接池。
+// setupTestDB 从模板库克隆全新独立测试库并返回门面所属的连接池：
+// 全量清单只在模板库装载一次（deploy.EnsureTestTemplate），克隆库与逐库
+// 全量装载等效；测试结束经 t.Cleanup 删库，测试可并行互不干扰。
 func setupTestDB(t *testing.T) *Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_TEST_ADMIN_DSN")
@@ -72,68 +71,22 @@ func setupTestDB(t *testing.T) *Data {
 	}
 	ctx := context.Background()
 
-	// 重建测试库；CONNECT 授权依赖库名，由部署方执行（rls.sql 同此约定）
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+testDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+testDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	// 装载部署文件：清单为 deploy.TestDeployFiles()（生产清单 + 测试种子）；
-	// 文件内含多语句与函数体，走 simple protocol
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = testDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	// grape_u/test_u 由 role.sql 创建（见部署清单），此时才可授权 CONNECT
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+testDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
-	pool, err := pgxpool.New(ctx, testDSN)
+	// 环境变量 DSN 指向固定库名，测试池经改写指向本次克隆的库
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, poolDSN)
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
 	}
@@ -161,6 +114,7 @@ func countBasicInIdentityTx(ctx context.Context, t *testing.T, d *Data, auth biz
 }
 
 func TestSessionDiscipline(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	// 用户 11 是 t-test-01 的种子管理员（testadmin），身份与租户一致。
@@ -307,6 +261,7 @@ func TestSessionDiscipline(t *testing.T) {
 // 全租户（scope 7）、用户 3 仅本人（scope 1）、用户 6 sunqi 前端组、
 // 用户 7 zhouba 技术部部门管理员（scope 3）。
 func TestUserRepo(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewUserRepo(d)
@@ -540,6 +495,7 @@ func ptrInt64(v int64) *int64 { return &v }
 // 刷新令牌一并失效、刷新轮换后旧令牌立即失效，以及令牌维度事务只放
 // 行哈希命中的那一行。
 func TestSessionRepo(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewSessionRepo(d)
@@ -955,6 +911,7 @@ func ptrString(v string) *string { return &v }
 // 格式）校验通过后透明重哈希为 argon2id，二次登录走 argon2id 路径，
 // 签发的令牌可校验、可轮换；凭据错误与禁用账号按域错误拒绝。
 func TestAuthLogin(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	users := NewUserRepo(d)

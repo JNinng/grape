@@ -3,7 +3,6 @@ package pg_sqlc
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,10 +17,8 @@ import (
 
 // 模型调用留痕集成测试（真实 PostgreSQL，未设 GRAPE_MODEL_CALL_TEST_ADMIN_DSN /
 // GRAPE_MODEL_CALL_TEST_DSN 时跳过）：覆盖 append-only 落库、租户 RLS 与
-// 读侧兜底、过滤分页与无身份 fail-closed。测试自建专属库并按部署清单全量
-// 装载，不触碰其他数据库（与检索留痕集成测试同一套手法）。
-
-const modelCallTestDatabase = "grape_model_call_test"
+// 读侧兜底、过滤分页与无身份 fail-closed。测试从模板库克隆全新独立库，
+// 不触碰其他数据库（与检索留痕集成测试同一套手法）。
 
 // modelCallTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -33,8 +30,9 @@ var (
 // modelCallTestTraceID 是用例的固定链路 ID（合法非零 16 字节）。
 var modelCallTestTraceID = [16]byte{0xd7, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
-// setupModelCallTestDB 重建专属测试库、按序装载部署清单（含
-// schema/99_model_call_log.sql）并返回以 grape_u 连接的存储门面。
+// setupModelCallTestDB 从模板库克隆全新独立测试库（含
+// schema/99_model_call_log.sql 的模板装载）并返回以 grape_u 连接的存储
+// 门面；测试结束经 t.Cleanup 删库，测试可并行互不干扰。
 func setupModelCallTestDB(t *testing.T) *Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_MODEL_CALL_TEST_ADMIN_DSN")
@@ -44,66 +42,24 @@ func setupModelCallTestDB(t *testing.T) *Data {
 	}
 	ctx := context.Background()
 
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+modelCallTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+modelCallTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = modelCallTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+modelCallTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
+	// 环境变量 DSN 指向固定库名，门面装配经改写指向本次克隆的库
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
 	d, cleanup, err := NewData(&conf.Data{Database: &conf.Data_Database{
-		Master: &conf.Data_Database_Slot{Source: testDSN},
-		System: &conf.Data_Database_Slot{Source: testDSN},
+		Master: &conf.Data_Database_Slot{Source: poolDSN},
+		System: &conf.Data_Database_Slot{Source: poolDSN},
 	}})
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
@@ -171,6 +127,7 @@ func appendModelCallOf(t *testing.T, uc *biz.ModelCallLogUsecase, ctx context.Co
 }
 
 func TestModelCallLogRepo_append_and_query_roundtrip(t *testing.T) {
+	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
 	ctx := modelCallIdentityContext(modelCallTenantA, true)
@@ -242,6 +199,7 @@ func TestModelCallLogRepo_append_and_query_roundtrip(t *testing.T) {
 }
 
 func TestModelCallLogRepo_filters_narrow_rows(t *testing.T) {
+	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
 	ctx := modelCallIdentityContext(modelCallTenantA, false)
@@ -288,6 +246,7 @@ func TestModelCallLogRepo_filters_narrow_rows(t *testing.T) {
 }
 
 func TestModelCallLogRepo_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
+	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
 	uc := biz.NewModelCallLogUsecase(repo, nil)
@@ -312,6 +271,7 @@ func TestModelCallLogRepo_cross_tenant_invisible_under_enabled_rls(t *testing.T)
 }
 
 func TestModelCallLogRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
+	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
 	uc := biz.NewModelCallLogUsecase(repo, nil)
@@ -323,7 +283,7 @@ func TestModelCallLogRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	adminCfg.Database = modelCallTestDatabase
+	adminCfg.Database = deploy.DatabaseNameFor(t.Name())
 	admin, err := pgx.ConnectConfig(context.Background(), adminCfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -351,6 +311,7 @@ func TestModelCallLogRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T
 }
 
 func TestModelCallLogRepo_rejects_unknown_scenario_and_unauthenticated_calls(t *testing.T) {
+	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
 

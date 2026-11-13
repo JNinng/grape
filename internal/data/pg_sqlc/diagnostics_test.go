@@ -12,6 +12,7 @@ import (
 // 自身占用一条池连接），不依赖种子行数。运行环境见 session_test.go
 // 的说明（GRAPE_TEST_ADMIN_DSN / GRAPE_TEST_DSN，未设置时跳过）。
 func TestDiagnosticsPressure(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	diag := NewDiagnostics(d)

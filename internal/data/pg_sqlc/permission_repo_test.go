@@ -92,6 +92,7 @@ func setUserStatus(t *testing.T, d *Data, auth biz.Identity, userID int64, statu
 }
 
 func TestPermissionRepo_held_code_judged_granted(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 用户 1 持角色 101（全部菜单）：用户管理的查询与创建码均命中。
@@ -111,6 +112,7 @@ func TestPermissionRepo_held_code_judged_granted(t *testing.T) {
 }
 
 func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 用户 3 持角色 103（仅查询/部门查询码）：创建码不命中、查询码命中。
@@ -127,6 +129,7 @@ func TestPermissionRepo_unheld_code_judged_denied(t *testing.T) {
 }
 
 func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
+	t.Parallel()
 	// seed 包的 258-265 配置族权限点只授予超级管理员（角色 101）：
 	// 用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
@@ -153,6 +156,7 @@ func TestPermissionRepo_config_codes_seeded_for_admin_only(t *testing.T) {
 }
 
 func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only(t *testing.T) {
+	t.Parallel()
 	// seed 包的 266-273 功能开关/翻译权限点只授予超级管理员（角色
 	// 101）：用户 1 八个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
@@ -179,6 +183,7 @@ func TestPermissionRepo_feature_flag_and_translation_codes_seeded_for_admin_only
 }
 
 func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
+	t.Parallel()
 	// seed 包的 220-223 租户管理权限点只授予超级管理员（角色 101）：
 	// 用户 1 四个码全部命中；同租户无角色用户 12（superplain）一个都不持有。
 	d := setupTestDB(t)
@@ -201,6 +206,7 @@ func TestPermissionRepo_tenant_codes_seeded_for_admin_only(t *testing.T) {
 }
 
 func TestPermissionRepo_cross_tenant_grant_invisible_to_other_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// sys:menu:query 只存在于 t-super-01 的菜单树（214 子树）：t-test-02
@@ -215,6 +221,7 @@ func TestPermissionRepo_cross_tenant_grant_invisible_to_other_tenant(t *testing.
 }
 
 func TestPermissionRepo_disabled_user_holds_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := permAuth("t-test-01", 2)
 
@@ -235,6 +242,7 @@ func TestPermissionRepo_disabled_user_holds_nothing(t *testing.T) {
 }
 
 func TestPermissionRepo_codes_enumerated_deduped_and_sorted(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 用户 3 仅持角色 103：码集合 = 其菜单授权的权限码并集（去重升序）。
@@ -253,6 +261,7 @@ func TestPermissionRepo_codes_enumerated_deduped_and_sorted(t *testing.T) {
 }
 
 func TestPermissionRepo_grant_change_flips_verdict_and_bumps_version(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := permAuth("t-test-01", 2)
 

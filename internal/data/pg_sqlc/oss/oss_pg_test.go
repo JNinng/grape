@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -30,13 +29,10 @@ import (
 // 内嵌 OSS 集成测试（真实 PostgreSQL，未设 GRAPE_OSS_TEST_ADMIN_DSN /
 // GRAPE_OSS_TEST_DSN 时跳过）：覆盖 gofakes3 Backend 的存储语义（覆盖写、
 // Range、列举、桶生命周期、限流、复制）与 /s3/ 挂载面的 SigV4 鉴权 +
-// aws-sdk-go-v2 回环（path-style、预签名、篡改与匿名拒绝）。测试自建专属
-// 库 grape_oss_test 并按部署清单全量装载；与根包关系面套件共用同一批
-// 测试角色口令，避免并发部署争用（部署互斥锁兜底）。
+// aws-sdk-go-v2 回环（path-style、预签名、篡改与匿名拒绝）。测试从模板库
+// 克隆全新独立库；与根包关系面套件共用同一批测试角色口令。
 
 const (
-	ossTestDatabase = "grape_oss_test"
-
 	// testGrapeUPassword / testTestUPassword 与 role.sql 占位符替换值：
 	// 与根包、vector 包套件同一既定测试口令。
 	testGrapeUPassword = "grape_u_pwd"
@@ -52,9 +48,10 @@ const (
 	testRegion = "test-region"
 )
 
-// setupOSSTestDB 重建专属测试库、按序装载部署清单并以 grape_u 连接返回
-// 连接池；adminDSN 供用例维护 sys_config 的 oss.* 配置状态（grape_u 对
-// sys_config 无写权限），testDSN 供门面装配。
+// setupOSSTestDB 从模板库克隆全新独立测试库并以 grape_u 连接返回
+// 连接池；返回的 adminDSN/testDSN 均已改写指向本次克隆的库——adminDSN 供
+// 用例维护 sys_config 的 oss.* 配置状态（grape_u 对 sys_config 无写权限），
+// testDSN 供门面装配。测试结束经 t.Cleanup 删库，测试可并行互不干扰。
 func setupOSSTestDB(t *testing.T) (*pgxpool.Pool, string, string) {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_OSS_TEST_ADMIN_DSN")
@@ -64,69 +61,31 @@ func setupOSSTestDB(t *testing.T) (*pgxpool.Pool, string, string) {
 	}
 	ctx := context.Background()
 
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+ossTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+ossTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = ossTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+ossTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
-	pool, err := pgxpool.New(ctx, testDSN)
+	// 环境变量 DSN 指向固定库名，管理连接与测试池经改写指向本次克隆的库
+	adminDSNOfClone, err := deploy.RewriteDSNDatabase(adminDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite admin dsn: %v", err)
+	}
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, poolDSN)
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
 	}
 	t.Cleanup(pool.Close)
-	return pool, adminDSN, testDSN
+	return pool, adminDSNOfClone, poolDSN
 }
 
 // seedOSSCredentials 以管理员补插测试 AK/SK 配置（种子不含明文凭据，
@@ -140,8 +99,7 @@ func seedOSSCredentials(t *testing.T, adminDSN string) {
 }
 
 // setOSSConfigs 以管理员重写 sys_config 的 oss.* 键值（先删后插，幂等；
-// id 取 99 段高位，避开种子 1–13）。连接指向测试库：sys_config 在测试库
-// 内，adminDSN 的 postgres 库没有业务表。
+// id 取 99 段高位，避开种子 1–13）。adminDSN 由 setup 返回、已指向克隆库。
 func setOSSConfigs(t *testing.T, adminDSN string, values map[string]string) {
 	t.Helper()
 	ctx := context.Background()
@@ -149,7 +107,6 @@ func setOSSConfigs(t *testing.T, adminDSN string, values map[string]string) {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	cfg.Database = ossTestDatabase
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -181,6 +138,7 @@ func ossConfigTestID(key string) int64 {
 }
 
 // deleteOSSConfigs 以管理员删除 oss.* 键（模拟配置缺失的 fail-closed 面）。
+// adminDSN 由 setup 返回、已指向克隆库。
 func deleteOSSConfigs(t *testing.T, adminDSN string, keys ...string) {
 	t.Helper()
 	ctx := context.Background()
@@ -188,7 +146,6 @@ func deleteOSSConfigs(t *testing.T, adminDSN string, keys ...string) {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	cfg.Database = ossTestDatabase
 	conn, err := pgx.ConnectConfig(ctx, cfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -231,6 +188,7 @@ func md5Hex(data []byte) string {
 // TestOSSBackendPutGetRoundTrip 验证覆盖写与全量读的口径一致：data/
 // size/etag/元数据（Content-Type 与 X-Amz-Meta-*）原样往返。
 func TestOSSBackendPutGetRoundTrip(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -274,6 +232,7 @@ func TestOSSBackendPutGetRoundTrip(t *testing.T) {
 // TestOSSBackendPutObjectOverwriteKeepsCreatedAt 验证同键覆盖写：内容与
 // etag 更新、created_at 保持首次写入、updated_at 前移。
 func TestOSSBackendPutObjectOverwriteKeepsCreatedAt(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -307,6 +266,7 @@ func TestOSSBackendPutObjectOverwriteKeepsCreatedAt(t *testing.T) {
 // TestOSSBackendGetObjectRange 验证 Range 读取只返回区间字节且 Size 恒
 // 为全长（服务器据此发 206 与 Content-Range）。
 func TestOSSBackendGetObjectRange(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -342,6 +302,7 @@ func TestOSSBackendGetObjectRange(t *testing.T) {
 // TestOSSBackendGetHeadMissingKey 验证对象不存在时 Get/Head 统一返回
 // ErrNoSuchKey（gofakes3 资源错误）。
 func TestOSSBackendGetHeadMissingKey(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -357,6 +318,7 @@ func TestOSSBackendGetHeadMissingKey(t *testing.T) {
 // TestOSSBackendDeleteObjectIdempotent 验证删除幂等：存在的键删除成功，
 // 不存在的键同样不报错（S3 DELETE 语义）。
 func TestOSSBackendDeleteObjectIdempotent(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -376,6 +338,7 @@ func TestOSSBackendDeleteObjectIdempotent(t *testing.T) {
 // TestOSSBackendDeleteMulti 验证批量删除：不存在的键同样按已删除报告，
 // 其余对象不受影响。
 func TestOSSBackendDeleteMulti(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -401,6 +364,7 @@ func TestOSSBackendDeleteMulti(t *testing.T) {
 // TestOSSBackendListBucketPrefixDelimiterMarker 验证列举的前缀收窄、
 // delimiter 公共前缀归并与 marker 字典序起点；空桶按 NoSuchBucket。
 func TestOSSBackendListBucketPrefixDelimiterMarker(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -461,6 +425,7 @@ func TestOSSBackendListBucketPrefixDelimiterMarker(t *testing.T) {
 // MaxKeys（与 s3mem 同算法），分页边界不落在组内部空转，下一页在组内
 // marker 起点继续时补齐剩余条目且不再虚报截断。
 func TestOSSBackendListBucketDelimiterPaginationNoDuplicateCommonPrefix(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -507,6 +472,7 @@ func TestOSSBackendListBucketDelimiterPaginationNoDuplicateCommonPrefix(t *testi
 // TestOSSBackendBucketLifecycle 验证桶口径：存在性以对象行为准，创建
 // 幂等（已有对象即 BucketAlreadyExists）、非空拒绝删除、清空后可删。
 func TestOSSBackendBucketLifecycle(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -541,6 +507,7 @@ func TestOSSBackendBucketLifecycle(t *testing.T) {
 // TestOSSBackendPutObjectRejectsOversize 验证 20MB 限流：已知大小直接
 // 拒绝；未知大小读到上限 +1 判定；上限内未知大小正常写入。
 func TestOSSBackendPutObjectRejectsOversize(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -561,6 +528,7 @@ func TestOSSBackendPutObjectRejectsOversize(t *testing.T) {
 // TestOSSBackendPutObjectAcceptsExactMaxSize 验证恰好 20MB 的已知大小
 // 写入成功（限流只在严格大于上限时拒绝），落库 size 与 etag 一致。
 func TestOSSBackendPutObjectAcceptsExactMaxSize(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -585,6 +553,7 @@ func TestOSSBackendPutObjectAcceptsExactMaxSize(t *testing.T) {
 // TestOSSBackendCopyObject 验证复制：data/etag 随源，meta 取调用方给定的
 // 完整元数据；源不存在返回 ErrNoSuchKey。
 func TestOSSBackendCopyObject(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -623,6 +592,7 @@ func TestOSSBackendCopyObject(t *testing.T) {
 // TestOSSBackendMetadataDriftTolerated 验证 metadata 形态漂移（非对象的
 // 合法 JSON）不阻塞对象读取：元数据退化空映射，content_type 单列兜底。
 func TestOSSBackendMetadataDriftTolerated(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()
@@ -689,6 +659,7 @@ func newS3Client(t *testing.T, endpoint string) *awss3.Client {
 // TestOSSHandlerSDKRoundTrip 验证 /s3/ 回环：SDK Put / Get(Range 206) /
 // Head / Delete 全链路落在 oss_object。
 func TestOSSHandlerSDKRoundTrip(t *testing.T) {
+	t.Parallel()
 	pool, adminDSN, testDSN := setupOSSTestDB(t)
 	seedOSSCredentials(t, adminDSN)
 	endpoint, b := newOSSLoopback(t, pool, testDSN)
@@ -749,6 +720,7 @@ func TestOSSHandlerSDKRoundTrip(t *testing.T) {
 // TestOSSHandlerPresignedGetAndPut 验证预签名 URL 直传直下载：无凭据的
 // 裸 HTTP 请求按签名放行，PresignPut 写入的对象可在落库中读到。
 func TestOSSHandlerPresignedGetAndPut(t *testing.T) {
+	t.Parallel()
 	pool, adminDSN, testDSN := setupOSSTestDB(t)
 	seedOSSCredentials(t, adminDSN)
 	endpoint, b := newOSSLoopback(t, pool, testDSN)
@@ -806,6 +778,7 @@ func TestOSSHandlerPresignedGetAndPut(t *testing.T) {
 // 匿名 403、篡改签名 SignatureDoesNotMatch、未知 AK InvalidAccessKeyId、
 // 过期预签名 403；失败应答为 XML 错误体。
 func TestOSSHandlerRejectsUnsignedAndTampered(t *testing.T) {
+	t.Parallel()
 	pool, adminDSN, testDSN := setupOSSTestDB(t)
 	seedOSSCredentials(t, adminDSN)
 	endpoint, b := newOSSLoopback(t, pool, testDSN)
@@ -880,6 +853,7 @@ func TestOSSHandlerRejectsUnsignedAndTampered(t *testing.T) {
 // 直接跳过；provider 非 local 跳过；provider 缺失或 AK/SK 缺失在启用态
 // fail-closed 拒绝启动。
 func TestOSSHandlerMountDecisionMatrix(t *testing.T) {
+	t.Parallel()
 	_, adminDSN, testDSN := setupOSSTestDB(t)
 
 	// enabled=false：不读配置即跳过（oss.* 键全部缺失也无副作用）。
@@ -925,6 +899,7 @@ func TestOSSHandlerMountDecisionMatrix(t *testing.T) {
 // TestOSSBackendGrapeUAuthorization 验证设施授权口径：grape_u 连接
 // （测试池）可完成 DML（读写本表），符合 schema/93_oss.sql 的显式授权。
 func TestOSSBackendGrapeUAuthorization(t *testing.T) {
+	t.Parallel()
 	pool, _, _ := setupOSSTestDB(t)
 	b := mustNewBackend(t, pool)
 	ctx := context.Background()

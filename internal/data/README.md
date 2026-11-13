@@ -51,6 +51,7 @@ SQL 对象的签名、属性与三态返回值见
 | [pg_sqlc/oss/server.go](pg_sqlc/oss/server.go) | 内嵌 S3 服务的 /s3/ 挂载构造（挂载决策矩阵、外层 SigV4 校验 + 前缀剥离），专题见 [pg_sqlc/oss/README.md](pg_sqlc/oss/README.md) |
 | [pg_sqlc/oss/backend.go](pg_sqlc/oss/backend.go) | gofakes3.Backend 的 PG 实现（oss_object 介质：覆盖写、Range、列举、限流、复制） |
 | [pg_sqlc/deploy/deploy.go](pg_sqlc/deploy/deploy.go) | `DeployFiles` 部署顺序单一事实源，测试种子在其后追加 |
+| [pg_sqlc/deploy/template.go](pg_sqlc/deploy/template.go) | 集成测试模板库（`grape_test_tpl`）：全量清单只装载一次，各测试 setup 经指纹失效判定后按 `grape_t_<测试名哈希>` 克隆；含 DSN 库名改写 |
 | [oss_config.go](oss_config.go) | biz.OSSConfigResolver 实现：sys_config oss.* 六键现场解析，键缺即按设施未配置拒绝 |
 | [ossclient/ossclient.go](ossclient/ossclient.go) | biz.ObjectStore 的 S3 SDK 实现：端点按调用解析、客户端按端点+凭据缓存、预签名与错误映射 |
 | [openaiembedder/openaiembedder.go](openaiembedder/openaiembedder.go) | 按空间键动态解析端点、HTTP 客户端缓存、每次响应维度复核与禁用占位；注入 ModelCallObserver 在端点事实成立后留痕（场景缺省回落 embed_document，输出记维度说明） |
@@ -299,9 +300,12 @@ postgres 是当前唯一设施，采集范围、指标清单、可见性边界�
   docparse 三档内档解析的 markdown 产出形状（测试内构造容器字节）与
   外部档 HTTP 协议（httptest 替身、未配置拒绝）。
 - **装配与部署**：连接槽位校验、debug 参数脱敏、部署清单与测试种子的
-  追加关系。
+  追加关系；模板库指纹驱动的失效重建与克隆库等效性。
 
 集成测试由 `GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 及向量、审计、
-检索留痕、模型调用留痕、内嵌 OSS 等专属 DSN 门控（分别使用 `grape_vector_test`、
-`grape_audit_test`、`grape_retrieval_test`、`grape_model_call_test`、
-`grape_oss_test` 等库），未设置时自动跳过。
+检索留痕、模型调用留痕、内嵌 OSS 等专属 DSN 门控，未设置时自动跳过。
+集成测试库由模板库 `grape_test_tpl` 统一派生：全量清单只在模板库装载
+一次，指纹（清单内容 + 顺序 + PG 版本）变化即自动重建；各测试 setup 从
+模板克隆按测试名确定性命名的独立库（`grape_t_<测试名哈希>`，直连管理面
+维护的用例经 `deploy.DatabaseNameFor` 复现库名），测试并行运行、结束即
+删库（机制见 [pg_sqlc/deploy/template.go](pg_sqlc/deploy/template.go)）。

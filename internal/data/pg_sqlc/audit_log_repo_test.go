@@ -30,6 +30,7 @@ func auditLogQuery(username string) *dynq.Query {
 }
 
 func TestAuditLogRepoGetLoginLogByIDReturnsSeededRow(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -49,6 +50,7 @@ func TestAuditLogRepoGetLoginLogByIDReturnsSeededRow(t *testing.T) {
 }
 
 func TestAuditLogRepoGetLoginLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -60,6 +62,7 @@ func TestAuditLogRepoGetLoginLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestAuditLogRepoGetLoginLogByIDMissingRowReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -70,6 +73,7 @@ func TestAuditLogRepoGetLoginLogByIDMissingRowReturnsNotFound(t *testing.T) {
 }
 
 func TestAuditLogRepoListLoginLogsFiltersByUsernameAndIsolatesTenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -92,6 +96,7 @@ func TestAuditLogRepoListLoginLogsFiltersByUsernameAndIsolatesTenant(t *testing.
 }
 
 func TestAuditLogRepoListLoginLogsRejectsUnknownField(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -103,6 +108,7 @@ func TestAuditLogRepoListLoginLogsRejectsUnknownField(t *testing.T) {
 }
 
 func TestAuditLogRepoGetOperationLogByIDReturnsSnapshots(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -123,6 +129,7 @@ func TestAuditLogRepoGetOperationLogByIDReturnsSnapshots(t *testing.T) {
 }
 
 func TestAuditLogRepoGetOperationLogByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	// 种子操作日志全部属 t-test-01：无种子租户点查等同不存在。
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
@@ -134,6 +141,7 @@ func TestAuditLogRepoGetOperationLogByIDAcrossTenantReturnsNotFound(t *testing.T
 }
 
 func TestAuditLogRepoGetOperationLogByIDNullSnapshotStaysNil(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 
@@ -151,6 +159,7 @@ func TestAuditLogRepoGetOperationLogByIDNullSnapshotStaysNil(t *testing.T) {
 }
 
 func TestAuditLogRepoListOperationLogsCountsTotalIndependentOfPage(t *testing.T) {
+	t.Parallel()
 	// 种子操作日志共 5 条；第 2 页（页大小 3）的 total 不得随翻页位置递减。
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
@@ -171,6 +180,7 @@ func TestAuditLogRepoListOperationLogsCountsTotalIndependentOfPage(t *testing.T)
 }
 
 func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T) {
+	t.Parallel()
 	// 游标模式下 total 与翻页位置无关：第二页（After 游标）的 total 仍为
 	// 全集 5，而非剩余行数。
 	d := setupTestDB(t)
@@ -202,6 +212,7 @@ func TestAuditLogRepoListOperationLogsCursorPageKeepsTotalUnshifted(t *testing.T
 }
 
 func TestSessionAdminListCursorPageKeepsTotalUnshifted(t *testing.T) {
+	t.Parallel()
 	// 会话行经 newID() 发号，id 超出 JS 安全整数：本用例验证大主键游标
 	// 翻页时 total 与翻页位置无关（dynq 以十进制字符串精确解码）。
 	d := setupTestDB(t)
@@ -245,6 +256,7 @@ func TestSessionAdminListCursorPageKeepsTotalUnshifted(t *testing.T) {
 }
 
 func TestSessionAdminListReturnsTheJustIssuedSessionFirst(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewSessionRepo(d)
 	auth := dictAuth(dictTenantSeeded)
@@ -289,6 +301,7 @@ func TestSessionAdminListReturnsTheJustIssuedSessionFirst(t *testing.T) {
 }
 
 func TestSessionAdminListFiltersByUserAndIsolatesTenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewSessionRepo(d)
 	auth := dictAuth(dictTenantSeeded)
@@ -325,6 +338,7 @@ func TestSessionAdminListFiltersByUserAndIsolatesTenant(t *testing.T) {
 }
 
 func TestSessionAdminListRejectsUnknownField(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewSessionRepo(d)
 
@@ -339,6 +353,7 @@ func TestSessionAdminListRejectsUnknownField(t *testing.T) {
 func strPtrOf(s string) *string { return &s }
 
 func TestAuditLogRepoInsertLoginLogRoundTrip(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 	ctx := context.Background()
@@ -384,6 +399,7 @@ func TestAuditLogRepoInsertLoginLogRoundTrip(t *testing.T) {
 }
 
 func TestAuditLogRepoInsertOperationLogRoundTrip(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewAuditLogRepo(d)
 	ctx := context.Background()

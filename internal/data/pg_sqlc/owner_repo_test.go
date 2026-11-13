@@ -30,6 +30,7 @@ func tryCreateUser(d *Data, auth biz.Identity, name string, owner biz.OwnerTripl
 }
 
 func TestCreateUser_owner_triple_validated(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	auth := assignmentAuth() // 用户 11（data_scope=7，全租户可见）
@@ -91,6 +92,7 @@ func TestCreateUser_owner_triple_validated(t *testing.T) {
 }
 
 func TestTransferUserOwner_new_owner_validated(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	auth := assignmentAuth()
@@ -109,6 +111,7 @@ func TestTransferUserOwner_new_owner_validated(t *testing.T) {
 }
 
 func TestCanSeeRole_visibility_core(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	see := func(auth biz.Identity, roleID int64) bool {
 		t.Helper()
@@ -162,6 +165,7 @@ func TestCanSeeRole_visibility_core(t *testing.T) {
 }
 
 func TestCanRevokeRole_relaxed_statuses(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := assignmentAuth()
 	revoke := func(operator biz.Identity, roleID, target int64) bool {
@@ -217,6 +221,7 @@ func TestCanRevokeRole_relaxed_statuses(t *testing.T) {
 }
 
 func TestSetUserRoles_revoke_on_disabled_target(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()

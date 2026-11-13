@@ -112,4 +112,4 @@ increase(grape_diagnostics_scrape_errors_total{facility="postgres"}[5m]) > 0
   累计。
 - 路由挂载：`/metrics` 直挂且绕过业务中间件链。
 - 集成采集：`GRAPE_TEST_ADMIN_DSN` / `GRAPE_TEST_DSN` 门控（未设置自动
-  跳过），自建临时库后断言池、表、索引样本齐全。
+  跳过），克隆独立测试库后断言池、表、索引样本齐全。

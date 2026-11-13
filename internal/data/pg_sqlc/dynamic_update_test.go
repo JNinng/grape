@@ -15,6 +15,7 @@ import (
 // SET 白名单、@pk 定位、@filter 不变量与守卫语义。断言基于 test_seed.sql
 // 与 seed 包的种子事实；环境变量未设置时跳过。
 func TestDynamicUpdate(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	// testAdmin 是 t-test-01 的全租户操作者（用户 11，角色 110）。

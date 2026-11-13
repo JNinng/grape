@@ -23,6 +23,7 @@ func knowledgeTestFile() *biz.KnowledgeFile {
 }
 
 func TestKnowledgeFileRepo_file_crud_and_soft_delete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeFileRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -57,6 +58,7 @@ func TestKnowledgeFileRepo_file_crud_and_soft_delete(t *testing.T) {
 }
 
 func TestKnowledgeFileRepo_tenant_isolation(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeFileRepo(d)
 	authA := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -82,6 +84,7 @@ func TestKnowledgeFileRepo_tenant_isolation(t *testing.T) {
 }
 
 func TestKnowledgeRepo_file_document_without_facts_rejected_by_check(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -111,6 +114,7 @@ func TestKnowledgeRepo_file_document_without_facts_rejected_by_check(t *testing.
 }
 
 func TestKnowledgeRepo_file_document_round_trips_original_facts(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}

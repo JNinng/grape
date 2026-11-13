@@ -94,6 +94,7 @@ func scanMappings(t *testing.T, d *Data, auth biz.Identity, userID int64) []int6
 // subtree(S)）∧ 持有分配权限码 ∧ 未拥有。全租户操作者仍受目标范围约束；
 // 非全租户操作者对 S 为 NULL 的角色不可见（G 的硬前提）。
 func TestAssignmentRoleCandidates(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -216,6 +217,7 @@ func TestAssignmentRoleCandidates(t *testing.T) {
 // TestAssignmentUserRoleSet 覆盖当前角色集合：managed 明细、locked 只
 // 计数、禁用目标全部 locked、目标按 ID 判存在（不判可见性）。
 func TestAssignmentUserRoleSet(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -291,6 +293,7 @@ func TestAssignmentUserRoleSet(t *testing.T) {
 // TestSetUserRolesReplacesManageable 覆盖整组替换：新增/移除、locked 保留、
 // 触及 locked 拒绝、不可分配新增拒绝、版本冲突无写入。
 func TestSetUserRolesReplacesManageable(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -342,6 +345,7 @@ func TestSetUserRolesReplacesManageable(t *testing.T) {
 // TestSetUserRolesLockedAndForbidden 覆盖 locked 角色保留与拒绝分支：
 // 触及 locked、不可分配新增、非全租户操作者分配 S 为 NULL 的角色均无写入。
 func TestSetUserRolesLockedAndForbidden(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -452,6 +456,7 @@ VALUES (12001, 1, 120, 2, $1, $2, $2) ON CONFLICT DO NOTHING`, assignmentTenant,
 // TestSetUserRolesSelfLock 覆盖自锁保护：移除自己最后一个带 assign-role
 // 的有效角色拒绝；locked 角色兜底时放行。
 func TestSetUserRolesSelfLock(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -502,6 +507,7 @@ func TestSetUserRolesSelfLock(t *testing.T) {
 // 用户 11（角色 110）与用户 4（角色 102）持有 assign-role/transfer-owner，
 // 用户 2（角色 103）无码。
 func TestAssignmentPermissionSeeds(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	perms := NewPermissionRepo(d)
 	ctx := context.Background()
@@ -529,6 +535,7 @@ func TestAssignmentPermissionSeeds(t *testing.T) {
 // TestOwnerOptionCandidates 覆盖归属候选的 fn_accessible_* 三态：全租户
 // （NULL）、无有效角色（'{}'）、范围数组；以及关键字、label 与分页。
 func TestOwnerOptionCandidates(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := newAssignmentRepo(d)
 	ctx := context.Background()
@@ -651,6 +658,7 @@ func TestOwnerOptionCandidates(t *testing.T) {
 // TestAssignmentTenantDiscipline 校验未设置租户的事务无法访问分配面数据
 // （RLS 默认全拒的存储层兜底）。
 func TestAssignmentTenantDiscipline(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	if _, err := newAssignmentRepo(d).ListUserRoles(ctx, biz.Identity{UserID: assignmentAdmin}, 2); err == nil {

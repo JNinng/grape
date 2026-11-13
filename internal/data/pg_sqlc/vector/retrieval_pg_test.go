@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,10 +21,8 @@ import (
 
 // 检索留痕集成测试（真实 PostgreSQL，未设 GRAPE_RETRIEVAL_TEST_ADMIN_DSN /
 // GRAPE_RETRIEVAL_TEST_DSN 时跳过）：覆盖留痕落库、租户 RLS 与读侧兜底、
-// 留痕失败不中断检索、管线摄取来源与分页。测试自建专属库并按部署清单
-// 全量装载，不触碰其他数据库。
-
-const retrievalTestDatabase = "grape_retrieval_test"
+// 留痕失败不中断检索、管线摄取来源与分页。测试从模板库克隆全新独立库，
+// 不触碰其他数据库。
 
 // retrievalTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -37,8 +34,9 @@ var (
 // retrievalTestTraceID 是用例的固定链路 ID（合法非零 16 字节）。
 var retrievalTestTraceID = [16]byte{0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 
-// setupRetrievalTestDB 重建专属测试库、按序装载部署清单（含
-// schema/97_agent_retrieval_log.sql）并返回以 grape_u 连接的存储门面。
+// setupRetrievalTestDB 从模板库克隆全新独立测试库（含
+// schema/97_agent_retrieval_log.sql 的模板装载）并返回以 grape_u 连接的
+// 存储门面；测试结束经 t.Cleanup 删库，测试可并行互不干扰。
 func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_RETRIEVAL_TEST_ADMIN_DSN")
@@ -48,66 +46,24 @@ func setupRetrievalTestDB(t *testing.T) *pgsqlc.Data {
 	}
 	ctx := context.Background()
 
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+retrievalTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+retrievalTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = retrievalTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+retrievalTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
+	// 环境变量 DSN 指向固定库名，门面装配经改写指向本次克隆的库
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
 	d, cleanup, err := pgsqlc.NewData(&conf.Data{Database: &conf.Data_Database{
-		Master: &conf.Data_Database_Slot{Source: testDSN},
-		System: &conf.Data_Database_Slot{Source: testDSN},
+		Master: &conf.Data_Database_Slot{Source: poolDSN},
+		System: &conf.Data_Database_Slot{Source: poolDSN},
 	}})
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
@@ -211,6 +167,7 @@ func retrievalSpaceFilter() *biz.VectorFilter {
 }
 
 func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -275,6 +232,7 @@ func TestRetrievalLog_search_records_query_topk_and_hits_matching_actual(t *test
 }
 
 func TestRetrievalLog_console_search_records_console_source_without_session(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -308,6 +266,7 @@ func TestRetrievalLog_console_search_records_console_source_without_session(t *t
 }
 
 func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -335,6 +294,7 @@ func TestRetrievalLog_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 }
 
 func TestRetrievalLog_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -347,7 +307,7 @@ func TestRetrievalLog_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	adminCfg.Database = retrievalTestDatabase
+	adminCfg.Database = deploy.DatabaseNameFor(t.Name())
 	admin, err := pgx.ConnectConfig(context.Background(), adminCfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -375,6 +335,7 @@ func TestRetrievalLog_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 }
 
 func TestRetrievalLog_write_failure_does_not_break_search(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	// 留痕仓储恒失败：检索必须照常返回，行数不得增加（失败只记日志）。
 	store := newLoggedVectorStoreForTest(t, d, failingRetrievalRepo{})
@@ -415,6 +376,7 @@ func (fixedSpaceResolver) ResolveEmbeddingSpace(_ context.Context, key string) (
 }
 
 func TestRetrievalLog_pipeline_ingest_records_source_pipeline(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -534,6 +496,7 @@ func hashedChunkID(id string) bool {
 }
 
 func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	ctx := retrievalIdentityContext(retrievalTenantA, false)
@@ -600,6 +563,7 @@ func TestRetrievalLog_pagination_orders_by_time_desc_and_boundaries(t *testing.T
 // 无认证 ctx 的写入与读取一律拒绝——写侧装饰器直连仓储（不经用例），
 // 该门禁是留痕旁路面唯一的身份防线，与 audit/vector 同款显式断言。
 func TestRetrievalLogRepo_unauthenticated_calls_fail_closed(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	repo := pgsqlc.NewRetrievalLogRepo(d)
 	ctx := context.Background()
@@ -684,6 +648,7 @@ type retrievalStageView struct {
 }
 
 func TestRetrievalLog_orchestration_search_writes_single_stage_row(t *testing.T) {
+	t.Parallel()
 	d := setupRetrievalTestDB(t)
 	logRepo := pgsqlc.NewRetrievalLogRepo(d)
 	store := newLoggedVectorStoreForTest(t, d, logRepo)
@@ -766,6 +731,7 @@ func TestRetrievalLog_orchestration_search_writes_single_stage_row(t *testing.T)
 }
 
 func TestRetrievalLog_orchestration_redacts_variant_queries_in_stages(t *testing.T) {
+	t.Parallel()
 	// 变体查询文本与主查询同口径脱敏：掩码注册表下行级与阶段级查询文本
 	// 一律掩码，多路调用仍只落一行。
 	d := setupRetrievalTestDB(t)

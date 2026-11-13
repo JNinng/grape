@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -21,9 +20,7 @@ import (
 
 // 审计仓储集成测试（真实 PostgreSQL，未设 GRAPE_AUDIT_TEST_ADMIN_DSN /
 // GRAPE_AUDIT_TEST_DSN 时跳过）：覆盖租户 RLS、写入-查询往返（含脱敏内容）、
-// 批量写入与分页边界。测试自建专属库并按部署清单全量装载。
-
-const auditTestDatabase = "grape_audit_test"
+// 批量写入与分页边界。测试从模板库克隆全新独立测试库。
 
 // auditTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -51,8 +48,9 @@ func auditIdentityContext(id biz.Identity, withTrace bool) context.Context {
 	return trace.ContextWithSpanContext(ctx, sc)
 }
 
-// setupAuditTestDB 重建专属测试库、按序装载部署清单（含
-// schema/95_agent_audit.sql）并返回以 grape_u 连接的存储门面。
+// setupAuditTestDB 从模板库克隆全新独立测试库（含
+// schema/95_agent_audit.sql 的模板装载）并返回以 grape_u 连接的存储门面；
+// 测试结束经 t.Cleanup 删库，测试可并行互不干扰。
 func setupAuditTestDB(t *testing.T) *Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_AUDIT_TEST_ADMIN_DSN")
@@ -62,64 +60,22 @@ func setupAuditTestDB(t *testing.T) *Data {
 	}
 	ctx := context.Background()
 
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+auditTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+auditTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = auditTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+auditTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
-	pool, err := pgxpool.New(ctx, testDSN)
+	// 环境变量 DSN 指向固定库名，测试池经改写指向本次克隆的库
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, poolDSN)
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
 	}
@@ -163,6 +119,7 @@ func recordAuditPair(t *testing.T, uc *biz.AuditUsecase, sessionID string) {
 }
 
 func TestAuditRepo_write_then_read_round_trip_redacts_summaries(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 	recordAuditPair(t, uc, "sess-rt")
@@ -217,6 +174,7 @@ func TestAuditRepo_write_then_read_round_trip_redacts_summaries(t *testing.T) {
 }
 
 func TestAuditRepo_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 
@@ -259,6 +217,7 @@ func TestAuditRepo_cross_tenant_invisible_under_enabled_rls(t *testing.T) {
 }
 
 func TestAuditRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 	recordAuditPair(t, uc, "sess-norls")
@@ -269,7 +228,7 @@ func TestAuditRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	adminCfg.Database = auditTestDatabase
+	adminCfg.Database = deploy.DatabaseNameFor(t.Name())
 	admin, err := pgx.ConnectConfig(context.Background(), adminCfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -308,6 +267,7 @@ func TestAuditRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
 }
 
 func TestAuditRepo_batch_write_is_atomic_and_partial_allowed(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 	ctx := auditIdentityContext(auditTenantA, false)
@@ -356,6 +316,7 @@ func TestAuditRepo_batch_write_is_atomic_and_partial_allowed(t *testing.T) {
 }
 
 func TestAuditRepo_pagination_orders_by_time_desc_and_filters_session(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 	ctx := auditIdentityContext(auditTenantA, false)
@@ -406,6 +367,7 @@ func TestAuditRepo_pagination_orders_by_time_desc_and_filters_session(t *testing
 }
 
 func TestAuditRepo_duplicate_records_rejected_by_unique_index(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	uc := newAuditUsecaseForTest(d)
 	ctx := auditIdentityContext(auditTenantA, false)
@@ -433,6 +395,7 @@ func TestAuditRepo_duplicate_records_rejected_by_unique_index(t *testing.T) {
 }
 
 func TestAuditRepo_unauthenticated_calls_fail_closed(t *testing.T) {
+	t.Parallel()
 	d := setupAuditTestDB(t)
 	repo := NewAuditRepo(d)
 	uc := biz.NewAuditUsecase(repo, nil)

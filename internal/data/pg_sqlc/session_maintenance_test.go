@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -81,10 +82,11 @@ func findReindexAction(t *testing.T, report biz.MaintenanceReport) biz.Maintenan
 // 以 grape_u 跑 Maintain——过期超宽限与已撤销行被删（跨租户亦然），
 // 未过期与宽限期内行保留，Rows 与实际删除数一致。
 func TestSessionMaintenanceCleanup(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	maintainer := NewSessionMaintenance(d)
-	admin := openTestAdminConn(t, ctx, testDatabase)
+	admin := openTestAdminConn(t, ctx, deploy.DatabaseNameFor(t.Name()))
 
 	if got := maintainer.Facility(); got != "postgres" {
 		t.Fatalf("facility = %q, want postgres", got)
@@ -157,10 +159,11 @@ func waitForDeadTuples(t *testing.T, ctx context.Context, admin *pgx.Conn, min i
 // 跳过并说明理由；达阈值时以 grape_u 执行不报错——索引属主是部署超级
 // 用户时按 42501 跳过留痕（断言与属主无关的稳定部分）。
 func TestSessionMaintenanceReindexDecision(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	maintainer := NewSessionMaintenance(d)
-	admin := openTestAdminConn(t, ctx, testDatabase)
+	admin := openTestAdminConn(t, ctx, deploy.DatabaseNameFor(t.Name()))
 
 	t.Run("bloat below threshold", func(t *testing.T) {
 		report, err := maintainer.Maintain(ctx)

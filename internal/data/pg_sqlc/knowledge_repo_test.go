@@ -35,6 +35,7 @@ func knowledgeTestDocument(libraryID int64, title string) *biz.KnowledgeDocument
 }
 
 func TestKnowledgeRepo_library_and_document_crud(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -101,6 +102,7 @@ func TestKnowledgeRepo_library_and_document_crud(t *testing.T) {
 }
 
 func TestKnowledgeRepo_tenant_isolation(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	authA := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -137,6 +139,7 @@ func TestKnowledgeRepo_tenant_isolation(t *testing.T) {
 }
 
 func TestKnowledgeRepo_mark_indexed(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -164,6 +167,7 @@ func TestKnowledgeRepo_mark_indexed(t *testing.T) {
 }
 
 func TestKnowledgeRepo_library_chunk_delimiter_round_trips(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -190,6 +194,7 @@ func TestKnowledgeRepo_library_chunk_delimiter_round_trips(t *testing.T) {
 }
 
 func TestKnowledgeRepo_library_custom_chunk_delimiter_round_trips(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -209,6 +214,7 @@ func TestKnowledgeRepo_library_custom_chunk_delimiter_round_trips(t *testing.T) 
 }
 
 func TestKnowledgeRepo_library_oversize_chunk_delimiter_rejected_by_check(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -222,6 +228,7 @@ func TestKnowledgeRepo_library_oversize_chunk_delimiter_rejected_by_check(t *tes
 }
 
 func TestKnowledgeRepo_library_inserted_without_delimiter_defaults_to_blank_line(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 11}
@@ -246,10 +253,11 @@ func TestKnowledgeRepo_library_inserted_without_delimiter_defaults_to_blank_line
 // 经数据范围推导（种子用户 11 全租户、用户 2 仅本人），单行读、写前锁定与
 // 动态 List 共用同一判定——不可见与不存在统一 NotFound，可见集合只含可见行。
 func TestKnowledgeRepo_library_visibility_scope(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewKnowledgeRepo(d)
 	ctx := context.Background()
-	admin := biz.Identity{TenantID: "t-test-01", UserID: 11}  // 全租户数据范围
+	admin := biz.Identity{TenantID: "t-test-01", UserID: 11} // 全租户数据范围
 	scoped := biz.Identity{TenantID: "t-test-01", UserID: 2} // 仅本人
 
 	adminLib, err := repo.CreateLibrary(ctx, admin, knowledgeTestLibrary("管理员可见库"))

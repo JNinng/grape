@@ -72,6 +72,7 @@ func dictDataQuery(typeID int64) *dynq.Query {
 }
 
 func TestDictRepoGetDictTypeByIDReturnsSeededRow(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -85,6 +86,7 @@ func TestDictRepoGetDictTypeByIDReturnsSeededRow(t *testing.T) {
 }
 
 func TestDictRepoGetDictTypeByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -95,6 +97,7 @@ func TestDictRepoGetDictTypeByIDAcrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoGetDictTypeByIDMissingRowReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -105,6 +108,7 @@ func TestDictRepoGetDictTypeByIDMissingRowReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoCreateDictTypePersistsAndDefaultsTimestamps(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantEmpty)
@@ -128,6 +132,7 @@ func TestDictRepoCreateDictTypePersistsAndDefaultsTimestamps(t *testing.T) {
 }
 
 func TestDictRepoCreateDictTypeDuplicateCodeReturnsAlreadyExists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -140,6 +145,7 @@ func TestDictRepoCreateDictTypeDuplicateCodeReturnsAlreadyExists(t *testing.T) {
 }
 
 func TestDictRepoCreateDictTypeCodeReusableAfterSoftDelete(t *testing.T) {
+	t.Parallel()
 	// 唯一约束限定未删除行间：软删后同租户 code 可复用。
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
@@ -160,6 +166,7 @@ func TestDictRepoCreateDictTypeCodeReusableAfterSoftDelete(t *testing.T) {
 }
 
 func TestDictRepoUpdateDictTypeCoversMutableFieldsOnly(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantEmpty)
@@ -180,6 +187,7 @@ func TestDictRepoUpdateDictTypeCoversMutableFieldsOnly(t *testing.T) {
 }
 
 func TestDictRepoUpdateDictTypeMissingRowReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -192,6 +200,7 @@ func TestDictRepoUpdateDictTypeMissingRowReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoSoftDeleteTypeWithActiveDataReturnsHasData(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -206,6 +215,7 @@ func TestDictRepoSoftDeleteTypeWithActiveDataReturnsHasData(t *testing.T) {
 }
 
 func TestDictRepoSoftDeleteTypeAfterDataClearedSucceeds(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantEmpty)
@@ -225,6 +235,7 @@ func TestDictRepoSoftDeleteTypeAfterDataClearedSucceeds(t *testing.T) {
 }
 
 func TestDictRepoListDictTypesFiltersByCodeAndIsolatesTenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -247,6 +258,7 @@ func TestDictRepoListDictTypesFiltersByCodeAndIsolatesTenant(t *testing.T) {
 }
 
 func TestDictRepoListDictTypesCountsTotalIndependentOfPage(t *testing.T) {
+	t.Parallel()
 	// 种子类型共 3 条；第 2 页（页大小 2）的 total 不得随翻页位置递减。
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
@@ -267,6 +279,7 @@ func TestDictRepoListDictTypesCountsTotalIndependentOfPage(t *testing.T) {
 }
 
 func TestDictRepoListDictTypesRejectsUnknownField(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -278,6 +291,7 @@ func TestDictRepoListDictTypesRejectsUnknownField(t *testing.T) {
 }
 
 func TestDictRepoGetDictDataByIDReturnsSeededRow(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -291,6 +305,7 @@ func TestDictRepoGetDictDataByIDReturnsSeededRow(t *testing.T) {
 }
 
 func TestDictRepoGetDictDataByIDAcrossTenantReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -301,6 +316,7 @@ func TestDictRepoGetDictDataByIDAcrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoCreateDictDataRequiresActiveHostType(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantEmpty)
@@ -335,6 +351,7 @@ func TestDictRepoCreateDictDataRequiresActiveHostType(t *testing.T) {
 }
 
 func TestDictRepoCreateDictDataDuplicateValueReturnsAlreadyExists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -348,6 +365,7 @@ func TestDictRepoCreateDictDataDuplicateValueReturnsAlreadyExists(t *testing.T) 
 }
 
 func TestDictRepoCreateDictDataValueUniqueScopeIsPerType(t *testing.T) {
+	t.Parallel()
 	// 唯一约束按 (tenant_id, dict_type_id, value)：同租户不同类型下同值合法。
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
@@ -364,6 +382,7 @@ func TestDictRepoCreateDictDataValueUniqueScopeIsPerType(t *testing.T) {
 }
 
 func TestDictRepoCreateDictDataValueReusableAfterSoftDelete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantSeeded)
@@ -385,6 +404,7 @@ func TestDictRepoCreateDictDataValueReusableAfterSoftDelete(t *testing.T) {
 }
 
 func TestDictRepoUpdateDictDataCoversMutableFieldsOnly(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantEmpty)
@@ -408,6 +428,7 @@ func TestDictRepoUpdateDictDataCoversMutableFieldsOnly(t *testing.T) {
 }
 
 func TestDictRepoUpdateDictDataMissingRowReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -420,6 +441,7 @@ func TestDictRepoUpdateDictDataMissingRowReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoSoftDeleteDictDataAcrossTenantReturnsNotFound(t *testing.T) {
+	t.Parallel()
 	// 跨租户行不可见：软删返回 NotFound（不泄露存在性），目标行原样保留。
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
@@ -434,6 +456,7 @@ func TestDictRepoSoftDeleteDictDataAcrossTenantReturnsNotFound(t *testing.T) {
 }
 
 func TestDictRepoListDictTypesCursorPageKeepsTotalUnshifted(t *testing.T) {
+	t.Parallel()
 	// 游标模式下 total 与翻页位置无关：第二页（After 游标）的 total 仍为
 	// 全集 3，而非剩余行数。
 	d := setupTestDB(t)
@@ -465,6 +488,7 @@ func TestDictRepoListDictTypesCursorPageKeepsTotalUnshifted(t *testing.T) {
 }
 
 func TestDictRepoSoftDeleteDataKeepsHostReadable(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 	auth := dictAuth(dictTenantSeeded)
@@ -484,6 +508,7 @@ func TestDictRepoSoftDeleteDataKeepsHostReadable(t *testing.T) {
 }
 
 func TestDictRepoListDictDatasFiltersByHostType(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDictRepo(d)
 
@@ -502,6 +527,7 @@ func TestDictRepoListDictDatasFiltersByHostType(t *testing.T) {
 }
 
 func TestDictRepoListDictDatasAcceptsStringInt64Filter(t *testing.T) {
+	t.Parallel()
 	// protojson 口径：int64 一律以十进制字符串传输，协议门必须精确解析
 	//（>2^53 的 newID 主键无法用 JSON number 无损表达）。
 	d := setupTestDB(t)

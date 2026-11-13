@@ -226,6 +226,7 @@ func userHasPermission(t *testing.T, d *Data, auth biz.Identity, userID int64, c
 }
 
 func TestRoleRepo_create_writes_fields_and_defaults(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantEmpty)
 	remark := "ops role"
@@ -251,6 +252,7 @@ func TestRoleRepo_create_writes_fields_and_defaults(t *testing.T) {
 }
 
 func TestRoleRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 仓储直建不经用例缺省，data_scope/role_type 显式携带合法值（列 CHECK 限定）。
@@ -261,6 +263,7 @@ func TestRoleRepo_create_duplicate_code_maps_already_exists(t *testing.T) {
 }
 
 func TestRoleRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).Create(context.Background(), roleAuth(roleTenantSeeded), &biz.Role{Name: "部门管理员", Code: "brand_new", Status: biz.RoleStatusEnabled, RoleType: biz.RoleTypeCustom, DataScope: biz.RoleDataScopeSelf})
@@ -270,6 +273,7 @@ func TestRoleRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 }
 
 func TestRoleRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 角色 101 属 t-super-01（seed 包生产默认）；t-test-02 的身份经
 	// RLS 不可见，等同不存在。
@@ -282,6 +286,7 @@ func TestRoleRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 }
 
 func TestRoleRepo_get_by_id_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).GetByID(context.Background(), roleAuth(roleTenantSeeded), 424242)
@@ -291,6 +296,7 @@ func TestRoleRepo_get_by_id_missing_maps_not_found(t *testing.T) {
 }
 
 func TestRoleRepo_list_filters_by_code_prefix_with_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 种子演示角色 106-109 的编码均以 demo_scope 开头。
@@ -305,6 +311,7 @@ func TestRoleRepo_list_filters_by_code_prefix_with_total(t *testing.T) {
 }
 
 func TestRoleRepo_list_hides_cross_tenant_rows(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// t-test-02 仅角色 105；t-test-01 的 102-110 与 t-super-01 的 101
@@ -319,6 +326,7 @@ func TestRoleRepo_list_hides_cross_tenant_rows(t *testing.T) {
 }
 
 func TestRoleRepo_list_rejects_unknown_field(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).List(context.Background(), roleAuth(roleTenantSeeded),
@@ -329,6 +337,7 @@ func TestRoleRepo_list_rejects_unknown_field(t *testing.T) {
 }
 
 func TestRoleRepo_update_changes_name_status_remark(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantEmpty)
 	repo := NewRoleRepo(d)
@@ -351,6 +360,7 @@ func TestRoleRepo_update_changes_name_status_remark(t *testing.T) {
 }
 
 func TestRoleRepo_update_keeps_code_immutable(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantEmpty)
 	repo := NewRoleRepo(d)
@@ -370,6 +380,7 @@ func TestRoleRepo_update_keeps_code_immutable(t *testing.T) {
 }
 
 func TestRoleRepo_update_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).Update(context.Background(), roleAuth(roleTenantSeeded),
@@ -380,6 +391,7 @@ func TestRoleRepo_update_missing_maps_not_found(t *testing.T) {
 }
 
 func TestRoleRepo_delete_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewRoleRepo(d).SoftDelete(context.Background(), roleAuth(roleTenantSeeded), 424242)
@@ -389,6 +401,7 @@ func TestRoleRepo_delete_missing_maps_not_found(t *testing.T) {
 }
 
 func TestRoleRepo_delete_preset_role_rejected_without_changes(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 角色 101 为系统预置（role_type=1，seed 包生产默认数据）：删除被
 	// 拒绝且角色仍可见。
@@ -404,6 +417,7 @@ func TestRoleRepo_delete_preset_role_rejected_without_changes(t *testing.T) {
 }
 
 func TestRoleRepo_delete_soft_deletes_and_code_reusable(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantEmpty)
 	repo := NewRoleRepo(d)
@@ -423,6 +437,7 @@ func TestRoleRepo_delete_soft_deletes_and_code_reusable(t *testing.T) {
 }
 
 func TestRoleRepo_delete_soft_deleted_role_keeps_menu_residue_and_breaks_permission_chain(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -445,6 +460,7 @@ func TestRoleRepo_delete_soft_deleted_role_keeps_menu_residue_and_breaks_permiss
 }
 
 func TestRoleRepo_get_data_scope_reads_seed_config(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -482,6 +498,7 @@ func TestRoleRepo_get_data_scope_reads_seed_config(t *testing.T) {
 }
 
 func TestRoleRepo_get_data_scope_missing_and_cross_tenant_map_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	if _, err := NewRoleRepo(d).GetDataScope(context.Background(), roleAuth(roleTenantSeeded), 424242); !errors.Is(err, biz.ErrRoleNotFound) {
@@ -493,6 +510,7 @@ func TestRoleRepo_get_data_scope_missing_and_cross_tenant_map_not_found(t *testi
 }
 
 func TestRoleRepo_set_data_scope_replaces_both_tables_consistently(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -559,6 +577,7 @@ func TestRoleRepo_set_data_scope_replaces_both_tables_consistently(t *testing.T)
 }
 
 func TestRoleRepo_set_data_scope_preserves_retained_rows_audit(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -596,6 +615,7 @@ func TestRoleRepo_set_data_scope_preserves_retained_rows_audit(t *testing.T) {
 }
 
 func TestRoleRepo_set_data_scope_unknown_user_ref_rejects_and_writes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -619,6 +639,7 @@ func TestRoleRepo_set_data_scope_unknown_user_ref_rejects_and_writes_nothing(t *
 }
 
 func TestRoleRepo_set_data_scope_unknown_allowed_dept_rejects(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -636,6 +657,7 @@ func TestRoleRepo_set_data_scope_unknown_allowed_dept_rejects(t *testing.T) {
 }
 
 func TestRoleRepo_set_data_scope_unknown_scope_dept_rejects(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	ghost := int64(424242)
@@ -658,6 +680,7 @@ func TestRoleRepo_set_data_scope_unknown_scope_dept_rejects(t *testing.T) {
 }
 
 func TestRoleRepo_set_data_scope_cross_tenant_role_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).SetDataScope(context.Background(), roleAuth(roleTenantEmpty),
@@ -668,6 +691,7 @@ func TestRoleRepo_set_data_scope_cross_tenant_role_maps_not_found(t *testing.T) 
 }
 
 func TestRoleRepo_list_menus_returns_seed_set_sorted(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 角色 103 种子授权 {3201,3202,3203,3236,3237}（32xx 为 t-test-01 的
@@ -682,6 +706,7 @@ func TestRoleRepo_list_menus_returns_seed_set_sorted(t *testing.T) {
 }
 
 func TestRoleRepo_list_menus_missing_and_cross_tenant_map_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	if _, err := NewRoleRepo(d).ListMenus(context.Background(), roleAuth(roleTenantSeeded), 424242); !errors.Is(err, biz.ErrRoleNotFound) {
@@ -693,6 +718,7 @@ func TestRoleRepo_list_menus_missing_and_cross_tenant_map_not_found(t *testing.T
 }
 
 func TestRoleRepo_set_menus_replaces_grants_and_preserves_retained_creator(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -731,6 +757,7 @@ func TestRoleRepo_set_menus_replaces_grants_and_preserves_retained_creator(t *te
 }
 
 func TestRoleRepo_set_menus_idempotent_same_set_changes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -755,6 +782,7 @@ func TestRoleRepo_set_menus_idempotent_same_set_changes_nothing(t *testing.T) {
 }
 
 func TestRoleRepo_set_menus_empty_clears_all_grants(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -771,6 +799,7 @@ func TestRoleRepo_set_menus_empty_clears_all_grants(t *testing.T) {
 }
 
 func TestRoleRepo_set_menus_unknown_menu_rejects_and_writes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -788,6 +817,7 @@ func TestRoleRepo_set_menus_unknown_menu_rejects_and_writes_nothing(t *testing.T
 }
 
 func TestRoleRepo_set_menus_cross_tenant_menu_rejects(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -799,6 +829,7 @@ func TestRoleRepo_set_menus_cross_tenant_menu_rejects(t *testing.T) {
 }
 
 func TestRoleRepo_set_menus_cross_tenant_role_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewRoleRepo(d).SetMenus(context.Background(), roleAuth(roleTenantEmpty), 103, []int64{1201})
@@ -808,6 +839,7 @@ func TestRoleRepo_set_menus_cross_tenant_role_maps_not_found(t *testing.T) {
 }
 
 func TestRoleRepo_list_menus_hides_inactive_menu_grant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -824,6 +856,7 @@ func TestRoleRepo_list_menus_hides_inactive_menu_grant(t *testing.T) {
 }
 
 func TestRoleRepo_set_menus_roundtrips_active_echo_and_drops_inactive_grant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -851,6 +884,7 @@ func TestRoleRepo_set_menus_roundtrips_active_echo_and_drops_inactive_grant(t *t
 }
 
 func TestRoleRepo_can_assign_role_tracks_role_lifecycle(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 	repo := NewRoleRepo(d)
@@ -887,6 +921,7 @@ func TestRoleRepo_can_assign_role_tracks_role_lifecycle(t *testing.T) {
 }
 
 func TestRoleRepo_can_assign_role_allowed_dept_mapping_changes_judgment(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 
@@ -936,6 +971,7 @@ func TestRoleRepo_can_assign_role_allowed_dept_mapping_changes_judgment(t *testi
 }
 
 func TestRoleRepo_can_assign_role_scope_dept_subtree_changes_judgment(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := roleAuth(roleTenantSeeded)
 

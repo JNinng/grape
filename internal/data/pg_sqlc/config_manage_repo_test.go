@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -62,6 +63,7 @@ func configKeyQuery(key string) *dynq.Query {
 }
 
 func TestConfigRepo_get_seeded_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewConfigRepo(d).Get(context.Background(), configAuth(configTenantSeeded), 1)
@@ -77,6 +79,7 @@ func TestConfigRepo_get_seeded_row(t *testing.T) {
 }
 
 func TestConfigRepo_get_is_global_across_tenants(t *testing.T) {
+	t.Parallel()
 	// sys_config 无 tenant_id 与 RLS：任意认证租户都读到同一份全局配置。
 	d := setupTestDB(t)
 
@@ -90,6 +93,7 @@ func TestConfigRepo_get_is_global_across_tenants(t *testing.T) {
 }
 
 func TestConfigRepo_create_super_writes_via_controlled_function(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 
@@ -122,6 +126,7 @@ func assertPermissionDenied(t *testing.T, err error) {
 }
 
 func TestConfigRepo_direct_insert_denied_for_runtime_role(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 
@@ -137,6 +142,7 @@ func TestConfigRepo_direct_insert_denied_for_runtime_role(t *testing.T) {
 }
 
 func TestConfigRepo_direct_update_denied_for_runtime_role(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 
@@ -149,6 +155,7 @@ func TestConfigRepo_direct_update_denied_for_runtime_role(t *testing.T) {
 }
 
 func TestConfigRepo_direct_delete_denied_for_runtime_role(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 
@@ -161,6 +168,7 @@ func TestConfigRepo_direct_delete_denied_for_runtime_role(t *testing.T) {
 }
 
 func TestConfigRepo_controlled_functions_deny_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 三个受控写函数以 current_setting('app.tenant_id', true) 校验认证事务
 	// 纪律：裸连接（不经 IdentityTx）未设置该变量时逐一拒绝，且不产生任何
 	// 写入（新建行不存在、种子行未被篡改或软删）。
@@ -285,7 +293,7 @@ func backdateUpdatedAt(t *testing.T, table string, id int64) time.Time {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	cfg.Database = testDatabase
+	cfg.Database = deploy.DatabaseNameFor(t.Name())
 	conn, err := pgx.ConnectConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -305,6 +313,7 @@ func backdateUpdatedAt(t *testing.T, table string, id int64) time.Time {
 }
 
 func TestConfigRepo_create_duplicate_key_returns_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewConfigRepo(d).CreateSuper(context.Background(), configAuth(configTenantSeeded), &biz.Config{
@@ -316,6 +325,7 @@ func TestConfigRepo_create_duplicate_key_returns_already_exists(t *testing.T) {
 }
 
 func TestConfigRepo_create_key_reusable_after_soft_delete(t *testing.T) {
+	t.Parallel()
 	// 唯一约束限定未删除行间：软删后同 key 可复用。
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
@@ -340,6 +350,7 @@ func TestConfigRepo_create_key_reusable_after_soft_delete(t *testing.T) {
 }
 
 func TestConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 	repo := NewConfigRepo(d)
@@ -367,6 +378,7 @@ func TestConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
 }
 
 func TestConfigRepo_update_missing_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewConfigRepo(d).UpdateSuper(context.Background(), configAuth(configTenantSeeded), &biz.Config{
@@ -378,6 +390,7 @@ func TestConfigRepo_update_missing_row_returns_not_found(t *testing.T) {
 }
 
 func TestConfigRepo_delete_missing_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewConfigRepo(d).DeleteSuper(context.Background(), configAuth(configTenantSeeded), 999999)
@@ -387,6 +400,7 @@ func TestConfigRepo_delete_missing_row_returns_not_found(t *testing.T) {
 }
 
 func TestConfigRepo_delete_hides_row_from_get(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 	repo := NewConfigRepo(d)
@@ -403,6 +417,7 @@ func TestConfigRepo_delete_hides_row_from_get(t *testing.T) {
 }
 
 func TestConfigRepo_list_filters_and_counts_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewConfigRepo(d).List(context.Background(), configAuth(configTenantSeeded), configKeyQuery("session.timeout"))
@@ -418,6 +433,7 @@ func TestConfigRepo_list_filters_and_counts_total(t *testing.T) {
 }
 
 func TestConfigRepo_list_page_total_independent_of_page(t *testing.T) {
+	t.Parallel()
 	// 种子全局配置共 13 条（含模型目录默认键与 oss.* 四键）；第 2 页
 	// （页大小 2）的 total 不得随翻页位置递减。
 	d := setupTestDB(t)
@@ -438,6 +454,7 @@ func TestConfigRepo_list_page_total_independent_of_page(t *testing.T) {
 }
 
 func TestConfigRepo_list_rejects_unknown_field(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	q := &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}
@@ -448,6 +465,7 @@ func TestConfigRepo_list_rejects_unknown_field(t *testing.T) {
 }
 
 func TestTenantConfigRepo_create_lands_session_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 
@@ -471,6 +489,7 @@ func TestTenantConfigRepo_create_lands_session_tenant(t *testing.T) {
 }
 
 func TestTenantConfigRepo_get_seeded_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewTenantConfigRepo(d).Get(context.Background(), configAuth(configTenantSeeded), 1)
@@ -483,6 +502,7 @@ func TestTenantConfigRepo_get_seeded_row(t *testing.T) {
 }
 
 func TestTenantConfigRepo_get_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewTenantConfigRepo(d).Get(context.Background(), configAuth(configTenantOther), 1)
@@ -492,6 +512,7 @@ func TestTenantConfigRepo_get_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTenantConfigRepo_create_duplicate_key_returns_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 种子租户配置 1 的 key 是 tenant.logo。
@@ -504,6 +525,7 @@ func TestTenantConfigRepo_create_duplicate_key_returns_already_exists(t *testing
 }
 
 func TestTenantConfigRepo_create_same_key_allowed_in_other_tenant(t *testing.T) {
+	t.Parallel()
 	// 唯一约束按 (tenant_id, config_key)：跨租户同 key 合法。
 	d := setupTestDB(t)
 
@@ -519,6 +541,7 @@ func TestTenantConfigRepo_create_same_key_allowed_in_other_tenant(t *testing.T) 
 }
 
 func TestTenantConfigRepo_create_key_reusable_after_soft_delete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -542,6 +565,7 @@ func TestTenantConfigRepo_create_key_reusable_after_soft_delete(t *testing.T) {
 }
 
 func TestTenantConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -570,6 +594,7 @@ func TestTenantConfigRepo_update_covers_mutable_fields_only(t *testing.T) {
 }
 
 func TestTenantConfigRepo_update_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 种子租户配置 1 属 t-super-01；t-test-02 视角等同不存在。
@@ -582,6 +607,7 @@ func TestTenantConfigRepo_update_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTenantConfigRepo_delete_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewTenantConfigRepo(d).Delete(context.Background(), configAuth(configTenantOther), 1)
@@ -595,6 +621,7 @@ func TestTenantConfigRepo_delete_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTenantConfigRepo_delete_hides_row_from_get(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -611,6 +638,7 @@ func TestTenantConfigRepo_delete_hides_row_from_get(t *testing.T) {
 }
 
 func TestTenantConfigRepo_list_isolates_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewTenantConfigRepo(d)
 
@@ -648,6 +676,7 @@ func TestTenantConfigRepo_list_isolates_tenant(t *testing.T) {
 }
 
 func TestTenantConfigRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewTenantConfigRepo(d)
 	cases := map[string]*dynq.Query{
@@ -666,6 +695,7 @@ func TestTenantConfigRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 }
 
 func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
+	t.Parallel()
 	// 动态协议的 sort 生效：按 id 降序取前 3 条为种子 13/12/11。
 	d := setupTestDB(t)
 	pageSize := 3
@@ -684,6 +714,7 @@ func TestConfigRepo_list_orders_by_requested_sort(t *testing.T) {
 }
 
 func TestTenantConfigRepo_list_orders_by_requested_sort(t *testing.T) {
+	t.Parallel()
 	// 租户内动态 sort 生效（t-test-02 种子租户配置 3/4，按 id 降序）。
 	d := setupTestDB(t)
 
@@ -698,6 +729,7 @@ func TestTenantConfigRepo_list_orders_by_requested_sort(t *testing.T) {
 }
 
 func TestConfigRepo_update_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 	repo := NewConfigRepo(d)
@@ -717,6 +749,7 @@ func TestConfigRepo_update_soft_deleted_row_returns_not_found(t *testing.T) {
 }
 
 func TestConfigRepo_delete_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 	repo := NewConfigRepo(d)
@@ -733,6 +766,7 @@ func TestConfigRepo_delete_soft_deleted_row_returns_not_found(t *testing.T) {
 }
 
 func TestConfigRepo_list_excludes_soft_deleted_rows(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantSeeded)
 	repo := NewConfigRepo(d)
@@ -756,6 +790,7 @@ func TestConfigRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestConfigRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
+	t.Parallel()
 	// updated_by 记操作者；updated_at 由 trg_touch_updated_at 在 Update 与
 	// 软删路径刷新。基线用超管把 updated_at 回拨 10 秒得到已知旧时间，
 	// 不依赖真实睡眠（timestamp(0) 精度下时间先后确定可判）。
@@ -809,6 +844,7 @@ func TestConfigRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
 }
 
 func TestTenantConfigRepo_update_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -828,6 +864,7 @@ func TestTenantConfigRepo_update_soft_deleted_row_returns_not_found(t *testing.T
 }
 
 func TestTenantConfigRepo_delete_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -844,6 +881,7 @@ func TestTenantConfigRepo_delete_soft_deleted_row_returns_not_found(t *testing.T
 }
 
 func TestTenantConfigRepo_list_excludes_soft_deleted_rows(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -867,6 +905,7 @@ func TestTenantConfigRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestTenantConfigRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	owner := configAuth(configTenantOther)
 	repo := NewTenantConfigRepo(d)
@@ -917,6 +956,7 @@ func TestTenantConfigRepo_update_and_delete_refresh_audit_columns(t *testing.T) 
 }
 
 func TestTenantConfigRepo_rls_denies_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	d := setupTestDB(t)
 
@@ -930,6 +970,7 @@ func TestTenantConfigRepo_rls_denies_without_tenant(t *testing.T) {
 }
 
 func TestTenantConfigRepo_writes_denied_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 写侧 fail-closed：裸连接不设 app.tenant_id 时 INSERT 违反 WITH CHECK
 	// 报错，UPDATE/DELETE 看不到行（RETURNING 无行 = pgx.ErrNoRows）；
 	// 目标种子行保持原值。
@@ -1000,6 +1041,7 @@ func translationTableQuery(table string) *dynq.Query {
 }
 
 func TestFeatureFlagRepo_get_seeded_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewFeatureFlagRepo(d).Get(context.Background(), configAuth(configTenantSeeded), 1)
@@ -1013,6 +1055,7 @@ func TestFeatureFlagRepo_get_seeded_row(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_get_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewFeatureFlagRepo(d).Get(context.Background(), configAuth(configTenantOther), 1)
@@ -1022,6 +1065,7 @@ func TestFeatureFlagRepo_get_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_create_lands_session_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 
@@ -1040,6 +1084,7 @@ func TestFeatureFlagRepo_create_lands_session_tenant(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_create_invalid_status_maps_to_invalid_argument(t *testing.T) {
+	t.Parallel()
 	// 绕过用例校验直接把非法 status 写库：库层 CHECK（23514）兜底映射为
 	// InvalidArgument，不穿透为原始驱动错误。
 	d := setupTestDB(t)
@@ -1053,6 +1098,7 @@ func TestFeatureFlagRepo_create_invalid_status_maps_to_invalid_argument(t *testi
 }
 
 func TestFeatureFlagRepo_create_duplicate_key_returns_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewFeatureFlagRepo(d).Create(context.Background(), configAuth(configTenantSeeded), &biz.FeatureFlag{
@@ -1064,6 +1110,7 @@ func TestFeatureFlagRepo_create_duplicate_key_returns_already_exists(t *testing.
 }
 
 func TestFeatureFlagRepo_create_same_key_allowed_in_other_tenant(t *testing.T) {
+	t.Parallel()
 	// 唯一约束按 (tenant_id, flag_key)：跨租户同 key 合法。
 	d := setupTestDB(t)
 
@@ -1079,6 +1126,7 @@ func TestFeatureFlagRepo_create_same_key_allowed_in_other_tenant(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_create_key_reusable_after_soft_delete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1102,6 +1150,7 @@ func TestFeatureFlagRepo_create_key_reusable_after_soft_delete(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_update_covers_mutable_fields_only(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1140,6 +1189,7 @@ func TestFeatureFlagRepo_update_covers_mutable_fields_only(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_update_omits_is_enabled_to_false(t *testing.T) {
+	t.Parallel()
 	// Update 是覆盖语义：未设置 IsEnabled（DO 零值 false）即落库 false，
 	// 不沿用旧值；重读确认持久化结果。
 	d := setupTestDB(t)
@@ -1168,6 +1218,7 @@ func TestFeatureFlagRepo_update_omits_is_enabled_to_false(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_update_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewFeatureFlagRepo(d).Update(context.Background(), configAuth(configTenantOther), &biz.FeatureFlag{
@@ -1179,6 +1230,7 @@ func TestFeatureFlagRepo_update_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_delete_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewFeatureFlagRepo(d).Delete(context.Background(), configAuth(configTenantOther), 1)
@@ -1191,6 +1243,7 @@ func TestFeatureFlagRepo_delete_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_get_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1207,6 +1260,7 @@ func TestFeatureFlagRepo_get_soft_deleted_row_returns_not_found(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_update_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1226,6 +1280,7 @@ func TestFeatureFlagRepo_update_soft_deleted_row_returns_not_found(t *testing.T)
 }
 
 func TestFeatureFlagRepo_delete_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1242,6 +1297,7 @@ func TestFeatureFlagRepo_delete_soft_deleted_row_returns_not_found(t *testing.T)
 }
 
 func TestFeatureFlagRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
+	t.Parallel()
 	// 软删路径同样刷新 updated_by/updated_at：基线用超管回拨 updated_at
 	// 得到已知旧时间，不依赖真实睡眠。
 	d := setupTestDB(t)
@@ -1279,6 +1335,7 @@ func TestFeatureFlagRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_delete_missing_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewFeatureFlagRepo(d).Delete(context.Background(), configAuth(configTenantSeeded), 999999)
@@ -1288,6 +1345,7 @@ func TestFeatureFlagRepo_delete_missing_row_returns_not_found(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_filters_and_counts_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewFeatureFlagRepo(d).List(context.Background(), configAuth(configTenantSeeded), featureFlagKeyQuery("api_access"))
@@ -1303,6 +1361,7 @@ func TestFeatureFlagRepo_list_filters_and_counts_total(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_isolates_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewFeatureFlagRepo(d)
 
@@ -1338,6 +1397,7 @@ func TestFeatureFlagRepo_list_isolates_tenant(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_excludes_soft_deleted_rows(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewFeatureFlagRepo(d)
@@ -1361,6 +1421,7 @@ func TestFeatureFlagRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_orders_and_paginates(t *testing.T) {
+	t.Parallel()
 	// t-test-02 种子开关为 5/6/7/8：按 id 降序第 1 页 8/7，第 2 页 6/5；
 	// 共 4 条且 total 不随翻页位置递减。
 	d := setupTestDB(t)
@@ -1384,6 +1445,7 @@ func TestFeatureFlagRepo_list_orders_and_paginates(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
+	t.Parallel()
 	// 游标模式：首屏（页大小 2，id 降序）为 8/7 并给出 NextCursor；次屏
 	// 为 6/5。两屏 total 均为全集 4，不随游标收窄。
 	d := setupTestDB(t)
@@ -1427,6 +1489,7 @@ func TestFeatureFlagRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewFeatureFlagRepo(d)
 	cases := map[string]*dynq.Query{
@@ -1445,6 +1508,7 @@ func TestFeatureFlagRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_rls_denies_without_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	var n int
@@ -1457,6 +1521,7 @@ func TestFeatureFlagRepo_rls_denies_without_tenant(t *testing.T) {
 }
 
 func TestFeatureFlagRepo_writes_denied_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 写侧 fail-closed：INSERT 违反 RLS WITH CHECK 报错，UPDATE/DELETE 因
 	// 行不可见返回 pgx.ErrNoRows；目标种子行保持原值。
 	d := setupTestDB(t)
@@ -1496,6 +1561,7 @@ func TestFeatureFlagRepo_writes_denied_without_tenant(t *testing.T) {
 }
 
 func TestTranslationRepo_get_seeded_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewTranslationRepo(d).Get(context.Background(), configAuth(configTenantSeeded), 1)
@@ -1510,6 +1576,7 @@ func TestTranslationRepo_get_seeded_row(t *testing.T) {
 }
 
 func TestTranslationRepo_get_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewTranslationRepo(d).Get(context.Background(), configAuth(configTenantOther), 1)
@@ -1519,6 +1586,7 @@ func TestTranslationRepo_get_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTranslationRepo_create_lands_session_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 
@@ -1538,6 +1606,7 @@ func TestTranslationRepo_create_lands_session_tenant(t *testing.T) {
 }
 
 func TestTranslationRepo_create_locale_over_column_width_maps_to_invalid_argument(t *testing.T) {
+	t.Parallel()
 	// 绕过用例校验写入超列宽 locale：库层 22001 兜底映射为
 	// InvalidArgument，不穿透为原始驱动错误。
 	d := setupTestDB(t)
@@ -1552,6 +1621,7 @@ func TestTranslationRepo_create_locale_over_column_width_maps_to_invalid_argumen
 }
 
 func TestTranslationRepo_create_duplicate_identity_returns_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 种子翻译 1 的身份四元组是 (sys_menu, 201, name, en-US)。
@@ -1565,6 +1635,7 @@ func TestTranslationRepo_create_duplicate_identity_returns_already_exists(t *tes
 }
 
 func TestTranslationRepo_create_same_identity_allowed_in_other_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	out, err := NewTranslationRepo(d).Create(context.Background(), configAuth("t-config-none"), &biz.Translation{
@@ -1580,6 +1651,7 @@ func TestTranslationRepo_create_same_identity_allowed_in_other_tenant(t *testing
 }
 
 func TestTranslationRepo_create_identity_reusable_after_soft_delete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1605,6 +1677,7 @@ func TestTranslationRepo_create_identity_reusable_after_soft_delete(t *testing.T
 }
 
 func TestTranslationRepo_update_covers_mutable_fields_only(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1641,6 +1714,7 @@ func TestTranslationRepo_update_covers_mutable_fields_only(t *testing.T) {
 }
 
 func TestTranslationRepo_update_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewTranslationRepo(d).Update(context.Background(), configAuth(configTenantOther), &biz.Translation{
@@ -1652,6 +1726,7 @@ func TestTranslationRepo_update_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTranslationRepo_delete_across_tenant_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewTranslationRepo(d).Delete(context.Background(), configAuth(configTenantOther), 1)
@@ -1664,6 +1739,7 @@ func TestTranslationRepo_delete_across_tenant_returns_not_found(t *testing.T) {
 }
 
 func TestTranslationRepo_get_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1681,6 +1757,7 @@ func TestTranslationRepo_get_soft_deleted_row_returns_not_found(t *testing.T) {
 }
 
 func TestTranslationRepo_update_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1701,6 +1778,7 @@ func TestTranslationRepo_update_soft_deleted_row_returns_not_found(t *testing.T)
 }
 
 func TestTranslationRepo_delete_soft_deleted_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1718,6 +1796,7 @@ func TestTranslationRepo_delete_soft_deleted_row_returns_not_found(t *testing.T)
 }
 
 func TestTranslationRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
+	t.Parallel()
 	// 更新与软删路径刷新 updated_by/updated_at：基线用超管回拨
 	// updated_at，不依赖真实睡眠。
 	d := setupTestDB(t)
@@ -1770,6 +1849,7 @@ func TestTranslationRepo_update_and_delete_refresh_audit_columns(t *testing.T) {
 }
 
 func TestTranslationRepo_delete_missing_row_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewTranslationRepo(d).Delete(context.Background(), configAuth(configTenantSeeded), 999999)
@@ -1779,6 +1859,7 @@ func TestTranslationRepo_delete_missing_row_returns_not_found(t *testing.T) {
 }
 
 func TestTranslationRepo_list_filters_and_counts_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 种子翻译中来源表为 sys_config 的共 7 条（id 57-63）。
@@ -1800,6 +1881,7 @@ func TestTranslationRepo_list_filters_and_counts_total(t *testing.T) {
 }
 
 func TestTranslationRepo_list_isolates_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewTranslationRepo(d)
 
@@ -1813,6 +1895,7 @@ func TestTranslationRepo_list_isolates_tenant(t *testing.T) {
 }
 
 func TestTranslationRepo_list_excludes_soft_deleted_rows(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := configAuth(configTenantOther)
 	repo := NewTranslationRepo(d)
@@ -1837,6 +1920,7 @@ func TestTranslationRepo_list_excludes_soft_deleted_rows(t *testing.T) {
 }
 
 func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
+	t.Parallel()
 	// 种子中来源表为 sys_config 的翻译共 7 条（id 57-63）：按 id 降序
 	// 第 2 页（页大小 2）为 61/60，total 7。按来源表过滤，避免菜单翻译
 	// 数量变化影响本用例。
@@ -1862,6 +1946,7 @@ func TestTranslationRepo_list_orders_and_paginates(t *testing.T) {
 }
 
 func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
+	t.Parallel()
 	// 游标模式：来源表为 sys_config 的翻译 7 条（id 57-63），首屏
 	// （页大小 2，id 降序）为 63/62 并给出 NextCursor；次屏为 61/60。
 	// 两屏 total 均为 7，不随游标收窄。
@@ -1909,6 +1994,7 @@ func TestTranslationRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 }
 
 func TestTranslationRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewTranslationRepo(d)
 	cases := map[string]*dynq.Query{
@@ -1927,6 +2013,7 @@ func TestTranslationRepo_list_rejects_hidden_and_unknown_fields(t *testing.T) {
 }
 
 func TestTranslationRepo_rls_denies_without_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	var n int
@@ -1939,6 +2026,7 @@ func TestTranslationRepo_rls_denies_without_tenant(t *testing.T) {
 }
 
 func TestTranslationRepo_writes_denied_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 写侧 fail-closed：INSERT 违反 RLS WITH CHECK 报错，UPDATE/DELETE 因
 	// 行不可见返回 pgx.ErrNoRows；目标种子行保持原值。
 	d := setupTestDB(t)
@@ -1983,6 +2071,7 @@ func TestTranslationRepo_writes_denied_without_tenant(t *testing.T) {
 // 平台租户；直接子租户与不存在的租户均为 false（fail-closed，不探测
 // 树外租户）。
 func TestPlatformTenantGuard_classifies_seed_tenants(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	guard := NewPlatformTenantGuard(d)
 	ctx := context.Background()
@@ -2009,6 +2098,7 @@ func TestPlatformTenantGuard_classifies_seed_tenants(t *testing.T) {
 // 租户行被软删后平台判定 false（fail-closed）：身份仍可构造，但全局配置
 // 写路径必须拒绝，不能因历史行身份残留而放行。
 func TestPlatformTenantGuard_soft_deleted_tenant_is_not_platform(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	root := configAuth(configTenantSeeded)
@@ -2031,6 +2121,7 @@ func TestPlatformTenantGuard_soft_deleted_tenant_is_not_platform(t *testing.T) {
 // 写全局配置返回 ErrConfigPlatformRequired（403），新建行不落库、更新与
 // 删除不触碰种子行；树根（t-super-01）正常写入。
 func TestConfigUsecase_global_write_requires_platform_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	uc := biz.NewConfigUsecase(NewConfigRepo(d), NewPlatformTenantGuard(d))

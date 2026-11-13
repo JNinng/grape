@@ -85,6 +85,7 @@ func softDeleteState(t *testing.T, d *Data, auth biz.Identity, id int64) bool {
 }
 
 func TestDeptRepo_create_root_builds_self_closure_path(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 
@@ -96,6 +97,7 @@ func TestDeptRepo_create_root_builds_self_closure_path(t *testing.T) {
 }
 
 func TestDeptRepo_create_child_links_ancestor_paths(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 
@@ -125,6 +127,7 @@ func TestDeptRepo_create_child_links_ancestor_paths(t *testing.T) {
 }
 
 func TestDeptRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	ghost := int64(987654321)
@@ -143,6 +146,7 @@ func TestDeptRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing
 }
 
 func TestDeptRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 
@@ -155,6 +159,7 @@ func TestDeptRepo_create_duplicate_name_maps_already_exists(t *testing.T) {
 }
 
 func TestDeptRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 部门 1 属 t-test-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	other := deptAuth(testTenantEmpty)
@@ -166,6 +171,7 @@ func TestDeptRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 }
 
 func TestDeptRepo_get_by_id_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewDeptRepo(d).GetByID(context.Background(), deptAuth(testTenantSeeded), 424242)
@@ -175,6 +181,7 @@ func TestDeptRepo_get_by_id_missing_maps_not_found(t *testing.T) {
 }
 
 func TestDeptRepo_list_all_scopes_to_current_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewDeptRepo(d)
 
@@ -198,6 +205,7 @@ func TestDeptRepo_list_all_scopes_to_current_tenant(t *testing.T) {
 }
 
 func TestDeptRepo_list_filters_by_parent_id_with_total(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 	parent := int64(2)
@@ -231,6 +239,7 @@ func TestDeptRepo_list_filters_by_parent_id_with_total(t *testing.T) {
 }
 
 func TestDeptRepo_list_rejects_unknown_field(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewDeptRepo(d).List(context.Background(), deptAuth(testTenantSeeded),
@@ -241,6 +250,7 @@ func TestDeptRepo_list_rejects_unknown_field(t *testing.T) {
 }
 
 func TestDeptRepo_update_changes_name_and_status(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -261,6 +271,7 @@ func TestDeptRepo_update_changes_name_and_status(t *testing.T) {
 }
 
 func TestDeptRepo_update_owner_and_parent_rewrites_closure(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -293,6 +304,7 @@ func TestDeptRepo_update_owner_and_parent_rewrites_closure(t *testing.T) {
 }
 
 func TestDeptRepo_update_missing_dept_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewDeptRepo(d).Update(context.Background(), deptAuth(testTenantSeeded),
@@ -303,6 +315,7 @@ func TestDeptRepo_update_missing_dept_maps_not_found(t *testing.T) {
 }
 
 func TestDeptRepo_move_under_other_root_rewrites_closure(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -346,6 +359,7 @@ func TestDeptRepo_move_under_other_root_rewrites_closure(t *testing.T) {
 }
 
 func TestDeptRepo_move_to_root_clears_ancestor_paths(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -374,6 +388,7 @@ func TestDeptRepo_move_to_root_clears_ancestor_paths(t *testing.T) {
 }
 
 func TestDeptRepo_move_into_own_subtree_rejected_and_rolled_back(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -400,6 +415,7 @@ func TestDeptRepo_move_into_own_subtree_rejected_and_rolled_back(t *testing.T) {
 }
 
 func TestDeptRepo_move_missing_dept_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 	target := int64(1)
@@ -411,6 +427,7 @@ func TestDeptRepo_move_missing_dept_maps_not_found(t *testing.T) {
 }
 
 func TestDeptRepo_delete_leaf_soft_deletes_and_cleans_closure(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantEmpty)
 	repo := NewDeptRepo(d)
@@ -436,6 +453,7 @@ func TestDeptRepo_delete_leaf_soft_deletes_and_cleans_closure(t *testing.T) {
 }
 
 func TestDeptRepo_delete_with_active_children_maps_has_children(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 	repo := NewDeptRepo(d)
@@ -454,6 +472,7 @@ func TestDeptRepo_delete_with_active_children_maps_has_children(t *testing.T) {
 }
 
 func TestDeptRepo_delete_missing_dept_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewDeptRepo(d).SoftDelete(context.Background(), deptAuth(testTenantSeeded), 424242)
@@ -463,6 +482,7 @@ func TestDeptRepo_delete_missing_dept_maps_not_found(t *testing.T) {
 }
 
 func TestDeptRepo_owner_reference_validated(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := deptAuth(testTenantSeeded)
 	repo := NewDeptRepo(d)

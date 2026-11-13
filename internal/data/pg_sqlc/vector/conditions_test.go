@@ -29,6 +29,7 @@ func activeConditions(libraryIDs ...string) []biz.MetadataCondition {
 }
 
 func TestVectorStore_search_and_update_metadata_conditions(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -128,6 +129,7 @@ func TestVectorStore_search_and_update_metadata_conditions(t *testing.T) {
 }
 
 func TestVectorStore_metadata_is_null_condition_and_mark_superseded(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -201,6 +203,7 @@ func TestVectorStore_metadata_is_null_condition_and_mark_superseded(t *testing.T
 }
 
 func TestVectorStore_metadata_condition_ops(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)

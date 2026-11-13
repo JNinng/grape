@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -25,12 +24,11 @@ import (
 
 // 向量存储介质集成测试（真实 PostgreSQL，未设 GRAPE_VECTOR_TEST_ADMIN_DSN /
 // GRAPE_VECTOR_TEST_DSN 时跳过）：覆盖应用层租户隔离（RLS 关闭时仍不可越
-// 租户）、嵌入空间隔离与向量读写语义。测试自建专属库并按部署清单全量装载。
+// 租户）、嵌入空间隔离与向量读写语义。测试从模板库克隆全新独立库。
 
 const (
-	vectorTestDatabase = "grape_vector_test"
-	vectorDimension    = int32(1024)
-	scoreEpsilon       = 1e-6
+	vectorDimension = int32(1024)
+	scoreEpsilon    = 1e-6
 
 	// vectorTestSpace / vectorTestSpaceV2 是用例的嵌入空间键：同维度
 	// 双空间（版本迭代形态，v2 与 v1 键不同、维度相同），V2 供空间隔离
@@ -77,8 +75,9 @@ func vectorIdentityContext(id biz.Identity) context.Context {
 	return biz.WithIdentity(context.Background(), id)
 }
 
-// setupVectorTestDB 重建专属测试库、按序装载部署清单（含
-// agent_vector.sql）并返回以 grape_u 连接的存储门面。
+// setupVectorTestDB 从模板库克隆全新独立测试库（含 agent_vector.sql
+// 的模板装载）并返回以 grape_u 连接的存储门面；测试结束经 t.Cleanup 删
+// 库，测试可并行互不干扰。
 func setupVectorTestDB(t *testing.T) *pgsqlc.Data {
 	t.Helper()
 	adminDSN := os.Getenv("GRAPE_VECTOR_TEST_ADMIN_DSN")
@@ -88,66 +87,24 @@ func setupVectorTestDB(t *testing.T) *pgsqlc.Data {
 	}
 	ctx := context.Background()
 
-	cfg, err := pgx.ParseConfig(adminDSN)
+	dbName, err := deploy.CloneTestDatabase(ctx, adminDSN, testGrapeUPassword, testTestUPassword, t.Name())
 	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
+		t.Fatalf("clone test database: %v", err)
 	}
-	cfg.Database = "postgres"
-	admin, err := pgx.ConnectConfig(ctx, cfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+vectorTestDatabase+" WITH (FORCE)"); err != nil {
-		t.Fatalf("drop test database: %v", err)
-	}
-	if _, err := admin.Exec(ctx, "CREATE DATABASE "+vectorTestDatabase); err != nil {
-		t.Fatalf("create test database: %v", err)
-	}
-	if err := admin.Close(ctx); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	deployCfg, err := pgx.ParseConfig(adminDSN)
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	deployDir, err := deploy.DeployDir()
-	if err != nil {
-		t.Fatalf("locate deploy dir: %v", err)
-	}
-	if err := deploy.ValidateDeployFiles(deployDir); err != nil {
-		t.Fatalf("validate deploy files: %v", err)
-	}
-	deployCfg.Database = vectorTestDatabase
-	deployCfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	deployConn, err := pgx.ConnectConfig(ctx, deployCfg)
-	if err != nil {
-		t.Fatalf("connect deploy: %v", err)
-	}
-	defer deployConn.Close(ctx)
-	// role.sql 的角色目录操作是集群级的，跨测试包并发部署必须互斥。
-	release, err := deploy.AcquireDeployLock(ctx)
-	if err != nil {
-		t.Fatalf("acquire deploy lock: %v", err)
-	}
-	defer release()
-	for _, f := range deploy.TestDeployFiles() {
-		sql, err := os.ReadFile(filepath.Join(deployDir, f))
-		if err != nil {
-			t.Fatalf("read %s: %v", f, err)
+	t.Cleanup(func() {
+		if err := deploy.DropTestDatabase(ctx, adminDSN, dbName); err != nil {
+			t.Logf("drop test database %s: %v", dbName, err)
 		}
-		deployed := deploy.ResolveDeployPasswords(string(sql), testGrapeUPassword, testTestUPassword)
-		if _, err := deployConn.Exec(ctx, deployed); err != nil {
-			t.Fatalf("deploy %s: %v", f, err)
-		}
-	}
-	if _, err := deployConn.Exec(ctx, "GRANT CONNECT ON DATABASE "+vectorTestDatabase+" TO grape_u, test_u"); err != nil {
-		t.Fatalf("grant connect: %v", err)
-	}
+	})
 
+	// 环境变量 DSN 指向固定库名，门面装配经改写指向本次克隆的库
+	poolDSN, err := deploy.RewriteDSNDatabase(testDSN, dbName)
+	if err != nil {
+		t.Fatalf("rewrite test dsn: %v", err)
+	}
 	d, cleanup, err := pgsqlc.NewData(&conf.Data{Database: &conf.Data_Database{
-		Master: &conf.Data_Database_Slot{Source: testDSN},
-		System: &conf.Data_Database_Slot{Source: testDSN},
+		Master: &conf.Data_Database_Slot{Source: poolDSN},
+		System: &conf.Data_Database_Slot{Source: poolDSN},
 	}})
 	if err != nil {
 		t.Fatalf("connect grape_u: %v", err)
@@ -234,6 +191,7 @@ func addVectorDocument(t *testing.T, store biz.VectorStore, id biz.Identity, doc
 }
 
 func TestVectorStore_add_then_search_returns_topk_with_scores(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -295,6 +253,7 @@ func TestVectorStore_add_then_search_returns_topk_with_scores(t *testing.T) {
 }
 
 func TestVectorStore_search_only_hits_declared_space(t *testing.T) {
+	t.Parallel()
 	// 空间隔离：同租户同表双空间（v1/v2 同维度），检索只召回声明空间
 	// 的行；跨空间相似度语义不成立，混排不存在。
 	d := setupVectorTestDB(t)
@@ -351,6 +310,7 @@ func TestVectorStore_search_only_hits_declared_space(t *testing.T) {
 }
 
 func TestVectorStore_update_across_spaces_reembeds_explicitly(t *testing.T) {
+	t.Parallel()
 	// 空间变更即显式重嵌入：Update 改写行的空间身份与维度，旧空间检索
 	// 不再命中（无隐式换形——身份列随行变更）。
 	d := setupVectorTestDB(t)
@@ -388,6 +348,7 @@ func TestVectorStore_update_across_spaces_reembeds_explicitly(t *testing.T) {
 }
 
 func TestVectorStore_delete_by_filter_scopes_to_declared_space(t *testing.T) {
+	t.Parallel()
 	// Embedder 过滤把条件删除收敛到单空间：其余空间的同条件行存活
 	//（跨空间显式下线必须不带 Embedder；重摄不再物理删除）。
 	d := setupVectorTestDB(t)
@@ -426,6 +387,7 @@ func TestVectorStore_delete_by_filter_scopes_to_declared_space(t *testing.T) {
 }
 
 func TestVectorStore_get_metadata_scopes_to_declared_space(t *testing.T) {
+	t.Parallel()
 	// GetMetadata 的 Embedder 过滤收敛到单空间：返回值只含该空间的行。
 	d := setupVectorTestDB(t)
 	store := newMultiSpaceStoreForTest(t, d)
@@ -453,6 +415,7 @@ func TestVectorStore_get_metadata_scopes_to_declared_space(t *testing.T) {
 }
 
 func TestVectorStore_search_rejects_undeclared_space(t *testing.T) {
+	t.Parallel()
 	// 未声明空间（conf 之外）检索：调用点显式拒绝，不静默换空间。
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
@@ -467,6 +430,7 @@ func TestVectorStore_search_rejects_undeclared_space(t *testing.T) {
 }
 
 func TestVectorStore_check_constraint_binds_dimension_column(t *testing.T) {
+	t.Parallel()
 	// DB 层兜底：绕过应用侧对账直插维度不符的行必须被 CHECK 拒绝
 	//（应用侧注册表对账在先，CHECK 是第二道防线）。
 	d := setupVectorTestDB(t)
@@ -489,6 +453,7 @@ VALUES ('bad-dim', 't-vec-a', 11, 'bge-m3@v1', 4, 'c', $1, 11, 11)`,
 }
 
 func TestVectorStore_search_plan_uses_expression_partial_index(t *testing.T) {
+	t.Parallel()
 	// 与仓储同形状的 SQL 须命中表达式部分 HNSW 索引；先播种 200 行，
 	// 避免空表/极小表上优化器选计划波动。
 	d := setupVectorTestDB(t)
@@ -528,6 +493,7 @@ ORDER BY (embedding::vector(%d)) <=> $1::vector(%d) LIMIT 5`, vectorDimension, v
 }
 
 func TestVectorStore_cross_tenant_search_returns_empty_while_rls_disabled(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 
@@ -586,6 +552,7 @@ func TestVectorStore_cross_tenant_search_returns_empty_while_rls_disabled(t *tes
 }
 
 func TestVectorStore_unauthenticated_calls_fail_closed(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	// 无认证 ctx：每个方法都必须拒绝，绝不以任何默认身份触库。
@@ -638,6 +605,7 @@ func TestVectorStore_unauthenticated_calls_fail_closed(t *testing.T) {
 }
 
 func TestVectorStore_update_delete_take_effect_on_rows(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -697,6 +665,7 @@ func TestVectorStore_update_delete_take_effect_on_rows(t *testing.T) {
 }
 
 func TestVectorStore_filters_count_delete_and_metadata_paging(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -786,6 +755,7 @@ func pageIDs(metadata map[string]map[string]any) []string {
 }
 
 func TestNewVectorStore_startup_probe_rejects_deployment_mismatch(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 
 	// 声明维度无对应表达式部分索引：启动即失败（验收项——缺索引的
@@ -817,6 +787,7 @@ func TestNewVectorStore_startup_probe_rejects_deployment_mismatch(t *testing.T) 
 }
 
 func TestNewVectorStore_startup_probe_rejects_lexical_column_mismatch(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 
 	// lexical 列缺失（历史库未执行升级清单的 ALTER）：启动即失败并指向
@@ -845,7 +816,7 @@ func alterDocumentColumnForTest(t *testing.T, action string) {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	cfg.Database = vectorTestDatabase
+	cfg.Database = deploy.DatabaseNameFor(t.Name())
 	conn, err := pgx.ConnectConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -857,6 +828,7 @@ func alterDocumentColumnForTest(t *testing.T, action string) {
 }
 
 func TestVectorStore_search_minscore_filters_in_sql(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -903,6 +875,7 @@ func TestVectorStore_search_minscore_filters_in_sql(t *testing.T) {
 }
 
 func TestVectorStore_add_duplicate_id_rejected_by_unique_constraint(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -926,6 +899,7 @@ func TestVectorStore_add_duplicate_id_rejected_by_unique_constraint(t *testing.T
 }
 
 func TestVectorStore_get_metadata_offset_beyond_total_returns_empty(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -956,6 +930,7 @@ func searchIDs(hits []*biz.ScoredVectorDocument) []string {
 }
 
 func TestVectorStore_list_returns_content_in_write_order_with_tenant_isolation(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	for i := 0; i < 3; i++ {
@@ -990,6 +965,7 @@ func TestVectorStore_list_returns_content_in_write_order_with_tenant_isolation(t
 }
 
 func TestVectorStore_list_limit_and_offset_page_deterministically(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	for i := 0; i < 4; i++ {
@@ -1014,6 +990,7 @@ func TestVectorStore_list_limit_and_offset_page_deterministically(t *testing.T) 
 }
 
 func TestVectorStore_list_without_identity_fails_closed(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 

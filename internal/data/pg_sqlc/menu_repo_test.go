@@ -72,6 +72,7 @@ func menuSoftDeleted(t *testing.T, d *Data, auth biz.Identity, id int64) bool {
 }
 
 func TestMenuRepo_create_super_writes_via_controlled_function(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 
@@ -97,6 +98,7 @@ func TestMenuRepo_create_super_writes_via_controlled_function(t *testing.T) {
 }
 
 func TestMenuRepo_direct_write_denied_for_runtime_role(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 
@@ -116,6 +118,7 @@ func TestMenuRepo_direct_write_denied_for_runtime_role(t *testing.T) {
 }
 
 func TestMenuRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	ghost := int64(987654321)
@@ -132,6 +135,7 @@ func TestMenuRepo_create_with_unknown_parent_fails_and_writes_nothing(t *testing
 }
 
 func TestMenuRepo_create_with_cross_tenant_parent_rejected(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 菜单 201 属 t-super-01；t-test-02 的写路径经受控函数只见本租户行，
 	// 跨租户父级等同不存在。
@@ -150,6 +154,7 @@ func TestMenuRepo_create_with_cross_tenant_parent_rejected(t *testing.T) {
 }
 
 func TestMenuRepo_create_duplicate_permission_code_maps_already_exists(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -163,6 +168,7 @@ func TestMenuRepo_create_duplicate_permission_code_maps_already_exists(t *testin
 }
 
 func TestMenuRepo_list_all_scopes_to_current_tenant(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewMenuRepo(d)
 
@@ -187,6 +193,7 @@ func TestMenuRepo_list_all_scopes_to_current_tenant(t *testing.T) {
 }
 
 func TestMenuRepo_list_all_orders_children_after_parents_by_sort_order(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -214,6 +221,7 @@ func TestMenuRepo_list_all_orders_children_after_parents_by_sort_order(t *testin
 }
 
 func TestMenuRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	// 菜单 201 属 t-super-01；t-test-02 的身份经 RLS 不可见，等同不存在。
 	if _, err := NewMenuRepo(d).GetByID(context.Background(), menuAuth(menuTenantOther), 201); !errors.Is(err, biz.ErrMenuNotFound) {
@@ -222,6 +230,7 @@ func TestMenuRepo_get_by_id_hides_cross_tenant_row(t *testing.T) {
 }
 
 func TestMenuRepo_get_by_id_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	if _, err := NewMenuRepo(d).GetByID(context.Background(), menuAuth(menuTenantSeeded), 424242); !errors.Is(err, biz.ErrMenuNotFound) {
@@ -230,6 +239,7 @@ func TestMenuRepo_get_by_id_missing_maps_not_found(t *testing.T) {
 }
 
 func TestMenuRepo_update_changes_mutable_fields(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -258,6 +268,7 @@ func TestMenuRepo_update_changes_mutable_fields(t *testing.T) {
 }
 
 func TestMenuRepo_update_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	_, err := NewMenuRepo(d).UpdateSuper(context.Background(), menuAuth(menuTenantSeeded),
@@ -268,6 +279,7 @@ func TestMenuRepo_update_missing_maps_not_found(t *testing.T) {
 }
 
 func TestMenuRepo_move_under_other_root_rewrites_parent(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -290,6 +302,7 @@ func TestMenuRepo_move_under_other_root_rewrites_parent(t *testing.T) {
 }
 
 func TestMenuRepo_move_to_root_clears_parent(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -307,6 +320,7 @@ func TestMenuRepo_move_to_root_clears_parent(t *testing.T) {
 }
 
 func TestMenuRepo_move_into_own_subtree_rejected_and_rolled_back(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -328,6 +342,7 @@ func TestMenuRepo_move_into_own_subtree_rejected_and_rolled_back(t *testing.T) {
 }
 
 func TestMenuRepo_move_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	target := int64(201)
 
@@ -338,6 +353,7 @@ func TestMenuRepo_move_missing_maps_not_found(t *testing.T) {
 }
 
 func TestMenuRepo_delete_leaf_soft_deletes_and_hides_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)
@@ -368,6 +384,7 @@ func TestMenuRepo_delete_leaf_soft_deletes_and_hides_row(t *testing.T) {
 }
 
 func TestMenuRepo_delete_with_active_children_maps_has_children(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantSeeded)
 	repo := NewMenuRepo(d)
@@ -385,6 +402,7 @@ func TestMenuRepo_delete_with_active_children_maps_has_children(t *testing.T) {
 }
 
 func TestMenuRepo_delete_missing_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	err := NewMenuRepo(d).SoftDeleteSuper(context.Background(), menuAuth(menuTenantSeeded), 424242)
@@ -394,6 +412,7 @@ func TestMenuRepo_delete_missing_maps_not_found(t *testing.T) {
 }
 
 func TestMenuRepo_delete_twice_maps_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	auth := menuAuth(menuTenantOther)
 	repo := NewMenuRepo(d)

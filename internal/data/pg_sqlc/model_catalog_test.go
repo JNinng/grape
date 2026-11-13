@@ -79,6 +79,7 @@ func seedTextModelFixture(t *testing.T, d *Data, auth biz.Identity) {
 }
 
 func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	cipher := modelCatalogTestCipher(t)
 	resolver := modelCatalogTestResolver(t, d, cipher)
@@ -141,6 +142,7 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 }
 
 func TestModelCatalog_disabled_or_deleted_selection_fails_closed(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	cipher := modelCatalogTestCipher(t)
 	resolver := modelCatalogTestResolver(t, d, cipher)
@@ -183,6 +185,7 @@ func TestModelCatalog_disabled_or_deleted_selection_fails_closed(t *testing.T) {
 }
 
 func TestModelCatalog_embedding_dimension_and_override(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	cipher := modelCatalogTestCipher(t)
 	r, cleanup, err := NewModelCatalog(
@@ -215,6 +218,7 @@ func TestModelCatalog_embedding_dimension_and_override(t *testing.T) {
 }
 
 func TestModelRepo_tenant_key_unique_conflict(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	repo := NewModelRepo(d)
 	auth := biz.Identity{TenantID: "t-test-01", UserID: 1}
@@ -235,6 +239,7 @@ func TestModelRepo_tenant_key_unique_conflict(t *testing.T) {
 }
 
 func TestModelCatalog_rerank_model_resolution(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	cipher := modelCatalogTestCipher(t)
 	resolver := modelCatalogTestResolver(t, d, cipher)

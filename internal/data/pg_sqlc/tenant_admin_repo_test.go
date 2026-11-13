@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jninng/sqlc_gen_dynamic/dynq"
@@ -86,7 +87,7 @@ func backdateTenantUpdatedAt(t *testing.T, id string) time.Time {
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	cfg.Database = testDatabase
+	cfg.Database = deploy.DatabaseNameFor(t.Name())
 	conn, err := pgx.ConnectConfig(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
@@ -106,6 +107,7 @@ func backdateTenantUpdatedAt(t *testing.T, id string) time.Time {
 }
 
 func TestTenantRepo_list_sees_parent_tree(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 
 	// 平台租户视角：树根与其名下全部直接子租户（3 条种子），不含树外。
@@ -148,6 +150,7 @@ func TestTenantRepo_list_sees_parent_tree(t *testing.T) {
 }
 
 func TestTenantRepo_get_outside_tree_returns_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 
@@ -164,6 +167,7 @@ func TestTenantRepo_get_outside_tree_returns_not_found(t *testing.T) {
 }
 
 func TestTenantRepo_writes_outside_tree_return_not_found(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -195,6 +199,7 @@ func TestTenantRepo_writes_outside_tree_return_not_found(t *testing.T) {
 }
 
 func TestTenantUsecaseCreate_defaults_parent_to_caller_tenant(t *testing.T) {
+	t.Parallel()
 	// 用例 + 仓储全链：parent_id 省略时缺省为调用方租户，tenant_id 由
 	// SQL 取会话 app.tenant_id 落值。
 	d := setupTestDB(t)
@@ -233,6 +238,7 @@ func TestTenantUsecaseCreate_defaults_parent_to_caller_tenant(t *testing.T) {
 }
 
 func TestTenantRepo_create_rejects_foreign_parent(t *testing.T) {
+	t.Parallel()
 	// 结构父级必须等于调用方租户（结构父级与行归属一致）：
 	// 指向其它（即便可见的）租户或任何非调用方值都按入参错误拒绝，
 	// 不写入分裂的树。
@@ -296,6 +302,7 @@ func TestTenantRepo_create_rejects_foreign_parent(t *testing.T) {
 }
 
 func TestTenantRepo_create_requires_live_caller(t *testing.T) {
+	t.Parallel()
 	// 调用方（同时也是结构父级）行必须存在且未软删：插入前同事务锁行，
 	// 未命中返回 ErrTenantCallerMissing（INVALID_ARGUMENT）且不落库。
 	// 正常调用（活租户）仍成功。
@@ -338,6 +345,7 @@ func TestTenantRepo_create_requires_live_caller(t *testing.T) {
 }
 
 func TestTenantRepo_create_unique_conflicts_and_reuse_after_soft_delete(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -374,6 +382,7 @@ func TestTenantRepo_create_unique_conflicts_and_reuse_after_soft_delete(t *testi
 }
 
 func TestTenantRepo_delete_rejects_children_and_hides_row(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -424,6 +433,7 @@ func TestTenantRepo_delete_rejects_children_and_hides_row(t *testing.T) {
 }
 
 func TestTenantRepo_delete_rejects_invisible_grandchildren(t *testing.T) {
+	t.Parallel()
 	// 祖父看不到孙行：删除前置完整性判定经受控计数函数取得全局事实，
 	// 祖父删除子租户仍被拒绝，不产生孤儿行。
 	d := setupTestDB(t)
@@ -466,6 +476,7 @@ func TestTenantRepo_delete_rejects_invisible_grandchildren(t *testing.T) {
 }
 
 func TestTenantGuard_active_child_count_denies_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 受控计数函数仍校验认证事务纪律：裸连接不设 app.tenant_id 即拒绝
 	//（fail-closed），不因 DEFINER 放开为无身份可调。
 	d := setupTestDB(t)
@@ -482,6 +493,7 @@ func TestTenantGuard_active_child_count_denies_without_tenant(t *testing.T) {
 }
 
 func TestTenantGuard_active_child_count_denies_empty_tenant(t *testing.T) {
+	t.Parallel()
 	// 空串与未设置同口径拒绝（函数内 fail-closed 检查覆盖空串）。
 	d := setupTestDB(t)
 	ctx := context.Background()
@@ -505,6 +517,7 @@ func TestTenantGuard_active_child_count_denies_empty_tenant(t *testing.T) {
 }
 
 func TestTenantGuard_active_child_count_requires_visible_target(t *testing.T) {
+	t.Parallel()
 	// 目标必须对调用方可见（id 或 tenant_id 命中调用方租户）：树外目标
 	// 拒绝，消除跨租户结构侧信道；可见目标返回正确计数（祖父对孙行
 	// 不可见但计数仍包含它们）。
@@ -586,6 +599,7 @@ func TestTenantGuard_active_child_count_requires_visible_target(t *testing.T) {
 }
 
 func TestTenantRepo_disable_restore_target_state_and_audit(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -631,6 +645,7 @@ func TestTenantRepo_disable_restore_target_state_and_audit(t *testing.T) {
 }
 
 func TestTenantRepo_update_covers_mutable_fields_only(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -699,6 +714,7 @@ func TestTenantRepo_update_covers_mutable_fields_only(t *testing.T) {
 }
 
 func TestTenantRepo_update_unique_conflicts(t *testing.T) {
+	t.Parallel()
 	// code 是身份列：更新输入中的 code 被忽略——即使改成已占用值也
 	// 不产生冲突、不落库（保持原值）；name 是名称列，改成已占用值返回
 	// ErrTenantAlreadyExists，目标行保持原值。
@@ -744,6 +760,7 @@ func TestTenantRepo_update_unique_conflicts(t *testing.T) {
 }
 
 func TestTenantRepo_update_self_status_guard(t *testing.T) {
+	t.Parallel()
 	// 自身租户的 status 变更被拒绝（须走 Disable/Restore），同值更新
 	//（只改 name）放行：当前启用时改 0 被拒、同值 1 放行；把自身置 0 后
 	// 改 1 被拒、同值 0 放行。行状态始终按同值更新保持当前值。
@@ -819,6 +836,7 @@ func TestTenantRepo_update_self_status_guard(t *testing.T) {
 }
 
 func TestTenantRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
+	t.Parallel()
 	// 游标模式：过滤 list- 前缀的 3 条新增租户，首屏 2 条（id 降序）并
 	// 给出 NextCursor；次屏 1 条。两屏 total 均为 3，不随游标收窄。
 	d := setupTestDB(t)
@@ -872,6 +890,7 @@ func TestTenantRepo_list_cursor_page_keeps_total_unshifted(t *testing.T) {
 }
 
 func TestTenantRepo_list_filters_sorts_paginates_and_excludes_soft_deleted(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewTenantRepo(d)
@@ -938,6 +957,7 @@ func TestTenantRepo_list_filters_sorts_paginates_and_excludes_soft_deleted(t *te
 }
 
 func TestTenantRepo_own_tenant_guards_reject_self_operations(t *testing.T) {
+	t.Parallel()
 	// 禁止操作自身租户是纯业务规则（用例层）：删除/停用/恢复目标等于
 	// 调用方租户时返回 INVALID_ARGUMENT，仓储不被触达。
 	d := setupTestDB(t)
@@ -965,6 +985,7 @@ func TestTenantRepo_own_tenant_guards_reject_self_operations(t *testing.T) {
 }
 
 func TestTenantRepo_rls_denies_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 绕过门面的裸连接上不设 app.tenant_id：RLS 默认全拒。
 	d := setupTestDB(t)
 
@@ -978,6 +999,7 @@ func TestTenantRepo_rls_denies_without_tenant(t *testing.T) {
 }
 
 func TestTenantRepo_writes_denied_without_tenant(t *testing.T) {
+	t.Parallel()
 	// 写侧 fail-closed：裸连接不设 app.tenant_id 时 INSERT 违反 WITH CHECK
 	// 报错（42501），UPDATE/DELETE 看不到任何行（RETURNING 无行）；目标
 	// 种子行保持原值。

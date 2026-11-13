@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"grape/internal/biz"
+	"grape/internal/data/pg_sqlc/deploy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -65,6 +66,7 @@ func AdminDSNForVectorTest(t *testing.T) string {
 }
 
 func TestVectorStore_lexical_search_hits_chinese_content_with_rank_order(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -102,6 +104,7 @@ func TestVectorStore_lexical_search_hits_chinese_content_with_rank_order(t *test
 }
 
 func TestVectorStore_lexical_search_applies_conditions_like_vector_path(t *testing.T) {
+	t.Parallel()
 	// conditions 口径与向量路共享：doc_status/有效期/kb_id 任一不满足
 	// 即不可召回（词法路与向量路同一文档宇宙）。
 	d := setupVectorTestDB(t)
@@ -142,6 +145,7 @@ func TestVectorStore_lexical_search_applies_conditions_like_vector_path(t *testi
 }
 
 func TestVectorStore_lexical_search_round_trips_special_characters(t *testing.T) {
+	t.Parallel()
 	// 正文含单引号与反斜杠：写入（tsvector 字面量转义）→ 查询（tsquery
 	// 字面量转义）round-trip 可召回，转义错误会直接报语法错误或漏召回。
 	d := setupVectorTestDB(t)
@@ -176,6 +180,7 @@ func TestVectorStore_lexical_search_round_trips_special_characters(t *testing.T)
 }
 
 func TestVectorStore_lexical_search_isolates_tenants(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 
@@ -201,6 +206,7 @@ func TestVectorStore_lexical_search_isolates_tenants(t *testing.T) {
 }
 
 func TestVectorStore_lexical_search_with_stop_words_only_query_returns_empty(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -218,6 +224,7 @@ func TestVectorStore_lexical_search_with_stop_words_only_query_returns_empty(t *
 }
 
 func TestVectorStore_update_refreshes_lexical_column(t *testing.T) {
+	t.Parallel()
 	// Update 与 Add 同一 Tokenizer 口径重算词法列：旧词不再命中，新词
 	// 可召回（无残留旧索引）。
 	d := setupVectorTestDB(t)
@@ -256,6 +263,7 @@ func TestVectorStore_update_refreshes_lexical_column(t *testing.T) {
 }
 
 func TestVectorStore_lexical_search_plan_uses_gin_index(t *testing.T) {
+	t.Parallel()
 	// 词法检索 SQL 必须命中部分 GIN 索引（部分谓词 WHERE lexical IS NOT
 	// NULL + tsquery 匹配）；先播种足够多的行、仅少数行含查询词元（倒计
 	// 选择性），避免优化器在低选择性下选租户前缀 btree 的计划波动。
@@ -283,7 +291,7 @@ FROM generate_series(1, 20000) g`
 	if err != nil {
 		t.Fatalf("parse admin dsn: %v", err)
 	}
-	adminCfg.Database = vectorTestDatabase
+	adminCfg.Database = deploy.DatabaseNameFor(t.Name())
 	admin, err := pgx.ConnectConfig(ctx, adminCfg)
 	if err != nil {
 		t.Fatalf("connect admin for analyze: %v", err)

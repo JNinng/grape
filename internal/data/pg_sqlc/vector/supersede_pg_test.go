@@ -59,6 +59,7 @@ func activeChunks(t *testing.T, ctx context.Context, store biz.VectorStore, sour
 }
 
 func TestVectorStore_reingest_differential_reconcile_and_reverse_lookup(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)
@@ -175,6 +176,7 @@ func TestVectorStore_reingest_differential_reconcile_and_reverse_lookup(t *testi
 }
 
 func TestVectorStore_mark_superseded_requires_filter(t *testing.T) {
+	t.Parallel()
 	d := setupVectorTestDB(t)
 	store := newVectorStoreForTest(t, d)
 	ctx := vectorIdentityContext(vectorTenantA)

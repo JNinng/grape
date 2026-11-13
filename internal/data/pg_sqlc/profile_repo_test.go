@@ -13,6 +13,7 @@ import (
 // 部门 5），其所在部门 6 不在可见集合内，正常读面看不见自己；个人中心
 // 路径仍可读/写本人行。
 func TestUserProfile_self_path_ignores_row_scope(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewUserRepo(d)
@@ -32,6 +33,7 @@ func TestUserProfile_self_path_ignores_row_scope(t *testing.T) {
 }
 
 func TestUserProfile_update_and_password(t *testing.T) {
+	t.Parallel()
 	d := setupTestDB(t)
 	ctx := context.Background()
 	repo := NewUserRepo(d)
