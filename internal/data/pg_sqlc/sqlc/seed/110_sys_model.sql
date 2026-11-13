@@ -22,7 +22,16 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
                               base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env,
                               remark, created_by, created_at, updated_by, updated_at, deleted_at)
-VALUES (2, '', 1, 'text', 'Qwen3 8B', 'qwen3:8b', 'openai',
+VALUES (2, '', 0, 'text', 'Qwen3 8B', 'qwen3:8b', 'openai',
         'http://127.0.0.1:11434/v1', 'qwen3:8b', NULL, 60000, NULL, NULL,
+        '本地开发默认，生产部署前替换', 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
+                              base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env,
+                              remark, created_by, created_at, updated_by, updated_at, deleted_at)
+VALUES (3, '', 1, 'text', 'deepseek-flash', 'deepseek-flash', 'deepseek',
+        'https://api.deepseek.com', 'deepseek-flash', NULL, 60000,
+        'module_key_encrypt@v1:Nc1luPlEgVJ9HecW:QMw3-9OAkv2kWycMgNOGYN8hXRDSpTg0nQIR-yQN-WQa6y5vUcD7DFyUv2hjJo45TcUI', NULL,
         '本地开发默认，生产部署前替换', 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL)
 ON CONFLICT DO NOTHING;

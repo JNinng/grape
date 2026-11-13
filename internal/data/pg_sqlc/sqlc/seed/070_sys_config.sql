@@ -41,7 +41,7 @@ VALUES (7, 1, '系统名称', 'system.name', '基础多租户管理系统', 'str
 
 INSERT INTO public.sys_config (id, status, "name", config_key, value, value_type, remark, created_by, created_at,
                                updated_by, updated_at, deleted_at)
-VALUES (8, 1, '默认文本模型', 'ai.text.model', 'qwen3:8b', 'string',
+VALUES (8, 1, '默认文本模型', 'ai.text.model', 'deepseek-flash', 'string',
         '全局默认文本模型 model_key；租户配置同名键优先，键须指向可见的 text 模型或 conf.agent.llm', 1,
         '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL) ON CONFLICT DO NOTHING;
 
