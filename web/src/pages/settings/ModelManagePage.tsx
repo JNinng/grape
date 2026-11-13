@@ -182,6 +182,7 @@ export function ModelManagePage() {
               <TableHead>Provider</TableHead>
               <TableHead>模型名</TableHead>
               <TableHead>维度</TableHead>
+              <TableHead>上下文/输出</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>密钥</TableHead>
               <TableHead className="w-40">操作</TableHead>
@@ -190,14 +191,14 @@ export function ModelManagePage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-sm text-muted-foreground">
+                <TableCell colSpan={11} className="text-sm text-muted-foreground">
                   加载中…
                 </TableCell>
               </TableRow>
             ) : null}
             {!loading && models.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} className="text-sm text-muted-foreground">
+                <TableCell colSpan={11} className="text-sm text-muted-foreground">
                   暂无模型
                 </TableCell>
               </TableRow>
@@ -216,6 +217,9 @@ export function ModelManagePage() {
                   <TableCell>{model.provider}</TableCell>
                   <TableCell className="font-mono text-xs">{model.model}</TableCell>
                   <TableCell>{model.dimension ?? '—'}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {model.contextWindow ?? '—'} / {model.maxOutputTokens ?? '—'}
+                  </TableCell>
                   <TableCell className={model.status === 1 ? 'text-emerald-700' : 'text-muted-foreground'}>
                     {model.status === 1 ? '启用' : '停用'}
                   </TableCell>
@@ -297,6 +301,10 @@ function ModelDialog({
   const [baseUrl, setBaseUrl] = useState(model?.baseUrl ?? '')
   const [modelName, setModelName] = useState(model?.model ?? '')
   const [timeoutMs, setTimeoutMs] = useState(model?.timeoutMs ? String(model.timeoutMs) : '')
+  const [contextWindow, setContextWindow] = useState(model?.contextWindow ? String(model.contextWindow) : '')
+  const [maxOutputTokens, setMaxOutputTokens] = useState(
+    model?.maxOutputTokens ? String(model.maxOutputTokens) : '',
+  )
   const [apiKeyEnv, setApiKeyEnv] = useState(model?.apiKeyEnv ?? '')
   const [apiKey, setApiKey] = useState('')
   const [clearApiKey, setClearApiKey] = useState(false)
@@ -311,6 +319,14 @@ function ModelDialog({
     try {
       const timeout = timeoutMs.trim() ? Number(timeoutMs) : undefined
       const dimension = kind === 'embedding' ? EMBEDDING_DIMENSION : undefined
+      // 生成预算只对文本模型开放：输出上限含思考 token，不得大于上下文窗口。
+      const context = kind === 'text' && contextWindow.trim() ? Number(contextWindow) : undefined
+      const maxOutput = kind === 'text' && maxOutputTokens.trim() ? Number(maxOutputTokens) : undefined
+      if (context !== undefined && maxOutput !== undefined && maxOutput > context) {
+        setError('最大输出不能大于上下文窗口')
+        setPending(false)
+        return
+      }
       if (model) {
         // 更新协议只承载可变字段：类别与 modelKey 是创建后不可变的身份列。
         const input = {
@@ -323,6 +339,8 @@ function ModelDialog({
             model: modelName.trim(),
             dimension,
             timeoutMs: timeout,
+            contextWindow: context,
+            maxOutputTokens: maxOutput,
             apiKeyEnv: apiKeyEnv.trim() || undefined,
             remark: remark.trim() || undefined,
           },
@@ -346,6 +364,8 @@ function ModelDialog({
           model: modelName.trim(),
           dimension,
           timeoutMs: timeout,
+          contextWindow: context,
+          maxOutputTokens: maxOutput,
           apiKeyEnv: apiKeyEnv.trim() || undefined,
           remark: remark.trim() || undefined,
         }
@@ -442,6 +462,28 @@ function ModelDialog({
               <Input id="model-timeout" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} />
             </div>
           </div>
+          {kind === 'text' ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="model-context-window">上下文窗口（token）</Label>
+                <Input
+                  id="model-context-window"
+                  value={contextWindow}
+                  onChange={(e) => setContextWindow(e.target.value)}
+                  placeholder="如 1048576"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="model-max-output">最大输出（token，含思考）</Label>
+                <Input
+                  id="model-max-output"
+                  value={maxOutputTokens}
+                  onChange={(e) => setMaxOutputTokens(e.target.value)}
+                  placeholder="如 393216"
+                />
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-1.5">
             <Label htmlFor="model-env">密钥环境变量名</Label>
             <Input id="model-env" value={apiKeyEnv} onChange={(e) => setApiKeyEnv(e.target.value)} />

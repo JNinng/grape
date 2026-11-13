@@ -23,6 +23,8 @@ CREATE TABLE public.sys_model
     model          varchar(128)                                           NOT NULL,
     dimension      int4                                                   NULL,
     timeout_ms     int4                                                   NULL,
+    context_window int4                                                   NULL,
+    max_output_tokens int4                                                NULL,
     api_key_cipher text                                                   NULL,
     api_key_env    varchar(128)                                           NULL,
     remark         varchar(512)                                           NULL,
@@ -36,7 +38,10 @@ CREATE TABLE public.sys_model
     CONSTRAINT sys_model_kind_chk CHECK (kind IN ('text', 'embedding', 'rerank')),
     CONSTRAINT sys_model_dim_chk CHECK (kind <> 'embedding' OR dimension IS NOT NULL),
     CONSTRAINT sys_model_dim_pos_chk CHECK (dimension IS NULL OR dimension > 0),
-    CONSTRAINT sys_model_timeout_chk CHECK (timeout_ms IS NULL OR timeout_ms > 0)
+    CONSTRAINT sys_model_timeout_chk CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+    CONSTRAINT sys_model_context_window_chk CHECK (context_window IS NULL OR context_window > 0),
+    CONSTRAINT sys_model_max_output_chk CHECK (max_output_tokens IS NULL OR max_output_tokens > 0),
+    CONSTRAINT sys_model_output_window_chk CHECK (max_output_tokens IS NULL OR context_window IS NULL OR max_output_tokens <= context_window)
 );
 CREATE UNIQUE INDEX sys_model_tenant_key_un ON public.sys_model USING btree (tenant_id, model_key) WHERE deleted_at IS NULL;
 CREATE INDEX sys_model_kind_status_idx ON public.sys_model USING btree (kind, status);
@@ -53,6 +58,8 @@ COMMENT ON COLUMN public.sys_model.base_url IS 'OpenAI 兼容端点根地址 [@d
 COMMENT ON COLUMN public.sys_model.model IS '发给 provider 的模型名，可与 model_key 不同 [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.sys_model.dimension IS '嵌入维度；kind=embedding 时本期强制 1024 [@dynamic: exact, range @updatable: set]';
 COMMENT ON COLUMN public.sys_model.timeout_ms IS '单次调用超时（毫秒），空值回落 conf 默认 [@dynamic: exact, range @updatable: set]';
+COMMENT ON COLUMN public.sys_model.context_window IS '模型上下文窗口（token 数）：运行期经 agent.WithModelContextWindow 下发给框架的上下文裁剪与会话摘要；空值不声明，沿用框架按模型名注册表/128K 兜底。仅 kind=text 可携带 [@dynamic: exact, range @updatable: set]';
+COMMENT ON COLUMN public.sys_model.max_output_tokens IS '单次生成输出上限（token 数，含思考 token）：运行期覆盖本次模型调用的 GenerationConfig.MaxTokens；空值回落装配默认。必须不大于 context_window（两者均非空时）。仅 kind=text 可携带 [@dynamic: exact, range @updatable: set]';
 COMMENT ON COLUMN public.sys_model.api_key_cipher IS 'API key 密文（自描述格式 module_key_encrypt@版本:nonce:密文+tag），只写不读 [@internal]';
 COMMENT ON COLUMN public.sys_model.api_key_env IS 'API key 环境变量名（密文缺失时回退） [@dynamic: exact @updatable: set]';
 COMMENT ON COLUMN public.sys_model.remark IS '备注 [@dynamic: fuzzy @updatable: set]';

@@ -467,3 +467,58 @@ func TestValidateModelCfg_rerank_kind_accepted_without_dimension(t *testing.T) {
 		t.Fatal("unknown kind filter accepted, want ErrModelInvalidArgument semantics")
 	}
 }
+
+// textModelWithBudget 构造携带生成预算的合法文本模型入参。
+func textModelWithBudget(contextWindow, maxOutput *int32) *ModelCfg {
+	return &ModelCfg{
+		Kind:            ModelKindText,
+		Name:            "DeepSeek Flash",
+		ModelKey:        "deepseek-flash",
+		Provider:        "deepseek",
+		Model:           "deepseek-flash",
+		ContextWindow:   contextWindow,
+		MaxOutputTokens: maxOutput,
+	}
+}
+
+func TestValidateModelCfg_text_generation_budget(t *testing.T) {
+	// 1M 上下文、384K 输出是合法声明。
+	if err := validateModelCfg(textModelWithBudget(ptrInt32(1048576), ptrInt32(393216)), false); err != nil {
+		t.Fatalf("valid generation budget rejected: %v", err)
+	}
+	// 只声明其中一项也合法。
+	if err := validateModelCfg(textModelWithBudget(ptrInt32(1048576), nil), false); err != nil {
+		t.Fatalf("context window without max output rejected: %v", err)
+	}
+	if err := validateModelCfg(textModelWithBudget(nil, ptrInt32(4096)), false); err != nil {
+		t.Fatalf("max output without context window rejected: %v", err)
+	}
+	// 输出上限不得大于上下文窗口。
+	if err := validateModelCfg(textModelWithBudget(ptrInt32(1024), ptrInt32(2048)), false); !errors.Is(err, ErrModelInvalidArgument) {
+		t.Fatalf("max output exceeding context window = %v, want ErrModelInvalidArgument", err)
+	}
+	// 两列均为正数约束。
+	for _, m := range []*ModelCfg{
+		textModelWithBudget(ptrInt32(0), nil),
+		textModelWithBudget(ptrInt32(-1), nil),
+		textModelWithBudget(nil, ptrInt32(0)),
+		textModelWithBudget(nil, ptrInt32(-1)),
+	} {
+		if err := validateModelCfg(m, false); !errors.Is(err, ErrModelInvalidArgument) {
+			t.Fatalf("non-positive generation budget = %v, want ErrModelInvalidArgument", err)
+		}
+	}
+	// 生成预算只属于文本模型：嵌入与重排携带即拒绝。
+	embedding := validEmbeddingModel()
+	embedding.ContextWindow = ptrInt32(1048576)
+	if err := validateModelCfg(embedding, false); !errors.Is(err, ErrModelInvalidArgument) {
+		t.Fatalf("embedding with context window = %v, want ErrModelInvalidArgument", err)
+	}
+	rerank := validEmbeddingModel()
+	rerank.Kind = ModelKindRerank
+	rerank.Dimension = nil
+	rerank.MaxOutputTokens = ptrInt32(4096)
+	if err := validateModelCfg(rerank, false); !errors.Is(err, ErrModelInvalidArgument) {
+		t.Fatalf("rerank with max output = %v, want ErrModelInvalidArgument", err)
+	}
+}

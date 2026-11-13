@@ -20,8 +20,8 @@ import (
 // 运行，实例复用避免每次运行重建 provider 与可靠性包装。缓存键包含全部
 // 可变字段（含密钥），端点变更即新实例，绝不残留旧配置。
 type textModelCache struct {
-	llm  *conf.Agent_LLM
-	mu   sync.Mutex
+	llm   *conf.Agent_LLM
+	mu    sync.Mutex
 	byKey map[string]model.Model
 }
 
@@ -88,11 +88,12 @@ func runModelOptionResolver(
 			return nil, err
 		}
 		m := fallback
+		var spec biz.TextModelSpec
 		if catalog != nil {
 			if _, ok := biz.IdentityFromContext(ctx); !ok {
 				return nil, fmt.Errorf("agent: per-run model resolution requires an authenticated identity")
 			}
-			spec, err := catalog.ResolveTextModel(ctx)
+			spec, err = catalog.ResolveTextModel(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -108,6 +109,60 @@ func runModelOptionResolver(
 		if level, ok := thinkingLevelFromForwardedProps(input); ok {
 			m = wrapThinkingModel(m, level)
 		}
-		return append(opts, agent.WithModel(m)), nil
+		// 生成预算来自模型目录：输出上限覆盖本次调用请求，上下文窗口交给
+		// 框架做上下文裁剪与会话摘要。两者未声明（0）时沿用装配默认。
+		m = wrapMaxOutputModel(m, spec.MaxOutputTokens)
+		opts = append(opts, agent.WithModel(m))
+		if spec.ContextWindow > 0 {
+			opts = append(opts, agent.WithModelContextWindow(spec.ContextWindow))
+		}
+		return opts, nil
 	}
+}
+
+// maxOutputModel 在每次模型调用前把模型目录声明的输出上限写入请求副本：
+// 请求浅拷贝后修改，调用方持有的原请求保持不变。思考 token 计入
+// MaxTokens，故上限必须覆盖推理与正文之和（目录侧保证不大于上下文窗口）。
+type maxOutputModel struct {
+	model.Model
+	maxTokens int
+}
+
+// GenerateContent 覆盖本次调用的生成上限后转交下层模型。
+func (m *maxOutputModel) GenerateContent(ctx context.Context, req *model.Request) (<-chan *model.Response, error) {
+	return m.Model.GenerateContent(ctx, withMaxOutputTokens(req, m.maxTokens))
+}
+
+// maxOutputIterModel 保留底层模型的迭代式流能力，包装后不退化到通道路径。
+type maxOutputIterModel struct {
+	*maxOutputModel
+	iter model.IterModel
+}
+
+// GenerateContentIter 同 GenerateContent，走底层模型的迭代式接口。
+func (m *maxOutputIterModel) GenerateContentIter(ctx context.Context, req *model.Request) (model.Seq[*model.Response], error) {
+	return m.iter.GenerateContentIter(ctx, withMaxOutputTokens(req, m.maxTokens))
+}
+
+// wrapMaxOutputModel 按输出上限包装模型；上限未声明（<=0）或模型为空时
+// 原样返回。包装层无状态，可安全用于并发运行。
+func wrapMaxOutputModel(m model.Model, maxTokens int) model.Model {
+	if m == nil || maxTokens <= 0 {
+		return m
+	}
+	base := &maxOutputModel{Model: m, maxTokens: maxTokens}
+	if iter, ok := m.(model.IterModel); ok {
+		return &maxOutputIterModel{maxOutputModel: base, iter: iter}
+	}
+	return base
+}
+
+// withMaxOutputTokens 复制请求并把生成上限写入副本。
+func withMaxOutputTokens(req *model.Request, maxTokens int) *model.Request {
+	if req == nil {
+		req = &model.Request{}
+	}
+	cloned := *req
+	cloned.GenerationConfig.MaxTokens = &maxTokens
+	return &cloned
 }

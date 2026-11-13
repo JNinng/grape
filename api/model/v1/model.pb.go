@@ -65,9 +65,15 @@ type Model struct {
 	// 最近修改时间。只读。
 	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	// 软删除标记时间。只读。
-	DeletedAt     *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	DeletedAt *timestamppb.Timestamp `protobuf:"bytes,19,opt,name=deleted_at,json=deletedAt,proto3" json:"deleted_at,omitempty"`
+	// 模型上下文窗口（token 数）；kind=text 可携带，其余类别不携带。空值
+	// 表示未声明，运行期沿用框架按模型名注册表/128K 兜底。
+	ContextWindow *int32 `protobuf:"varint,20,opt,name=context_window,json=contextWindow,proto3,oneof" json:"context_window,omitempty"`
+	// 单次生成输出上限（token 数，含思考 token）；kind=text 可携带，其余
+	// 类别不携带。非空时必须不大于 context_window。空值回落装配默认。
+	MaxOutputTokens *int32 `protobuf:"varint,21,opt,name=max_output_tokens,json=maxOutputTokens,proto3,oneof" json:"max_output_tokens,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Model) Reset() {
@@ -231,6 +237,20 @@ func (x *Model) GetDeletedAt() *timestamppb.Timestamp {
 		return x.DeletedAt
 	}
 	return nil
+}
+
+func (x *Model) GetContextWindow() int32 {
+	if x != nil && x.ContextWindow != nil {
+		return *x.ContextWindow
+	}
+	return 0
+}
+
+func (x *Model) GetMaxOutputTokens() int32 {
+	if x != nil && x.MaxOutputTokens != nil {
+		return *x.MaxOutputTokens
+	}
+	return 0
 }
 
 // ModelSet 是 ListModels 的固定集合（不分页）。
@@ -446,9 +466,14 @@ type ModelUpdateSpec struct {
 	// 密钥环境变量名。
 	ApiKeyEnv *string `protobuf:"bytes,8,opt,name=api_key_env,json=apiKeyEnv,proto3,oneof" json:"api_key_env,omitempty"`
 	// 备注。
-	Remark        *string `protobuf:"bytes,9,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Remark *string `protobuf:"bytes,9,opt,name=remark,proto3,oneof" json:"remark,omitempty"`
+	// 模型上下文窗口（token 数）；仅 kind=text 可携带。
+	ContextWindow *int32 `protobuf:"varint,10,opt,name=context_window,json=contextWindow,proto3,oneof" json:"context_window,omitempty"`
+	// 单次生成输出上限（token 数，含思考 token）；仅 kind=text 可携带，
+	// 非空时必须不大于 context_window。
+	MaxOutputTokens *int32 `protobuf:"varint,11,opt,name=max_output_tokens,json=maxOutputTokens,proto3,oneof" json:"max_output_tokens,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *ModelUpdateSpec) Reset() {
@@ -542,6 +567,20 @@ func (x *ModelUpdateSpec) GetRemark() string {
 		return *x.Remark
 	}
 	return ""
+}
+
+func (x *ModelUpdateSpec) GetContextWindow() int32 {
+	if x != nil && x.ContextWindow != nil {
+		return *x.ContextWindow
+	}
+	return 0
+}
+
+func (x *ModelUpdateSpec) GetMaxOutputTokens() int32 {
+	if x != nil && x.MaxOutputTokens != nil {
+		return *x.MaxOutputTokens
+	}
+	return 0
 }
 
 // UpdateModelRequest 是 ModelService.UpdateModel 的输入。
@@ -837,7 +876,7 @@ var File_model_v1_model_proto protoreflect.FileDescriptor
 
 const file_model_v1_model_proto_rawDesc = "" +
 	"\n" +
-	"\x14model/v1/model.proto\x12\bmodel.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xcf\x05\n" +
+	"\x14model/v1/model.proto\x12\bmodel.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/api/field_behavior.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd5\x06\n" +
 	"\x05Model\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1a\n" +
 	"\bplatform\x18\x02 \x01(\bR\bplatform\x12\x1b\n" +
@@ -864,14 +903,18 @@ const file_model_v1_model_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x129\n" +
 	"\n" +
-	"deleted_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAtB\t\n" +
+	"deleted_at\x18\x13 \x01(\v2\x1a.google.protobuf.TimestampR\tdeletedAt\x12*\n" +
+	"\x0econtext_window\x18\x14 \x01(\x05H\x06R\rcontextWindow\x88\x01\x01\x12/\n" +
+	"\x11max_output_tokens\x18\x15 \x01(\x05H\aR\x0fmaxOutputTokens\x88\x01\x01B\t\n" +
 	"\a_statusB\v\n" +
 	"\t_base_urlB\f\n" +
 	"\n" +
 	"_dimensionB\r\n" +
 	"\v_timeout_msB\x0e\n" +
 	"\f_api_key_envB\t\n" +
-	"\a_remark\"1\n" +
+	"\a_remarkB\x11\n" +
+	"\x0f_context_windowB\x14\n" +
+	"\x12_max_output_tokens\"1\n" +
 	"\bModelSet\x12%\n" +
 	"\x05items\x18\x01 \x03(\v2\x0f.model.v1.ModelR\x05items\"j\n" +
 	"\x12CreateModelRequest\x12*\n" +
@@ -883,7 +926,7 @@ const file_model_v1_model_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\"5\n" +
 	"\x11ListModelsRequest\x12\x17\n" +
 	"\x04kind\x18\x01 \x01(\tH\x00R\x04kind\x88\x01\x01B\a\n" +
-	"\x05_kind\"\xed\x02\n" +
+	"\x05_kind\"\xf3\x03\n" +
 	"\x0fModelUpdateSpec\x12\x1b\n" +
 	"\x06status\x18\x01 \x01(\x05H\x00R\x06status\x88\x01\x01\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -894,14 +937,19 @@ const file_model_v1_model_proto_rawDesc = "" +
 	"\n" +
 	"timeout_ms\x18\a \x01(\x05H\x03R\ttimeoutMs\x88\x01\x01\x12#\n" +
 	"\vapi_key_env\x18\b \x01(\tH\x04R\tapiKeyEnv\x88\x01\x01\x12\x1b\n" +
-	"\x06remark\x18\t \x01(\tH\x05R\x06remark\x88\x01\x01B\t\n" +
+	"\x06remark\x18\t \x01(\tH\x05R\x06remark\x88\x01\x01\x12*\n" +
+	"\x0econtext_window\x18\n" +
+	" \x01(\x05H\x06R\rcontextWindow\x88\x01\x01\x12/\n" +
+	"\x11max_output_tokens\x18\v \x01(\x05H\aR\x0fmaxOutputTokens\x88\x01\x01B\t\n" +
 	"\a_statusB\v\n" +
 	"\t_base_urlB\f\n" +
 	"\n" +
 	"_dimensionB\r\n" +
 	"\v_timeout_msB\x0e\n" +
 	"\f_api_key_envB\t\n" +
-	"\a_remark\"\xad\x01\n" +
+	"\a_remarkB\x11\n" +
+	"\x0f_context_windowB\x14\n" +
+	"\x12_max_output_tokens\"\xad\x01\n" +
 	"\x12UpdateModelRequest\x12\x13\n" +
 	"\x02id\x18\x01 \x01(\x03B\x03\xe0A\x02R\x02id\x124\n" +
 	"\x05model\x18\x02 \x01(\v2\x19.model.v1.ModelUpdateSpecB\x03\xe0A\x02R\x05model\x12\x1c\n" +

@@ -10,7 +10,7 @@ import (
 )
 
 const getSysModelByID = `-- name: GetSysModelByID :one
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
 WHERE id = $1
   AND deleted_at IS NULL
 `
@@ -31,6 +31,8 @@ func (q *Queries) GetSysModelByID(ctx context.Context, id int64) (SysModel, erro
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -45,7 +47,7 @@ func (q *Queries) GetSysModelByID(ctx context.Context, id int64) (SysModel, erro
 
 const getSysModelForTenantByKey = `-- name: GetSysModelForTenantByKey :one
 
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
 WHERE tenant_id = current_setting('app.tenant_id')
   AND model_key = $1
   AND deleted_at IS NULL
@@ -73,6 +75,8 @@ func (q *Queries) GetSysModelForTenantByKey(ctx context.Context, modelKey string
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -86,7 +90,7 @@ func (q *Queries) GetSysModelForTenantByKey(ctx context.Context, modelKey string
 }
 
 const getSysModelPlatformByKey = `-- name: GetSysModelPlatformByKey :one
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
 WHERE tenant_id = ''
   AND model_key = $1
   AND deleted_at IS NULL
@@ -109,6 +113,8 @@ func (q *Queries) GetSysModelPlatformByKey(ctx context.Context, modelKey string)
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -122,29 +128,32 @@ func (q *Queries) GetSysModelPlatformByKey(ctx context.Context, modelKey string)
 }
 
 const insertSysModelPlatform = `-- name: InsertSysModelPlatform :one
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
 FROM public.fn_model_platform_create($1, $2, $3,
                                      $4, $5, $6,
                                      $7, $8, $9,
                                      $10, $11,
-                                     $12, $13, $14)
+                                     $12, $13,
+                                     $14, $15, $16)
 `
 
 type InsertSysModelPlatformParams struct {
-	ID           int64   `db:"id" json:"id"`
-	Status       int16   `db:"status" json:"status"`
-	Kind         string  `db:"kind" json:"kind"`
-	Name         string  `db:"name" json:"name"`
-	ModelKey     string  `db:"model_key" json:"model_key"`
-	Provider     string  `db:"provider" json:"provider"`
-	BaseUrl      *string `db:"base_url" json:"base_url"`
-	Model        string  `db:"model" json:"model"`
-	Dimension    *int32  `db:"dimension" json:"dimension"`
-	TimeoutMs    *int32  `db:"timeout_ms" json:"timeout_ms"`
-	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
-	ApiKeyEnv    *string `db:"api_key_env" json:"api_key_env"`
-	Remark       *string `db:"remark" json:"remark"`
-	Operator     int64   `db:"operator" json:"operator"`
+	ID              int64   `db:"id" json:"id"`
+	Status          int16   `db:"status" json:"status"`
+	Kind            string  `db:"kind" json:"kind"`
+	Name            string  `db:"name" json:"name"`
+	ModelKey        string  `db:"model_key" json:"model_key"`
+	Provider        string  `db:"provider" json:"provider"`
+	BaseUrl         *string `db:"base_url" json:"base_url"`
+	Model           string  `db:"model" json:"model"`
+	Dimension       *int32  `db:"dimension" json:"dimension"`
+	TimeoutMs       *int32  `db:"timeout_ms" json:"timeout_ms"`
+	ContextWindow   *int32  `db:"context_window" json:"context_window"`
+	MaxOutputTokens *int32  `db:"max_output_tokens" json:"max_output_tokens"`
+	ApiKeyCipher    *string `db:"api_key_cipher" json:"api_key_cipher"`
+	ApiKeyEnv       *string `db:"api_key_env" json:"api_key_env"`
+	Remark          *string `db:"remark" json:"remark"`
+	Operator        int64   `db:"operator" json:"operator"`
 }
 
 // 新建平台模型行：调用受控写函数 fn_model_platform_create（tenant_id 固定
@@ -161,6 +170,8 @@ func (q *Queries) InsertSysModelPlatform(ctx context.Context, arg InsertSysModel
 		arg.Model,
 		arg.Dimension,
 		arg.TimeoutMs,
+		arg.ContextWindow,
+		arg.MaxOutputTokens,
 		arg.ApiKeyCipher,
 		arg.ApiKeyEnv,
 		arg.Remark,
@@ -179,6 +190,8 @@ func (q *Queries) InsertSysModelPlatform(ctx context.Context, arg InsertSysModel
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -194,31 +207,35 @@ func (q *Queries) InsertSysModelPlatform(ctx context.Context, arg InsertSysModel
 const insertSysModelTenant = `-- name: InsertSysModelTenant :one
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
                               base_url, model, dimension, timeout_ms,
+                              context_window, max_output_tokens,
                               api_key_cipher, api_key_env, remark, created_by, updated_by)
 VALUES ($1, current_setting('app.tenant_id'), $2, $3,
         $4, $5, $6,
         $7, $8, $9, $10,
-        $11, $12, $13,
-        $14, $15)
-RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
+        $11, $12,
+        $13, $14, $15,
+        $16, $17)
+RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
 `
 
 type InsertSysModelTenantParams struct {
-	ID           int64   `db:"id" json:"id"`
-	Status       int16   `db:"status" json:"status"`
-	Kind         string  `db:"kind" json:"kind"`
-	Name         string  `db:"name" json:"name"`
-	ModelKey     string  `db:"model_key" json:"model_key"`
-	Provider     string  `db:"provider" json:"provider"`
-	BaseUrl      *string `db:"base_url" json:"base_url"`
-	Model        string  `db:"model" json:"model"`
-	Dimension    *int32  `db:"dimension" json:"dimension"`
-	TimeoutMs    *int32  `db:"timeout_ms" json:"timeout_ms"`
-	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
-	ApiKeyEnv    *string `db:"api_key_env" json:"api_key_env"`
-	Remark       *string `db:"remark" json:"remark"`
-	CreatedBy    int64   `db:"created_by" json:"created_by"`
-	UpdatedBy    int64   `db:"updated_by" json:"updated_by"`
+	ID              int64   `db:"id" json:"id"`
+	Status          int16   `db:"status" json:"status"`
+	Kind            string  `db:"kind" json:"kind"`
+	Name            string  `db:"name" json:"name"`
+	ModelKey        string  `db:"model_key" json:"model_key"`
+	Provider        string  `db:"provider" json:"provider"`
+	BaseUrl         *string `db:"base_url" json:"base_url"`
+	Model           string  `db:"model" json:"model"`
+	Dimension       *int32  `db:"dimension" json:"dimension"`
+	TimeoutMs       *int32  `db:"timeout_ms" json:"timeout_ms"`
+	ContextWindow   *int32  `db:"context_window" json:"context_window"`
+	MaxOutputTokens *int32  `db:"max_output_tokens" json:"max_output_tokens"`
+	ApiKeyCipher    *string `db:"api_key_cipher" json:"api_key_cipher"`
+	ApiKeyEnv       *string `db:"api_key_env" json:"api_key_env"`
+	Remark          *string `db:"remark" json:"remark"`
+	CreatedBy       int64   `db:"created_by" json:"created_by"`
+	UpdatedBy       int64   `db:"updated_by" json:"updated_by"`
 }
 
 // 插入租户模型行；租户取会话 app.tenant_id，租户内未删除行间 model_key
@@ -235,6 +252,8 @@ func (q *Queries) InsertSysModelTenant(ctx context.Context, arg InsertSysModelTe
 		arg.Model,
 		arg.Dimension,
 		arg.TimeoutMs,
+		arg.ContextWindow,
+		arg.MaxOutputTokens,
 		arg.ApiKeyCipher,
 		arg.ApiKeyEnv,
 		arg.Remark,
@@ -254,6 +273,8 @@ func (q *Queries) InsertSysModelTenant(ctx context.Context, arg InsertSysModelTe
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -267,7 +288,7 @@ func (q *Queries) InsertSysModelTenant(ctx context.Context, arg InsertSysModelTe
 }
 
 const listSysModelAll = `-- name: ListSysModelAll :many
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
 WHERE deleted_at IS NULL
   AND kind = COALESCE($1::varchar, kind)
 ORDER BY kind, model_key, (tenant_id = '')
@@ -296,6 +317,8 @@ func (q *Queries) ListSysModelAll(ctx context.Context, kind *string) ([]SysModel
 			&i.Model,
 			&i.Dimension,
 			&i.TimeoutMs,
+			&i.ContextWindow,
+			&i.MaxOutputTokens,
 			&i.ApiKeyCipher,
 			&i.ApiKeyEnv,
 			&i.Remark,
@@ -316,7 +339,7 @@ func (q *Queries) ListSysModelAll(ctx context.Context, kind *string) ([]SysModel
 }
 
 const listSysModelOptions = `-- name: ListSysModelOptions :many
-SELECT DISTINCT ON (model_key) id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
+SELECT DISTINCT ON (model_key) id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
 FROM public.sys_model
 WHERE kind = $1
   AND status = 1
@@ -346,6 +369,8 @@ func (q *Queries) ListSysModelOptions(ctx context.Context, kind string) ([]SysMo
 			&i.Model,
 			&i.Dimension,
 			&i.TimeoutMs,
+			&i.ContextWindow,
+			&i.MaxOutputTokens,
 			&i.ApiKeyCipher,
 			&i.ApiKeyEnv,
 			&i.Remark,
@@ -366,7 +391,7 @@ func (q *Queries) ListSysModelOptions(ctx context.Context, kind string) ([]SysMo
 }
 
 const lockSysModelTenantByID = `-- name: LockSysModelTenantByID :one
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at FROM public.sys_model
 WHERE id = $1
   AND tenant_id = current_setting('app.tenant_id')
   AND deleted_at IS NULL
@@ -389,6 +414,8 @@ func (q *Queries) LockSysModelTenantByID(ctx context.Context, id int64) (SysMode
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -442,28 +469,31 @@ func (q *Queries) SoftDeleteSysModelTenant(ctx context.Context, arg SoftDeleteSy
 }
 
 const updateSysModelPlatform = `-- name: UpdateSysModelPlatform :one
-SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
+SELECT id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
 FROM public.fn_model_platform_update($1, $2, $3,
                                      $4, $5, $6,
                                      $7, $8,
                                      $9, $10,
-                                     $11, $12)
+                                     $11, $12,
+                                     $13, $14)
 WHERE id IS NOT NULL
 `
 
 type UpdateSysModelPlatformParams struct {
-	ID           int64   `db:"id" json:"id"`
-	Status       int16   `db:"status" json:"status"`
-	Name         string  `db:"name" json:"name"`
-	Provider     string  `db:"provider" json:"provider"`
-	BaseUrl      *string `db:"base_url" json:"base_url"`
-	Model        string  `db:"model" json:"model"`
-	Dimension    *int32  `db:"dimension" json:"dimension"`
-	TimeoutMs    *int32  `db:"timeout_ms" json:"timeout_ms"`
-	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
-	ApiKeyEnv    *string `db:"api_key_env" json:"api_key_env"`
-	Remark       *string `db:"remark" json:"remark"`
-	Operator     int64   `db:"operator" json:"operator"`
+	ID              int64   `db:"id" json:"id"`
+	Status          int16   `db:"status" json:"status"`
+	Name            string  `db:"name" json:"name"`
+	Provider        string  `db:"provider" json:"provider"`
+	BaseUrl         *string `db:"base_url" json:"base_url"`
+	Model           string  `db:"model" json:"model"`
+	Dimension       *int32  `db:"dimension" json:"dimension"`
+	TimeoutMs       *int32  `db:"timeout_ms" json:"timeout_ms"`
+	ContextWindow   *int32  `db:"context_window" json:"context_window"`
+	MaxOutputTokens *int32  `db:"max_output_tokens" json:"max_output_tokens"`
+	ApiKeyCipher    *string `db:"api_key_cipher" json:"api_key_cipher"`
+	ApiKeyEnv       *string `db:"api_key_env" json:"api_key_env"`
+	Remark          *string `db:"remark" json:"remark"`
+	Operator        int64   `db:"operator" json:"operator"`
 }
 
 // 覆盖平台模型行可变字段：调用受控写函数 fn_model_platform_update；目标
@@ -478,6 +508,8 @@ func (q *Queries) UpdateSysModelPlatform(ctx context.Context, arg UpdateSysModel
 		arg.Model,
 		arg.Dimension,
 		arg.TimeoutMs,
+		arg.ContextWindow,
+		arg.MaxOutputTokens,
 		arg.ApiKeyCipher,
 		arg.ApiKeyEnv,
 		arg.Remark,
@@ -496,6 +528,8 @@ func (q *Queries) UpdateSysModelPlatform(ctx context.Context, arg UpdateSysModel
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,
@@ -517,29 +551,33 @@ SET status         = $1,
     model          = $5,
     dimension      = $6,
     timeout_ms     = $7,
-    api_key_cipher = $8,
-    api_key_env    = $9,
-    remark         = $10,
-    updated_by     = $11
-WHERE id = $12
+    context_window = $8,
+    max_output_tokens = $9,
+    api_key_cipher = $10,
+    api_key_env    = $11,
+    remark         = $12,
+    updated_by     = $13
+WHERE id = $14
   AND tenant_id = current_setting('app.tenant_id')
   AND deleted_at IS NULL
-RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
+RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at
 `
 
 type UpdateSysModelTenantParams struct {
-	Status       int16   `db:"status" json:"status"`
-	Name         string  `db:"name" json:"name"`
-	Provider     string  `db:"provider" json:"provider"`
-	BaseUrl      *string `db:"base_url" json:"base_url"`
-	Model        string  `db:"model" json:"model"`
-	Dimension    *int32  `db:"dimension" json:"dimension"`
-	TimeoutMs    *int32  `db:"timeout_ms" json:"timeout_ms"`
-	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
-	ApiKeyEnv    *string `db:"api_key_env" json:"api_key_env"`
-	Remark       *string `db:"remark" json:"remark"`
-	UpdatedBy    int64   `db:"updated_by" json:"updated_by"`
-	ID           int64   `db:"id" json:"id"`
+	Status          int16   `db:"status" json:"status"`
+	Name            string  `db:"name" json:"name"`
+	Provider        string  `db:"provider" json:"provider"`
+	BaseUrl         *string `db:"base_url" json:"base_url"`
+	Model           string  `db:"model" json:"model"`
+	Dimension       *int32  `db:"dimension" json:"dimension"`
+	TimeoutMs       *int32  `db:"timeout_ms" json:"timeout_ms"`
+	ContextWindow   *int32  `db:"context_window" json:"context_window"`
+	MaxOutputTokens *int32  `db:"max_output_tokens" json:"max_output_tokens"`
+	ApiKeyCipher    *string `db:"api_key_cipher" json:"api_key_cipher"`
+	ApiKeyEnv       *string `db:"api_key_env" json:"api_key_env"`
+	Remark          *string `db:"remark" json:"remark"`
+	UpdatedBy       int64   `db:"updated_by" json:"updated_by"`
+	ID              int64   `db:"id" json:"id"`
 }
 
 // 更新租户模型行可变字段（kind/model_key 是身份列，创建后不变）
@@ -552,6 +590,8 @@ func (q *Queries) UpdateSysModelTenant(ctx context.Context, arg UpdateSysModelTe
 		arg.Model,
 		arg.Dimension,
 		arg.TimeoutMs,
+		arg.ContextWindow,
+		arg.MaxOutputTokens,
 		arg.ApiKeyCipher,
 		arg.ApiKeyEnv,
 		arg.Remark,
@@ -571,6 +611,8 @@ func (q *Queries) UpdateSysModelTenant(ctx context.Context, arg UpdateSysModelTe
 		&i.Model,
 		&i.Dimension,
 		&i.TimeoutMs,
+		&i.ContextWindow,
+		&i.MaxOutputTokens,
 		&i.ApiKeyCipher,
 		&i.ApiKeyEnv,
 		&i.Remark,

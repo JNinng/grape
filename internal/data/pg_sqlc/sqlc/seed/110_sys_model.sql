@@ -9,31 +9,37 @@
 -- ai.text.model 指向它），本地 Qwen3 行保留为停用备选。生产部署前须在
 -- 模型管理页替换为实际端点与模型名；model_key 与 070_sys_config.sql 的
 -- ai.embedding.model / ai.text.model 默认值一致。
+--
+-- 生成预算：deepseek-flash 按 DeepSeek v4 的能力声明 1M 上下文窗口与
+-- 384K 最大输出（含思考 token）；其余行留空，运行期回落装配默认。
 -- ======================================================================
 
 -- 平台嵌入模型：qwen3-embedding:0.6b，1024 维（本期唯一允许维度）
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
-                              base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env,
+                              base_url, model, dimension, timeout_ms, context_window, max_output_tokens,
+                              api_key_cipher, api_key_env,
                               remark, created_by, created_at, updated_by, updated_at, deleted_at)
 VALUES (1, '', 1, 'embedding', 'Qwen3 Embedding 0.6B', 'qwen3-embedding:0.6b', 'openai',
-        'http://127.0.0.1:11434/v1', 'qwen3-embedding:0.6b', 1024, 30000, NULL, NULL,
+        'http://127.0.0.1:11434/v1', 'qwen3-embedding:0.6b', 1024, 30000, NULL, NULL, NULL, NULL,
         '本地开发默认，生产部署前替换', 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL)
 ON CONFLICT DO NOTHING;
 
 -- 平台文本模型：qwen3:8b（停用备选），同本地端点
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
-                              base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env,
+                              base_url, model, dimension, timeout_ms, context_window, max_output_tokens,
+                              api_key_cipher, api_key_env,
                               remark, created_by, created_at, updated_by, updated_at, deleted_at)
 VALUES (2, '', 0, 'text', 'Qwen3 8B', 'qwen3:8b', 'openai',
-        'http://127.0.0.1:11434/v1', 'qwen3:8b', NULL, 60000, NULL, NULL,
+        'http://127.0.0.1:11434/v1', 'qwen3:8b', NULL, 60000, NULL, NULL, NULL, NULL,
         '本地开发默认，生产部署前替换', 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
-                              base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env,
+                              base_url, model, dimension, timeout_ms, context_window, max_output_tokens,
+                              api_key_cipher, api_key_env,
                               remark, created_by, created_at, updated_by, updated_at, deleted_at)
 VALUES (3, '', 1, 'text', 'deepseek-flash', 'deepseek-flash', 'deepseek',
-        'https://api.deepseek.com', 'deepseek-flash', NULL, 60000,
+        'https://api.deepseek.com', 'deepseek-flash', NULL, 60000, 1048576, 393216,
         'module_key_encrypt@v1:Nc1luPlEgVJ9HecW:QMw3-9OAkv2kWycMgNOGYN8hXRDSpTg0nQIR-yQN-WQa6y5vUcD7DFyUv2hjJo45TcUI', NULL,
         '本地开发默认，生产部署前替换', 1, '2026-11-08 10:00:00.000', 1, '2026-11-08 10:00:00.000', NULL)
 ON CONFLICT DO NOTHING;

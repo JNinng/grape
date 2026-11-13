@@ -21,6 +21,11 @@
 -- ============================================================
 
 -- fn_model_platform_create：新建平台模型行。
+-- 升级注意：生成预算两列（context_window / max_output_tokens）使参数表
+-- 变化，旧签名的函数须先删除，否则历史库会残留旧重载（CREATE OR REPLACE
+-- 只替换同签名函数）。
+DROP FUNCTION IF EXISTS public.fn_model_platform_create(int8, int2, varchar, varchar, varchar, varchar, varchar, varchar, int4, int4, text, varchar, varchar, int8);
+
 CREATE OR REPLACE FUNCTION public.fn_model_platform_create(
     p_id              int8,
     p_status          int2,
@@ -32,6 +37,8 @@ CREATE OR REPLACE FUNCTION public.fn_model_platform_create(
     p_model           varchar,
     p_dimension       int4,
     p_timeout_ms      int4,
+    p_context_window  int4,
+    p_max_output_tokens int4,
     p_api_key_cipher  text,
     p_api_key_env     varchar,
     p_remark          varchar,
@@ -53,10 +60,12 @@ BEGIN
 
     INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key,
                                   provider, base_url, model, dimension, timeout_ms,
+                                  context_window, max_output_tokens,
                                   api_key_cipher, api_key_env, remark,
                                   created_by, updated_by)
     VALUES (p_id, '', p_status, p_kind, p_name, p_model_key,
             p_provider, p_base_url, p_model, p_dimension, p_timeout_ms,
+            p_context_window, p_max_output_tokens,
             p_api_key_cipher, p_api_key_env, p_remark,
             p_operator, p_operator)
     RETURNING * INTO v_row;
@@ -65,10 +74,12 @@ END;
 $fn$
 ;
 
-COMMENT ON FUNCTION public.fn_model_platform_create(int8, int2, varchar, varchar, varchar, varchar, varchar, varchar, int4, int4, text, varchar, varchar, int8) IS '模型目录平台行受控写面：新建平台模型（tenant_id 固定为空串）。SECURITY DEFINER 以属主执行绕过 RLS 的租户写策略；函数内以 app.tenant_id 校验认证事务纪律（未设置即拒绝）。model_key 在平台行未删除行间唯一，由部分唯一索引兜底。EXECUTE 沿用默认授权 PUBLIC，权限码把守归入口层';
+COMMENT ON FUNCTION public.fn_model_platform_create(int8, int2, varchar, varchar, varchar, varchar, varchar, varchar, int4, int4, int4, int4, text, varchar, varchar, int8) IS '模型目录平台行受控写面：新建平台模型（tenant_id 固定为空串）。SECURITY DEFINER 以属主执行绕过 RLS 的租户写策略；函数内以 app.tenant_id 校验认证事务纪律（未设置即拒绝）。model_key 在平台行未删除行间唯一，由部分唯一索引兜底。EXECUTE 沿用默认授权 PUBLIC，权限码把守归入口层';
 
 -- fn_model_platform_update：覆盖平台模型可变字段（不含 kind/model_key）。
 -- 目标不存在、已软删或不是平台行时返回 NULL（调用方按无行映射 NotFound）。
+DROP FUNCTION IF EXISTS public.fn_model_platform_update(int8, int2, varchar, varchar, varchar, varchar, int4, int4, text, varchar, varchar, int8);
+
 CREATE OR REPLACE FUNCTION public.fn_model_platform_update(
     p_id              int8,
     p_status          int2,
@@ -78,6 +89,8 @@ CREATE OR REPLACE FUNCTION public.fn_model_platform_update(
     p_model           varchar,
     p_dimension       int4,
     p_timeout_ms      int4,
+    p_context_window  int4,
+    p_max_output_tokens int4,
     p_api_key_cipher  text,
     p_api_key_env     varchar,
     p_remark          varchar,
@@ -105,6 +118,8 @@ BEGIN
         model           = p_model,
         dimension       = p_dimension,
         timeout_ms      = p_timeout_ms,
+        context_window  = p_context_window,
+        max_output_tokens = p_max_output_tokens,
         api_key_cipher  = p_api_key_cipher,
         api_key_env     = p_api_key_env,
         remark          = p_remark,
@@ -118,7 +133,7 @@ END;
 $fn$
 ;
 
-COMMENT ON FUNCTION public.fn_model_platform_update(int8, int2, varchar, varchar, varchar, varchar, int4, int4, text, varchar, varchar, int8) IS '模型目录平台行受控写面：覆盖可变字段（status/name/provider/base_url/model/dimension/timeout_ms/api_key_cipher/api_key_env/remark）。SECURITY DEFINER 绕过 RLS，函数内仅命中 tenant_id='''' 的行；kind/model_key 是身份列不经本路径变更；未命中返回 NULL（调用方映射 NotFound）';
+COMMENT ON FUNCTION public.fn_model_platform_update(int8, int2, varchar, varchar, varchar, varchar, int4, int4, int4, int4, text, varchar, varchar, int8) IS '模型目录平台行受控写面：覆盖可变字段（status/name/provider/base_url/model/dimension/timeout_ms/context_window/max_output_tokens/api_key_cipher/api_key_env/remark）。SECURITY DEFINER 绕过 RLS，函数内仅命中 tenant_id='''' 的行；kind/model_key 是身份列不经本路径变更；未命中返回 NULL（调用方映射 NotFound）';
 
 -- fn_model_platform_delete：软删除平台模型行。未命中返回 0。
 CREATE OR REPLACE FUNCTION public.fn_model_platform_delete(

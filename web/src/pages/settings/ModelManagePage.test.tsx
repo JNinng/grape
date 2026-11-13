@@ -122,7 +122,9 @@ describe('ModelManagePage rerank kind', () => {
 const MUTABLE_UPDATE_FIELDS = [
   'apiKeyEnv',
   'baseUrl',
+  'contextWindow',
   'dimension',
+  'maxOutputTokens',
   'model',
   'name',
   'provider',
@@ -159,9 +161,32 @@ describe('ModelManagePage edit dialog', () => {
       model: 'qwen3:8b',
       dimension: undefined,
       timeoutMs: undefined,
+      contextWindow: undefined,
+      maxOutputTokens: undefined,
       apiKeyEnv: undefined,
       remark: undefined,
     })
+  })
+
+  it('edit_text_row_submits_generation_budget', async () => {
+    const user = userEvent.setup()
+    mockListModels.mockResolvedValue({
+      items: [model({ contextWindow: 1048576, maxOutputTokens: 393216 })],
+    })
+    renderPage()
+    await screen.findByText('Qwen3 8B')
+
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    const dialog = screen.getByRole('dialog')
+    // 默认值回填后直接保存：生成预算随更新协议下发。
+    expect(within(dialog).getByLabelText('上下文窗口（token）')).toHaveValue('1048576')
+    expect(within(dialog).getByLabelText('最大输出（token，含思考）')).toHaveValue('393216')
+    await user.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitForUpdateCall(mockUpdateModel)
+    const payload = mockUpdateModel.mock.calls[0][0]
+    expect(payload.model.contextWindow).toBe(1048576)
+    expect(payload.model.maxOutputTokens).toBe(393216)
   })
 
   it('edit_platform_row_updates_via_super_route', async () => {

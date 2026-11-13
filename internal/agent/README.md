@@ -35,7 +35,7 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
 | [stack.go](stack.go) | 骨架装配链（模型 → 工具 → ack 网关 → LLMAgent → runner → AG-UI → ServeMux）与 `Stack` 访问器；`Close` 只释放 runner。 |
 | [gateway.go](gateway.go) | ack 网关构造：静态分级表、模型面拒绝文案、userKey 取值与许可源接线。 |
 | [llm.go](llm.go) | 模型链构造：OpenAI 兼容候选，failover / hedge / logging 包装与日志脱敏。 |
-| [textmodel.go](textmodel.go) | 按运行解析文本模型：catalog 非 nil 时经租户目录取 spec、按可变字段缓存整条链，否则用静态模型；非空时以 `agent.WithModel` 覆盖本次运行。 |
+| [textmodel.go](textmodel.go) | 按运行解析文本模型：catalog 非 nil 时经租户目录取 spec、按可变字段缓存整条链，否则用静态模型；非空时以 `agent.WithModel` 覆盖本次运行，并按 spec 的生成预算包装输出上限（`GenerationConfig.MaxTokens`）与追加 `agent.WithModelContextWindow`。 |
 | [thinking.go](thinking.go) | 按运行覆盖思考强度：从 `forwardedProps.thinking` 解析档位（off / low / medium / high），包装本次运行的模型并在每次请求副本上写 `GenerationConfig.ThinkingEnabled` 与 `ReasoningEffort`（保留 IterModel 能力）。 |
 | [concurrency.go](concurrency.go) | 按 userKey 的 chat 在途运行门控（超限 429），并向观测推送起止与拒绝。 |
 | [provider.go](provider.go) | Wire `ProviderSet`：骨架、框架会话存储（预建表、TTL 翻译）、向量适配器。 |
@@ -121,6 +121,10 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   provider/base_url/model/api_key/timeout；租户只换模型，failover/hedge/
   logging 仍从全局 conf 克隆。身份缺失、模型停用/未知、密钥不可用一律
   拒绝本次运行（fail-closed），不回落静态默认模型。
+- 运行期生成预算：目录行声明的 `max_output_tokens` 经模型包装层覆盖每次
+  请求副本的 `GenerationConfig.MaxTokens`（思考 token 计入该上限），
+  `context_window` 经 `agent.WithModelContextWindow` 交给框架做上下文裁剪
+  与会话摘要；两者未声明时沿用装配默认（`defaultMaxTokens`）。
 - 运行期思考强度：[thinking.go](thinking.go) 从 `forwardedProps.thinking`
   （封闭词表 off / low / medium / high）取本次运行的档位，把模型包装一层
   后在每次请求副本上写 `GenerationConfig.ThinkingEnabled` 与

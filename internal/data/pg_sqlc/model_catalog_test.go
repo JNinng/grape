@@ -51,18 +51,21 @@ func modelCatalogTestResolver(t *testing.T, d *Data, cipher biz.SecretCipher) *m
 
 // seedTextModelFixture 把全局默认文本模型指向用例自建的平台行。种子行
 // 携带环境侧密钥密文，测试用的随机材料无法解开，故不依赖种子默认值。
+// 平台行同时声明生成预算，供解析用例断言两列贯通。
 func seedTextModelFixture(t *testing.T, d *Data, auth biz.Identity) {
 	t.Helper()
 	ctx := biz.WithIdentity(context.Background(), auth)
 	const modelKey = "test-text"
 	if _, err := NewModelRepo(d).CreateModelPlatform(ctx, auth, &biz.ModelCfg{
-		Status:   1,
-		Kind:     biz.ModelKindText,
-		Name:     "Test Text",
-		ModelKey: modelKey,
-		Provider: "openai",
-		BaseURL:  ptrString("http://test"),
-		Model:    modelKey,
+		Status:          1,
+		Kind:            biz.ModelKindText,
+		Name:            "Test Text",
+		ModelKey:        modelKey,
+		Provider:        "openai",
+		BaseURL:         ptrString("http://test"),
+		Model:           modelKey,
+		ContextWindow:   tokenBudgetTestPtr(1048576),
+		MaxOutputTokens: tokenBudgetTestPtr(393216),
 	}, ""); err != nil {
 		t.Fatalf("create platform text model: %v", err)
 	}
@@ -97,6 +100,9 @@ func TestModelCatalog_platform_visible_and_tenant_override(t *testing.T) {
 	}
 	if specB.Model != "test-text" || specB.BaseURL != "http://test" {
 		t.Fatalf("tenant B spec = %+v, want the fixture platform row", specB)
+	}
+	if specB.ContextWindow != 1048576 || specB.MaxOutputTokens != 393216 {
+		t.Fatalf("tenant B generation budget = (%d, %d), want (1048576, 393216)", specB.ContextWindow, specB.MaxOutputTokens)
 	}
 
 	// 租户 A 建同名键的租户行并加密密钥：A 解析到租户行，B 仍解析平台行。
@@ -306,3 +312,6 @@ func TestModelCatalog_rerank_model_resolution(t *testing.T) {
 		t.Fatalf("resolve disabled rerank row = %v, want plain error", err)
 	}
 }
+
+// tokenBudgetTestPtr 构造生成预算列的可空值。
+func tokenBudgetTestPtr(v int32) *int32 { return &v }

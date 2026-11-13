@@ -43,7 +43,7 @@ const (
 	defaultHeartbeat      = 15 * time.Second
 	defaultAckSuffix      = "/ack"
 	defaultMaxToolIter    = 8
-	defaultMaxTokens      = 512
+	defaultMaxTokens      = 4096
 	defaultTemperature    = 0.7
 	defaultCompactionMax  = 1024
 	defaultKeepRecentReqs = 1

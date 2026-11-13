@@ -126,6 +126,12 @@ message Model {
   google.protobuf.Timestamp updated_at = 18;
   // 软删除标记时间。只读。
   google.protobuf.Timestamp deleted_at = 19;
+  // 模型上下文窗口（token 数）；kind=text 可携带，其余类别不携带。空值
+  // 表示未声明，运行期沿用框架按模型名注册表/128K 兜底。
+  optional int32 context_window = 20;
+  // 单次生成输出上限（token 数，含思考 token）；kind=text 可携带，其余
+  // 类别不携带。非空时必须不大于 context_window。空值回落装配默认。
+  optional int32 max_output_tokens = 21;
 }
 
 // ModelSet 是 ListModels 的固定集合（不分页）。
@@ -174,6 +180,11 @@ message ModelUpdateSpec {
   optional string api_key_env = 8;
   // 备注。
   optional string remark = 9;
+  // 模型上下文窗口（token 数）；仅 kind=text 可携带。
+  optional int32 context_window = 10;
+  // 单次生成输出上限（token 数，含思考 token）；仅 kind=text 可携带，
+  // 非空时必须不大于 context_window。
+  optional int32 max_output_tokens = 11;
 }
 
 // UpdateModelRequest 是 ModelService.UpdateModel 的输入。

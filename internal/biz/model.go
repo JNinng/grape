@@ -41,8 +41,10 @@ const (
 )
 
 // TextModelSpec 是解析后的文本模型端点事实：provider/base_url/model/api_key
-// /timeout 可来自 sys_model 租户行、平台行或 conf.agent.llm；可靠性
-// 策略（failover/hedge/logging）不在其中，由 agent 层从全局 conf 复用。
+// /timeout 与生成预算（context_window / max_output_tokens）可来自 sys_model
+// 租户行、平台行或 conf.agent.llm；可靠性策略（failover/hedge/logging）
+// 不在其中，由 agent 层从全局 conf 复用。生成预算为 0 表示模型目录未声明，
+// 由 agent 层回落装配默认。
 type TextModelSpec struct {
 	Key      string
 	Provider string
@@ -50,6 +52,11 @@ type TextModelSpec struct {
 	Model    string
 	APIKey   string
 	Timeout  time.Duration
+	// ContextWindow 是模型上下文窗口（token 数），0 表示未声明。
+	ContextWindow int
+	// MaxOutputTokens 是单次生成输出上限（token 数，含思考 token），0 表示
+	// 未声明，回落装配默认。
+	MaxOutputTokens int
 }
 
 // TextModelCatalog 解析当前身份的文本模型。实现从认证 ctx 取身份，按

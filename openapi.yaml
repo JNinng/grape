@@ -3843,6 +3843,18 @@ components:
                     type: string
                     description: 软删除标记时间。只读。
                     format: date-time
+                contextWindow:
+                    type: integer
+                    description: |-
+                        模型上下文窗口（token 数）；kind=text 可携带，其余类别不携带。空值
+                         表示未声明，运行期沿用框架按模型名注册表/128K 兜底。
+                    format: int32
+                maxOutputTokens:
+                    type: integer
+                    description: |-
+                        单次生成输出上限（token 数，含思考 token）；kind=text 可携带，其余
+                         类别不携带。非空时必须不大于 context_window。空值回落装配默认。
+                    format: int32
             description: Model 是模型目录行的规范表示。审计列与时间戳只读；密钥不返回。
         model.v1.ModelSet:
             type: object
@@ -3885,6 +3897,16 @@ components:
                 remark:
                     type: string
                     description: 备注。
+                contextWindow:
+                    type: integer
+                    description: 模型上下文窗口（token 数）；仅 kind=text 可携带。
+                    format: int32
+                maxOutputTokens:
+                    type: integer
+                    description: |-
+                        单次生成输出上限（token 数，含思考 token）；仅 kind=text 可携带，
+                         非空时必须不大于 context_window。
+                    format: int32
             description: |-
                 ModelUpdateSpec 是模型行创建后可变字段的变更集。不承载 kind /
                  model_key / id / 平台标识 / 审计列：类别与 model_key 是创建后不可变的

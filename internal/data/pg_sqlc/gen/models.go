@@ -592,6 +592,10 @@ type SysModel struct {
 	Dimension *int32 `db:"dimension" json:"dimension"`
 	// 单次调用超时（毫秒），空值回落 conf 默认 [@dynamic: exact, range @updatable: set]
 	TimeoutMs *int32 `db:"timeout_ms" json:"timeout_ms"`
+	// 模型上下文窗口（token 数）：运行期经 agent.WithModelContextWindow 下发给框架的上下文裁剪与会话摘要；空值不声明，沿用框架按模型名注册表/128K 兜底。仅 kind=text 可携带 [@dynamic: exact, range @updatable: set]
+	ContextWindow *int32 `db:"context_window" json:"context_window"`
+	// 单次生成输出上限（token 数，含思考 token）：运行期覆盖本次模型调用的 GenerationConfig.MaxTokens；空值回落装配默认。必须不大于 context_window（两者均非空时）。仅 kind=text 可携带 [@dynamic: exact, range @updatable: set]
+	MaxOutputTokens *int32 `db:"max_output_tokens" json:"max_output_tokens"`
 	// API key 密文（自描述格式 module_key_encrypt@版本:nonce:密文+tag），只写不读 [@internal]
 	ApiKeyCipher *string `db:"api_key_cipher" json:"api_key_cipher"`
 	// API key 环境变量名（密文缺失时回退） [@dynamic: exact @updatable: set]

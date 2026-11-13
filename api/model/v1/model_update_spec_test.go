@@ -21,6 +21,8 @@ var mutableModelFields = []string{
 	"model",
 	"dimension",
 	"timeout_ms",
+	"context_window",
+	"max_output_tokens",
 	"api_key_env",
 	"remark",
 }

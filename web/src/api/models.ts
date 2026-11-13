@@ -17,6 +17,10 @@ export interface ModelDTO {
   model: string
   dimension?: number
   timeoutMs?: number
+  // 生成预算（仅文本模型）：上下文窗口与单次输出上限，单位 token；
+  // 输出上限含思考 token，非空时不得大于上下文窗口。
+  contextWindow?: number
+  maxOutputTokens?: number
   hasApiKey: boolean
   apiKeyEnv?: string
   remark?: string
@@ -41,6 +45,8 @@ export interface CreateModelInput {
   model: string
   dimension?: number
   timeoutMs?: number
+  contextWindow?: number
+  maxOutputTokens?: number
   apiKeyEnv?: string
   remark?: string
 }
@@ -56,6 +62,8 @@ export interface ModelUpdateSpec {
   model: string
   dimension?: number
   timeoutMs?: number
+  contextWindow?: number
+  maxOutputTokens?: number
   apiKeyEnv?: string
   remark?: string
 }

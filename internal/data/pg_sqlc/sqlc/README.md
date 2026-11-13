@@ -76,7 +76,7 @@ doc）与本索引。再生成：本目录 `sqlc generate -f sqlc.yaml` 或项�
   `agent_vector.sql` 供按需启用。`lexical` 列（tsvector）与其部分 GIN 索引
   是词法召回的索引面：内容由应用侧分词器（`biz.Tokenizer`）产出、经
   `::tsvector` 占位符下发，`to_tsvector` 不参与产出（数据库侧不引入分词
-  扩展）；历史库升级见 deploy_db.md「升级」节。
+  扩展）；历史库缺该列或索引时需全量重建或按文件手工补建。
 - **向量索引探针**：每个声明维度一个表达式部分索引，
   `(embedding::vector(N)) vector_cosine_ops WHERE embed_dim = N`；检索 SQL
   重复同一 cast 才命中。pgvector 维度超过 2000 时 vector ops 不可索引。
@@ -182,8 +182,8 @@ sys_model 单表双态：`tenant_id=''` 为平台行（所有租户可读，RLS 
 
 | 函数 | 签名 | 作用 |
 | --- | --- | --- |
-| fn_model_platform_create | (id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 新建平台行；`app.tenant_id` 未设置即拒绝 |
-| fn_model_platform_update | (id, status, name, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 覆盖可变字段；仅命中 `tenant_id=''` 未软删行，未命中 NULL |
+| fn_model_platform_create | (id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 新建平台行；`app.tenant_id` 未设置即拒绝 |
+| fn_model_platform_update | (id, status, name, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, 操作者) → sys_model | 覆盖可变字段；仅命中 `tenant_id=''` 未软删行，未命中 NULL |
 | fn_model_platform_delete | (id, 操作者) → bigint | 软删平台行；返回删除行数（0=未命中） |
 
 ### 受控判定函数（98_tenant_guard.sql，sys_tenant 删除前置）

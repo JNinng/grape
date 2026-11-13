@@ -46,14 +46,21 @@ type ModelCfg struct {
 	Model     string
 	Dimension *int32
 	TimeoutMs *int32
-	HasAPIKey bool
-	APIKeyEnv *string
-	Remark    *string
-	CreatedBy int64
-	UpdatedBy int64
-	CreatedAt time.Time
-	UpdatedAt *time.Time
-	DeletedAt *time.Time
+	// ContextWindow 是模型上下文窗口（token 数），仅 kind=text 可携带；
+	// 运行期经 agent.WithModelContextWindow 下发。空值表示未声明。
+	ContextWindow *int32
+	// MaxOutputTokens 是单次生成输出上限（token 数，含思考 token），仅
+	// kind=text 可携带；运行期覆盖本次模型调用的 MaxTokens。空值回落装配
+	// 默认，非空时不得大于 ContextWindow。
+	MaxOutputTokens *int32
+	HasAPIKey       bool
+	APIKeyEnv       *string
+	Remark          *string
+	CreatedBy       int64
+	UpdatedBy       int64
+	CreatedAt       time.Time
+	UpdatedAt       *time.Time
+	DeletedAt       *time.Time
 }
 
 // ModelRepo 是模型目录仓储接口。租户行与平台行分路径：平台行写经受控
@@ -319,6 +326,20 @@ func validateModelCfg(m *ModelCfg, update bool) error {
 		return ErrModelInvalidArgument
 	}
 	if m.TimeoutMs != nil && *m.TimeoutMs <= 0 {
+		return ErrModelInvalidArgument
+	}
+	if m.ContextWindow != nil && *m.ContextWindow <= 0 {
+		return ErrModelInvalidArgument
+	}
+	if m.MaxOutputTokens != nil && *m.MaxOutputTokens <= 0 {
+		return ErrModelInvalidArgument
+	}
+	if m.ContextWindow != nil && m.MaxOutputTokens != nil && *m.MaxOutputTokens > *m.ContextWindow {
+		return ErrModelInvalidArgument
+	}
+	// 生成预算两列是文本模型专属：embedding / rerank 不产生生成输出，
+	// 携带即视为入参错误（与嵌入维度的类别纪律同口径）。
+	if m.Kind != ModelKindText && (m.ContextWindow != nil || m.MaxOutputTokens != nil) {
 		return ErrModelInvalidArgument
 	}
 	switch {

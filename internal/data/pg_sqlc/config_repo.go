@@ -110,12 +110,14 @@ func (r *modelResolver) ResolveTextModel(ctx context.Context) (biz.TextModelSpec
 			return biz.TextModelSpec{}, err
 		}
 		return biz.TextModelSpec{
-			Key:      key,
-			Provider: row.Provider,
-			BaseURL:  stringOrEmpty(row.BaseUrl),
-			Model:    row.Model,
-			APIKey:   apiKey,
-			Timeout:  r.textTimeout(row),
+			Key:             key,
+			Provider:        row.Provider,
+			BaseURL:         stringOrEmpty(row.BaseUrl),
+			Model:           row.Model,
+			APIKey:          apiKey,
+			Timeout:         r.textTimeout(row),
+			ContextWindow:   tokenBudgetOf(row.ContextWindow),
+			MaxOutputTokens: tokenBudgetOf(row.MaxOutputTokens),
 		}, nil
 	}
 	if r.llm != nil && key == strings.TrimSpace(r.llm.GetModel()) {
@@ -361,6 +363,15 @@ func (r *modelResolver) textTimeout(row *gen.SysModel) time.Duration {
 		return r.llm.GetTimeout().AsDuration()
 	}
 	return 0
+}
+
+// tokenBudgetOf 把模型目录的可空 token 预算列转为 int：空值或非正值按
+// 「未声明」（0）处理，由 agent 层回落装配默认。
+func tokenBudgetOf(v *int32) int {
+	if v == nil || *v <= 0 {
+		return 0
+	}
+	return int(*v)
 }
 
 // embeddingTimeout 取模型行超时，缺失回落 30s（conf 条目由 resolveSpace

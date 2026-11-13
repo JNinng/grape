@@ -16,6 +16,8 @@
 //	column sys_model.model: [@dynamic: eq, neq @updatable: set]
 //	column sys_model.dimension: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column sys_model.timeout_ms: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
+//	column sys_model.context_window: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
+//	column sys_model.max_output_tokens: [@dynamic: eq, neq, gt, gte, lt, lte, between @updatable: set]
 //	column sys_model.api_key_cipher: [@internal]
 //	column sys_model.api_key_env: [@dynamic: eq, neq @updatable: set]
 //	column sys_model.remark: [@dynamic: contains, prefix, suffix @updatable: set]
@@ -174,6 +176,28 @@ var sys_modelRegistry = dynq.TableMeta{
 			Hidden:     false,
 		},
 		{
+			Key:        "contextWindow",
+			Column:     "context_window",
+			Label:      "context_window",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
+			Key:        "maxOutputTokens",
+			Column:     "max_output_tokens",
+			Label:      "max_output_tokens",
+			DataType:   dynq.DataTypeInteger,
+			Nullable:   true,
+			Ops:        []dynq.Op{dynq.OpEq, dynq.OpNeq, dynq.OpGt, dynq.OpGte, dynq.OpLt, dynq.OpLte, dynq.OpBetween},
+			Sortable:   false,
+			Visibility: dynq.VisibilityOptional,
+			Hidden:     false,
+		},
+		{
 			Key:      "apiKeyCipher",
 			Column:   "api_key_cipher",
 			Label:    "api_key_cipher",
@@ -268,63 +292,69 @@ var sys_modelRegistry = dynq.TableMeta{
 
 // sys_modelFieldIndex 是逻辑字段名到 registry 字段下标的映射,供白名单校验使用。
 var sys_modelFieldIndex = map[dynq.FieldName]int{
-	"id":           0,
-	"tenantId":     1,
-	"status":       2,
-	"kind":         3,
-	"name":         4,
-	"modelKey":     5,
-	"provider":     6,
-	"baseUrl":      7,
-	"model":        8,
-	"dimension":    9,
-	"timeoutMs":    10,
-	"apiKeyCipher": 11,
-	"apiKeyEnv":    12,
-	"remark":       13,
-	"createdBy":    14,
-	"createdAt":    15,
-	"updatedBy":    16,
-	"updatedAt":    17,
-	"deletedAt":    18,
+	"id":              0,
+	"tenantId":        1,
+	"status":          2,
+	"kind":            3,
+	"name":            4,
+	"modelKey":        5,
+	"provider":        6,
+	"baseUrl":         7,
+	"model":           8,
+	"dimension":       9,
+	"timeoutMs":       10,
+	"contextWindow":   11,
+	"maxOutputTokens": 12,
+	"apiKeyCipher":    13,
+	"apiKeyEnv":       14,
+	"remark":          15,
+	"createdBy":       16,
+	"createdAt":       17,
+	"updatedBy":       18,
+	"updatedAt":       19,
+	"deletedAt":       20,
 }
 
 // SysModelField 提供逻辑字段常量,供禁用选项、OrderBy 与 SelectFields 引用。
 // 字段名拼写错误将在编译期被捕获;@internal 列不提供常量。
 var SysModelField = struct {
-	ID        dynq.FieldName
-	Status    dynq.FieldName
-	Kind      dynq.FieldName
-	Name      dynq.FieldName
-	ModelKey  dynq.FieldName
-	Provider  dynq.FieldName
-	BaseURL   dynq.FieldName
-	Model     dynq.FieldName
-	Dimension dynq.FieldName
-	TimeoutMs dynq.FieldName
-	APIKeyEnv dynq.FieldName
-	Remark    dynq.FieldName
-	CreatedBy dynq.FieldName
-	CreatedAt dynq.FieldName
-	UpdatedBy dynq.FieldName
-	UpdatedAt dynq.FieldName
+	ID              dynq.FieldName
+	Status          dynq.FieldName
+	Kind            dynq.FieldName
+	Name            dynq.FieldName
+	ModelKey        dynq.FieldName
+	Provider        dynq.FieldName
+	BaseURL         dynq.FieldName
+	Model           dynq.FieldName
+	Dimension       dynq.FieldName
+	TimeoutMs       dynq.FieldName
+	ContextWindow   dynq.FieldName
+	MaxOutputTokens dynq.FieldName
+	APIKeyEnv       dynq.FieldName
+	Remark          dynq.FieldName
+	CreatedBy       dynq.FieldName
+	CreatedAt       dynq.FieldName
+	UpdatedBy       dynq.FieldName
+	UpdatedAt       dynq.FieldName
 }{
-	ID:        "id",
-	Status:    "status",
-	Kind:      "kind",
-	Name:      "name",
-	ModelKey:  "modelKey",
-	Provider:  "provider",
-	BaseURL:   "baseUrl",
-	Model:     "model",
-	Dimension: "dimension",
-	TimeoutMs: "timeoutMs",
-	APIKeyEnv: "apiKeyEnv",
-	Remark:    "remark",
-	CreatedBy: "createdBy",
-	CreatedAt: "createdAt",
-	UpdatedBy: "updatedBy",
-	UpdatedAt: "updatedAt",
+	ID:              "id",
+	Status:          "status",
+	Kind:            "kind",
+	Name:            "name",
+	ModelKey:        "modelKey",
+	Provider:        "provider",
+	BaseURL:         "baseUrl",
+	Model:           "model",
+	Dimension:       "dimension",
+	TimeoutMs:       "timeoutMs",
+	ContextWindow:   "contextWindow",
+	MaxOutputTokens: "maxOutputTokens",
+	APIKeyEnv:       "apiKeyEnv",
+	Remark:          "remark",
+	CreatedBy:       "createdBy",
+	CreatedAt:       "createdAt",
+	UpdatedBy:       "updatedBy",
+	UpdatedAt:       "updatedAt",
 }
 
 // ListSysModelParams 是 typed 门的查询参数,供内部调用方直接构造(编译期安全)。
@@ -336,73 +366,85 @@ var SysModelField = struct {
 //   - 模糊匹配字段为零值 "" 时,该条件不参与过滤;
 //   - IsNull/NotNull 为 false 时不参与,二者同时为 true 非法。
 type ListSysModelParams struct {
-	ID             *int64
-	IDNeq          *int64
-	IDIn           []int64
-	IDNotIn        []int64
-	Status         *int64
-	StatusNeq      *int64
-	StatusIn       []int64
-	StatusNotIn    []int64
-	Kind           *string
-	KindNeq        *string
-	KindIn         []string
-	KindNotIn      []string
-	Name           *string
-	NameNeq        *string
-	NameContains   string
-	NamePrefix     string
-	NameSuffix     string
-	ModelKey       *string
-	ModelKeyNeq    *string
-	ModelKeyPrefix string
-	Provider       *string
-	ProviderNeq    *string
-	BaseURL        *string
-	BaseURLNeq     *string
-	Model          *string
-	ModelNeq       *string
-	Dimension      *int64
-	DimensionNeq   *int64
-	DimensionGt    *int64
-	DimensionGte   *int64
-	DimensionLt    *int64
-	DimensionLte   *int64
-	TimeoutMs      *int64
-	TimeoutMsNeq   *int64
-	TimeoutMsGt    *int64
-	TimeoutMsGte   *int64
-	TimeoutMsLt    *int64
-	TimeoutMsLte   *int64
-	APIKeyEnv      *string
-	APIKeyEnvNeq   *string
-	RemarkContains string
-	RemarkPrefix   string
-	RemarkSuffix   string
-	CreatedBy      *int64
-	CreatedByNeq   *int64
-	CreatedByIn    []int64
-	CreatedByNotIn []int64
-	CreatedAt      *time.Time
-	CreatedAtNeq   *time.Time
-	CreatedAtIn    []time.Time
-	CreatedAtNotIn []time.Time
-	CreatedAtGt    *time.Time
-	CreatedAtGte   *time.Time
-	CreatedAtLt    *time.Time
-	CreatedAtLte   *time.Time
-	UpdatedBy      *int64
-	UpdatedByNeq   *int64
-	UpdatedByIn    []int64
-	UpdatedByNotIn []int64
-	UpdatedAt      *time.Time
-	UpdatedAtNeq   *time.Time
-	UpdatedAtIn    []time.Time
-	UpdatedAtNotIn []time.Time
-	UpdatedAtGt    *time.Time
-	UpdatedAtGte   *time.Time
-	UpdatedAtLt    *time.Time
-	UpdatedAtLte   *time.Time
+	ID                 *int64
+	IDNeq              *int64
+	IDIn               []int64
+	IDNotIn            []int64
+	Status             *int64
+	StatusNeq          *int64
+	StatusIn           []int64
+	StatusNotIn        []int64
+	Kind               *string
+	KindNeq            *string
+	KindIn             []string
+	KindNotIn          []string
+	Name               *string
+	NameNeq            *string
+	NameContains       string
+	NamePrefix         string
+	NameSuffix         string
+	ModelKey           *string
+	ModelKeyNeq        *string
+	ModelKeyPrefix     string
+	Provider           *string
+	ProviderNeq        *string
+	BaseURL            *string
+	BaseURLNeq         *string
+	Model              *string
+	ModelNeq           *string
+	Dimension          *int64
+	DimensionNeq       *int64
+	DimensionGt        *int64
+	DimensionGte       *int64
+	DimensionLt        *int64
+	DimensionLte       *int64
+	TimeoutMs          *int64
+	TimeoutMsNeq       *int64
+	TimeoutMsGt        *int64
+	TimeoutMsGte       *int64
+	TimeoutMsLt        *int64
+	TimeoutMsLte       *int64
+	ContextWindow      *int64
+	ContextWindowNeq   *int64
+	ContextWindowGt    *int64
+	ContextWindowGte   *int64
+	ContextWindowLt    *int64
+	ContextWindowLte   *int64
+	MaxOutputTokens    *int64
+	MaxOutputTokensNeq *int64
+	MaxOutputTokensGt  *int64
+	MaxOutputTokensGte *int64
+	MaxOutputTokensLt  *int64
+	MaxOutputTokensLte *int64
+	APIKeyEnv          *string
+	APIKeyEnvNeq       *string
+	RemarkContains     string
+	RemarkPrefix       string
+	RemarkSuffix       string
+	CreatedBy          *int64
+	CreatedByNeq       *int64
+	CreatedByIn        []int64
+	CreatedByNotIn     []int64
+	CreatedAt          *time.Time
+	CreatedAtNeq       *time.Time
+	CreatedAtIn        []time.Time
+	CreatedAtNotIn     []time.Time
+	CreatedAtGt        *time.Time
+	CreatedAtGte       *time.Time
+	CreatedAtLt        *time.Time
+	CreatedAtLte       *time.Time
+	UpdatedBy          *int64
+	UpdatedByNeq       *int64
+	UpdatedByIn        []int64
+	UpdatedByNotIn     []int64
+	UpdatedAt          *time.Time
+	UpdatedAtNeq       *time.Time
+	UpdatedAtIn        []time.Time
+	UpdatedAtNotIn     []time.Time
+	UpdatedAtGt        *time.Time
+	UpdatedAtGte       *time.Time
+	UpdatedAtLt        *time.Time
+	UpdatedAtLte       *time.Time
 	// OrderBy 指定排序(逻辑字段名与方向);为 nil 时回落表级 @default_sort。
 	OrderBy []dynq.OrderBy
 	// SelectFields 指定动态投影列(逻辑键);为 nil 时默认全量投影(除 @internal 列)。
@@ -897,6 +939,154 @@ func ParseSysModelQuery(q *dynq.Query, opts ...dynq.QueryOption) (ListSysModelPa
 				out.TimeoutMsGte = &lv
 				out.TimeoutMsLte = &rv
 			}
+		case "contextWindow":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("contextWindow.eq", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindow = &v
+			case dynq.OpNeq:
+				if err := slots.Take("contextWindow.neq", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowNeq = &v
+			case dynq.OpGt:
+				if err := slots.Take("contextWindow.gt", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowGt = &v
+			case dynq.OpGte:
+				if err := slots.Take("contextWindow.gte", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowGte = &v
+			case dynq.OpLt:
+				if err := slots.Take("contextWindow.lt", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowLt = &v
+			case dynq.OpLte:
+				if err := slots.Take("contextWindow.lte", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowLte = &v
+			case dynq.OpBetween:
+				if err := slots.Take("contextWindow.gte", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				if err := slots.Take("contextWindow.lte", i, "contextWindow"); err != nil {
+					return out, err
+				}
+				lv, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				rv, cerr := dynq.AsInt64(c.RightValue)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "contextWindow")
+				}
+				out.ContextWindowGte = &lv
+				out.ContextWindowLte = &rv
+			}
+		case "maxOutputTokens":
+			switch op {
+			case dynq.OpEq:
+				if err := slots.Take("maxOutputTokens.eq", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokens = &v
+			case dynq.OpNeq:
+				if err := slots.Take("maxOutputTokens.neq", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensNeq = &v
+			case dynq.OpGt:
+				if err := slots.Take("maxOutputTokens.gt", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensGt = &v
+			case dynq.OpGte:
+				if err := slots.Take("maxOutputTokens.gte", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensGte = &v
+			case dynq.OpLt:
+				if err := slots.Take("maxOutputTokens.lt", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensLt = &v
+			case dynq.OpLte:
+				if err := slots.Take("maxOutputTokens.lte", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				v, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensLte = &v
+			case dynq.OpBetween:
+				if err := slots.Take("maxOutputTokens.gte", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				if err := slots.Take("maxOutputTokens.lte", i, "maxOutputTokens"); err != nil {
+					return out, err
+				}
+				lv, cerr := dynq.AsInt64(c.Value)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				rv, cerr := dynq.AsInt64(c.RightValue)
+				if cerr != nil {
+					return out, dynq.AsError(cerr).At(dynq.KindWhere, i, "maxOutputTokens")
+				}
+				out.MaxOutputTokensGte = &lv
+				out.MaxOutputTokensLte = &rv
+			}
 		case "apiKeyEnv":
 			switch op {
 			case dynq.OpEq:
@@ -1309,6 +1499,12 @@ func validateSysModelParams(params ListSysModelParams, cfg *dynq.QueryConfig) er
 	if cfg.WhereDisabled("timeoutMs") && (params.TimeoutMs != nil || params.TimeoutMsNeq != nil || params.TimeoutMsGt != nil || params.TimeoutMsGte != nil || params.TimeoutMsLt != nil || params.TimeoutMsLte != nil) {
 		return dynq.NewErr(dynq.KindWhere, "timeoutMs", "field disabled in this context", -1)
 	}
+	if cfg.WhereDisabled("contextWindow") && (params.ContextWindow != nil || params.ContextWindowNeq != nil || params.ContextWindowGt != nil || params.ContextWindowGte != nil || params.ContextWindowLt != nil || params.ContextWindowLte != nil) {
+		return dynq.NewErr(dynq.KindWhere, "contextWindow", "field disabled in this context", -1)
+	}
+	if cfg.WhereDisabled("maxOutputTokens") && (params.MaxOutputTokens != nil || params.MaxOutputTokensNeq != nil || params.MaxOutputTokensGt != nil || params.MaxOutputTokensGte != nil || params.MaxOutputTokensLt != nil || params.MaxOutputTokensLte != nil) {
+		return dynq.NewErr(dynq.KindWhere, "maxOutputTokens", "field disabled in this context", -1)
+	}
 	if cfg.WhereDisabled("apiKeyEnv") && (params.APIKeyEnv != nil || params.APIKeyEnvNeq != nil) {
 		return dynq.NewErr(dynq.KindWhere, "apiKeyEnv", "field disabled in this context", -1)
 	}
@@ -1459,6 +1655,42 @@ func buildSysModelWhere(params ListSysModelParams) []sq.Sqlizer {
 	}
 	if params.TimeoutMsLte != nil {
 		conds = append(conds, sq.LtOrEq{"timeout_ms": *params.TimeoutMsLte})
+	}
+	if params.ContextWindow != nil {
+		conds = append(conds, sq.Eq{"context_window": *params.ContextWindow})
+	}
+	if params.ContextWindowNeq != nil {
+		conds = append(conds, sq.NotEq{"context_window": *params.ContextWindowNeq})
+	}
+	if params.ContextWindowGt != nil {
+		conds = append(conds, sq.Gt{"context_window": *params.ContextWindowGt})
+	}
+	if params.ContextWindowGte != nil {
+		conds = append(conds, sq.GtOrEq{"context_window": *params.ContextWindowGte})
+	}
+	if params.ContextWindowLt != nil {
+		conds = append(conds, sq.Lt{"context_window": *params.ContextWindowLt})
+	}
+	if params.ContextWindowLte != nil {
+		conds = append(conds, sq.LtOrEq{"context_window": *params.ContextWindowLte})
+	}
+	if params.MaxOutputTokens != nil {
+		conds = append(conds, sq.Eq{"max_output_tokens": *params.MaxOutputTokens})
+	}
+	if params.MaxOutputTokensNeq != nil {
+		conds = append(conds, sq.NotEq{"max_output_tokens": *params.MaxOutputTokensNeq})
+	}
+	if params.MaxOutputTokensGt != nil {
+		conds = append(conds, sq.Gt{"max_output_tokens": *params.MaxOutputTokensGt})
+	}
+	if params.MaxOutputTokensGte != nil {
+		conds = append(conds, sq.GtOrEq{"max_output_tokens": *params.MaxOutputTokensGte})
+	}
+	if params.MaxOutputTokensLt != nil {
+		conds = append(conds, sq.Lt{"max_output_tokens": *params.MaxOutputTokensLt})
+	}
+	if params.MaxOutputTokensLte != nil {
+		conds = append(conds, sq.LtOrEq{"max_output_tokens": *params.MaxOutputTokensLte})
 	}
 	if params.APIKeyEnv != nil {
 		conds = append(conds, sq.Eq{"api_key_env": *params.APIKeyEnv})
@@ -1756,6 +1988,20 @@ func (SysModelTable) SetTimeoutMs(v *int64) SysModelUpdateOption {
 	}
 }
 
+// SetContextWindow 设置 contextWindow 列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysModelTable) SetContextWindow(v *int64) SysModelUpdateOption {
+	return func(st *dynq.UpdateState[SysModelTable]) error {
+		return st.Set("contextWindow", "context_window", "", v)
+	}
+}
+
+// SetMaxOutputTokens 设置 maxOutputTokens 列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
+func (SysModelTable) SetMaxOutputTokens(v *int64) SysModelUpdateOption {
+	return func(st *dynq.UpdateState[SysModelTable]) error {
+		return st.Set("maxOutputTokens", "max_output_tokens", "", v)
+	}
+}
+
 // SetAPIKeyEnv 设置 apiKeyEnv（密钥环境变量名）列值，nil = 显式置 NULL，字面量取指针用 dynq.Ptr。
 func (SysModelTable) SetAPIKeyEnv(v *string) SysModelUpdateOption {
 	return func(st *dynq.UpdateState[SysModelTable]) error {
@@ -1952,7 +2198,7 @@ func UpdateSysModelReturning(ctx context.Context, db DBTX, opts ...SysModelUpdat
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at")
+	b = b.Suffix("RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return nil, err
@@ -2009,7 +2255,7 @@ func UpdateSysModelReturningByPk(ctx context.Context, db DBTX, pk int64, opts ..
 	for _, a := range st.Sets() {
 		b = b.Set(a.Column, sq.Expr("?"+a.Cast, a.Value))
 	}
-	b = b.Suffix("RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at")
+	b = b.Suffix("RETURNING id, tenant_id, status, kind, name, model_key, provider, base_url, model, dimension, timeout_ms, context_window, max_output_tokens, api_key_cipher, api_key_env, remark, created_by, created_at, updated_by, updated_at, deleted_at")
 	query, args, err := b.ToSql()
 	if err != nil {
 		return SysModel{}, err

@@ -39,10 +39,12 @@ FOR UPDATE;
 -- name: InsertSysModelTenant :one
 INSERT INTO public.sys_model (id, tenant_id, status, kind, "name", model_key, provider,
                               base_url, model, dimension, timeout_ms,
+                              context_window, max_output_tokens,
                               api_key_cipher, api_key_env, remark, created_by, updated_by)
 VALUES (sqlc.arg('id'), current_setting('app.tenant_id'), sqlc.arg('status'), sqlc.arg('kind'),
         sqlc.arg('name'), sqlc.arg('model_key'), sqlc.arg('provider'),
         sqlc.narg('base_url'), sqlc.arg('model'), sqlc.narg('dimension'), sqlc.narg('timeout_ms'),
+        sqlc.narg('context_window'), sqlc.narg('max_output_tokens'),
         sqlc.narg('api_key_cipher'), sqlc.narg('api_key_env'), sqlc.narg('remark'),
         sqlc.arg('created_by'), sqlc.arg('updated_by'))
 RETURNING *;
@@ -57,6 +59,8 @@ SET status         = sqlc.arg('status'),
     model          = sqlc.arg('model'),
     dimension      = sqlc.narg('dimension'),
     timeout_ms     = sqlc.narg('timeout_ms'),
+    context_window = sqlc.narg('context_window'),
+    max_output_tokens = sqlc.narg('max_output_tokens'),
     api_key_cipher = sqlc.narg('api_key_cipher'),
     api_key_env    = sqlc.narg('api_key_env'),
     remark         = sqlc.narg('remark'),
@@ -81,7 +85,8 @@ SELECT *
 FROM public.fn_model_platform_create(sqlc.arg('id'), sqlc.arg('status'), sqlc.arg('kind'),
                                      sqlc.arg('name'), sqlc.arg('model_key'), sqlc.arg('provider'),
                                      sqlc.narg('base_url'), sqlc.arg('model'), sqlc.narg('dimension'),
-                                     sqlc.narg('timeout_ms'), sqlc.narg('api_key_cipher'),
+                                     sqlc.narg('timeout_ms'), sqlc.narg('context_window'),
+                                     sqlc.narg('max_output_tokens'), sqlc.narg('api_key_cipher'),
                                      sqlc.narg('api_key_env'), sqlc.narg('remark'), sqlc.arg('operator'));
 
 -- 覆盖平台模型行可变字段：调用受控写函数 fn_model_platform_update；目标
@@ -91,6 +96,7 @@ SELECT *
 FROM public.fn_model_platform_update(sqlc.arg('id'), sqlc.arg('status'), sqlc.arg('name'),
                                      sqlc.arg('provider'), sqlc.narg('base_url'), sqlc.arg('model'),
                                      sqlc.narg('dimension'), sqlc.narg('timeout_ms'),
+                                     sqlc.narg('context_window'), sqlc.narg('max_output_tokens'),
                                      sqlc.narg('api_key_cipher'), sqlc.narg('api_key_env'),
                                      sqlc.narg('remark'), sqlc.arg('operator'))
 WHERE id IS NOT NULL;
