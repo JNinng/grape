@@ -2,13 +2,19 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
+	"grape/internal/cmd/configinit"
+	"grape/internal/cmd/secretctl"
+	cmdversion "grape/internal/cmd/version"
 	"grape/internal/conf"
 	"grape/internal/encoding/jsoncodec"
 	"grape/internal/task"
+	"grape/pkg/version"
 
 	"github.com/go-kratos/kratos/contrib/otel/v3/tracing"
 	"github.com/go-kratos/kratos/v3"
@@ -19,51 +25,77 @@ import (
 	"github.com/go-kratos/kratos/v3/transport/grpc"
 	"github.com/go-kratos/kratos/v3/transport/http"
 
-	_ "go.uber.org/automaxprocs"
+	"go.uber.org/automaxprocs/maxprocs"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// Name / Version 经 go build -ldflags -X 注入，注入契约见 pkg/version。
 var (
-	// Name 是编译产物的服务名。
+	// Name 是编译产物的服务名，经 go build -ldflags -X 注入；版本号、
+	// commit、构建时间的注入契约见 pkg/version，version 子命令与 Kratos
+	// 元信息统一取自该包。
 	Name string
-	// Version 是编译产物的版本号。
-	Version string
 	// flagconf 是配置文件路径的命令行参数。
 	flagconf string
 
 	id, _ = os.Hostname()
 )
 
-func init() {
-	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
+// usage 输出命令总用法；写 stdout 表示主动求助，写 stderr 表示用法错误。
+func usage(w io.Writer) {
+	fmt.Fprintf(w, `usage:
+  server [-conf <dir>]            run the service (default)
+  server serve [-conf <dir>]      run the service (explicit)
+  server version                  print build information
+  server configinit [-dir <dir>] [-force]
+                                  write initial config.yaml
+  server secretctl algorithms     list supported key algorithm kinds
+  server secretctl keygen <kind>  generate key material for the secret registry
+`)
 }
 
-// newApp 组装 Kratos 应用。task 是后台维护任务，以 transport.Server
-// 的身份随应用启停。
-func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server, mt *task.MaintenanceTask) *kratos.App {
-	return kratos.New(
-		kratos.ID(id),
-		kratos.Name(Name),
-		kratos.Version(Version),
-		kratos.Metadata(map[string]string{}),
-		kratos.Logger(logger),
-		kratos.Server(
-			gs,
-			hs,
-			mt,
-		),
-	)
+// run 分发子命令（实现收在 internal/cmd/ 各子包）：version / configinit /
+// secretctl / serve。无参数或首参为 flag（如 -conf）时按 serve 处理，保持
+// 历史用法 `go run ./cmd/server -conf <目录>` 不变。
+func run(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 {
+		switch args[0] {
+		case "serve":
+			return runServe(args[1:])
+		case "version":
+			return cmdversion.Run(args[1:], stdout, stderr)
+		case "configinit":
+			return configinit.Run(args[1:], stdout, stderr)
+		case "secretctl":
+			return secretctl.Run(args[1:], stdout, stderr)
+		case "help", "-h", "--help":
+			usage(stdout)
+			return 0
+		default:
+			if !strings.HasPrefix(args[0], "-") {
+				fmt.Fprintf(stderr, "server: unknown command %q\n", args[0])
+				usage(stderr)
+				return 2
+			}
+		}
+	}
+	return runServe(args)
 }
 
-// defaultTenantID 提供登录默认租户（auth.default_tenant_id）。
-// 配置到领域的映射收在装配点：biz 与 service 均不导入 conf。
-func defaultTenantID(c *conf.Auth) string {
-	return c.GetDefaultTenantId()
-}
+// runServe 启动 Kratos 服务。配置加载与装配失败直接 panic（配置加载期无
+// 日志依赖，fail-fast），进程以 panic 退出码结束。
+func runServe(args []string) int {
+	// 容器 CPU 配额下修正 GOMAXPROCS（按 cgroup 配额）。只在 serve 路径
+	// 执行：version/configinit/secretctl 是短命命令，无需调度器校正，
+	// 也不应在输出中混入 maxprocs 日志。Set 默认静默，失败不阻断启动。
+	_, _ = maxprocs.Set()
 
-func main() {
-	flag.Parse()
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	fs.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
 	// HTTP JSON 必须按 protobuf JSON 映射编解码，默认 json codec 会
 	// 产出与 api 契约不一致的字段形态。
 	jsoncodec.Install()
@@ -117,7 +149,7 @@ func main() {
 	).With(
 		slog.String("service.id", id),
 		slog.String("service.name", Name),
-		slog.String("service.version", Version),
+		slog.String("service.version", version.Version),
 	)
 	log.SetDefault(logger)
 
@@ -130,4 +162,32 @@ func main() {
 	if err := app.Run(); err != nil {
 		panic(err)
 	}
+	return 0
+}
+
+// newApp 组装 Kratos 应用。task 是后台维护任务，以 transport.Server
+// 的身份随应用启停。
+func newApp(logger *slog.Logger, gs *grpc.Server, hs *http.Server, mt *task.MaintenanceTask) *kratos.App {
+	return kratos.New(
+		kratos.ID(id),
+		kratos.Name(Name),
+		kratos.Version(version.Version),
+		kratos.Metadata(map[string]string{}),
+		kratos.Logger(logger),
+		kratos.Server(
+			gs,
+			hs,
+			mt,
+		),
+	)
+}
+
+// defaultTenantID 提供登录默认租户（auth.default_tenant_id）。
+// 配置到领域的映射收在装配点：biz 与 service 均不导入 conf。
+func defaultTenantID(c *conf.Auth) string {
+	return c.GetDefaultTenantId()
+}
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }

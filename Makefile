@@ -1,6 +1,8 @@
 GOHOSTOS:=$(shell go env GOHOSTOS)
 GOPATH:=$(shell go env GOPATH)
 VERSION=$(shell git describe --tags --always)
+COMMIT=$(shell git rev-parse --short HEAD)
+BUILD_TIME=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 .PHONY: init
 # init env
@@ -15,9 +17,9 @@ config:
 	buf generate --template buf.gen.config.yaml
 
 .PHONY: config-init
-# write initial config.yaml to a directory (from cmd/configinit template)
+# write initial config.yaml to a directory (via `server configinit`)
 config-init:
-	go run ./cmd/configinit $(ARGS)
+	go run ./cmd/server configinit $(ARGS)
 
 .PHONY: api
 # generate api proto
@@ -37,12 +39,17 @@ dbdeploy:
 .PHONY: secretctl
 # secret key operations (algorithms / keygen <kind>)
 secretctl:
-	go run ./cmd/secretctl $(ARGS)
+	go run ./cmd/server secretctl $(ARGS)
+
+.PHONY: version
+# print build information (version / commit / build time / go)
+version:
+	go run ./cmd/server version
 
 .PHONY: build
-# build
+# build (injects build info per the pkg/version contract)
 build:
-	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
+	mkdir -p bin/ && go build -ldflags "-X grape/pkg/version.Version=$(VERSION) -X grape/pkg/version.Commit=$(COMMIT) -X grape/pkg/version.BuildTime=$(BUILD_TIME)" -o ./bin/ ./...
 
 .PHONY: web
 # build web frontend into web/dist (must run BEFORE go build: go:embed collects dist at compile time)

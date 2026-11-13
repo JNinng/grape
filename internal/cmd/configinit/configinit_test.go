@@ -1,4 +1,4 @@
-package main
+package configinit
 
 import (
 	"bytes"
@@ -17,7 +17,8 @@ import (
 	"github.com/go-kratos/kratos/v3/config/file"
 )
 
-// writeTemplateToDir 把内嵌模板按原样写到 dir/config.yaml，模拟 configinit 的输出结果。
+// writeTemplateToDir 把内嵌模板按原样写到 dir/config.yaml，模拟 configinit
+// 子命令的输出结果。
 func writeTemplateToDir(t *testing.T, dir string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -28,7 +29,7 @@ func writeTemplateToDir(t *testing.T, dir string) {
 	}
 }
 
-// loadBootstrapViaServerPath 复用 cmd/server 完全相同的加载路径
+// loadBootstrapViaServerPath 复用 serve 完全相同的加载路径
 // （file source + env source + 默认 ${ENV:default} 展开 + protojson Scan）
 // 把 dir 下的配置解析为 conf.Bootstrap，验证模板与运行解析面一致。
 func loadBootstrapViaServerPath(t *testing.T, dir string) *conf.Bootstrap {
@@ -127,7 +128,7 @@ func Test_existing_target_when_run_without_force_refuses_overwrite(t *testing.T)
 		t.Fatalf("prepare existing target: %v", err)
 	}
 
-	err := run(dir, false, &bytes.Buffer{})
+	err := writeTemplate(dir, false, &bytes.Buffer{})
 
 	if err == nil {
 		t.Fatal("run without --force on existing target should fail, got nil error")
@@ -151,7 +152,7 @@ func Test_existing_target_when_run_with_force_overwrites(t *testing.T) {
 		t.Fatalf("prepare existing target: %v", err)
 	}
 
-	if err := run(dir, true, &bytes.Buffer{}); err != nil {
+	if err := writeTemplate(dir, true, &bytes.Buffer{}); err != nil {
 		t.Fatalf("run with --force: %v", err)
 	}
 
@@ -167,7 +168,7 @@ func Test_existing_target_when_run_with_force_overwrites(t *testing.T) {
 func Test_empty_dir_when_run_writes_template_byte_for_byte(t *testing.T) {
 	dir := t.TempDir()
 
-	if err := run(dir, false, &bytes.Buffer{}); err != nil {
+	if err := writeTemplate(dir, false, &bytes.Buffer{}); err != nil {
 		t.Fatalf("run on empty dir: %v", err)
 	}
 
@@ -183,7 +184,7 @@ func Test_empty_dir_when_run_writes_template_byte_for_byte(t *testing.T) {
 func Test_missing_dir_when_run_creates_it(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "parent", "child")
 
-	if err := run(dir, false, &bytes.Buffer{}); err != nil {
+	if err := writeTemplate(dir, false, &bytes.Buffer{}); err != nil {
 		t.Fatalf("run on missing dir: %v", err)
 	}
 
@@ -203,7 +204,7 @@ func Test_dir_path_colliding_with_existing_file_when_run_fails(t *testing.T) {
 		t.Fatalf("prepare collision file: %v", err)
 	}
 
-	err := run(collision, false, &bytes.Buffer{})
+	err := writeTemplate(collision, false, &bytes.Buffer{})
 
 	if err == nil {
 		t.Fatal("run with -dir pointing at a file should fail, got nil error")
@@ -213,10 +214,23 @@ func Test_dir_path_colliding_with_existing_file_when_run_fails(t *testing.T) {
 	}
 }
 
+func Test_run_when_extra_argument_rejected(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"unexpected"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("Run(unexpected arg) = %d, want 2", code)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "unexpected argument") {
+		t.Errorf("stderr = %q, want it to name the unexpected argument", stderr.String())
+	}
+}
+
 func Test_template_when_configs_body_changes_fails_loudly(t *testing.T) {
 	// 模板正文必须与 configs/config.yaml 逐字节一致（模板仅多出头部说明注释），
 	// conf 变更时同批更新两份文件。
-	content, err := os.ReadFile(filepath.Join("..", "..", "configs", "config.yaml"))
+	content, err := os.ReadFile(filepath.Join("..", "..", "..", "configs", "config.yaml"))
 	if err != nil {
 		t.Fatalf("read configs/config.yaml: %v", err)
 	}
@@ -233,7 +247,7 @@ const defaultModelKey = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
 const overrideModelKey = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU="
 
 func Test_template_secret_registry_when_loaded_passes_assembly_validation(t *testing.T) {
-	// 模板经 server 相同加载路径解析出密钥登记表，且默认材料通过装配期
+	// 模板经 serve 相同加载路径解析出密钥登记表，且默认材料通过装配期
 	// 校验并可用于加解密。
 	dir := t.TempDir()
 	writeTemplateToDir(t, dir)

@@ -17,6 +17,7 @@ Kratos 服务的内部实现层。`internal/` 下的包对外部模块不可见�
 | task | 异步任务入口 | [task/README.md](task/README.md) |
 | biz | 领域层 | [biz/README.md](biz/README.md) |
 | data | 存储基础设施集合 | [data/README.md](data/README.md) |
+| cmd | server 二进制的子命令实现（`configinit` / `secretctl` / `version`），由 cmd/server 分发 | [cmd/README.md](cmd/README.md) |
 | encoding | 编码适配（`jsoncodec`） | [encoding/jsoncodec/README.md](encoding/jsoncodec/README.md) |
 
 `conf` 无独立 README，其余子目录的 README 承接其数据流向、关键文件与
@@ -101,6 +102,9 @@ task 入口与之同构，只是没有 DTO 与查询协议转换：task 只调 b
   **禁止导入 `agent` 与任何 Agent 框架包**。
 - `data`：只为仓储接口与设施契约导入 `biz`；模型密钥 Codec 另导入
   `pkg/secret`（密钥材料由装配层注册表注入，data 只做适配）。
+- `internal/cmd`：server 二进制子命令的实现包，只被 cmd/server 的分发层
+  消费；可导入 `pkg/`（`secretctl` 取 `pkg/secret` 材料生成、`version` 取
+  `pkg/version` 构建信息）与 `conf`（模板解析测试），不触达 biz / data。
 - `pkg/`：与 internal 各层解耦。`pkg/redact` 被 `data`（debug tracer、
   检索留痕装饰器）、`biz`（审计注册表）、`middleware`（操作审计快照）与
   `agent`（LLM 日志）消费——data 层 debug tracer 自建同默认值实例；

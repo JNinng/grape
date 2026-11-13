@@ -1,4 +1,4 @@
-package main
+package secretctl
 
 import (
 	"bytes"
@@ -9,13 +9,13 @@ import (
 	"grape/pkg/secret"
 )
 
-// 密钥运维命令单测：算法清单与支持集合同源、keygen 输出结构可直接填入
+// 密钥运维子命令单测：算法清单与支持集合同源、keygen 输出结构可直接填入
 // 登记表、生成材料可通过装配期校验并往返加解密、未知算法拒绝。
 
 func TestAlgorithmsMatchesSupportedKinds(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"algorithms"}, &stdout, &stderr); code != 0 {
-		t.Fatalf("run(algorithms) = %d, stderr = %q", code, stderr.String())
+	if code := Run([]string{"algorithms"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(algorithms) = %d, stderr = %q", code, stderr.String())
 	}
 	want := make([]string, 0, len(secret.SupportedKinds()))
 	for _, kind := range secret.SupportedKinds() {
@@ -32,8 +32,8 @@ func TestAlgorithmsMatchesSupportedKinds(t *testing.T) {
 
 func TestKeygenSymmetricOutputAndMaterialUsable(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := run([]string{"keygen", string(secret.KindAES256GCM)}, &stdout, &stderr); code != 0 {
-		t.Fatalf("run(keygen) = %d, stderr = %q", code, stderr.String())
+	if code := Run([]string{"keygen", string(secret.KindAES256GCM)}, &stdout, &stderr); code != 0 {
+		t.Fatalf("Run(keygen) = %d, stderr = %q", code, stderr.String())
 	}
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
 	if len(lines) != 2 {
@@ -132,14 +132,14 @@ func TestKeygenUnknownKindRejected(t *testing.T) {
 		{"keygen"},
 	} {
 		var stdout, stderr bytes.Buffer
-		if code := run(args, &stdout, &stderr); code == 0 {
-			t.Fatalf("run(%v) = 0, want non-zero exit", args)
+		if code := Run(args, &stdout, &stderr); code == 0 {
+			t.Fatalf("Run(%v) = 0, want non-zero exit", args)
 		}
 		if stdout.Len() != 0 {
-			t.Fatalf("run(%v) wrote stdout %q, want no key material", args, stdout.String())
+			t.Fatalf("Run(%v) wrote stdout %q, want no key material", args, stdout.String())
 		}
 		if stderr.Len() == 0 {
-			t.Fatalf("run(%v) wrote no stderr, want an error message", args)
+			t.Fatalf("Run(%v) wrote no stderr, want an error message", args)
 		}
 	}
 }

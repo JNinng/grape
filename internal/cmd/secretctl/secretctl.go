@@ -1,43 +1,21 @@
-// secretctl 是密钥运维命令：列出支持的完整算法标识，并按算法生成可直接
-// 填入登记表的密钥材料。
+// Package secretctl 实现 server 二进制的 secretctl 子命令：列出支持的
+// 完整算法标识，并按算法生成可直接填入登记表的密钥材料。
 //
-// 用法：go run ./cmd/secretctl <algorithms|keygen <算法标识>>
-package main
+// 用法：server secretctl <algorithms|keygen <算法标识>>
+package secretctl
 
 import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"grape/pkg/secret"
 )
 
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
-}
-
-// usage 输出命令用法；写 stdout 表示主动求助，写 stderr 表示用法错误。
-func usage(w io.Writer) {
-	fmt.Fprintf(w, "usage: secretctl algorithms | secretctl keygen <kind>\n")
-	fmt.Fprintf(w, "supported kinds: %s\n", joinKinds(secret.SupportedKinds()))
-}
-
-// joinKinds 把算法标识清单拼为逗号分隔文本，供 usage 展示。
-func joinKinds(kinds []secret.Kind) string {
-	if len(kinds) == 0 {
-		return "(none)"
-	}
-	parts := make([]string, 0, len(kinds))
-	for _, kind := range kinds {
-		parts = append(parts, string(kind))
-	}
-	return strings.Join(parts, ", ")
-}
-
-// run 是命令入口的可测试形态：返回进程退出码，输出只写传入的 writer。
-func run(args []string, stdout, stderr io.Writer) int {
+// Run 分发 secretctl 子命令：algorithms 列算法标识，keygen 生成密钥材料。
+// 返回进程退出码，输出只写传入的 writer。
+func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		usage(stderr)
 		return 2
@@ -55,6 +33,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		usage(stderr)
 		return 2
 	}
+}
+
+// usage 输出 secretctl 用法；写 stdout 表示主动求助，写 stderr 表示用法错误。
+func usage(w io.Writer) {
+	fmt.Fprintf(w, "usage: server secretctl algorithms | server secretctl keygen <kind>\n")
+	fmt.Fprintf(w, "supported kinds: %s\n", joinKinds(secret.SupportedKinds()))
+}
+
+// joinKinds 把算法标识清单拼为逗号分隔文本，供 usage 展示。
+func joinKinds(kinds []secret.Kind) string {
+	if len(kinds) == 0 {
+		return "(none)"
+	}
+	parts := make([]string, 0, len(kinds))
+	for _, kind := range kinds {
+		parts = append(parts, string(kind))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // runAlgorithms 逐行输出受支持的完整算法标识，顺序确定（pkg/secret 的

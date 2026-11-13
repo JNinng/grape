@@ -1,4 +1,5 @@
-# 服务启动配置模板，由 cmd/configinit 经 go:embed 输出（make config-init）。
+# 服务启动配置模板，由 `server configinit` 子命令经 go:embed 输出
+# （make config-init）。
 # 本文件是配置模板的单一事实源，与 internal/conf/conf.proto 对应；
 # conf 结构变更时须同批更新本模板。勿移入 configs/：该目录会被
 # Kratos file source 整体加载，模板与运行配置必须分离。

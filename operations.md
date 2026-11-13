@@ -19,9 +19,13 @@ go build -o grape ./cmd/server
   前端必须重新编译二进制。`web/dist` 缺失时有占位页兜底，`go build` 不会
   失败，但交付前必须执行 `make web`。
 - 运行配置初始化：`make config-init ARGS="--dir <目录>"` 从
-  [cmd/configinit/template/config.yaml](cmd/configinit/template/config.yaml)
+  [cmd/server/template/config.yaml](cmd/server/template/config.yaml)
   输出模板（与 `configs/config.yaml` 逐字节一致，仅多一份头注，有测试
   强制），敏感项填值后即可 `go run ./cmd/server -conf <dir>` 启动。
+- 构建信息注入：`make build` 按 [pkg/version](pkg/version/version.go) 契约
+  经 `-ldflags -X` 注入版本号（`git describe`）、commit 短哈希与构建时间，
+  `go run ./cmd/server version` 或服务日志中的 `service.version` 字段可读
+  取；未注入的开发构建显示 `dev` / `unknown` 占位。
 
 ## 配置与密钥管理
 
@@ -60,7 +64,9 @@ go build -o grape ./cmd/server
   [pkg/redact](pkg/redact/redact.go) 注册表（password/token/tool_param/
   retrieval 四类；审计表与复现视图共用同一装配实例）。
 - 配置结构（[internal/conf/conf.proto](internal/conf/conf.proto)）变更时
-  同批更新 `configs/config.yaml` 与 configinit 模板（测试强制逐字节一致）。
+  同批更新 `configs/config.yaml` 与 configinit 模板
+  （[cmd/server/template/config.yaml](cmd/server/template/config.yaml)，
+  测试强制逐字节一致）。
 
 ## 数据库部署与角色拆分
 

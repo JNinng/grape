@@ -6,8 +6,9 @@ Go 后端（Kratos v3 + Wire + sqlc/pgx + buf），多租户 RBAC 数据权限�
 
 ## 仓库结构
 
-- `cmd/server` — 唯一服务入口（Wire 装配）；`cmd/dbdeploy` / `cmd/configinit`
-  分别是数据库部署与配置初始化工具
+- `cmd/server` — 唯一服务入口（Wire 装配），子命令 `version` /
+  `configinit` / `secretctl` 随同一二进制分发，实现收在 `internal/cmd/`
+  各子目录；`cmd/dbdeploy` 是独立的数据库部署工具
 - `api/` — proto 契约与生成代码；`internal/` — 业务实现（`service` / `task`
   入口 → `biz` → `data`，`agent` 为框架适配层）
 - `internal/data/pg_sqlc/` — 存储侧：`sqlc/` 为单一事实源，`gen/` 为生成产物，

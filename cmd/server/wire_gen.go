@@ -32,7 +32,7 @@ import (
 )
 
 import (
-	_ "go.uber.org/automaxprocs"
+	_ "embed"
 )
 
 // Injectors from wire.go:
