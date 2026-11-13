@@ -528,3 +528,16 @@ INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, men
                              created_at, updated_by, updated_at, deleted_at, tenant_id)
 VALUES (286, 1, '平台模型删除', 'sys:model:platform:delete', 279, 3, 7, 1, '2026-11-08 10:00:00.000', 1,
         '2026-11-08 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 一级页面：模型调用（id 287，路由 /settings/model-calls）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, icon, route_path, component,
+                             sort_order, created_by, created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (287, 1, '模型调用', 'agent:model-call', NULL, 2, 'activity', '/settings/model-calls',
+        'pages/settings/ModelCallManagePage.tsx', 8, 1, '2026-11-13 10:00:00.000', 1,
+        '2026-11-13 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;
+
+-- 三级按钮：模型调用-查询（id 288，父 287）
+INSERT INTO public.sys_menu (id, status, "name", permission_code, parent_id, menu_type, sort_order, created_by,
+                             created_at, updated_by, updated_at, deleted_at, tenant_id)
+VALUES (288, 1, '模型调用查询', 'agent:model-call:query', 287, 3, 1, 1, '2026-11-13 10:00:00.000', 1,
+        '2026-11-13 10:00:00.000', NULL, 't-super-01') ON CONFLICT DO NOTHING;

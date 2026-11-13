@@ -55,9 +55,6 @@ type Querier interface {
 	CopyOssObject(ctx context.Context, arg CopyOssObjectParams) (CopyOssObjectRow, error)
 	// 按会话过滤统计授权确认审计条数（与 List 同条件，供分页信封）
 	CountAgentConfirmationLogs(ctx context.Context, sessionID *string) (int64, error)
-	// 按场景/模型键/状态/文档/时间范围过滤统计模型调用留痕条数（与 List 同
-	// 条件，供分页信封）
-	CountAgentModelCallLogs(ctx context.Context, arg CountAgentModelCallLogsParams) (int64, error)
 	// 按会话/来源过滤统计检索留痕条数（与 List 同条件，供分页信封）
 	CountAgentRetrievalLogs(ctx context.Context, arg CountAgentRetrievalLogsParams) (int64, error)
 	// 按会话过滤统计工具调用审计条数（与 List 同条件，供分页信封）
@@ -319,12 +316,12 @@ type Querier interface {
 	// 写入一条授权确认审计；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentConfirmationLog(ctx context.Context, arg InsertAgentConfirmationLogParams) (AgentConfirmationLog, error)
 	// Agent 模型调用留痕固定命名查询：表为追加写
-	// （append-only），只有写入与读取，没有更新/删除面。租户边界双重声明：
-	// RLS（schema/99_model_call_log.sql 的策略）为主，读侧 WHERE 再
-	// 显式带同源的租户谓词作应用层兜底——RLS 被关闭（误操作/降级部署）时
-	// 读取仍不越租户，对齐检索留痕「隔离正确性不押在 RLS 是否存在上」的
-	// 口径。写入侧租户一律取会话 app.tenant_id（IdentityTx 注入），调用方
-	// 无法指定或伪造归属。
+	// （append-only），只有写入，没有更新/删除面。租户边界双重声明：
+	// RLS（schema/99_model_call_log.sql 的策略）为主，写入侧租户一律取会话
+	// app.tenant_id（IdentityTx 注入），调用方无法指定或伪造归属。动态查询
+	// 能力由 schema/99_model_call_log.sql 的列注释 DSL 声明（系统设置
+	// 「模型调用」管理页消费；ParseAgentModelCallLogQuery 等顶层函数为
+	// 生成物）。
 	// 写入一条模型调用留痕；租户取会话 app.tenant_id，写入者与用户同值
 	InsertAgentModelCallLog(ctx context.Context, arg InsertAgentModelCallLogParams) (AgentModelCallLog, error)
 	// Agent 检索留痕固定命名查询：表为追加写
@@ -418,9 +415,6 @@ type Querier interface {
 	ListActiveRoleOptionsByIDs(ctx context.Context, ids []int64) ([]ListActiveRoleOptionsByIDsRow, error)
 	// 按会话过滤分页查询授权确认审计（时间倒序）；session_id 为 NULL 不过滤
 	ListAgentConfirmationLogs(ctx context.Context, arg ListAgentConfirmationLogsParams) ([]AgentConfirmationLog, error)
-	// 按场景/模型键/状态/文档/时间范围过滤分页查询模型调用留痕（时间倒序）；
-	// NULL 参数不过滤
-	ListAgentModelCallLogs(ctx context.Context, arg ListAgentModelCallLogsParams) ([]AgentModelCallLog, error)
 	// 按会话/来源过滤分页查询检索留痕（时间倒序）；NULL 参数不过滤
 	ListAgentRetrievalLogs(ctx context.Context, arg ListAgentRetrievalLogsParams) ([]AgentRetrievalLog, error)
 	// 按会话过滤分页查询工具调用审计（时间倒序）；session_id 为 NULL 不过滤

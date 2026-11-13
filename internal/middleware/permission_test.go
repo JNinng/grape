@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	agentv1 "grape/api/agent/v1"
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
@@ -419,6 +420,8 @@ func TestOperationPermissionCodes_cover_gated_endpoints(t *testing.T) {
 		modelv1.OperationModelServiceCreateModelSuper: {},
 		modelv1.OperationModelServiceUpdateModelSuper: {},
 		modelv1.OperationModelServiceDeleteModelSuper: {},
+		// 模型调用留痕（Agent 域证据面的管理查询）
+		agentv1.OperationAgentModelCallServiceListModelCalls: {},
 	}
 	for op := range covered {
 		code, ok := operationPermissionCodes[op]

@@ -8,18 +8,20 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 	"go.opentelemetry.io/otel/trace"
 
 	"grape/pkg/redact"
 )
 
 // 模型调用留痕用例单测：观察面纪律（脱敏截断、身份缺失放弃、旁路失败
-// 不反噬、超时预算）与查询侧的过滤归一、身份门禁。仓储以替身记录收到的
-// 行与 ctx，行为断言全部落在用例侧。
+// 不反噬、超时预算）与查询侧的身份/协议转发。仓储以替身记录收到的行与
+// ctx，行为断言全部落在用例侧。
 type modelCallFakeRepo struct {
 	appended []*ModelCallEntry
 	appendFn func(ctx context.Context, e *ModelCallEntry) error
-	gotList  *ModelCallFilter
+	gotAuth  Identity
+	gotQuery *dynq.Query
 	listErr  error
 }
 
@@ -33,16 +35,13 @@ func (r *modelCallFakeRepo) Append(ctx context.Context, e *ModelCallEntry) error
 	return nil
 }
 
-func (r *modelCallFakeRepo) List(_ context.Context, f *ModelCallFilter) (*ModelCallList, error) {
+func (r *modelCallFakeRepo) List(_ context.Context, auth Identity, q *dynq.Query) (*ModelCallLogList, error) {
 	if r.listErr != nil {
 		return nil, r.listErr
 	}
-	r.gotList = f
-	return &ModelCallList{Items: []*ModelCallLog{}, Total: 0}, nil
-}
-
-func (r *modelCallFakeRepo) Count(context.Context, *ModelCallFilter) (int64, error) {
-	return 0, nil
+	r.gotAuth = auth
+	r.gotQuery = q
+	return &ModelCallLogList{Items: []*ModelCallLog{}}, nil
 }
 
 func modelCallIdentityContext() context.Context {
@@ -253,57 +252,17 @@ func TestModelCallObserver_recovers_from_repo_panic(t *testing.T) {
 	uc.ObserveModelCall(modelCallIdentityContext(), modelCallEntryOf())
 }
 
-func TestModelCallUsecase_list_filter_normalization_and_identity_gate(t *testing.T) {
+func TestModelCallUsecase_list_forwards_identity_and_query(t *testing.T) {
 	repo := &modelCallFakeRepo{}
 	uc := NewModelCallLogUsecase(repo, nil)
-	ctx := modelCallIdentityContext()
+	auth := Identity{TenantID: "t-1", UserID: 9}
+	q := &dynq.Query{Fields: []string{"id", "scenario"}}
 
-	if _, err := uc.List(ctx, &ModelCallFilter{
-		Scenario:    ModelCallScenarioIngestSummary,
-		ModelKey:    "glm-4",
-		Status:      ModelCallStatusError,
-		DocumentID:  7,
-		CreatedFrom: time.Unix(1700000000, 0),
-		CreatedTo:   time.Unix(1700000001, 0),
-		Limit:       5,
-		Offset:      10,
-	}); err != nil {
+	if _, err := uc.List(context.Background(), auth, q); err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	f := repo.gotList
-	switch {
-	case f.Scenario != ModelCallScenarioIngestSummary || f.Status != ModelCallStatusError:
-		t.Fatalf("filter = %+v, want scenario/status preserved", f)
-	case f.ModelKey != "glm-4" || f.DocumentID != 7:
-		t.Fatalf("filter = %+v, want model key/document preserved", f)
-	case f.Limit != 5 || f.Offset != 10:
-		t.Fatalf("filter = %+v, want explicit pagination preserved", f)
-	}
-
-	// 缺省页大小补齐。
-	if _, err := uc.List(ctx, nil); err != nil {
-		t.Fatalf("list(nil): %v", err)
-	}
-
-	// 上限/词表/时间序校验 fail-closed，不静默截断。
-	for name, filter := range map[string]*ModelCallFilter{
-		"limit over max":     {Limit: 201},
-		"limit negative":     {Limit: -1},
-		"offset negative":    {Offset: -1},
-		"scenario unknown":   {Scenario: "unknown_scene"},
-		"status unknown":     {Status: "timeout"},
-		"model key too long": {ModelKey: strings.Repeat("k", 129)},
-		"document negative":  {DocumentID: -1},
-		"range inverted":     {CreatedFrom: time.Unix(1700000002, 0), CreatedTo: time.Unix(1700000001, 0)},
-	} {
-		if _, err := uc.List(ctx, filter); !errors.Is(err, ErrModelCallInvalidArgument) {
-			t.Fatalf("%s: err = %v, want ErrModelCallInvalidArgument", name, err)
-		}
-	}
-
-	// 身份缺失按未认证 fail-closed。
-	if _, err := uc.List(context.Background(), nil); !errors.Is(err, ErrSessionInvalid) {
-		t.Fatalf("err = %v, want ErrSessionInvalid (read side is identity-bound too)", err)
+	if repo.gotAuth != auth || repo.gotQuery != q {
+		t.Fatalf("repo got (auth %+v, query %+v), want identity and query forwarded as-is", repo.gotAuth, repo.gotQuery)
 	}
 }
 

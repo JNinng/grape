@@ -10,6 +10,7 @@ import (
 	"grape/internal/ops"
 	"grape/internal/service"
 
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 	kratoshttp "github.com/go-kratos/kratos/v3/transport/http"
 )
 
@@ -21,12 +22,8 @@ func (*modelCallRouteFakeRepo) Append(context.Context, *biz.ModelCallEntry) erro
 	return nil
 }
 
-func (*modelCallRouteFakeRepo) List(context.Context, *biz.ModelCallFilter) (*biz.ModelCallList, error) {
-	return &biz.ModelCallList{Items: []*biz.ModelCallLog{}, Total: 0}, nil
-}
-
-func (*modelCallRouteFakeRepo) Count(context.Context, *biz.ModelCallFilter) (int64, error) {
-	return 0, nil
+func (*modelCallRouteFakeRepo) List(context.Context, biz.Identity, *dynq.Query) (*biz.ModelCallLogList, error) {
+	return &biz.ModelCallLogList{}, nil
 }
 
 // newAgentModelCallTestServer 装配含模型调用留痕查询端点的完整 HTTP 服务
@@ -65,13 +62,9 @@ func newAgentModelCallTestServer(t *testing.T) *kratoshttp.Server {
 		nil,
 		nil,
 		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		// 检索留痕、知识库、模型与静态托管本文件用例不触达，传 nil；模型
-		// 调用留痕传被测服务（本文件用例触达其路由）。
-		nil,
+		// agent 手写路由与检索留痕、知识库、模型、静态托管本文件用例不触达，
+		// 传 nil；模型调用留痕传被测服务（本文件用例触达其路由）。
+		nil, nil, nil, nil, nil,
 		modelCallService,
 		nil, nil, nil, nil,
 	)
@@ -82,17 +75,13 @@ func newAgentModelCallTestServer(t *testing.T) *kratoshttp.Server {
 }
 
 // TestAgentModelCallWithoutTokenReturns401 守卫模型调用留痕查询路由的认
-// 证链：无令牌请求经完整挂载链必须被认证中间件拒绝（端点在册且经
-// ctx.Middleware 入链的语义不因手写路由而放宽）。
+// 证链：无令牌请求经完整挂载链必须被认证中间件拒绝（生成端点的认证不因
+// 动态查询协议而放宽）。
 func TestAgentModelCallWithoutTokenReturns401(t *testing.T) {
 	srv := newAgentModelCallTestServer(t)
-	for _, target := range []string{
-		"/v1/agent/model-calls",
-		"/v1/agent/model-calls?scenario=embed_document&status=error&document_id=7",
-	} {
-		rec := agentDo(t, srv, http.MethodGet, target, "", "")
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("%s without token: status = %d, want 401\n%s", target, rec.Code, rec.Body.String())
-		}
+	const target = "/v1/agent/model-calls/list"
+	rec := agentDo(t, srv, http.MethodPost, target, "", `{"pagination":{"page":1}}`)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("%s without token: status = %d, want 401\n%s", target, rec.Code, rec.Body.String())
 	}
 }

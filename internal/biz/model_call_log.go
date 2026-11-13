@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	kratoserrors "github.com/go-kratos/kratos/v3/errors"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 
 	"grape/pkg/redact"
 )
@@ -17,9 +18,9 @@ import (
 // openaiembedder / openaireranker / docparse）经 ModelCallObserver 观察面
 // 消费——观察面
 // 在「解析出端点事实之后、调用终态（含 error）」构造写入载体，用例完成
-// 身份与链路事实补齐、脱敏与截断后旁路落库；查询侧供运维复现视图的手写
-// 端点消费。agent 对话 LLM 不在本域：会话事件流与 /agui/session-usage
-// 已承载该面（见 replay.md），避免双写。
+// 身份与链路事实补齐、脱敏与截断后旁路落库；查询侧供系统设置「模型调用」
+// 管理页的动态查询端点消费。agent 对话 LLM 不在本域：会话事件流与
+// /agui/session-usage 已承载该面（见 replay.md），避免双写。
 
 // 留痕行的领域取值：
 //   - scenario：调用场景。由调用链路经 WithModelCallScene 在调用现场声明；
@@ -60,15 +61,9 @@ const (
 	ModelCallErrorMaxRunes = 512
 )
 
-// 留痕查询的分页口径：默认页大小与单页上限取 @page 的全局缺省
-// （sqlc.yaml 的 page_default/page_max：20/200）；offset 非负。
-const (
-	modelCallDefaultPageSize = 20
-	modelCallMaxPageSize     = 200
-)
-
-// ModelCallLogInvalidArgument 表示模型调用留痕查询的入参非法。留痕端点
-// 为手写 JSON 端点（无 proto reason 枚举），语义与生成端点的枚举错误一致。
+// ModelCallLogInvalidArgument 表示模型调用留痕查询的入参非法（动态查询
+// 协议非法等）；reason 取域内字符串形态，与 agent 审计/检索留痕端点同
+// 口径。
 var ErrModelCallInvalidArgument = kratoserrors.BadRequest("AGENT_MODEL_CALL_INVALID_ARGUMENT", "invalid model call log argument")
 
 // ValidModelCallScenario 报告场景取值是否命中词表（含空串——空串是过滤
@@ -130,13 +125,13 @@ type ModelCallEntry struct {
 
 // ModelCallLog 是模型调用留痕的读侧完整行。InputSummary / OutputSummary /
 // Error 是落库时已脱敏的形态；InputTokens / OutputTokens / DocumentID 的
-// 0 值渲染 NULL（未上报 / 无文档事实）。
+// 0 值渲染 NULL（未上报 / 无文档事实）。行不带租户与会话事实：两者都是
+// @internal 列（不进入动态查询投影），租户边界由 RLS 与入参身份承担，
+// 会话列在管线侧调用中恒 NULL。
 type ModelCallLog struct {
 	ID            int64
-	TenantID      string
 	UserID        int64
 	TraceID       string
-	SessionID     string
 	Scenario      string
 	ModelKey      string
 	Endpoint      string
@@ -148,39 +143,28 @@ type ModelCallLog struct {
 	DurationMS    int64 // 0 表示未记录
 	Status        string
 	Error         string
+	CreatedBy     int64
 	CreatedAt     time.Time
 }
 
-// ModelCallFilter 是留痕查询的过滤与分页参数：租户边界不在此列（实现从
-// 认证 ctx 提取）。各过滤字段零值表示不过滤；Limit 为 0 时取默认页大小。
-type ModelCallFilter struct {
-	Scenario    string
-	ModelKey    string
-	Status      string
-	DocumentID  int64
-	CreatedFrom time.Time
-	CreatedTo   time.Time
-	Limit       int
-	Offset      int
+// ModelCallLogList 是模型调用留痕仓储 List 返回的分页信封。
+type ModelCallLogList struct {
+	Items      []*ModelCallLog
+	Total      *int64 // include_total=false 时为 nil
+	HasMore    bool
+	NextCursor string
 }
 
-// ModelCallList 是模型调用留痕的分页信封。
-type ModelCallList struct {
-	Items []*ModelCallLog
-	Total int64
-}
-
-// ModelCallLogRepo 是模型调用留痕读写的仓储契约，由 data 层实现；写入
-// 与查询都绑定认证身份（IdentityTx，每事务 set_config('app.tenant_id',
-// ..., true)），身份从 ctx 提取，契约不接收身份参数。表为追加写，契约
-// 只有写入与分页读取的最小面，没有更新/删除/点查。
+// ModelCallLogRepo 是模型调用留痕读写的仓储契约，由 data 层实现；写入与
+// 查询都绑定认证身份（IdentityTx，每事务 set_config('app.tenant_id',
+// ..., true)），查询契约显式接收身份参数（与审计日志同形态）。表为追加
+// 写，契约只有写入与动态 List 的最小面，没有更新/删除/点查。
 type ModelCallLogRepo interface {
 	// Append 写入一条模型调用留痕。
 	Append(ctx context.Context, entry *ModelCallEntry) error
-	// List 按过滤条件分页查询（时间倒序，同秒以 id tie-break）。
-	List(ctx context.Context, filter *ModelCallFilter) (*ModelCallList, error)
-	// Count 按同条件统计条数（与 List 同口径，供分页信封）。
-	Count(ctx context.Context, filter *ModelCallFilter) (int64, error)
+	// List 按动态查询协议返回分页集合（租户内平铺视图，时间倒序缺省
+	// 排序由 schema 注释的 @default_sort 声明）。
+	List(ctx context.Context, auth Identity, q *dynq.Query) (*ModelCallLogList, error)
 }
 
 // ModelCallObserver 是模型调用留痕的观察面挂点：四个能力目录在调用终态
@@ -308,56 +292,11 @@ func truncateModelCallError(value string) string {
 	return string(runes[:ModelCallErrorMaxRunes]) + "...(truncated)"
 }
 
-// List 分页查询模型调用留痕（时间倒序）。身份缺失按未认证 fail-closed：
-// 读面与写面同一纪律，查询只以认证身份发生。
-func (uc *ModelCallLogUsecase) List(ctx context.Context, filter *ModelCallFilter) (*ModelCallList, error) {
-	if _, ok := IdentityFromContext(ctx); !ok {
-		return nil, ErrSessionInvalid
-	}
-	f, err := modelCallFilterOf(filter)
-	if err != nil {
-		return nil, err
-	}
-	return uc.repo.List(ctx, f)
-}
-
-// modelCallFilterOf 归一查询过滤：页大小缺省、上限、场景/状态词表与
-// offset 非负校验在 biz 落地（fail-closed，不静默截断）。场景与状态取值
-// 必须命中词表常量——空串不过滤，其余未知值拒绝而非空结果；模型键做
-// 列宽校验。
-func modelCallFilterOf(filter *ModelCallFilter) (*ModelCallFilter, error) {
-	f := &ModelCallFilter{}
-	if filter != nil {
-		*f = *filter
-	}
-	f.Scenario = strings.TrimSpace(f.Scenario)
-	f.ModelKey = strings.TrimSpace(f.ModelKey)
-	switch {
-	case f.Scenario != "" && !ValidModelCallScenario(f.Scenario):
-		return nil, ErrModelCallInvalidArgument
-	}
-	switch f.Status {
-	case "", ModelCallStatusSuccess, ModelCallStatusError:
-	default:
-		return nil, ErrModelCallInvalidArgument
-	}
-	switch {
-	case len(f.ModelKey) > modelCallModelKeyColumnWidth:
-		return nil, ErrModelCallInvalidArgument
-	case f.DocumentID < 0:
-		return nil, ErrModelCallInvalidArgument
-		// 时间序倒置只在两端都声明时校验：单端时间范围是合法形态
-		//（「某时点之后 / 之前」），零值端表示不过滤。
-	case !f.CreatedFrom.IsZero() && !f.CreatedTo.IsZero() && f.CreatedFrom.After(f.CreatedTo):
-		return nil, ErrModelCallInvalidArgument
-	}
-	if f.Limit == 0 {
-		f.Limit = modelCallDefaultPageSize
-	}
-	if f.Limit < 0 || f.Limit > modelCallMaxPageSize || f.Offset < 0 {
-		return nil, ErrModelCallInvalidArgument
-	}
-	return f, nil
+// List 经动态查询协议分页查询模型调用留痕（时间倒序缺省排序）。协议
+// 合法性由生成代码校验，非法映射为 ErrModelCallInvalidArgument；租户边界
+// 由 IdentityTx 注入的会话变量与表 RLS 承担。
+func (uc *ModelCallLogUsecase) List(ctx context.Context, auth Identity, q *dynq.Query) (*ModelCallLogList, error) {
+	return uc.repo.List(ctx, auth, q)
 }
 
 // 留痕的 ctx 事实载体：场景与作用文档在调用现场（biz 用例）声明后经 ctx

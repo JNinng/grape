@@ -6,6 +6,28 @@ info:
     title: ""
     version: 0.0.1
 paths:
+    /v1/agent/model-calls/list:
+        post:
+            tags:
+                - AgentModelCallService
+            description: |-
+                ListModelCalls 按动态查询协议返回一页模型调用留痕（时间倒序缺省排序）。
+                 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+                 INVALID_ARGUMENT。
+            operationId: AgentModelCallService_ListModelCalls
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/query.v1.Query'
+                required: true
+            responses:
+                "200":
+                    description: OK
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/agent.v1.ModelCallLogSet'
     /v1/audit/login-logs/list:
         post:
             tags:
@@ -2590,6 +2612,92 @@ paths:
                                 $ref: '#/components/schemas/user.v1.UserRoleSet'
 components:
     schemas:
+        agent.v1.ModelCallLog:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: 留痕 ID，自增序列。只读。
+                userId:
+                    type: string
+                    description: 发起操作的用户 ID（认证身份）。只读。
+                traceId:
+                    type: string
+                    description: 链路 ID，无链路事实时缺省。只读。
+                scenario:
+                    type: string
+                    description: |-
+                        调用场景：ingest_summary/ingest_prefix/embed_document/embed_query/
+                         parse_document/rerank。只读。
+                modelKey:
+                    type: string
+                    description: 模型键（按解析现场原样留痕，不做注册表对账），无模型事实时缺省。只读。
+                endpoint:
+                    type: string
+                    description: 调用端点（协议路径完整 URL），端点事实缺失时缺省。只读。
+                documentId:
+                    type: string
+                    description: 作用文档 ID（kb_document.id），无文档事实时缺省。只读。
+                inputSummary:
+                    type: string
+                    description: 输入摘要（prompt / 向量化文本 / 原件事实摘要），落库时已脱敏。只读。
+                outputSummary:
+                    type: string
+                    description: |-
+                        输出摘要（生成文本 / 维度说明 / markdown 产物截断），落库时已脱敏。
+                         只读。
+                inputTokens:
+                    type: integer
+                    description: 输入 token 用量，端点未上报时缺省。只读。
+                    format: int32
+                outputTokens:
+                    type: integer
+                    description: 输出 token 用量，端点未上报时缺省。只读。
+                    format: int32
+                durationMs:
+                    type: integer
+                    description: 调用耗时（毫秒），未知时缺省。只读。
+                    format: int32
+                status:
+                    type: string
+                    description: 调用终态：success/error。只读。
+                error:
+                    type: string
+                    description: 失败错误摘要（截断 512，落库时已脱敏），成功时缺省。只读。
+                createdBy:
+                    type: string
+                    description: 写入者（认证用户，与 user_id 同值）。只读。
+                createdAt:
+                    type: string
+                    description: 写入时间。只读。
+                    format: date-time
+            description: |-
+                ModelCallLog 是模型调用留痕的规范表示。全部字段只读（append-only，无
+                 更新面）；input/output 摘要与 error 是落库时已脱敏的形态，服务端不二次
+                 脱敏、不回传原文。session_id 是保留列（管线侧调用恒 NULL），不出现在
+                 本契约。
+        agent.v1.ModelCallLogSet:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/agent.v1.ModelCallLog'
+                    description: 本页模型调用留痕，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+                total:
+                    type: string
+                    description: 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+                hasMore:
+                    type: boolean
+                    description: 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+                nextCursor:
+                    type: string
+                    description: 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+                page:
+                    type: integer
+                    description: offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+                    format: int32
+            description: ModelCallLogSet 是 ListModelCalls 返回的分页集合。
         audit.v1.LoginLog:
             type: object
             properties:
@@ -5161,6 +5269,14 @@ components:
                     format: int32
             description: UserSet 是 ListUsers 返回的分页集合。
 tags:
+    - name: AgentModelCallService
+      description: |-
+        AgentModelCallService 提供模型调用留痕的只读查询面：agent_model_call_log
+         表为追加写入（append-only），本服务无任何写端点。表是租户内公共证据面
+         （管线侧模型/类模型调用，无会话事实）：租户边界由数据库 RLS 强制，表无
+         @scope（行级无范围）；List 走动态查询协议，过滤/排序/投影/分页能力由
+         存储层 schema 注释 DSL 声明。写入面不在本服务：留痕由 biz.ModelCallObserver
+         观察面在调用终态旁路落库（见 replay.md「模型调用留痕」）。
     - name: AuditService
       description: |-
         AuditService 提供审计日志的只读查询面：登录日志（sys_login_log）与操作

@@ -919,6 +919,81 @@ sql:
               created_at:
                 label: "创建时间"
                 visibility: "optional"
+            agent_model_call_log:
+              id:
+                label: "留痕 ID"
+                visibility: "optional"
+              user_id:
+                label: "操作用户 ID"
+                visibility: "optional"
+              trace_id:
+                label: "链路 ID"
+                desc: "从认证 ctx 的 SpanContext 取，无链路事实为 NULL"
+                visibility: "optional"
+              scenario:
+                label: "调用场景"
+                desc: "由调用链路经 ctx 事实载体声明，词表见 biz/model_call_log.go"
+                options:
+                  - value: "ingest_summary"
+                    label: "摄取摘要"
+                  - value: "ingest_prefix"
+                    label: "块前缀"
+                  - value: "embed_document"
+                    label: "摄取向量化"
+                  - value: "embed_query"
+                    label: "检索向量化"
+                  - value: "parse_document"
+                    label: "外部解析"
+                  - value: "rerank"
+                    label: "检索重排"
+                visibility: "optional"
+              model_key:
+                label: "模型键"
+                desc: "按解析现场原样留痕，不做注册表对账"
+                visibility: "optional"
+              endpoint:
+                label: "调用端点"
+                desc: "协议路径完整 URL，按解析现场留痕"
+                visibility: "hidden"
+              document_id:
+                label: "作用文档 ID"
+                desc: "kb_document.id，无文档事实为 NULL"
+                visibility: "optional"
+              input_summary:
+                label: "输入摘要"
+                desc: "落库时已脱敏（4096 rune 截断）"
+                visibility: "hidden"
+              output_summary:
+                label: "输出摘要"
+                desc: "落库时已脱敏（4096 rune 截断）"
+                visibility: "hidden"
+              input_tokens:
+                label: "输入 token"
+                visibility: "optional"
+              output_tokens:
+                label: "输出 token"
+                visibility: "optional"
+              duration_ms:
+                label: "耗时（毫秒）"
+                visibility: "optional"
+              status:
+                label: "状态"
+                options:
+                  - value: "success"
+                    label: "成功"
+                  - value: "error"
+                    label: "失败"
+                visibility: "optional"
+              error:
+                label: "错误摘要"
+                desc: "失败错误摘要（512 截断，落库时已脱敏）"
+                visibility: "hidden"
+              created_by:
+                label: "写入者"
+                visibility: "hidden"
+              created_at:
+                label: "写入时间"
+                visibility: "optional"
             sys_session:
               id:
                 label: "会话 ID"

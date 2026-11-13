@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package agent.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "query/v1/query.proto";
+
+option go_package = "grape/api/agent/v1;agentv1";
+option java_multiple_files = true;
+option java_package = "io.grpc.examples.agent.v1";
+option java_outer_classname = "ModelCallProto";
+
+// AgentModelCallService 提供模型调用留痕的只读查询面：agent_model_call_log
+// 表为追加写入（append-only），本服务无任何写端点。表是租户内公共证据面
+// （管线侧模型/类模型调用，无会话事实）：租户边界由数据库 RLS 强制，表无
+// @scope（行级无范围）；List 走动态查询协议，过滤/排序/投影/分页能力由
+// 存储层 schema 注释 DSL 声明。写入面不在本服务：留痕由 biz.ModelCallObserver
+// 观察面在调用终态旁路落库（见 replay.md「模型调用留痕」）。
+service AgentModelCallService {
+  // ListModelCalls 按动态查询协议返回一页模型调用留痕（时间倒序缺省排序）。
+  // 过滤表达式非法、字段未知、操作符不允许、条件冲突、跨表游标均返回
+  // INVALID_ARGUMENT。
+  rpc ListModelCalls (ListModelCallsRequest) returns (ModelCallLogSet) {
+    option (google.api.http) = {
+      post: "/v1/agent/model-calls/list"
+      body: "query"
+    };
+  }
+}
+
+// ModelCallLog 是模型调用留痕的规范表示。全部字段只读（append-only，无
+// 更新面）；input/output 摘要与 error 是落库时已脱敏的形态，服务端不二次
+// 脱敏、不回传原文。session_id 是保留列（管线侧调用恒 NULL），不出现在
+// 本契约。
+message ModelCallLog {
+  // 留痕 ID，自增序列。只读。
+  int64 id = 1;
+  // 发起操作的用户 ID（认证身份）。只读。
+  int64 user_id = 2;
+  // 链路 ID，无链路事实时缺省。只读。
+  optional string trace_id = 3;
+  // 调用场景：ingest_summary/ingest_prefix/embed_document/embed_query/
+  // parse_document/rerank。只读。
+  string scenario = 4;
+  // 模型键（按解析现场原样留痕，不做注册表对账），无模型事实时缺省。只读。
+  optional string model_key = 5;
+  // 调用端点（协议路径完整 URL），端点事实缺失时缺省。只读。
+  optional string endpoint = 6;
+  // 作用文档 ID（kb_document.id），无文档事实时缺省。只读。
+  optional int64 document_id = 7;
+  // 输入摘要（prompt / 向量化文本 / 原件事实摘要），落库时已脱敏。只读。
+  optional string input_summary = 8;
+  // 输出摘要（生成文本 / 维度说明 / markdown 产物截断），落库时已脱敏。
+  // 只读。
+  optional string output_summary = 9;
+  // 输入 token 用量，端点未上报时缺省。只读。
+  optional int32 input_tokens = 10;
+  // 输出 token 用量，端点未上报时缺省。只读。
+  optional int32 output_tokens = 11;
+  // 调用耗时（毫秒），未知时缺省。只读。
+  optional int32 duration_ms = 12;
+  // 调用终态：success/error。只读。
+  string status = 13;
+  // 失败错误摘要（截断 512，落库时已脱敏），成功时缺省。只读。
+  optional string error = 14;
+  // 写入者（认证用户，与 user_id 同值）。只读。
+  int64 created_by = 15;
+  // 写入时间。只读。
+  google.protobuf.Timestamp created_at = 16;
+}
+
+// ModelCallLogSet 是 ListModelCalls 返回的分页集合。
+message ModelCallLogSet {
+  // 本页模型调用留痕，顺序遵循查询中的 sort；零命中时键省略（空集合不输出），客户端按空数组处理。
+  repeated ModelCallLog items = 1;
+  // 匹配的总行数。include_total 设为 false 时不出现，JSON 响应中未设置时键省略。
+  optional int64 total = 2;
+  // 是否还有后续页；JSON 响应中为 false 时键省略，客户端按 false 处理。
+  bool has_more = 3;
+  // 游标模式下一页的游标；末页及无更多结果时为空，JSON 响应中为空串时键省略。
+  string next_cursor = 4;
+  // offset 模式下的当前页码；游标模式下为 0，JSON 响应中为 0 时键省略。
+  int32 page = 5;
+}
+
+// ListModelCallsRequest 是 AgentModelCallService.ListModelCalls 的输入。
+message ListModelCallsRequest {
+  // 动态查询。协议见 query.v1.Query。
+  query.v1.Query query = 1;
+}

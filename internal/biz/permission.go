@@ -135,6 +135,13 @@ const (
 	PermModelPlatformCreate = "sys:model:platform:create"
 	PermModelPlatformUpdate = "sys:model:platform:update"
 	PermModelPlatformDelete = "sys:model:platform:delete"
+
+	// 模型调用留痕（agent_model_call_log，种子菜单 287 子树：操作级权限
+	// 点 288 由 seed 包预铺）。Agent 域证据面的管理查询：页面级码
+	// agent:model-call 只做前端导航收敛，List 端点以 agent:model-call:query
+	// 判定（对齐 agent:grant 的域内命名）。表按租户不按用户过滤，租户内
+	// 全量可见由码表收敛入口。
+	PermAgentModelCallQuery = "agent:model-call:query"
 )
 
 // PermissionRepo 是功能权限码仓储接口：fn_has_permission / GetPermissionCodes

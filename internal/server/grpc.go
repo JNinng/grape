@@ -1,6 +1,7 @@
 package server
 
 import (
+	agentv1 "grape/api/agent/v1"
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
@@ -26,7 +27,7 @@ import (
 // NewGRPCServer 构造 gRPC 服务器并注册各资源的 gRPC 服务。otel 中间件
 // 在 telemetry.enabled 时入链，位置同 HTTP：链路中间件之内产生 server
 // span，不可信 traceparent 已被链路中间件剥除。
-func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, auditMiddleware entrymw.OperationAuditMiddleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService, knowledge *service.KnowledgeService, model *service.ModelService) *grpc.Server {
+func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrymw.TraceMiddleware, authMiddleware middleware.Middleware, auditMiddleware entrymw.OperationAuditMiddleware, permMiddleware entrymw.PermissionMiddleware, user *service.UserService, dept *service.DeptService, userGroup *service.UserGroupService, role *service.RoleService, menu *service.MenuService, dict *service.DictService, config *service.ConfigService, tenantConfig *service.TenantConfigService, featureFlag *service.FeatureFlagService, translation *service.TranslationService, tenant *service.TenantService, perm *service.PermissionService, session *service.SessionService, sessionAdmin *service.SessionAdminService, auditLog *service.AuditService, query *service.QueryService, agentModelCall *service.AgentModelCallService, knowledge *service.KnowledgeService, model *service.ModelService) *grpc.Server {
 	mws := []middleware.Middleware{
 		recovery.Recovery(),
 		middleware.Middleware(traceMiddleware),
@@ -70,6 +71,7 @@ func NewGRPCServer(c *conf.Server, tele *telemetry.Setup, traceMiddleware entrym
 	permv1.RegisterPermissionServiceServer(srv, perm)
 	sessionv1.RegisterSessionServiceServer(srv, session)
 	queryv1.RegisterQueryServiceServer(srv, query)
+	agentv1.RegisterAgentModelCallServiceServer(srv, agentModelCall)
 	knowledgev1.RegisterLibraryServiceServer(srv, knowledge)
 	knowledgev1.RegisterDocumentServiceServer(srv, knowledge)
 	modelv1.RegisterModelServiceServer(srv, model)

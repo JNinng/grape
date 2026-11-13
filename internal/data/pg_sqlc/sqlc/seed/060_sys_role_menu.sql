@@ -4,7 +4,7 @@
 -- 超级管理员授予全部菜单；角色映射写入触发租户权限版本 bump 属预期行为。
 -- ======================================================================
 
---    超级管理员 (101) → 全部菜单（201-249、252-286）：生产种子即自举
+--    超级管理员 (101) → 全部菜单（201-249、252-288）：生产种子即自举
 --    权限的唯一事实源，入口层码表（internal/middleware/permission.go）
 --    与前端页面/按钮权限码均以此为基准。
 INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
@@ -177,3 +177,9 @@ INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (101, 285, 't-super-01', 1) ON CONFLICT DO NOTHING;
 INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
 VALUES (101, 286, 't-super-01', 1) ON CONFLICT DO NOTHING;
+
+-- 模型调用（287-288）：页面与查询权限点同批授予。
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 287, 't-super-01', 1) ON CONFLICT DO NOTHING;
+INSERT INTO public.sys_role_menu (role_id, menu_id, tenant_id, created_by)
+VALUES (101, 288, 't-super-01', 1) ON CONFLICT DO NOTHING;

@@ -147,6 +147,7 @@ func TestQuerySchemaRegistry_carries_desc_and_options(t *testing.T) {
 // （缺一即失败），并反向断言 registry 无多余 key（多一即失败）。
 func TestQuerySchemaRegistryIncludesAllDynamicListResources(t *testing.T) {
 	want := []string{
+		"agent_model_call_log",
 		"sys_config",
 		"sys_dept",
 		"sys_dict_data",

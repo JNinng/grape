@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"grape/internal/biz"
 	"grape/internal/data/pg_sqlc/gen"
+
+	kratoserrors "github.com/go-kratos/kratos/v3/errors"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 )
 
 // modelCallLogRepo 是 biz.ModelCallLogRepo 的 PostgreSQL 实现。写入与查询
-// 经 IdentityTx 执行：写入侧租户由门面注入，读取侧由 RLS 兜底且 WHERE 显式
-// 带同源租户谓词（RLS 关闭时仍不越租户）。表为追加写，仓储只有写入与分页
-// 读取面；身份缺失或非法一律拒绝——留痕旁路面唯一的身份防线。
+// 都经 IdentityTx 执行，身份缺失或非法一律拒绝；写入侧租户由门面注入，
+// 读取侧租户边界由会话变量与表 RLS 承担（动态 List 只投影声明列，读侧行
+// 不回填 @internal 列）。表为追加写，仓储只有写入与动态查询面；写入路径
+// 由观察面直连，场景/状态词表复检是落库前的最后一道把门。
 type modelCallLogRepo struct {
 	data *Data
 }
@@ -77,87 +80,61 @@ func (r *modelCallLogRepo) Append(ctx context.Context, entry *biz.ModelCallEntry
 	})
 }
 
-// modelCallFilterParams 把 biz 过滤归一为 List/Count 共用的生成参数。
-func modelCallFilterParams(f *biz.ModelCallFilter) (gen.ListAgentModelCallLogsParams, gen.CountAgentModelCallLogsParams) {
-	list := gen.ListAgentModelCallLogsParams{
-		Scenario:    textPtr(f.Scenario),
-		ModelKey:    textPtr(f.ModelKey),
-		Status:      textPtr(f.Status),
-		DocumentID:  int64Ptr(f.DocumentID),
-		CreatedFrom: timeToTS(timePtr(f.CreatedFrom)),
-		CreatedTo:   timeToTS(timePtr(f.CreatedTo)),
-		Limit:       int64(f.Limit),
-		Offset:      int64(f.Offset),
-	}
-	count := gen.CountAgentModelCallLogsParams{
-		Scenario:    list.Scenario,
-		ModelKey:    list.ModelKey,
-		Status:      list.Status,
-		DocumentID:  list.DocumentID,
-		CreatedFrom: list.CreatedFrom,
-		CreatedTo:   list.CreatedTo,
-	}
-	return list, count
-}
-
-// List 按场景/模型键/状态/文档/时间范围过滤分页查询模型调用留痕（时间
-// 倒序，同秒以 id tie-break）。
-func (r *modelCallLogRepo) List(ctx context.Context, filter *biz.ModelCallFilter) (*biz.ModelCallList, error) {
-	auth, err := modelCallIdentity(ctx)
-	if err != nil {
-		return nil, err
-	}
-	f := &biz.ModelCallFilter{}
-	if filter != nil {
-		*f = *filter
-	}
-	params, countParams := modelCallFilterParams(f)
-	var out *biz.ModelCallList
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
-		rows, err := s.Q().ListAgentModelCallLogs(ctx, params)
+// List 解析动态查询协议并返回分页信封：字段、操作符、投影与游标合法性
+// 由生成代码校验；total 与翻页位置无关，计数前剥离游标（游标会把行集
+// 收窄到某一页位置之后，导致各页 total 递减）。
+func (r *modelCallLogRepo) List(ctx context.Context, auth biz.Identity, q *dynq.Query) (*biz.ModelCallLogList, error) {
+	var out *biz.ModelCallLogList
+	err := r.data.IdentityTx(ctx, pgAuth(auth), func(s *IdentityTx) error {
+		params, err := gen.ParseAgentModelCallLogQuery(q)
 		if err != nil {
 			return err
 		}
-		total, err := s.Q().CountAgentModelCallLogs(ctx, countParams)
+		res, err := gen.ListAgentModelCallLog(ctx, s.Tx(), params)
 		if err != nil {
 			return err
 		}
-		items := make([]*biz.ModelCallLog, 0, len(rows))
-		for i := range rows {
-			items = append(items, modelCallLogToBiz(&rows[i]))
+		list := &biz.ModelCallLogList{
+			Items:      make([]*biz.ModelCallLog, 0, len(res.Items)),
+			HasMore:    res.HasMore,
+			NextCursor: res.NextCursor,
 		}
-		out = &biz.ModelCallList{Items: items, Total: total}
+		for i := range res.Items {
+			list.Items = append(list.Items, modelCallLogToBiz(&res.Items[i]))
+		}
+		if dynq.IncludeTotalOf(q.Pagination) {
+			countParams := params
+			countParams.After = nil
+			total, err := gen.CountAgentModelCallLog(ctx, s.Tx(), countParams)
+			if err != nil {
+				return err
+			}
+			list.Total = &total
+		}
+		out = list
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapModelCallErr(err)
 	}
 	return out, nil
 }
 
-// Count 按同条件统计条数（与 List 同口径）。
-func (r *modelCallLogRepo) Count(ctx context.Context, filter *biz.ModelCallFilter) (int64, error) {
-	auth, err := modelCallIdentity(ctx)
-	if err != nil {
-		return 0, err
+// mapModelCallErr 将驱动与协议错误映射为模型调用留痕的领域错误：dynq
+// 协议错误 → InvalidArgument（保留协议原因）；其余原样透传。不走
+// mapStorageError：表 append-only 只有读取与追加，没有唯一冲突与无行
+// 语义路径。
+func mapModelCallErr(err error) error {
+	if isDynqError(err) {
+		be := biz.ErrModelCallInvalidArgument
+		return kratoserrors.New(int(be.Code), be.Reason, dynq.AsError(err).Reason)
 	}
-	f := &biz.ModelCallFilter{}
-	if filter != nil {
-		*f = *filter
-	}
-	_, countParams := modelCallFilterParams(f)
-	var total int64
-	err = r.data.IdentityTx(ctx, auth, func(s *IdentityTx) error {
-		var err error
-		total, err = s.Q().CountAgentModelCallLogs(ctx, countParams)
-		return err
-	})
-	return total, err
+	return err
 }
 
-// int64Ptr / int64Value / timePtr 是本域的可空渲染辅助（与 audit_repo.go
-// 的 int32 家族、tenant_admin.go 的 timeToTS 同形态）：0 / 零值语义统一为
-// 「未上报 / 无文档事实 / 不过滤」，落 NULL。
+// int64Ptr / int64Value 是本域的可空渲染辅助（与 audit_repo.go 的 int32
+// 家族、tenant_admin.go 的 timeToTS 同形态）：0 语义统一为「未上报 /
+// 无文档事实」，落 NULL。
 func int64Ptr(v int64) *int64 {
 	if v == 0 {
 		return nil
@@ -172,22 +149,15 @@ func int64Value(v *int64) int64 {
 	return *v
 }
 
-func timePtr(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
-}
-
 // modelCallLogToBiz 转换为领域模型；可空列 NULL 渲染为零值（token 与
-// 文档 ID 的 0 语义为「未上报 / 无文档事实」）。
+// 文档 ID 的 0 语义为「未上报 / 无文档事实」）。tenant_id / session_id 是
+// @internal 列，不进入动态查询投影，故读侧行不带这两项事实。会话列写侧由
+// 观察面从 ctx 补齐（管线侧恒空），读侧不需要回填。
 func modelCallLogToBiz(po *gen.AgentModelCallLog) *biz.ModelCallLog {
 	return &biz.ModelCallLog{
 		ID:            po.ID,
-		TenantID:      po.TenantID,
 		UserID:        po.UserID,
 		TraceID:       textValue(po.TraceID),
-		SessionID:     textValue(po.SessionID),
 		Scenario:      po.Scenario,
 		ModelKey:      textValue(po.ModelKey),
 		Endpoint:      textValue(po.Endpoint),
@@ -199,6 +169,7 @@ func modelCallLogToBiz(po *gen.AgentModelCallLog) *biz.ModelCallLog {
 		DurationMS:    int64(int32Value(po.DurationMs)),
 		Status:        po.Status,
 		Error:         textValue(po.Error),
+		CreatedBy:     po.CreatedBy,
 		CreatedAt:     tsToTime(po.CreatedAt),
 	}
 }

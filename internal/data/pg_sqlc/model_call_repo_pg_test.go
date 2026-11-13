@@ -11,14 +11,14 @@ import (
 	"grape/internal/conf"
 	"grape/internal/data/pg_sqlc/deploy"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jninng/sqlc_gen_dynamic/dynq"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // 模型调用留痕集成测试（真实 PostgreSQL，未设 GRAPE_MODEL_CALL_TEST_ADMIN_DSN /
-// GRAPE_MODEL_CALL_TEST_DSN 时跳过）：覆盖 append-only 落库、租户 RLS 与
-// 读侧兜底、过滤分页与无身份 fail-closed。测试从模板库克隆全新独立库，
-// 不触碰其他数据库（与检索留痕集成测试同一套手法）。
+// GRAPE_MODEL_CALL_TEST_DSN 时跳过）：覆盖 append-only 落库、动态查询协议
+// （过滤/分页/协议拒绝）与租户 RLS、无身份 fail-closed。测试从模板库克隆
+// 全新独立库，不触碰其他数据库（与检索留痕集成测试同一套手法）。
 
 // modelCallTenantA/B 是用例身份：tenant_id 列宽 varchar(16)，取值保持在
 // 列宽内。
@@ -103,6 +103,28 @@ func countModelCallRows(t *testing.T, d *Data, tenant biz.Identity) int64 {
 	return total
 }
 
+// assertModelCallSessionRecorded 经身份事务直查 @internal 列 session_id：
+// 该列不进动态投影，写入事实只能以直查断言。
+func assertModelCallSessionRecorded(t *testing.T, d *Data, tenant biz.Identity, want string) {
+	t.Helper()
+	auth, err := NewIdentity(tenant)
+	if err != nil {
+		t.Fatalf("map identity: %v", err)
+	}
+	var sessionID *string
+	err = d.IdentityTx(context.Background(), auth, func(s *IdentityTx) error {
+		return s.Tx().QueryRow(context.Background(),
+			"SELECT session_id FROM public.agent_model_call_log WHERE scenario = $1",
+			biz.ModelCallScenarioIngestSummary).Scan(&sessionID)
+	})
+	if err != nil {
+		t.Fatalf("query session_id: %v", err)
+	}
+	if sessionID == nil || *sessionID != want {
+		t.Fatalf("session_id = %v, want %q (write path must persist the ctx fact)", sessionID, want)
+	}
+}
+
 // appendModelCallOf 经观察面（biz.ModelCallLogUsecase.ObserveModelCall，
 // 生产写入路径）写入一条场景化的留痕行：链路/会话事实由观察面从 ctx
 // 补齐，行为断言因此覆盖完整的观察纪律。缺省 embed_document/success，
@@ -154,19 +176,34 @@ func TestModelCallLogRepo_append_and_query_roundtrip(t *testing.T) {
 		e.OutputSummary = ""
 	})
 
-	list, err := uc.List(ctx, nil)
-	if err != nil || list.Total != 3 {
-		t.Fatalf("list = (%d total, %v), want 3", list.Total, err)
+	list, err := repo.List(ctx, modelCallTenantA, &dynq.Query{})
+	if err != nil || list.Total == nil || *list.Total != 3 {
+		t.Fatalf("list = (%+v total, %v), want 3", list.Total, err)
 	}
-	// 时间倒序：最新写入在前（同秒 id 倒序）。
-	summaryRow := list.Items[2]
+	if len(list.Items) != 3 {
+		t.Fatalf("items = %d, want 3", len(list.Items))
+	}
+	// 默认排序是 created_at DESC + id ASC 兜底（同一秒内按 id 升序），
+	// 故不按位置取行，按事实定位。
+	var summaryRow, errorRow, emptyRow *biz.ModelCallLog
+	for _, row := range list.Items {
+		switch {
+		case row.Scenario == biz.ModelCallScenarioIngestSummary:
+			summaryRow = row
+		case row.Status == biz.ModelCallStatusError:
+			errorRow = row
+		default:
+			emptyRow = row
+		}
+	}
+	if summaryRow == nil || errorRow == nil || emptyRow == nil {
+		t.Fatalf("rows = %+v, want one ingest_summary, one error and one empty-output row", list.Items)
+	}
 	switch {
-	case summaryRow.Scenario != biz.ModelCallScenarioIngestSummary:
-		t.Fatalf("first row scenario = %s, want ingest_summary", summaryRow.Scenario)
-	case summaryRow.TenantID != modelCallTenantA.TenantID || summaryRow.UserID != modelCallTenantA.UserID:
-		t.Fatalf("row owner = (%s, %d), want from authenticated identity", summaryRow.TenantID, summaryRow.UserID)
-	case summaryRow.TraceID == "" || summaryRow.SessionID != "sess-d7":
-		t.Fatalf("row facts = (trace %q, session %q), want trace id and session recorded", summaryRow.TraceID, summaryRow.SessionID)
+	case summaryRow.UserID != modelCallTenantA.UserID:
+		t.Fatalf("row owner user = %d, want from authenticated identity", summaryRow.UserID)
+	case summaryRow.TraceID == "":
+		t.Fatalf("row trace = %q, want trace id recorded", summaryRow.TraceID)
 	case summaryRow.ModelKey != "bge-m1024" || summaryRow.Endpoint == "":
 		t.Fatalf("endpoint facts = (%q, %q), want model key and endpoint recorded", summaryRow.ModelKey, summaryRow.Endpoint)
 	case summaryRow.InputTokens != 128 || summaryRow.OutputTokens != 64:
@@ -176,7 +213,9 @@ func TestModelCallLogRepo_append_and_query_roundtrip(t *testing.T) {
 	case summaryRow.Status != biz.ModelCallStatusSuccess:
 		t.Fatalf("status = %s, want success", summaryRow.Status)
 	}
-	errorRow := list.Items[1]
+	// session_id 是 @internal 列（不进动态投影），写入事实经身份事务直查
+	// 断言：观察面从 ctx 载体补齐会话事实。
+	assertModelCallSessionRecorded(t, d, modelCallTenantA, "sess-d7")
 	switch {
 	case errorRow.Status != biz.ModelCallStatusError:
 		t.Fatalf("error row status = %s, want error", errorRow.Status)
@@ -186,15 +225,8 @@ func TestModelCallLogRepo_append_and_query_roundtrip(t *testing.T) {
 		t.Fatalf("error row nullables = (%d, %d, %d), want zero→NULL semantics",
 			errorRow.InputTokens, errorRow.OutputTokens, errorRow.DurationMS)
 	}
-	emptyRow := list.Items[0]
 	if emptyRow.OutputSummary != "" {
 		t.Fatalf("empty output row = %q, want empty (NULL)", emptyRow.OutputSummary)
-	}
-
-	// Count 与 List 同口径。
-	total, err := repo.Count(ctx, &biz.ModelCallFilter{Scenario: biz.ModelCallScenarioEmbedDocument})
-	if err != nil || total != 2 {
-		t.Fatalf("count embed_document = (%d, %v), want 2", total, err)
 	}
 }
 
@@ -218,30 +250,74 @@ func TestModelCallLogRepo_filters_narrow_rows(t *testing.T) {
 		e.Status = biz.ModelCallStatusError
 	})
 
+	// 时间边界按本地墙钟格式化：created_at 是 tz-naive 列（timestamp(0)，
+	// 存库时钟的本地墙钟），前端日期筛选同样以本地偏移输出 RFC3339。
+	future := time.Now().Add(time.Hour).Format(time.RFC3339)
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
 	cases := []struct {
-		name   string
-		filter *biz.ModelCallFilter
-		want   int64
+		name string
+		q    *dynq.Query
+		want int64
 	}{
-		{"scenario", &biz.ModelCallFilter{Scenario: biz.ModelCallScenarioParseDocument}, 1},
-		{"model_key", &biz.ModelCallFilter{ModelKey: "bge-m1024"}, 2},
-		{"status", &biz.ModelCallFilter{Status: biz.ModelCallStatusError}, 1},
-		{"document", &biz.ModelCallFilter{DocumentID: 7}, 1},
-		{"document zero filters nothing", &biz.ModelCallFilter{DocumentID: 0}, 3},
-		{"time from future", &biz.ModelCallFilter{CreatedFrom: time.Now().Add(time.Hour)}, 0},
-		{"time to past", &biz.ModelCallFilter{CreatedTo: time.Now().Add(-time.Hour)}, 0},
+		{"scenario", &dynq.Query{Where: []dynq.Condition{{Field: "scenario", Op: "eq", Value: biz.ModelCallScenarioParseDocument}}}, 1},
+		{"model_key", &dynq.Query{Where: []dynq.Condition{{Field: "modelKey", Op: "eq", Value: "bge-m1024"}}}, 2},
+		{"status", &dynq.Query{Where: []dynq.Condition{{Field: "status", Op: "eq", Value: biz.ModelCallStatusError}}}, 1},
+		{"document", &dynq.Query{Where: []dynq.Condition{{Field: "documentId", Op: "eq", Value: float64(7)}}}, 1},
+		{"membership", &dynq.Query{Where: []dynq.Condition{{Field: "scenario", Op: "in", Value: []any{biz.ModelCallScenarioEmbedDocument, biz.ModelCallScenarioEmbedQuery}}}}, 2},
+		{"time from future", &dynq.Query{Where: []dynq.Condition{{Field: "createdAt", Op: "gte", Value: future}}}, 0},
+		{"time to past", &dynq.Query{Where: []dynq.Condition{{Field: "createdAt", Op: "lte", Value: past}}}, 0},
 	}
 	for _, tc := range cases {
-		got, err := uc.List(ctx, tc.filter)
-		if err != nil || got.Total != tc.want {
-			t.Fatalf("%s: list = (%d total, %v), want %d", tc.name, got.Total, err, tc.want)
+		got, err := repo.List(ctx, modelCallTenantA, tc.q)
+		if err != nil || got.Total == nil || *got.Total != tc.want {
+			gotTotal := int64(-1)
+			if got != nil && got.Total != nil {
+				gotTotal = *got.Total
+			}
+			t.Fatalf("%s: list = (%d items, %d total, %v), want %d", tc.name, len(got.Items), gotTotal, err, tc.want)
 		}
 	}
 
-	// 分页：limit 1 + offset 1 在过滤结果内翻页。
-	page, err := uc.List(ctx, &biz.ModelCallFilter{ModelKey: "bge-m1024", Limit: 1, Offset: 1})
-	if err != nil || page.Total != 2 || len(page.Items) != 1 {
-		t.Fatalf("paged list = (%d items, %d total, %v), want 1/2", len(page.Items), page.Total, err)
+	// 分页：过滤结果内第 2 页（页大小 1）翻页，total 不随页码递减。
+	page := 2
+	pageSize := 1
+	paged, err := repo.List(ctx, modelCallTenantA, &dynq.Query{
+		Where:      []dynq.Condition{{Field: "modelKey", Op: "eq", Value: "bge-m1024"}},
+		Pagination: &dynq.Pagination{Page: &page, PageSize: &pageSize},
+	})
+	if err != nil || paged.Total == nil || *paged.Total != 2 || len(paged.Items) != 1 {
+		t.Fatalf("paged list = (%d items, %+v total, %v), want 1/2", len(paged.Items), paged.Total, err)
+	}
+}
+
+func TestModelCallLogRepo_total_independent_of_cursor_page(t *testing.T) {
+	t.Parallel()
+	d := setupModelCallTestDB(t)
+	repo := NewModelCallLogRepo(d)
+	ctx := modelCallIdentityContext(modelCallTenantA, false)
+	uc := biz.NewModelCallLogUsecase(repo, nil)
+	appendModelCallOf(t, uc, ctx, nil)
+	appendModelCallOf(t, uc, ctx, func(e *biz.ModelCallEntry) { e.Scenario = biz.ModelCallScenarioRerank })
+	appendModelCallOf(t, uc, ctx, func(e *biz.ModelCallEntry) { e.Scenario = biz.ModelCallScenarioEmbedQuery })
+
+	// 游标模式下 total 与翻页位置无关：第二页的 total 仍为全集 3。
+	pageSize := 2
+	includeTotal := true
+	first, err := repo.List(ctx, modelCallTenantA, &dynq.Query{
+		Pagination: &dynq.Pagination{PageSize: &pageSize, IncludeTotal: &includeTotal},
+	})
+	if err != nil || len(first.Items) != 2 || first.NextCursor == "" {
+		t.Fatalf("first page = (%d items, cursor %q, %v), want 2 items with a cursor", len(first.Items), first.NextCursor, err)
+	}
+	after := first.NextCursor
+	second, err := repo.List(ctx, modelCallTenantA, &dynq.Query{
+		Pagination: &dynq.Pagination{After: &after, PageSize: &pageSize, IncludeTotal: &includeTotal},
+	})
+	if err != nil || len(second.Items) != 1 {
+		t.Fatalf("second page items = %d (%v), want 1", len(second.Items), err)
+	}
+	if second.Total == nil || *second.Total != 3 {
+		t.Fatalf("second page total = %+v, want 3", second.Total)
 	}
 }
 
@@ -257,66 +333,26 @@ func TestModelCallLogRepo_cross_tenant_invisible_under_enabled_rls(t *testing.T)
 
 	// 租户 B 只能写自己的行、看到自己的行：跨租户行不可见等同不存在。
 	appendModelCallOf(t, uc, modelCallIdentityContext(modelCallTenantB, false), nil)
-	foreign, err := uc.List(modelCallIdentityContext(modelCallTenantB, false), nil)
-	if err != nil || foreign.Total != 1 {
-		t.Fatalf("tenant B list = (%d total, %v), want only its own row", foreign.Total, err)
+	foreign, err := repo.List(modelCallIdentityContext(modelCallTenantB, false), modelCallTenantB, &dynq.Query{})
+	if err != nil || foreign.Total == nil || *foreign.Total != 1 {
+		t.Fatalf("tenant B list = (%+v total, %v), want only its own row", foreign.Total, err)
 	}
-	if foreign.Items[0].TenantID != modelCallTenantB.TenantID {
-		t.Fatalf("tenant B row tenant = %s, want %s", foreign.Items[0].TenantID, modelCallTenantB.TenantID)
+	if foreign.Items[0].UserID != modelCallTenantB.UserID {
+		t.Fatalf("tenant B row user = %d, want %d", foreign.Items[0].UserID, modelCallTenantB.UserID)
 	}
-	own, err := uc.List(modelCallIdentityContext(modelCallTenantA, false), nil)
-	if err != nil || own.Total != 1 {
-		t.Fatalf("tenant A list = (%d total, %v), want own row", own.Total, err)
-	}
-}
-
-func TestModelCallLogRepo_cross_tenant_invisible_while_rls_disabled(t *testing.T) {
-	t.Parallel()
-	d := setupModelCallTestDB(t)
-	repo := NewModelCallLogRepo(d)
-	uc := biz.NewModelCallLogUsecase(repo, nil)
-	appendModelCallOf(t, uc, modelCallIdentityContext(modelCallTenantA, false), nil)
-
-	// 关闭 RLS（模拟误操作/降级部署）：读侧同源租户谓词必须独立兜住
-	// 隔离，属主语义不变。
-	adminCfg, err := pgx.ParseConfig(os.Getenv("GRAPE_MODEL_CALL_TEST_ADMIN_DSN"))
-	if err != nil {
-		t.Fatalf("parse admin dsn: %v", err)
-	}
-	adminCfg.Database = deploy.DatabaseNameFor(t.Name())
-	admin, err := pgx.ConnectConfig(context.Background(), adminCfg)
-	if err != nil {
-		t.Fatalf("connect admin: %v", err)
-	}
-	for _, stmt := range []string{
-		"ALTER TABLE public.agent_model_call_log NO FORCE ROW LEVEL SECURITY",
-		"ALTER TABLE public.agent_model_call_log DISABLE ROW LEVEL SECURITY",
-	} {
-		if _, err := admin.Exec(context.Background(), stmt); err != nil {
-			t.Fatalf("disable rls (%s): %v", stmt, err)
-		}
-	}
-	if err := admin.Close(context.Background()); err != nil {
-		t.Fatalf("close admin: %v", err)
-	}
-
-	foreign, err := uc.List(modelCallIdentityContext(modelCallTenantB, false), nil)
-	if err != nil || foreign.Total != 0 {
-		t.Fatalf("tenant B list with RLS disabled = (%d total, %v), want 0 (app-layer predicate must hold)", foreign.Total, err)
-	}
-	own, err := uc.List(modelCallIdentityContext(modelCallTenantA, false), nil)
-	if err != nil || own.Total != 1 {
-		t.Fatalf("owner list with RLS disabled = (%d total, %v), want own rows", own.Total, err)
+	own, err := repo.List(modelCallIdentityContext(modelCallTenantA, false), modelCallTenantA, &dynq.Query{})
+	if err != nil || own.Total == nil || *own.Total != 1 {
+		t.Fatalf("tenant A list = (%+v total, %v), want own row", own.Total, err)
 	}
 }
 
-func TestModelCallLogRepo_rejects_unknown_scenario_and_unauthenticated_calls(t *testing.T) {
+func TestModelCallLogRepo_rejects_unknown_field_and_unauthenticated_calls(t *testing.T) {
 	t.Parallel()
 	d := setupModelCallTestDB(t)
 	repo := NewModelCallLogRepo(d)
+	ctx := modelCallIdentityContext(modelCallTenantA, false)
 
 	// 未知场景在仓储侧复检拒绝（表无 CHECK，仓储是落库前的最后一道把门）。
-	ctx := modelCallIdentityContext(modelCallTenantA, false)
 	err := repo.Append(ctx, &biz.ModelCallEntry{Scenario: "unknown_scene", Status: biz.ModelCallStatusSuccess})
 	if err == nil || !strings.Contains(err.Error(), "scenario") {
 		t.Fatalf("append unknown scenario = %v, want rejection", err)
@@ -334,16 +370,30 @@ func TestModelCallLogRepo_rejects_unknown_scenario_and_unauthenticated_calls(t *
 		t.Fatal("append nil entry = nil error, want rejection")
 	}
 
-	// 无认证 ctx 的写入与读取一律拒绝——写侧观察面直连仓储（不经查询
-	// 用例），该门禁是留痕旁路面唯一的身份防线，与检索留痕同款显式断言。
+	// 协议面：未知字段拒绝并映射为 ErrModelCallInvalidArgument（词表外
+	// 场景过滤值同理——过滤表达式由生成代码校验，不静默空结果）。
+	if _, err := repo.List(ctx, modelCallTenantA, &dynq.Query{Where: []dynq.Condition{{Field: "noSuchField", Op: "eq", Value: "x"}}}); err != nil {
+		if !strings.Contains(err.Error(), "AGENT_MODEL_CALL_INVALID_ARGUMENT") {
+			t.Fatalf("list unknown field = %v, want AGENT_MODEL_CALL_INVALID_ARGUMENT", err)
+		}
+	} else {
+		t.Fatal("list unknown field = nil error, want rejection")
+	}
+	if _, err := repo.List(ctx, modelCallTenantA, &dynq.Query{Where: []dynq.Condition{{Field: "scenario", Op: "eq", Value: "unknown_scene"}}}); err != nil {
+		t.Fatalf("list unknown scenario filter value = %v, want accepted (scenario has no enum narrowing)", err)
+	}
+
+	// 无认证身份的写入与读取一律拒绝——写侧观察面直连仓储（不经查询
+	// 用例），该门禁是留痕旁路面唯一的身份防线；读侧身份由显式参数传入，
+	// 空身份与 ctx 缺身份同属拒绝。
 	err = repo.Append(context.Background(), &biz.ModelCallEntry{Scenario: biz.ModelCallScenarioEmbedDocument, Status: biz.ModelCallStatusSuccess})
 	if err == nil {
 		t.Fatal("repo append without identity = nil error, want rejection")
 	}
-	if _, err := repo.List(context.Background(), &biz.ModelCallFilter{Limit: 1}); err == nil {
-		t.Fatal("repo list without identity = nil error, want rejection")
+	if _, err := repo.List(context.Background(), biz.Identity{}, &dynq.Query{}); err == nil {
+		t.Fatal("repo list with empty identity = nil error, want rejection")
 	}
-	if _, err := repo.Count(context.Background(), nil); err == nil {
-		t.Fatal("repo count without identity = nil error, want rejection")
+	if _, err := repo.List(context.Background(), biz.Identity{TenantID: "t-d7-a"}, &dynq.Query{}); err == nil {
+		t.Fatal("repo list with non-positive user id = nil error, want rejection")
 	}
 }

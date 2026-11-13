@@ -42,25 +42,25 @@ type AgentConfirmationLog struct {
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 
-// 模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义
+// 模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义 [@default_sort: created_at DESC @pk: id]
 type AgentModelCallLog struct {
-	// 日志 ID，自增序列
+	// 日志 ID，自增序列 [@dynamic: exact, membership]
 	ID int64 `db:"id" json:"id"`
-	// 租户 ID，取写入事务的 app.tenant_id
+	// 租户 ID，取写入事务的 app.tenant_id [@internal]
 	TenantID string `db:"tenant_id" json:"tenant_id"`
-	// 发起操作的用户 ID（认证身份）
+	// 发起操作的用户 ID（认证身份） [@dynamic: exact, membership]
 	UserID int64 `db:"user_id" json:"user_id"`
-	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL
+	// 链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL [@dynamic: exact, prefix]
 	TraceID *string `db:"trace_id" json:"trace_id"`
-	// Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表
+	// Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表 [@internal]
 	SessionID *string `db:"session_id" json:"session_id"`
-	// 调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步
+	// 调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步 [@dynamic: exact, membership]
 	Scenario string `db:"scenario" json:"scenario"`
-	// 模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL
+	// 模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL [@dynamic: exact, prefix]
 	ModelKey *string `db:"model_key" json:"model_key"`
 	// 调用端点（协议路径完整 URL，如 {base_url}/chat/completions）：按解析现场留痕；端点事实缺失为 NULL
 	Endpoint *string `db:"endpoint" json:"endpoint"`
-	// 作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL
+	// 作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL [@dynamic: exact, membership]
 	DocumentID *int64 `db:"document_id" json:"document_id"`
 	// 输入摘要：completer 记 prompt、embedder 记向量化文本、reranker 记查询文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限
 	InputSummary *string `db:"input_summary" json:"input_summary"`
@@ -70,15 +70,15 @@ type AgentModelCallLog struct {
 	InputTokens *int32 `db:"input_tokens" json:"input_tokens"`
 	// 输出 token 用量（端点 usage.completion_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留
 	OutputTokens *int32 `db:"output_tokens" json:"output_tokens"`
-	// 调用耗时（毫秒）；未知为 NULL
+	// 调用耗时（毫秒）；未知为 NULL [@dynamic: exact, range, sort]
 	DurationMs *int32 `db:"duration_ms" json:"duration_ms"`
-	// 调用终态：success-成功、error-失败（观察面记录尝试与终态两侧，失败行不反噬业务主流程）
+	// 调用终态：success-成功、error-失败（观察面记录尝试与终态两侧，失败行不反噬业务主流程） [@dynamic: exact, membership]
 	Status string `db:"status" json:"status"`
-	// 失败错误摘要（截断 512，经 model_call 类别脱敏）：成功行为 NULL
+	// 失败错误摘要（截断 512，经 model_call 类别脱敏）：成功行为 NULL [@dynamic: fuzzy]
 	Error *string `db:"error" json:"error"`
 	// 写入者（认证用户，与 user_id 同值：留痕行由该用户的操作产生）
 	CreatedBy int64 `db:"created_by" json:"created_by"`
-	// 写入时间
+	// 写入时间 [@dynamic: exact, membership, range, sort]
 	CreatedAt pgtype.Timestamp `db:"created_at" json:"created_at"`
 }
 

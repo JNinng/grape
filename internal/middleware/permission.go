@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 
+	agentv1 "grape/api/agent/v1"
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
@@ -153,6 +154,8 @@ var operationPermissionCodes = map[string]string{
 	modelv1.OperationModelServiceCreateModelSuper: biz.PermModelPlatformCreate,
 	modelv1.OperationModelServiceUpdateModelSuper: biz.PermModelPlatformUpdate,
 	modelv1.OperationModelServiceDeleteModelSuper: biz.PermModelPlatformDelete,
+	// 模型调用留痕（Agent 域证据面的管理查询，只读）
+	agentv1.OperationAgentModelCallServiceListModelCalls: biz.PermAgentModelCallQuery,
 }
 
 // PermissionMiddleware 是功能权限码判定中间件的注入类型。它与认证、链路

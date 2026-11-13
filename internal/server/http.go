@@ -3,6 +3,7 @@ package server
 import (
 	nethttp "net/http"
 
+	agentv1 "grape/api/agent/v1"
 	auditv1 "grape/api/audit/v1"
 	configv1 "grape/api/config/v1"
 	dictv1 "grape/api/dict/v1"
@@ -127,6 +128,7 @@ func NewHTTPServer(
 	permv1.RegisterPermissionServiceHTTPServer(srv, perm)
 	sessionv1.RegisterSessionServiceHTTPServer(srv, session)
 	queryv1.RegisterQueryServiceHTTPServer(srv, query)
+	agentv1.RegisterAgentModelCallServiceHTTPServer(srv, agentModelCall)
 	knowledgev1.RegisterLibraryServiceHTTPServer(srv, knowledge)
 	knowledgev1.RegisterDocumentServiceHTTPServer(srv, knowledge)
 	// 文件上传的手写路由（multipart，POST /v1/knowledge/documents/upload）：
@@ -153,11 +155,6 @@ func NewHTTPServer(
 	// 路由（/v1/agent/retrieval-logs）不在 agent 前缀内，注册顺序无冲突。
 	if agentRetrieval != nil {
 		agentRetrieval.RegisterHTTP(srv)
-	}
-	// agentModelCall 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
-	// 路由（/v1/agent/model-calls）不在 agent 前缀内，注册顺序无冲突。
-	if agentModelCall != nil {
-		agentModelCall.RegisterHTTP(srv)
 	}
 	// agent 为 nil 仅出现在不触达该路由的测试装配；生产恒非 nil。
 	if agent != nil {

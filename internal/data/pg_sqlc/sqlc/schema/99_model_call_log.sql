@@ -4,9 +4,10 @@
 -- Agent 模型调用留痕域：agent_model_call_log。与
 -- 97_agent_retrieval_log.sql 的检索留痕同一形态——追加写入（append-only），
 -- 永不更新，因此省略 updated_by/updated_at/deleted_at，也不声明
--- @dynamic/@updatable 动态协议（动态更新面与追加写语义冲突，查询面由
--- 固定命名查询承担，见 queries/agent_model_call_log.sql）；日志量较大，
--- bigserial 自增主键。
+-- @updatable 动态更新面（动态更新与追加写语义冲突）。查询面走动态查询
+-- 协议：列注释 DSL 声明过滤/排序能力（系统设置「模型调用」管理页消费），
+-- 写入面由固定命名查询承担（queries/agent_model_call_log.sql）；日志量
+-- 较大，bigserial 自增主键。
 --
 -- 留痕点：写入侧是管线侧模型/类模型调用面的 ModelCallObserver 观察
 -- 面（openaicompleter 文本生成、openaiembedder 向量化、openaireranker
@@ -22,6 +23,8 @@
 --
 -- scenario 词表由应用层把门（biz 观察面校验），不设数据库 CHECK——
 -- 词表扩展不伴随存量行迁移；摘要与错误列的上限同口径在应用层执行。
+-- 错误摘要列声明 `@dynamic: fuzzy`（模糊检索），与登录日志
+-- `failure_reason` 同口径。
 --
 -- 保留期与归档策略：本表为证据面，保留与执行口径由根目录 operations.md
 -- 「保留期与归档统一口径」统一裁定（与审计、检索留痕同一口径）。
@@ -35,8 +38,8 @@
 -- Agent 模型调用留痕
 --    管线侧模型/类模型调用的证据链（谁、哪个租户、traceId、场景、模型
 --    键、端点、作用文档、输入/输出摘要、token 用量、耗时、状态与错误摘
---    要），供运维复现视图按租户/场景/文档/时间查询，对账摄取与解析的
---    外部调用事实。
+--    要），供系统设置「模型调用」管理页按租户/场景/文档/时间等动态条件
+--    查询，对账摄取与解析的外部调用事实。
 -- ============================================================================
 
 -- agent_model_call_log — 模型调用留痕
@@ -63,26 +66,26 @@ CREATE TABLE public.agent_model_call_log
     CONSTRAINT agent_model_call_log_pkey PRIMARY KEY (id)
 );
 
-COMMENT ON TABLE public.agent_model_call_log IS '模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义';
+COMMENT ON TABLE public.agent_model_call_log IS '模型调用留痕表：记录管线侧每次模型/类模型调用（文本生成、向量化、检索重排、外部文档解析）的证据链（一次调用一行，append-only 不可变更）。scenario 词表由应用层把门（biz/model_call_log.go），无数据库 CHECK；保留期与归档策略由根目录 operations.md「保留期与归档统一口径」裁定，当前不设清理、不设归档目标，以全量保留为默认语义 [@default_sort: created_at DESC @pk: id]';
 
-COMMENT ON COLUMN public.agent_model_call_log.id IS '日志 ID，自增序列';
-COMMENT ON COLUMN public.agent_model_call_log.tenant_id IS '租户 ID，取写入事务的 app.tenant_id';
-COMMENT ON COLUMN public.agent_model_call_log.user_id IS '发起操作的用户 ID（认证身份）';
-COMMENT ON COLUMN public.agent_model_call_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL';
-COMMENT ON COLUMN public.agent_model_call_log.session_id IS 'Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表';
-COMMENT ON COLUMN public.agent_model_call_log.scenario IS '调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步';
-COMMENT ON COLUMN public.agent_model_call_log.model_key IS '模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL';
+COMMENT ON COLUMN public.agent_model_call_log.id IS '日志 ID，自增序列 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.agent_model_call_log.tenant_id IS '租户 ID，取写入事务的 app.tenant_id [@internal]';
+COMMENT ON COLUMN public.agent_model_call_log.user_id IS '发起操作的用户 ID（认证身份） [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.agent_model_call_log.trace_id IS '链路 ID：从认证 ctx 的 SpanContext 取（链路中间件注入），无链路事实时为 NULL [@dynamic: exact, prefix]';
+COMMENT ON COLUMN public.agent_model_call_log.session_id IS 'Agent 会话 ID：经 ctx 事实载体从执行现场提取（biz.WithSessionID），管线侧调用无会话事实，恒为 NULL；保留列以对齐留痕面形态，框架侧模型调用不经本表 [@internal]';
+COMMENT ON COLUMN public.agent_model_call_log.scenario IS '调用场景：ingest_summary-摄取文档摘要、ingest_prefix-摄取块前缀、embed_document-摄取向量化、embed_query-检索查询向量化、parse_document-外部文档解析（类模型 OCR）、rerank-检索重排；场景由调用链路经 ctx 事实载体声明（biz.WithModelCallScene），缺失时按实现声明的缺省回落（embed→embed_document、completer→ingest_prefix、reranker→rerank；docparse 无回落，缺失放弃该行），不伪造其他值；词表扩展在 biz 常量与列注释同步 [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.agent_model_call_log.model_key IS '模型键（模型目录 model_key / 嵌入空间键）：本次调用的目标模型按现场解析原样留痕，不做注册表对账——失败尝试的原始声明正是排查换模型事故的证据；无模型事实（解析失败前的行不存在）为 NULL [@dynamic: exact, prefix]';
 COMMENT ON COLUMN public.agent_model_call_log.endpoint IS '调用端点（协议路径完整 URL，如 {base_url}/chat/completions）：按解析现场留痕；端点事实缺失为 NULL';
-COMMENT ON COLUMN public.agent_model_call_log.document_id IS '作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL';
+COMMENT ON COLUMN public.agent_model_call_log.document_id IS '作用文档 ID（kb_document.id）：摄取与解析链路经 ctx 事实载体声明（biz.WithModelCallDocument），无文档事实（如检索查询向量化）为 NULL [@dynamic: exact, membership]';
 COMMENT ON COLUMN public.agent_model_call_log.input_summary IS '输入摘要：completer 记 prompt、embedder 记向量化文本、reranker 记查询文本、docparse 记原件事实（mime/filename/size/sha256——原件字节不落留痕）；经 pkg/redact 的 model_call 类别脱敏（rune 截断 4096）+ 应用层兜底截断同上限';
 COMMENT ON COLUMN public.agent_model_call_log.output_summary IS '输出摘要：completer 记生成文本、embedder 记维度说明（向量不落库）、reranker 记分数条数说明（分数不落库）、docparse 记 markdown 产物截断；空产出记空串（落库 NULL）';
 COMMENT ON COLUMN public.agent_model_call_log.input_tokens IS '输入 token 用量（端点 usage.prompt_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留（如维度漂移失败行）';
 COMMENT ON COLUMN public.agent_model_call_log.output_tokens IS '输出 token 用量（端点 usage.completion_tokens）：端点未上报为 NULL；调用失败不必然置空——失败行端点已上报的用量如实保留';
-COMMENT ON COLUMN public.agent_model_call_log.duration_ms IS '调用耗时（毫秒）；未知为 NULL';
-COMMENT ON COLUMN public.agent_model_call_log.status IS '调用终态：success-成功、error-失败（观察面记录尝试与终态两侧，失败行不反噬业务主流程）';
-COMMENT ON COLUMN public.agent_model_call_log.error IS '失败错误摘要（截断 512，经 model_call 类别脱敏）：成功行为 NULL';
+COMMENT ON COLUMN public.agent_model_call_log.duration_ms IS '调用耗时（毫秒）；未知为 NULL [@dynamic: exact, range, sort]';
+COMMENT ON COLUMN public.agent_model_call_log.status IS '调用终态：success-成功、error-失败（观察面记录尝试与终态两侧，失败行不反噬业务主流程） [@dynamic: exact, membership]';
+COMMENT ON COLUMN public.agent_model_call_log.error IS '失败错误摘要（截断 512，经 model_call 类别脱敏）：成功行为 NULL [@dynamic: fuzzy]';
 COMMENT ON COLUMN public.agent_model_call_log.created_by IS '写入者（认证用户，与 user_id 同值：留痕行由该用户的操作产生）';
-COMMENT ON COLUMN public.agent_model_call_log.created_at IS '写入时间';
+COMMENT ON COLUMN public.agent_model_call_log.created_at IS '写入时间 [@dynamic: exact, membership, range, sort]';
 
 -- 索引满足租户+时间 / 租户+场景 / 租户+文档三类查询面（按时间分页、
 -- 按场景过滤、按文档反查摄取与解析证据）；created_at DESC 与查询排序

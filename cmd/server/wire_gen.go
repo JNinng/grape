@@ -31,10 +31,6 @@ import (
 	"log/slog"
 )
 
-import (
-	_ "embed"
-)
-
 // Injectors from wire.go:
 
 // wireApp 装配 Kratos 应用。
@@ -108,6 +104,10 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	querySchemaProvider := pg_sqlc.NewQuerySchemaRepo()
 	queryUsecase := biz.NewQueryUsecase(querySchemaProvider)
 	queryService := service.NewQueryService(queryUsecase)
+	modelCallLogRepo := pg_sqlc.NewModelCallLogRepo(pg_sqlcData)
+	redactRegistry := biz.NewRedactRegistry()
+	modelCallLogUsecase := biz.NewModelCallLogUsecase(modelCallLogRepo, redactRegistry)
+	agentModelCallService := service.NewAgentModelCallService(modelCallLogUsecase)
 	knowledgeRepo := pg_sqlc.NewKnowledgeRepo(pg_sqlcData)
 	modelRepo := pg_sqlc.NewModelRepo(pg_sqlcData)
 	tokenizer, cleanup3, err := gsetokenizer.New()
@@ -124,7 +124,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		return nil, nil, err
 	}
 	retrievalLogRepo := pg_sqlc.NewRetrievalLogRepo(pg_sqlcData)
-	redactRegistry := biz.NewRedactRegistry()
 	vectorStore, cleanup5, err := vector.NewLoggedVectorStore(vectorStoreSupply, retrievalLogRepo, redactRegistry)
 	if err != nil {
 		cleanup4()
@@ -143,8 +142,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 		cleanup()
 		return nil, nil, err
 	}
-	modelCallLogRepo := pg_sqlc.NewModelCallLogRepo(pg_sqlcData)
-	modelCallLogUsecase := biz.NewModelCallLogUsecase(modelCallLogRepo, redactRegistry)
 	embedder, cleanup7, err := openaiembedder.New(modelResolver, confVector, modelCallLogUsecase)
 	if err != nil {
 		cleanup6()
@@ -253,7 +250,7 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	knowledgeService := service.NewKnowledgeService(knowledgeUsecase, knowledgeSearchUsecase)
 	modelUsecase := biz.NewModelUsecase(modelRepo, secretCipher)
 	modelService := service.NewModelService(modelUsecase)
-	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, knowledgeService, modelService)
+	grpcServer := server.NewGRPCServer(confServer, setup, traceMiddleware, middlewareMiddleware, operationAuditMiddleware, permissionMiddleware, userService, deptService, userGroupService, roleService, menuService, dictService, configService, tenantConfigService, featureFlagService, translationService, tenantService, permissionService, sessionService, sessionAdminService, auditService, queryService, agentModelCallService, knowledgeService, modelService)
 	service2, cleanup13, err := agent.NewSessionService(confAgent, confData)
 	if err != nil {
 		cleanup12()
@@ -303,7 +300,6 @@ func wireApp(confServer *conf.Server, confData *conf.Data, auth *conf.Auth, conf
 	agentAuditService := service.NewAgentAuditService(auditUsecase)
 	retrievalLogUsecase := biz.NewRetrievalLogUsecase(retrievalLogRepo)
 	agentRetrievalService := service.NewAgentRetrievalService(retrievalLogUsecase)
-	agentModelCallService := service.NewAgentModelCallService(modelCallLogUsecase)
 	s3Handler, cleanup15, err := oss.NewHandler(confOSS, pg_sqlcData)
 	if err != nil {
 		cleanup14()
