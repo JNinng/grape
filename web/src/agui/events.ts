@@ -28,6 +28,21 @@ export interface MessageItem {
   role: 'user' | 'assistant' | 'system' | 'developer'
   content: string
   startedAt?: number
+  // streaming 标记流式文本仍在增量中（START 之后、END 之前）：渲染端据此
+  // 给出输出中的载入提示。快照折叠的历史消息与用户消息一律不带该标记。
+  streaming?: boolean
+}
+
+// ReasoningItem 是模型思考内容（协议 role=reasoning 的消息）：实时流由
+// REASONING_* 事件折叠，历史快照由 role=reasoning 消息直映。思考内容与
+// 正文同样是不可信文本，只以 React 文本节点渲染；streaming 为 true 表示
+// 该段思考仍在增量中。
+export interface ReasoningItem {
+  kind: 'reasoning'
+  id: string
+  content: string
+  streaming: boolean
+  startedAt?: number
 }
 
 // ToolCallItem 是一次工具调用的完整视图：参数增量累积，结果在
@@ -48,7 +63,43 @@ export interface ToolCallItem {
   parentMessageId?: string
 }
 
-export type ChatItem = MessageItem | ToolCallItem
+export type ChatItem = MessageItem | ReasoningItem | ToolCallItem
+
+// ChatUnit 是渲染分组：助手回合把思考项与其后的助手消息合为一体，共用
+// 一个「助手」角色标签（思考框因此落在标签之下，而不是流内的独立卡片）；
+// 其余项各自独立成组。分组只影响呈现，不改变流内时序。
+export type ChatUnit =
+  | { kind: 'assistant'; reasoning: ReasoningItem[]; message?: MessageItem }
+  | { kind: 'item'; item: MessageItem | ToolCallItem }
+
+// groupChatUnits 把保序渲染项折叠为渲染分组：连续思考项与紧随其后的
+// 助手消息同属一轮；思考后没有助手消息（如直接进入工具调用）时仍成
+// 组，避免思考框脱离角色标签。
+export function groupChatUnits(items: ChatItem[]): ChatUnit[] {
+  const units: ChatUnit[] = []
+  let reasoning: ReasoningItem[] = []
+  const flushReasoning = () => {
+    if (reasoning.length > 0) {
+      units.push({ kind: 'assistant', reasoning })
+      reasoning = []
+    }
+  }
+  for (const item of items) {
+    if (item.kind === 'reasoning') {
+      reasoning.push(item)
+      continue
+    }
+    if (item.kind === 'message' && item.role === 'assistant') {
+      units.push({ kind: 'assistant', reasoning, message: item })
+      reasoning = []
+      continue
+    }
+    flushReasoning()
+    units.push({ kind: 'item', item })
+  }
+  flushReasoning()
+  return units
+}
 
 // StepInfo 是一次步骤（STEP_STARTED / STEP_FINISHED 对）的展示状态。
 export interface StepInfo {
@@ -107,9 +158,11 @@ export function applyChatEvent(state: ChatState, event: Event): ChatState {
     case 'RUN_STARTED':
       return { ...state, running: true, error: null }
     case 'RUN_FINISHED':
-      return { ...state, running: false }
+      // 终态兜底收口仍在增量中的流：正常路径 START/CONTENT/END 成对出现，
+      // 断流（取消、异常）时 END 可能缺失，不能让载入提示永久停留。
+      return { ...state, running: false, items: settleStreamingItems(state.items) }
     case 'RUN_ERROR':
-      return { ...state, running: false, error: event.message }
+      return { ...state, running: false, error: event.message, items: settleStreamingItems(state.items) }
     case 'STEP_STARTED':
       return { ...state, steps: [...state.steps, { name: event.stepName, finished: false }] }
     case 'STEP_FINISHED': {
@@ -127,7 +180,7 @@ export function applyChatEvent(state: ChatState, event: Event): ChatState {
       if (state.items.some((item) => item.kind === 'message' && item.id === event.messageId)) {
         return state
       }
-      const item: MessageItem = { kind: 'message', id: event.messageId, role, content: '' }
+      const item: MessageItem = { kind: 'message', id: event.messageId, role, content: '', streaming: true }
       return { ...state, items: [...state.items, item] }
     }
     case 'TEXT_MESSAGE_CONTENT': {
@@ -135,6 +188,37 @@ export function applyChatEvent(state: ChatState, event: Event): ChatState {
         item.kind === 'message' && item.id === event.messageId
           ? { ...item, content: item.content + event.delta }
           : item,
+      )
+      return { ...state, items }
+    }
+    case 'TEXT_MESSAGE_END': {
+      const items = state.items.map((item) =>
+        item.kind === 'message' && item.id === event.messageId ? { ...item, streaming: false } : item,
+      )
+      return { ...state, items }
+    }
+    // REASONING_START/REASONING_END 是思考区段（span）的开关，内容仍按
+    // REASONING_MESSAGE_* 增量折叠；只有后者的 messageId 定位到渲染项。
+    case 'REASONING_START':
+    case 'REASONING_END':
+    case 'REASONING_ENCRYPTED_VALUE':
+      return state
+    case 'REASONING_MESSAGE_START': {
+      if (state.items.some((item) => item.kind === 'reasoning' && item.id === event.messageId)) {
+        return state
+      }
+      const item: ReasoningItem = { kind: 'reasoning', id: event.messageId, content: '', streaming: true }
+      return { ...state, items: [...state.items, item] }
+    }
+    case 'REASONING_MESSAGE_CONTENT':
+      return { ...state, items: appendReasoningDelta(state.items, event.messageId, event.delta) }
+    // CHUNK 是 START/CONTENT/END 的缩写：缺 messageId 时延续上一段仍在
+    // 增量中的思考。
+    case 'REASONING_MESSAGE_CHUNK':
+      return { ...state, items: appendReasoningDelta(state.items, event.messageId, event.delta ?? '') }
+    case 'REASONING_MESSAGE_END': {
+      const items = state.items.map((item) =>
+        item.kind === 'reasoning' && item.id === event.messageId ? { ...item, streaming: false } : item,
       )
       return { ...state, items }
     }
@@ -215,6 +299,53 @@ function upsertConfirmation(
   return [...rest, payload]
 }
 
+// lastOpenReasoningId 取最后一段仍在增量中的思考 ID：REASONING_MESSAGE_CHUNK
+// 的 messageId 可省略，协议语义是延续当前段落。
+function lastOpenReasoningId(items: ChatItem[]): string | undefined {
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i]
+    if (item.kind === 'reasoning' && item.streaming) {
+      return item.id
+    }
+  }
+  return undefined
+}
+
+// appendReasoningDelta 把一段思考增量并入对应段落：缺 messageId 时延续
+// 最后一段未收口的思考；有 messageId 而尚无对应项时按新段承接（START
+// 缺失的协议断流兜底，不丢内容）；两者都无归属则原样返回。
+function appendReasoningDelta(items: ChatItem[], messageId: string | undefined, delta: string): ChatItem[] {
+  const id = messageId === undefined || messageId === '' ? lastOpenReasoningId(items) : messageId
+  if (id === undefined) {
+    return items
+  }
+  if (!items.some((item) => item.kind === 'reasoning' && item.id === id)) {
+    const item: ReasoningItem = { kind: 'reasoning', id, content: delta, streaming: true }
+    return [...items, item]
+  }
+  return items.map((item) =>
+    item.kind === 'reasoning' && item.id === id ? { ...item, content: item.content + delta } : item,
+  )
+}
+
+// settleStreamingItems 收口所有仍在增量中的项（文本与思考）：运行终态兜底，
+// 保证载入提示不会因 END 缺失而残留；无流式项时原引用返回。
+function settleStreamingItems(items: ChatItem[]): ChatItem[] {
+  let changed = false
+  const settled = items.map((item) => {
+    if (item.kind === 'reasoning' && item.streaming) {
+      changed = true
+      return { ...item, streaming: false }
+    }
+    if (item.kind === 'message' && item.streaming) {
+      changed = true
+      return { ...item, streaming: false }
+    }
+    return item
+  })
+  return changed ? settled : items
+}
+
 // SnapshotSourceMetadata 是 /history 快照 rawEvent 内按消息 ID 与工具调用
 // ID 索引的来源时间事实（框架 WithEventSourceMetadataEnabled 的输出）；
 // 只取复现视图需要的起始时间，其余字段忽略。
@@ -231,10 +362,11 @@ function startedAtOf(index: Record<string, { timestamp?: number } | undefined> |
 }
 
 // messagesToItems 把 /agui/history 快照回放的消息列表折叠为渲染项：
-// user/assistant 文本直映；assistant.toolCalls 展开为工具项；tool 消息
-// 按 toolCallId 合并进既有工具项的结果，孤儿结果单独成项（与流式
-// reducer 的 TOOL_CALL_RESULT 语义一致）。source 非空时按 messageId /
-// toolCallId 回填起始时间，缺失即不设该字段。
+// user/assistant 文本直映；reasoning 消息折叠为思考项（空内容不造空块）；
+// assistant.toolCalls 展开为工具项；tool 消息按 toolCallId 合并进既有工具
+// 项的结果，孤儿结果单独成项（与流式 reducer 的 TOOL_CALL_RESULT 语义
+// 一致）。source 非空时按 messageId / toolCallId 回填起始时间，缺失即不
+// 设该字段。
 export function messagesToItems(messages: Message[], source?: SnapshotSourceMetadata): ChatItem[] {
   const items: ChatItem[] = []
   const toolIndex = new Map<string, ToolCallItem>()
@@ -251,6 +383,19 @@ export function messagesToItems(messages: Message[], source?: SnapshotSourceMeta
         content: contentToText(message.content),
         startedAt: startedAtOf(source?.messages, message.id),
       })
+      continue
+    }
+    if (message.role === 'reasoning') {
+      const content = contentToText(message.content)
+      if (content !== '') {
+        items.push({
+          kind: 'reasoning',
+          id: message.id,
+          content,
+          streaming: false,
+          startedAt: startedAtOf(source?.messages, message.id),
+        })
+      }
       continue
     }
     if (message.role === 'assistant') {

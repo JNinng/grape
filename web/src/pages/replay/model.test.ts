@@ -149,6 +149,19 @@ describe('relatedToolCallIds and replay linking', () => {
     expect(related.has('m-4')).toBe(false)
   })
 
+  it('attributes_reasoning_items_to_the_matched_user_turn', () => {
+    const items: ChatItem[] = [
+      { kind: 'reasoning', id: 'r-0', content: '开场思考', streaming: false },
+      { kind: 'message', id: 'm-1', role: 'user', content: '问' },
+      { kind: 'reasoning', id: 'r-1', content: '命中段内的思考', streaming: false },
+      toolItem('call-1', 'ok'),
+    ]
+
+    const related = relatedChatItemIds(items, new Set(['call-1']))
+    expect(related.has('r-0')).toBe(false)
+    expect(related.has('r-1')).toBe(true)
+  })
+
   it('returns_an_empty_related_stream_when_no_tool_call_matches', () => {
     const items: ChatItem[] = [
       { kind: 'message', id: 'm-1', role: 'user', content: '问' },

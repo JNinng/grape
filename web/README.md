@@ -85,8 +85,15 @@ npm 构建会覆盖占位页，提交前用
 
 - 流式问答：`agui/agent.ts` 构造 `HttpAgent` 并注入 `authFetch` 作为
   传输（`EventSource` 不能带 Authorization，fetch 可以）；运行事件经
-  `agui/events.ts` 的纯函数 reducer 折叠为文本增量、工具调用生命周期、
-  步骤与错误横幅。
+  `agui/events.ts` 的纯函数 reducer 折叠为文本增量、思考增量、工具调用
+  生命周期、步骤与错误横幅。
+- 思考内容：`REASONING_MESSAGE_START/CONTENT/END`（及缩写
+  `REASONING_MESSAGE_CHUNK`）折叠为独立思考项，与正文同处流内时序；渲染
+  为默认收起的虚线折叠块。思考框与回答同属助手回合（`groupChatUnits`），
+  共用「助手」标签、宽度收敛到气泡列——思考在上、回答在下。摘要行在增量
+  中显示「正在思考…」载入态。载入提示另有两处：正文流式时气泡末尾闪烁
+  竖线；运行中且无任何流式项、无在跑工具时，列表尾部显示「正在思考…」
+  ——待确认（运行挂起等人决定）不显示该提示。
 - 历史回放：切换会话时 `POST /agui/history` 拉一次 messages snapshot
   （`agui/history.ts` 手解 SSE data 行）。拿到首份 `MESSAGES_SNAPSHOT` 即
   `reader.cancel()` 返回，不等快照运行走完；不跟 follow 流——上游 track
@@ -188,6 +195,11 @@ npm 构建会覆盖占位页，提交前用
   上游 track follow 的同毫秒缺陷。无 track 事件或事件已过保留期的会话，
   快照运行可能 500，回放面按空态提示降级（`historyUnavailable`），审计/
   授权/检索三面照常装载——不以一面失败盖掉整页。
+- 快照中的思考消息（role=reasoning）与回答同属助手回合：共用角色标签，
+  思考卡片默认收起、置于回答之上，摘要行含起始时间与相对本轮用户消息的
+  用时，展开后以纯文本显示思考原文；空内容段落不造空块。思考项参与 trace
+  高亮的按段归属（与助手回复同段），不带独立的模型用量事实，避免同一次
+  调用重复计数。
 - 工具审计、确认审计、检索留痕分别经 `/v1/agent/audit/tool-calls`、
   `/v1/agent/audit/confirmations`、`/v1/agent/retrieval-logs` 查询；返回
   行是落库时已脱敏的形态，前端直接渲染、不回传原文。工具重试次数后端

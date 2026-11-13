@@ -224,9 +224,10 @@ session_id（会话）
   `agent_session_track_events`、`agent_session_summaries`、
   `agent_app_states`、`agent_user_states`）存会话元数据、事件与 track
   事件；无 RLS、无租户列，归属由 userKey 应用层编码，跨用户不可见。
-- 事件流保留原文：提示词、模型输出、工具调用与结果、确认事件。请求侧
-  上下文压缩只作用于请求投影副本，事件流不被改写；压缩占位符携带
-  `event_id`，可经事件窗口取回原文。
+- 事件流保留原文：提示词、模型输出（含模型思考内容，role=reasoning
+  消息）、工具调用与结果、确认事件。请求侧上下文压缩只作用于请求投影
+  副本，事件流不被改写；压缩占位符携带 `event_id`，可经事件窗口取回
+  原文。
 - 保留期由 conf `agent.session_storage` 四项 TTL 控制，0 = 永不过期
   （默认）；track 事件 TTL 0 沿用会话 TTL。会话事件是敏感数据面，访问
   控制与保留期口径见 [operations.md](operations.md)。

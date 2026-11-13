@@ -353,6 +353,28 @@ describe('ReplayPage four-facet evidence view', () => {
     expect(retrievalRegion.querySelector('li[data-trace-id="trace-a"]')).not.toHaveClass('bg-brand-soft', 'opacity-40')
   })
 
+  it('renders_reasoning_content_collapsed_and_reveals_it_on_expand', async () => {
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'u-1', role: 'user', content: '问' },
+      { kind: 'reasoning', id: 'r-1', content: '先比对上下文再作答', streaming: false },
+      { kind: 'message', id: 'a-1', role: 'assistant', content: '答' },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    const region = await screen.findByRole('region', { name: '对话流回放' })
+    const summary = await within(region).findByText('思考内容')
+    // 思考块与回答同属助手回合：共用角色标签，不再是独立卡片。
+    const article = summary.closest('article')
+    expect(article).toHaveAttribute('data-role', 'assistant')
+    expect(article).toHaveTextContent('assistant')
+    expect(article).toHaveTextContent('答')
+    // 默认收起：思考原文不挂载，展开后以纯文本呈现。
+    expect(within(region).queryByText('先比对上下文再作答')).not.toBeInTheDocument()
+    await user.click(summary)
+    expect(summary.closest('[aria-expanded]')).toHaveAttribute('aria-expanded', 'true')
+    expect(within(region).getByText('先比对上下文再作答')).toBeInTheDocument()
+  })
+
   it('renders_distinct_vector_and_lexical_stage_labels_after_expanding_the_row', async () => {
     // 编排层写入的留痕行按阶段时间线渲染（向量召回 / 词法召回 → 融合 →
     // 重排 → 回包）：两路召回必须可区分；阶段名、查询变体、重排模型、

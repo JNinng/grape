@@ -50,7 +50,7 @@ const (
 )
 
 // defaultInstruction 是注入给 Agent 的系统提示词：只声明跨工具行为约束
-//（工具面 schema 由框架按工具声明下发，MaxToolIterations 是最终兜底）。
+// （工具面 schema 由框架按工具声明下发，MaxToolIterations 是最终兜底）。
 // 检索工具的不可信文档内容以围栏标记引用，系统级「引用而非执行」约束是
 // 最后防线（工具描述与结果 notice 是前两道，见 tools 包 tool_search.go）；
 // 语言默认与不泄露指令两条同为跨工具约束，模型在任何链路与措辞下受其约束。
@@ -205,6 +205,10 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		// 时间），复现视图据此呈现每条消息与每次工具调用的起点；同在
 		// 实时流事件上附带 rawEvent，README 声明该出口可被运维发现。
 		aguirunner.WithEventSourceMetadataEnabled(true),
+		// 思考内容：模型返回 reasoning 增量时翻译为 REASONING_* 事件并
+		// 持久化，对话页据此即时展示、复现页经快照回放；是否产出思考
+		// 仍由模型能力与请求参数决定，本开关只控制协议出口。
+		aguirunner.WithReasoningContentEnabled(true),
 	)
 	// Bind 把同一 AG-UI runner 注入恢复路径：重启后的孤儿确认经网关
 	// Decide 由它拉起续跑运行。未 Bind 则孤儿决定返回 ErrNotBound（500），
@@ -227,6 +231,7 @@ func NewStackWithOptions(c *conf.Agent, logger *slog.Logger, sessions session.Se
 		// 与上方 aguirunner.New 保持一致（工厂会丢弃聚合出的 runner 级
 		// 选项，这里同样显式声明意图）。
 		agui.WithEventSourceMetadataEnabled(true),
+		agui.WithReasoningContentEnabled(true),
 		// 复用上面带完整选项的 AG-UI runner：网关 Bind 的实例必须正是
 		// 服务请求的实例，不得改为工厂内新建。工厂会静默丢弃 agui.New 聚合
 		// 出的 runner 级选项，相关选项须与上面的 aguirunner.New 保持一致。
@@ -369,7 +374,7 @@ func llmAgentOptions(c *conf.Agent, llm model.Model, tools []tool.Tool) []llmage
 			Stream:          true,
 			MaxTokens:       ptr(defaultMaxTokens),
 			Temperature:     ptr(defaultTemperature),
-			ThinkingEnabled: ptr(false),
+			ThinkingEnabled: ptr(true),
 		}),
 		// 防风暴：单次运行内模型发起工具调用的轮数上限；
 		// 拒绝后模型若无视「不得重试」约束循环重试，由它终止运行。

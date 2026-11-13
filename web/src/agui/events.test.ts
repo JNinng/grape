@@ -3,9 +3,11 @@ import type { Event } from '@ag-ui/client'
 import {
   applyChatEvent,
   contentToText,
+  groupChatUnits,
   initialChatState,
   isToolConfirmationPayload,
   messagesToItems,
+  type ChatItem,
 } from './events'
 
 function textEvent(partial: {
@@ -152,6 +154,104 @@ describe('applyChatEvent tool_confirmation custom events', () => {
   })
 })
 
+describe('applyChatEvent reasoning content', () => {
+  it('accumulates_reasoning_deltas_and_closes_the_segment_on_end', () => {
+    let state = initialChatState()
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_START',
+      messageId: 'reasoning-1',
+      role: 'reasoning',
+    } as unknown as Event)
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_CONTENT',
+      messageId: 'reasoning-1',
+      delta: '先看',
+    } as unknown as Event)
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_CONTENT',
+      messageId: 'reasoning-1',
+      delta: '上下文',
+    } as unknown as Event)
+
+    expect(state.items).toEqual([
+      { kind: 'reasoning', id: 'reasoning-1', content: '先看上下文', streaming: true },
+    ])
+
+    state = applyChatEvent(state, { type: 'REASONING_MESSAGE_END', messageId: 'reasoning-1' } as unknown as Event)
+    expect(state.items[0]).toMatchObject({ content: '先看上下文', streaming: false })
+  })
+
+  it('continues_the_open_segment_for_chunks_without_a_message_id', () => {
+    let state = initialChatState()
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_START',
+      messageId: 'reasoning-1',
+      role: 'reasoning',
+    } as unknown as Event)
+    state = applyChatEvent(state, { type: 'REASONING_MESSAGE_CHUNK', delta: '甲' } as unknown as Event)
+    state = applyChatEvent(state, { type: 'REASONING_MESSAGE_CHUNK', delta: '乙' } as unknown as Event)
+
+    expect(state.items).toEqual([
+      { kind: 'reasoning', id: 'reasoning-1', content: '甲乙', streaming: true },
+    ])
+  })
+
+  it('starts_a_new_segment_for_a_chunk_with_an_unknown_message_id', () => {
+    let state = initialChatState()
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_CHUNK',
+      messageId: 'reasoning-9',
+      delta: '独立片段',
+    } as unknown as Event)
+
+    expect(state.items).toEqual([
+      { kind: 'reasoning', id: 'reasoning-9', content: '独立片段', streaming: true },
+    ])
+  })
+
+  it('settles_open_reasoning_and_text_streams_on_run_finished', () => {
+    let state = initialChatState()
+    state = applyChatEvent(state, {
+      type: 'REASONING_MESSAGE_START',
+      messageId: 'reasoning-1',
+      role: 'reasoning',
+    } as unknown as Event)
+    state = applyChatEvent(state, textEvent({ type: 'TEXT_MESSAGE_START', messageId: 'm-1' }))
+    state = applyChatEvent(state, { type: 'RUN_FINISHED', threadId: 't', runId: 'r' } as unknown as Event)
+
+    expect(state.items).toMatchObject([
+      { kind: 'reasoning', id: 'reasoning-1', streaming: false },
+      { kind: 'message', id: 'm-1', streaming: false },
+    ])
+  })
+})
+
+describe('groupChatUnits', () => {
+  const reasoning: ChatItem = { kind: 'reasoning', id: 'r-1', content: '思考', streaming: false }
+  const assistant: ChatItem = { kind: 'message', id: 'a-1', role: 'assistant', content: '答' }
+  const user: ChatItem = { kind: 'message', id: 'u-1', role: 'user', content: '问' }
+  const tool: ChatItem = { kind: 'tool', toolCallId: 'call-1', name: 'echo', argsText: '', result: null, done: true }
+
+  it('groups_reasoning_with_the_following_assistant_message', () => {
+    expect(groupChatUnits([user, reasoning, assistant])).toEqual([
+      { kind: 'item', item: user },
+      { kind: 'assistant', reasoning: [reasoning], message: assistant },
+    ])
+  })
+
+  it('keeps_reasoning_without_an_assistant_message_as_its_own_assistant_unit', () => {
+    expect(groupChatUnits([user, reasoning, tool])).toEqual([
+      { kind: 'item', item: user },
+      { kind: 'assistant', reasoning: [reasoning] },
+      { kind: 'item', item: tool },
+    ])
+  })
+
+  it('leaves_plain_assistant_messages_as_assistant_units', () => {
+    expect(groupChatUnits([assistant])).toEqual([{ kind: 'assistant', reasoning: [], message: assistant }])
+  })
+})
+
 describe('contentToText', () => {
   it('normalizes_strings_parts_and_missing_content_to_plain_text', () => {
     expect(contentToText('plain')).toBe('plain')
@@ -193,6 +293,33 @@ describe('messagesToItems history snapshot mapping', () => {
         parentMessageId: 'a-1',
       },
     ])
+  })
+
+  it('maps_reasoning_messages_and_backfills_their_start_time', () => {
+    const items = messagesToItems(
+      [
+        { id: 'r-1', role: 'reasoning', content: '先比对上下文' },
+        { id: 'a-1', role: 'assistant', content: '答' },
+      ] as never[],
+      { messages: { 'r-1': { timestamp: 1_700_000_000_000 } } },
+    )
+
+    expect(items).toEqual([
+      {
+        kind: 'reasoning',
+        id: 'r-1',
+        content: '先比对上下文',
+        streaming: false,
+        startedAt: 1_700_000_000_000,
+      },
+      { kind: 'message', id: 'a-1', role: 'assistant', content: '答' },
+    ])
+  })
+
+  it('drops_reasoning_messages_without_content', () => {
+    const items = messagesToItems([{ id: 'r-1', role: 'reasoning', content: '' }] as never[])
+
+    expect(items).toEqual([])
   })
 
   it('keeps_an_orphan_tool_result_as_its_own_item', () => {

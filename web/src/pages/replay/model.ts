@@ -73,10 +73,10 @@ export function relatedToolCallIds(facets: TraceFacets, traceId: string | null):
 }
 
 // relatedChatItemIds 把链路命中扩散为回放流内的相关项集合：工具项直接
-// 按 toolCallId 判定；文本消息自身不带 trace_id，按「一段交互（以用户
-// 消息为界）内存在命中工具项，则整段相关」的邻近口径归属——一段交互的
-// 用户消息、工具调用与助手回答是同一链路的完整叙事。无任何命中时返回
-// 空集（调用方据此跳过降透明度，避免整流变灰而无所指）。
+// 按 toolCallId 判定；文本消息与思考项自身不带 trace_id，按「一段交互
+// （以用户消息为界）内存在命中工具项，则整段相关」的邻近口径归属——一段
+// 交互的用户消息、工具调用、思考与助手回答是同一链路的完整叙事。无任何
+// 命中时返回空集（调用方据此跳过降透明度，避免整流变灰而无所指）。
 export function relatedChatItemIds(items: ChatItem[], relatedToolIds: Set<string>): Set<string> {
   const ids = new Set<string>()
   let segment: string[] = []
@@ -94,7 +94,7 @@ export function relatedChatItemIds(items: ChatItem[], relatedToolIds: Set<string
     if (item.kind === 'message' && item.role === 'user') {
       flush()
     }
-    segment.push(item.kind === 'message' ? item.id : item.toolCallId)
+    segment.push(item.kind === 'tool' ? item.toolCallId : item.id)
     if (item.kind === 'tool' && relatedToolIds.has(item.toolCallId)) {
       hit = true
     }

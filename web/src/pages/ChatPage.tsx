@@ -471,7 +471,9 @@ export function ChatPage() {
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
-            <MessageList items={chat.items} />
+            {/* 待确认时运行挂起等人决定，不呈现「正在思考」：载入提示只
+                表示模型侧仍在处理。 */}
+            <MessageList items={chat.items} running={chat.running && chat.confirmations.length === 0} />
             {chat.confirmations.map((confirmation) => (
               <ConfirmationCard
                 key={confirmation.confirmationId}

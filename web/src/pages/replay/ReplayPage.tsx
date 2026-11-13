@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { ChatItem, MessageItem, ToolCallItem } from '../../agui/events'
+import { groupChatUnits, type ChatItem, type MessageItem, type ReasoningItem, type ToolCallItem } from '../../agui/events'
 import { fetchHistorySnapshot } from '../../agui/history'
 import { fetchAgentSessions, type AgentSessionMeta } from '../../api/agentSessions'
 import {
@@ -16,6 +16,7 @@ import {
   ChevronDownIcon,
   CircleAlertIcon,
   RotateCwIcon,
+  SparklesIcon,
   WrenchIcon,
 } from 'lucide-react'
 import { detectCompactionRefs } from './compaction'
@@ -146,14 +147,14 @@ function runFirstFactIds(facts: SessionUsageFact[]): Set<string> {
 }
 
 // turnStarts 计算回放流每一项所在交互的起点：以用户消息为界，段内
-// 后续项（工具调用与助手回复）归属该用户消息的起始时间。用户消息自身
-// 不作为自己的锚（用时只对段内后续项有意义），段首缺失起始时间时该段
-// 无锚点，不计算耗时。
+// 后续项（思考、工具调用与助手回复）归属该用户消息的起始时间。用户消息
+// 自身不作为自己的锚（用时只对段内后续项有意义），段首缺失起始时间时
+// 该段无锚点，不计算耗时。
 function turnStarts(items: ChatItem[]): Map<string, number | undefined> {
   const starts = new Map<string, number | undefined>()
   let current: number | undefined
   for (const item of items) {
-    const key = item.kind === 'message' ? item.id : item.toolCallId
+    const key = item.kind === 'tool' ? item.toolCallId : item.id
     if (item.kind === 'message' && item.role === 'user') {
       current = item.startedAt
       starts.set(key, undefined)
@@ -563,6 +564,33 @@ function CompactibleText({ text, threadId }: { text: string; threadId: string })
   )
 }
 
+// ReplayReasoning 复现流里的模型思考内容：默认收起的虚线卡片，摘要行
+// 携带起始时间与相对本轮用户消息的用时；展开后以纯文本呈现思考原文
+// （与正文同一条 sanitize 基线）。快照中的思考段落没有流式态，一律按
+// 已收口渲染。宽度与透明度由所属助手回合统一控制。
+function ReplayReasoning({ item, turnStart }: { item: ReasoningItem; turnStart?: number }) {
+  const start = startInfo(item.startedAt, turnStart)
+  return (
+    <Collapsible className="w-full overflow-hidden rounded-xl border border-dashed bg-card shadow-xs">
+      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors select-none hover:bg-soft">
+        <SparklesIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        思考内容
+        <span className="text-xs tabular-nums">始于 {start.time}</span>
+        {start.latency && <span className="text-xs tabular-nums">{start.latency}</span>}
+        <ChevronDownIcon
+          aria-hidden
+          className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="border-t px-3.5 py-3 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground">
+          {item.content}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
 // ReplayToolCall 复现流里的工具调用折叠项：摘要行始终携带关联审计/确认
 // 数量徽标；展开后在参数与「结果」原文之下内嵌同一 toolCallId 的审计行
 // 与授权确认行，免去跨区交叉查证。trace 过滤命中的项以品牌紫描边高亮，
@@ -688,10 +716,11 @@ function ReplayToolCall({
   )
 }
 
-// ReplayMessage 复现流里的单条消息：与对话页气泡形态一致——用户消息
-// 靠右品牌紫气泡（标签「你」），assistant 等其余角色靠左卡片气泡（标签
-// 沿用原始角色名作证据口径）。压缩占位符面板跟随消息同侧渲染；链路过
-// 滤启用且本消息不在命中段内时降透明度。
+// ReplayMessage 复现流里的独立消息（用户 / 系统等）：与对话页气泡形态
+// 一致——用户消息靠右品牌紫气泡（标签「你」），其余角色靠左卡片气泡（标签
+// 沿用原始角色名作证据口径）。助手回合（含思考与回答）由
+// ReplayAssistantTurn 承载。压缩占位符面板跟随消息同侧渲染；链路过滤启用
+// 且本消息不在命中段内时降透明度。
 function ReplayMessage({
   item,
   threadId,
@@ -735,6 +764,67 @@ function ReplayMessage({
         }`}
       >
         {item.content}
+      </div>
+      {usage.length > 0 && (
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground">
+          {usage.map((part) => (
+            <span key={part} className="tabular-nums">
+              {part}
+            </span>
+          ))}
+        </p>
+      )}
+      {refs.map((ref, index) => (
+        <CompactionRefPanel key={`${ref.eventId ?? ref.kind}-${index}`} compactionRef={ref} threadId={threadId} />
+      ))}
+    </article>
+  )
+}
+
+// ReplayAssistantTurn 复现流里的助手回合：思考卡片与回答共用角色标签
+// （标签沿用原始角色名作证据口径），思考在上、回答在下，宽度收敛到气泡
+// 列。模型用量事实与压缩引用只属于回答正文，呈现口径与 ReplayMessage
+// 一致；思考段不重复挂同一次调用的 token。
+function ReplayAssistantTurn({
+  reasoning,
+  message,
+  threadId,
+  dimmed,
+  turnStart,
+  fact,
+  showRunTiming,
+}: {
+  reasoning: ReasoningItem[]
+  message?: MessageItem
+  threadId: string
+  dimmed: boolean
+  turnStart?: number
+  fact?: SessionUsageFact
+  showRunTiming: boolean
+}) {
+  const content = message?.content ?? ''
+  const refs = useMemo(() => detectCompactionRefs(content), [content])
+  const start = startInfo(message?.startedAt ?? reasoning[0]?.startedAt, turnStart)
+  const usage = useMemo(() => usageSummary(fact, showRunTiming), [fact, showRunTiming])
+  return (
+    <article
+      data-role="assistant"
+      className={`flex flex-col items-start transition-opacity duration-200 ${dimmed ? 'opacity-40' : ''}`}
+    >
+      <span className="mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
+        assistant
+        <span className="tabular-nums">始于 {start.time}</span>
+        {start.latency && <span className="tabular-nums">{start.latency}</span>}
+      </span>
+      <div className="flex w-full max-w-[85%] flex-col items-start gap-2">
+        {reasoning.map((item) => (
+          <ReplayReasoning key={item.id} item={item} turnStart={turnStart} />
+        ))}
+        {message !== undefined && (
+          <div className="rounded-2xl border bg-card px-4 py-2.5 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap text-card-foreground shadow-xs">
+            {message.content}
+          </div>
+        )}
       </div>
       {usage.length > 0 && (
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-xs text-muted-foreground">
@@ -985,33 +1075,59 @@ export function ReplayPage() {
                         ) : (
                           <EmptyNote>该会话暂无快照消息。</EmptyNote>
                         ))}
-                      {items.map((item) => {
-                        const itemKey = item.kind === 'message' ? item.id : item.toolCallId
-                        const related = relatedItemIds.has(itemKey)
+                      {groupChatUnits(items).map((unit) => {
+                        if (unit.kind === 'assistant') {
+                          const memberIds = [
+                            ...unit.reasoning.map((reasoning) => reasoning.id),
+                            ...(unit.message !== undefined ? [unit.message.id] : []),
+                          ]
+                          const related = memberIds.some((id) => relatedItemIds.has(id))
+                          const dimmed = dimStream && !related
+                          const turnStart = itemTurnStarts.get(memberIds[0] ?? '')
+                          // 用量事实按模型响应（助手消息 ID）索引：思考段落不带
+                          // 独立事实，不重复呈现同一次调用的 token。
+                          const fact = usageByMessageId.get(unit.message?.id ?? '')
+                          const showRunTiming = fact !== undefined && runFirstFacts.has(fact.messageId)
+                          return (
+                            <ReplayAssistantTurn
+                              key={memberIds[0] ?? 'assistant'}
+                              reasoning={unit.reasoning}
+                              message={unit.message}
+                              threadId={threadId}
+                              dimmed={dimmed}
+                              turnStart={turnStart}
+                              fact={fact}
+                              showRunTiming={showRunTiming}
+                            />
+                          )
+                        }
+                        const item = unit.item
+                        if (item.kind === 'message') {
+                          const dimmed = dimStream && !relatedItemIds.has(item.id)
+                          return (
+                            <ReplayMessage
+                              key={item.id}
+                              item={item}
+                              threadId={threadId}
+                              dimmed={dimmed}
+                              turnStart={itemTurnStarts.get(item.id)}
+                              fact={usageByMessageId.get(item.id)}
+                              showRunTiming={false}
+                            />
+                          )
+                        }
+                        const related = relatedItemIds.has(item.toolCallId)
                         const dimmed = dimStream && !related
-                        const turnStart = itemTurnStarts.get(itemKey)
-                        const fact = usageByMessageId.get(
-                          item.kind === 'message' ? item.id : item.parentMessageId ?? '',
-                        )
+                        const fact = usageByMessageId.get(item.parentMessageId ?? '')
                         const showRunTiming = fact !== undefined && runFirstFacts.has(fact.messageId)
-                        return item.kind === 'message' ? (
-                          <ReplayMessage
-                            key={item.id}
-                            item={item}
-                            threadId={threadId}
-                            dimmed={dimmed}
-                            turnStart={turnStart}
-                            fact={fact}
-                            showRunTiming={showRunTiming}
-                          />
-                        ) : (
+                        return (
                           <ReplayToolCall
                             key={item.toolCallId}
                             item={item}
                             threadId={threadId}
                             highlighted={related}
                             dimmed={dimmed}
-                            turnStart={turnStart}
+                            turnStart={itemTurnStarts.get(item.toolCallId)}
                             fact={fact}
                             showRunTiming={showRunTiming}
                             audits={toolCallAuditsFor(toolCalls, item.toolCallId)}

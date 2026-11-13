@@ -91,6 +91,10 @@ runner、AG-UI handler 与 ack 许可网关只在本层构造，server 经 servi
   `timestamp`（毫秒）是复现视图呈现起始时间的唯一来源。时间取自持久化
   track 事件，重启后仍可回放；只描述消息级与工具调用级的起点，流式
   分块不逐块记时。实时流事件同样携带 `rawEvent`，前端不消费。
+- 思考内容（`WithReasoningContentEnabled`）开启：模型返回 reasoning 增量
+  时翻译为 `REASONING_*` 事件并随 track 事件持久化，对话页即时折叠展示、
+  复现页经快照回放。开关只控制协议出口，是否产出思考仍由模型能力与生成
+  参数决定；思考文本属会话事件原文，脱敏与保留期口径同事件流。
 - track follow 的同毫秒丢事件缺陷以快照回放兜底，修复判断见
   [operations.md](../../operations.md#框架升级检查单)，本层不重复治理。
 - 运行门控按 userKey 限制在途 chat 运行数，超限 429、身份缺失 401，只
