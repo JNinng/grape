@@ -40,9 +40,13 @@ npm 构建会覆盖占位页，提交前用
 - **序列化口径**：全部按 protojson——字段小驼峰、int64 为字符串、时间为
   RFC3339、optional 未设置即省略（显式 null 同义）。写请求省略 undefined
   键即未设置。
-- **不可信文本**：模型文本与工具参数/结果一律不可信，全部以 React 文本
-  节点渲染（等价 `textContent`），不引入 `innerHTML` / markdown 注入路径。
-  将来引入 markdown 渲染必须先过 sanitizer（如 dompurify）并另行评审。
+- **不可信文本**：模型文本与工具参数/结果一律不可信。assistant 正文与
+  思考内容经 [src/components/markdown.tsx](src/components/markdown.tsx) 的
+  Streamdown 管线渲染：关闭 rehype-raw（原始 HTML 按转义文本呈现）、
+  rehype-sanitize 清洗、rehype-harden 限制协议且不渲染外链图片；用户消息
+  与工具参数/结果仍以 React 文本节点渲染（等价 `textContent`），不走
+  `innerHTML`。新增渲染路径（放行原始 HTML、图片、自定义标签）必须另行
+  评审。
 - **旧内核兼容**：CSS 禁用 oklch、透明度修饰符与独立 transform 属性；
   组件改写规则与 jsdom 垫片见
   [src/components/ui/README.md](src/components/ui/README.md)。
@@ -94,6 +98,20 @@ npm 构建会覆盖占位页，提交前用
   中显示「正在思考…」载入态。载入提示另有两处：正文流式时气泡末尾闪烁
   竖线；运行中且无任何流式项、无在跑工具时，列表尾部显示「正在思考…」
   ——待确认（运行挂起等人决定）不显示该提示。
+- Markdown 渲染与复制：assistant 正文与思考内容均经 Streamdown 渲染，
+  插件为代码高亮（`@streamdown/code`，Shiki）、数学公式（`@streamdown/math`，
+  KaTeX）、Mermaid 图表（`@streamdown/mermaid`）与 CJK 断行
+  （`@streamdown/cjk`）；`remark-breaks` 让聊天里的单换行成 `<br/>`。流式
+  阶段走 streaming 模式（补全未闭合语法并显示光标），结算后切静态模式命中
+  块级缓存。代码块/表格/Mermaid 自带复制、下载等控件（文案中文化），其中
+  代码块与表格的操作条默认隐藏，指针进入对应块或键盘聚焦时才显示。每个
+  回答底部左侧有复制图标，悬浮弹出两个选项：「复制全文」取渲染后的整体
+  文本（innerText 口径，隐藏控件不计入），「复制原文」把 Markdown 源文本
+  写入剪贴板；思考折叠头部在展开箭头左侧有「复制原文」图标，默认透明，
+  指针进入思考框或聚焦后显示。复制成功短暂切勾选并弹 toast，剪贴板不可用
+  按失败提示，不做 execCommand 回退。用户提问气泡下方右侧另有「复制提问」
+  图标，默认透明，指针进入该条消息或聚焦后显示，复制提问原文。工具调用
+  折叠卡的「参数」「结果」标题右侧各有复制图标，复制对应原文。
 - 历史回放：切换会话时 `POST /agui/history` 拉一次 messages snapshot
   （`agui/history.ts` 手解 SSE data 行）。拿到首份 `MESSAGES_SNAPSHOT` 即
   `reader.cancel()` 返回，不等快照运行走完；不跟 follow 流——上游 track
@@ -292,6 +310,10 @@ npm 构建会覆盖占位页，提交前用
 - 色板与 token 一律字面 hex/rgba：oklch 需 Chrome 111+，透明度修饰符
   编译为 `color-mix()`，旧内核解析失败会使颜色整体失效；弱化/半透明
   统一走 `--overlay`、`--destructive-soft`、`--soft` 等 token。
+- Streamdown 与插件的工具类写在依赖产物里，`index.css` 以 `@source` 显式
+  纳入 Tailwind 扫描（只列实际安装的插件包）。产物自带的 `/NN` 透明度
+  修饰符与偏大的标题刻度在 `index.css` 末尾按 `data-streamdown` 属性覆盖
+  为语义 token 实色与聊天字号；该段不带 layer，优先级高于工具类。
 - 切换器 `mode-toggle.tsx` 与 `accent-picker.tsx` 位于登录页与对话页
   头部。组件层的本地改写差异与兼容改写规则见
   [src/components/ui/README.md](src/components/ui/README.md)。

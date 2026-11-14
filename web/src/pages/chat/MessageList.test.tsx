@@ -1,10 +1,21 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatItem } from '../../agui/events'
 import { MessageList } from './MessageList'
 
 afterEach(cleanup)
+
+// stubClipboard 安装可断言的剪贴板替身；用例结束调用 restoreClipboard。
+function stubClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  return writeText
+}
+
+function restoreClipboard() {
+  Reflect.deleteProperty(navigator, 'clipboard')
+}
 
 describe('MessageList rendering', () => {
   it('renders_the_empty_state_when_no_items_exist', () => {
@@ -27,7 +38,7 @@ describe('MessageList rendering', () => {
     expect(screen.getByText('助手')).toBeInTheDocument()
   })
 
-  it('renders_model_text_as_plain_text_nodes_never_as_html', () => {
+  it('renders_model_markdown_as_escaped_nodes_never_as_raw_html', () => {
     const items: ChatItem[] = [
       {
         kind: 'message',
@@ -40,6 +51,84 @@ describe('MessageList rendering', () => {
 
     expect(screen.getByRole('log').querySelector('img')).toBeNull()
     expect(screen.getByRole('log')).toHaveTextContent('<img src=x onerror="alert(1)">')
+  })
+
+  it('copies_the_user_question_from_the_hover_action', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      const items: ChatItem[] = [{ kind: 'message', id: 'u-1', role: 'user', content: '帮我重复 ping' }]
+      render(<MessageList items={items} />)
+
+      const article = screen.getByText('帮我重复 ping').closest('article')
+      await user.click(within(article as HTMLElement).getByRole('button', { name: '复制提问' }))
+      expect(writeText).toHaveBeenCalledWith('帮我重复 ping')
+    } finally {
+      restoreClipboard()
+    }
+  })
+
+  it('renders_assistant_markdown_and_copies_the_source', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      const items: ChatItem[] = [
+        { kind: 'message', id: 'a-1', role: 'assistant', content: '**加粗** 与 `code`' },
+      ]
+      render(<MessageList items={items} />)
+
+      expect(screen.getByRole('log').querySelector('[data-streamdown="strong"]')).toHaveTextContent('加粗')
+      // 复制选项默认收在图标弹框里，悬浮图标后展开。
+      expect(screen.queryByRole('button', { name: '复制原文' })).toBeNull()
+      await user.hover(screen.getByRole('button', { name: '复制回答' }))
+      await user.click(await screen.findByRole('button', { name: '复制原文' }))
+      expect(writeText).toHaveBeenCalledWith('**加粗** 与 `code`')
+    } finally {
+      restoreClipboard()
+    }
+  })
+
+  it('copies_the_whole_rendered_answer_from_the_bottom_toolbar', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      const items: ChatItem[] = [
+        { kind: 'message', id: 'a-1', role: 'assistant', content: '**加粗** 与 `code`' },
+      ]
+      render(<MessageList items={items} />)
+
+      const toolbar = screen.getByRole('toolbar', { name: '回答工具' })
+      await user.hover(within(toolbar).getByRole('button', { name: '复制回答' }))
+      await user.click(await screen.findByRole('button', { name: '复制全文' }))
+      expect(writeText).toHaveBeenCalledWith('加粗 与 code')
+    } finally {
+      restoreClipboard()
+    }
+  })
+
+  it('copies_reasoning_source_from_the_fold_header', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      const items: ChatItem[] = [
+        { kind: 'reasoning', id: 'r-1', content: '先想 **一下**', streaming: false },
+      ]
+      render(<MessageList items={items} />)
+
+      await user.click(screen.getByRole('button', { name: '复制原文' }))
+      expect(writeText).toHaveBeenCalledWith('先想 **一下**')
+    } finally {
+      restoreClipboard()
+    }
+  })
+
+  it('exposes_streamdown_copy_controls_for_code_blocks', async () => {
+    const items: ChatItem[] = [
+      { kind: 'message', id: 'a-1', role: 'assistant', content: '```js\nconst a = 1\n```' },
+    ]
+    render(<MessageList items={items} />)
+
+    expect(await screen.findByRole('button', { name: '复制代码' })).toBeInTheDocument()
   })
 
   it('shows_tool_call_summary_and_reveals_args_and_result_in_the_fold', async () => {
@@ -57,6 +146,26 @@ describe('MessageList rendering', () => {
     expect(summary.closest('[aria-expanded]')).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('参数')).toBeInTheDocument()
     expect(screen.getByText('结果')).toBeInTheDocument()
+  })
+
+  it('copies_tool_arguments_and_results_from_the_expanded_card', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      const items: ChatItem[] = [
+        { kind: 'tool', toolCallId: 'call-1', name: 'echo', argsText: '{"text":"ping"}', result: 'ping', done: true },
+      ]
+      render(<MessageList items={items} />)
+
+      await user.click(screen.getByText(/工具 echo/))
+      await user.click(screen.getByRole('button', { name: '复制参数' }))
+      await user.click(screen.getByRole('button', { name: '复制结果' }))
+
+      expect(writeText).toHaveBeenNthCalledWith(1, '{"text":"ping"}')
+      expect(writeText).toHaveBeenNthCalledWith(2, 'ping')
+    } finally {
+      restoreClipboard()
+    }
   })
 
   it('renders_settled_reasoning_collapsed_and_reveals_its_text_on_expand', async () => {

@@ -485,7 +485,7 @@ export function ChatPage() {
         </header>
 
         {(historyError !== null || chat.error !== null) && (
-          <div className="mx-auto w-full max-w-3xl space-y-2 px-6 pt-4">
+          <div className="mx-auto w-full max-w-5xl 2xl:max-w-6xl space-y-2 px-6 pt-4">
             {historyError !== null && (
               <Alert variant="destructive">
                 <CircleAlertIcon aria-hidden className="mt-0.5 shrink-0" />
@@ -506,7 +506,7 @@ export function ChatPage() {
         )}
 
         {chat.steps.length > 0 && (
-          <ol aria-label="运行步骤" className="mx-auto flex w-full max-w-3xl flex-wrap items-center gap-2 px-6 pt-4">
+          <ol aria-label="运行步骤" className="mx-auto flex w-full max-w-5xl 2xl:max-w-6xl flex-wrap items-center gap-2 px-6 pt-4">
             {chat.steps.map((step, index) => (
               <li key={`${step.name}-${index}`}>
                 <Badge variant="outline" className="gap-1.5 shadow-xs">
@@ -539,7 +539,7 @@ export function ChatPage() {
             }}
             className="min-h-0 flex-1 overflow-y-scroll"
           >
-            <div className="mx-auto w-full max-w-3xl space-y-4 px-6 py-6">
+            <div className="mx-auto w-full max-w-5xl 2xl:max-w-6xl space-y-4 px-6 py-6">
               {/* 待确认时运行挂起等人决定，不呈现「正在思考」：载入提示只
                   表示模型侧仍在处理。 */}
               <MessageList items={chat.items} running={chat.running && chat.confirmations.length === 0} />
@@ -575,7 +575,7 @@ export function ChatPage() {
           }}
           className="shrink-0 border-t bg-card px-6 pt-4 pb-3"
         >
-          <div className="mx-auto w-full max-w-3xl">
+          <div className="mx-auto w-full max-w-5xl 2xl:max-w-6xl">
             <div className="flex items-end gap-2 rounded-2xl border border-input bg-card p-2 shadow-xs transition focus-within:border-ring focus-within:ring-2 focus-within:ring-ring">
               {/* 思考强度：触发器只显示图标与档位，悬浮弹出档位单选；在途
                   运行保持启动时的取值，运行时禁用避免误解为即时生效。 */}
