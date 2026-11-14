@@ -42,6 +42,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CopyTextButton } from '@/components/copy-text-button'
 import {
   Collapsible,
   CollapsibleContent,
@@ -571,17 +572,24 @@ function CompactibleText({ text, threadId }: { text: string; threadId: string })
 function ReplayReasoning({ item, turnStart }: { item: ReasoningItem; turnStart?: number }) {
   const start = startInfo(item.startedAt, turnStart)
   return (
-    <Collapsible className="w-full overflow-hidden rounded-xl border border-dashed bg-card shadow-xs">
-      <CollapsibleTrigger className="group flex w-full cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors select-none hover:bg-soft">
-        <SparklesIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-        思考内容
-        <span className="text-xs tabular-nums">始于 {start.time}</span>
-        {start.latency && <span className="text-xs tabular-nums">{start.latency}</span>}
-        <ChevronDownIcon
-          aria-hidden
-          className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
-        />
-      </CollapsibleTrigger>
+    <Collapsible className="group/reasoning w-full overflow-hidden rounded-xl border border-dashed bg-card shadow-xs">
+      <div className="flex items-center gap-0.5 pr-1.5">
+        <CollapsibleTrigger className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left text-sm text-muted-foreground transition-colors select-none hover:bg-soft">
+          <SparklesIcon aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          思考内容
+          <span className="text-xs tabular-nums">始于 {start.time}</span>
+          {start.latency && <span className="text-xs tabular-nums">{start.latency}</span>}
+          <ChevronDownIcon
+            aria-hidden
+            className="ml-auto size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
+          />
+        </CollapsibleTrigger>
+        {item.content !== '' && (
+          <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/reasoning:opacity-100">
+            <CopyTextButton text={item.content} label="复制思考" />
+          </span>
+        )}
+      </div>
       <CollapsibleContent>
         <div className="border-t px-3.5 py-3 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap text-muted-foreground">
           {item.content}
@@ -665,13 +673,23 @@ function ReplayToolCall({
         <div className="space-y-3 border-t px-3.5 py-3">
           {item.argsText !== '' && (
             <>
-              <h4 className="text-xs font-medium text-muted-foreground">参数</h4>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-medium text-muted-foreground">参数</h4>
+                <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyTextButton text={item.argsText} label="复制参数" />
+                </span>
+              </div>
               <pre className="code-block">{item.argsText}</pre>
             </>
           )}
           {item.result !== null && (
             <>
-              <h4 className="text-xs font-medium text-muted-foreground">结果</h4>
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-xs font-medium text-muted-foreground">结果</h4>
+                <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyTextButton text={item.result} label="复制结果" />
+                </span>
+              </div>
               <CompactibleText text={item.result} threadId={threadId} />
             </>
           )}
@@ -747,14 +765,19 @@ function ReplayMessage({
   return (
     <article
       data-role={item.role}
-      className={`flex flex-col transition-opacity duration-200 ${isUser ? 'items-end' : 'items-start'} ${
-        dimmed ? 'opacity-40' : ''
-      }`}
+      className={`group/message flex flex-col transition-opacity duration-200 ${
+        isUser ? 'items-end' : 'items-start'
+      } ${dimmed ? 'opacity-40' : ''}`}
     >
       <span className="mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
         {isUser ? '你' : item.role}
         <span className="tabular-nums">始于 {start.time}</span>
         {start.latency && <span className="tabular-nums">{start.latency}</span>}
+        {isUser && item.content !== '' && (
+          <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/message:opacity-100">
+            <CopyTextButton text={item.content} label="复制提问" />
+          </span>
+        )}
       </span>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap ${
@@ -806,23 +829,60 @@ function ReplayAssistantTurn({
   const refs = useMemo(() => detectCompactionRefs(content), [content])
   const start = startInfo(message?.startedAt ?? reasoning[0]?.startedAt, turnStart)
   const usage = useMemo(() => usageSummary(fact, showRunTiming), [fact, showRunTiming])
+  const answerRef = useRef<HTMLDivElement | null>(null)
+  const [expanded, setExpanded] = useState(false)
+  const [measuredOverflow, setMeasuredOverflow] = useState(false)
+  // 收起态量一次是否超过 5 行：浏览器按真实排版判定（scrollHeight 大于
+  // 截断后的 clientHeight）；换行数/长度兜底覆盖测试环境与窄视口。
+  useEffect(() => {
+    if (expanded) {
+      return
+    }
+    const el = answerRef.current
+    if (el !== null) {
+      setMeasuredOverflow(el.scrollHeight > el.clientHeight + 1)
+    }
+  }, [content, expanded])
+  const expandable =
+    measuredOverflow || content.split('\n').length > 5 || content.length > 220
   return (
     <article
       data-role="assistant"
-      className={`flex flex-col items-start transition-opacity duration-200 ${dimmed ? 'opacity-40' : ''}`}
+      className={`group/answer flex flex-col items-start transition-opacity duration-200 ${dimmed ? 'opacity-40' : ''}`}
     >
       <span className="mb-1 flex items-center gap-2 px-1 text-xs text-muted-foreground">
         assistant
         <span className="tabular-nums">始于 {start.time}</span>
         {start.latency && <span className="tabular-nums">{start.latency}</span>}
+        {content !== '' && (
+          <span className="opacity-0 transition-opacity focus-within:opacity-100 group-hover/answer:opacity-100">
+            <CopyTextButton text={content} label="复制回答" />
+          </span>
+        )}
       </span>
       <div className="flex w-full max-w-[85%] flex-col items-start gap-2">
         {reasoning.map((item) => (
           <ReplayReasoning key={item.id} item={item} turnStart={turnStart} />
         ))}
         {message !== undefined && (
-          <div className="rounded-2xl border bg-card px-4 py-2.5 text-sm leading-relaxed wrap-break-word whitespace-pre-wrap text-card-foreground shadow-xs">
-            {message.content}
+          <div className="rounded-2xl border bg-card px-4 py-2.5 text-sm leading-relaxed text-card-foreground shadow-xs">
+            <div
+              ref={answerRef}
+              data-testid="replay-answer-text"
+              className={`wrap-break-word whitespace-pre-wrap ${expanded ? '' : 'line-clamp-5'}`}
+            >
+              {message.content}
+            </div>
+            {expandable && (
+              <button
+                type="button"
+                aria-expanded={expanded}
+                onClick={() => setExpanded(!expanded)}
+                className="mt-1 cursor-pointer text-xs text-brand-text transition-colors hover:underline"
+              >
+                {expanded ? '收起' : '展开全文'}
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -51,6 +51,17 @@ const mockLoadChunkDetail = vi.mocked(loadChunkDetail)
 const mockLoadDocumentDetail = vi.mocked(loadDocumentDetail)
 const mockClearReplayDetailCache = vi.mocked(clearReplayDetailCache)
 
+// stubClipboard 安装可断言的剪贴板替身；用例结束调用 restoreClipboard。
+function stubClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+  return writeText
+}
+
+function restoreClipboard() {
+  Reflect.deleteProperty(navigator, 'clipboard')
+}
+
 function documentDTO(overrides: Partial<DocumentDTO> = {}): DocumentDTO {
   return {
     id: '2',
@@ -948,6 +959,62 @@ describe('ReplayPage four-facet evidence view', () => {
     await expandRetrievalRow(user)
     await user.click(within(retrievalRow('trace-a')).getAllByRole('button', { name: '分片 doc-1' })[0])
     expect(await screen.findByText(/无权限查看该内容/)).toBeInTheDocument()
+  })
+
+  it('clamps_long_answers_to_five_lines_and_toggles_expansion', async () => {
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'm-1', role: 'user', content: '问' },
+      {
+        kind: 'message',
+        id: 'm-2',
+        role: 'assistant',
+        content: '第一行\n第二行\n第三行\n第四行\n第五行\n第六行',
+      },
+    ])
+    const user = userEvent.setup()
+    renderReplay()
+    const text = await screen.findByTestId('replay-answer-text')
+
+    expect(text.className).toContain('line-clamp-5')
+    await user.click(screen.getByRole('button', { name: '展开全文' }))
+    expect(text.className).not.toContain('line-clamp-5')
+    await user.click(screen.getByRole('button', { name: '收起' }))
+    expect(text.className).toContain('line-clamp-5')
+  })
+
+  it('copies_the_answer_from_the_hover_action', async () => {
+    mockFetchHistory.mockResolvedValue([
+      { kind: 'message', id: 'm-1', role: 'user', content: '问' },
+      { kind: 'message', id: 'm-2', role: 'assistant', content: 'answer' },
+    ])
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      renderReplay()
+      const article = (await screen.findByText('answer')).closest('article')
+      await user.click(within(article as HTMLElement).getByRole('button', { name: '复制回答' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith('answer'))
+    } finally {
+      restoreClipboard()
+    }
+  })
+
+  it('copies_tool_arguments_and_results_from_the_expanded_card', async () => {
+    const user = userEvent.setup()
+    const writeText = stubClipboard()
+    try {
+      renderReplay()
+      await screen.findByText('answer')
+      await user.click(screen.getByText(/工具 search_internal_docs/))
+      const card = screen.getByText(/工具 search_internal_docs/).closest('[aria-label]')
+      await user.click(within(card as HTMLElement).getByRole('button', { name: '复制参数' }))
+      await user.click(within(card as HTMLElement).getByRole('button', { name: '复制结果' }))
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2))
+      expect(writeText).toHaveBeenNthCalledWith(1, '{"query":"grape"}')
+      expect(writeText).toHaveBeenNthCalledWith(2, '{"document_id":"doc-1","content":"excerpt"}')
+    } finally {
+      restoreClipboard()
+    }
   })
 
   it('does_not_expand_the_row_when_the_trace_button_is_clicked', async () => {
